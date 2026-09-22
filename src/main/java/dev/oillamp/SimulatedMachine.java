@@ -74,11 +74,61 @@ final class SimulatedMachine implements Machine {
     @Override public Outcome run(Command command) {
         if (passThrough.contains(command.executable())) return realMachine.run(command);
         String commandLine = command.commandLine();
+        if (commandLine.startsWith("podman run ")) return startSimulatedSandbox(command);
         for (Map.Entry<String, Outcome> scripted : scriptedCommands.entrySet())
             if (commandLine.startsWith(scripted.getKey())) return scripted.getValue();
         if (!executables.containsKey(command.executable()))
             return new Outcome.NotFound(command.executable());
         return new Outcome.Finished(0, "", "", Duration.ofMillis(1));
+    }
+
+    /**
+     * Models what the <em>container</em> does on startup, not what oillamp does.
+     *
+     * <p>The real entrypoint starts sway, wayvnc and the ssh listener and then writes
+     * {@code ready.json} into the mounted sockets directory (§16). Nothing else tells the host it
+     * is ready, so a simulation that skipped this would leave every {@code oillamp at} scenario
+     * waiting for a file that never arrives.
+     *
+     * <p>Note where the path comes from: the {@code --volume} argument oillamp actually passed. A
+     * simulation that wrote to a path of its own choosing would keep working if oillamp forgot the
+     * mount; this one fails exactly as the real sandbox would, because the container would have
+     * nowhere to write either.
+     *
+     * <p>It deliberately does not simulate the desktop, the VNC server or the recording. Those are
+     * what the spikes of §33 are for — a simulation can only ever replay what we already believe,
+     * and believing sway works is not the same as knowing it.
+     */
+    private Outcome startSimulatedSandbox(Command command) {
+        Optional<Path> sockets = mountedHostPath(command, "/oillamp/sockets");
+        if (sockets.isEmpty())
+            return new Outcome.Finished(125, "",
+                    "Error: the sandbox has nowhere to report readiness — "
+                  + "no --volume was mounted at /oillamp/sockets\n", Duration.ofMillis(30));
+        try {
+            Path infra = sockets.get().resolve("infra");
+            java.nio.file.Files.createDirectories(infra);
+            java.nio.file.Files.writeString(infra.resolve("ready.json"),
+                    "{\"renderer\":\"pixman\",\"gpu_fallback\":false,\"simulated\":true}\n");
+        } catch (java.io.IOException e) {
+            return new Outcome.Finished(125, "", "Error: " + e.getMessage() + "\n", Duration.ofMillis(30));
+        }
+        return new Outcome.Finished(0, "simulated-container-id\n", "", Duration.ofMillis(120));
+    }
+
+    /** The host side of {@code --volume <host>:<inContainer>}, if oillamp asked for that mount. */
+    private static Optional<Path> mountedHostPath(Command command, String inContainer) {
+        Tuple<String> argv = command.argv();
+        for (int i = 0; i < argv.size() - 1; i++) {
+            if (!argv.get(i).equals("--volume") && !argv.get(i).equals("-v")) continue;
+            String mount = argv.get(i + 1);
+            int separator = mount.indexOf(':');
+            if (separator < 0) continue;
+            String target = mount.substring(separator + 1);
+            if (target.equals(inContainer) || target.startsWith(inContainer + ":"))
+                return Optional.of(Path.of(mount.substring(0, separator)));
+        }
+        return Optional.empty();
     }
 
     @Override public Optional<String> readSystemFile(Path path) {
@@ -257,6 +307,13 @@ final class SimulatedMachine implements Machine {
                             : "Error: cannot set up namespace using \"/usr/bin/newuidmap\": exit status 1\n",
                         Duration.ofMillis(20)));
             }, () -> { });
+
+            // A machine that has never run this lamp has neither. `podman image exists` and
+            // `podman container exists` report absence with a non-zero exit, not with output, so
+            // the default "any known executable succeeds" would have said both were present — and
+            // oillamp would have skipped the build and then started a container from nothing.
+            script("podman image exists", "", 1);
+            script("podman container exists", "", 1);
 
             script("stat -f -c %T", filesystemType + "\n");
             return new SimulatedMachine(this);

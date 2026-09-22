@@ -6,7 +6,10 @@
 # the agent and the compositor are different users.
 
 include /run/lamp/output.conf
-output * bg #1f2430 solid_color
+# The lamp itself, centred on the same colour the rest of the desktop uses. `center` rather than
+# `stretch` so it looks right at any resolution the user configures, and the fill colour matches
+# the image's own background so there is no visible seam around it.
+output * bg /usr/share/oillamp/wallpaper.png center #1f2430
 
 xwayland enable
 default_border normal

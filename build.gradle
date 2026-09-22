@@ -25,6 +25,29 @@ application {
     mainClass = 'dev.oillamp.OilLamp'
 }
 
+// The sandbox image ships inside the jar, and a jar cannot be asked "what files are under this
+// directory". Rather than hardcode a list that would rot the moment someone adds a file to the
+// image, generate one at build time — and carry the executable bit with it, because an entrypoint
+// extracted without +x produces a container that dies with "permission denied" as pid 1.
+def imageManifest = tasks.register('imageManifest') {
+    description = 'Lists the sandbox image resources, so they can be extracted from the jar.'
+    def imageDirectory = file('src/main/resources/image')
+    def manifest = layout.buildDirectory.file('generated-resources/image/MANIFEST')
+    inputs.dir(imageDirectory)
+    outputs.file(manifest)
+    doLast {
+        def target = manifest.get().asFile
+        target.parentFile.mkdirs()
+        target.text = fileTree(imageDirectory).files.toSorted().collect { file ->
+            def relative = imageDirectory.toPath().relativize(file.toPath()).toString()
+            "${file.canExecute() ? '755' : '644'} ${relative}"
+        }.join('\n') + '\n'
+    }
+}
+
+sourceSets.main.resources.srcDir(layout.buildDirectory.dir('generated-resources'))
+tasks.named('processResources') { dependsOn(imageManifest) }
+
 dependencies {
     errorprone "com.uber.nullaway:nullaway:0.12.15"
     compileOnly "com.google.code.findbugs:jsr305:3.0.2"

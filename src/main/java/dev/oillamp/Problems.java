@@ -53,6 +53,10 @@ final class Problems {
     public static final Code SSH_KEYGEN_FAILED     = new Code("OIL-SSH-001");
     public static final Code TERM_NONE_FOUND       = new Code("OIL-TERM-001");
     public static final Code NET_SOCKET_PATH_LONG  = new Code("OIL-NET-001");
+    public static final Code IMAGE_BUILD_FAILED    = new Code("OIL-IMAGE-001");
+    public static final Code SANDBOX_START_FAILED  = new Code("OIL-SANDBOX-001");
+    public static final Code SANDBOX_DIED          = new Code("OIL-SANDBOX-002");
+    public static final Code SANDBOX_NOT_READY     = new Code("OIL-SANDBOX-003");
     public static final Code EXEC_NOT_FOUND        = new Code("OIL-EXEC-001");
     public static final Code EXEC_TIMED_OUT        = new Code("OIL-EXEC-002");
     public static final Code INTERNAL              = new Code("OIL-INTERNAL-001");
@@ -325,6 +329,48 @@ final class Problems {
                 "the lamp needs its own key pair; oillamp never reuses your personal SSH keys for "
               + "the sandbox")
             .withEvidence(command);
+    }
+
+    // ─── the image and the sandbox ─────────────────────────────────────────────────────────
+
+    public static Problem podmanFailed(String what, int exitCode, String output) {
+        Code code = what.contains("build") ? IMAGE_BUILD_FAILED : SANDBOX_START_FAILED;
+        return error(code,
+                what.contains("build") ? "Could not build the sandbox image" : "Could not start the sandbox",
+                what + " exited with code " + exitCode,
+                what.contains("build")
+                    ? "the sandbox runs from an image oillamp builds; without it there is nothing to start"
+                    : "the sandbox is the container; if it will not start there is no session")
+            .withEvidence(new Evidence.Value("output", output))
+            .withFix(Fix.of("the output above is podman's own — it usually names the cause exactly"))
+            .withFix(Fix.run("check the machine is still able to run containers", "oillamp doctor"));
+    }
+
+    /**
+     * The container exited while oillamp was waiting for it to become ready.
+     *
+     * <p>Carries the container's own log, because that is the only place the reason exists: the
+     * entrypoint knows why it gave up and says so, and without this the user sees a timeout and a
+     * container that is simply gone.
+     */
+    public static Problem sandboxDied(String container, String log) {
+        return error(SANDBOX_DIED, "The sandbox stopped while starting up",
+                "container " + container + " exited before it reported itself ready",
+                "the desktop, the VNC server and the ssh listener all have to come up; the "
+              + "entrypoint stops the sandbox rather than leave a half-working one")
+            .withEvidence(new Evidence.Value("last lines of the sandbox log", log))
+            .withFix(Fix.of("the log above is from inside the sandbox and names which part failed"));
+    }
+
+    public static Problem sandboxNotReady(String container, java.time.Duration waited, String log) {
+        return error(SANDBOX_NOT_READY, "The sandbox did not become ready in time",
+                "container " + container + " was still starting after " + waited.toSeconds() + "s",
+                "oillamp waits for the sandbox to say it is ready rather than guessing, so that a "
+              + "session never starts against a desktop that is not there yet")
+            .withEvidence(new Evidence.Value("last lines of the sandbox log", log))
+            .withFix(Fix.of("if the log shows it still working, the machine may simply be slow — "
+                          + "raise the timeout with session.ready_timeout"))
+            .withFix(Fix.run("stop the container that is still running", "podman rm -f " + container));
     }
 
     public static Problem commandNotFound(String executable) {

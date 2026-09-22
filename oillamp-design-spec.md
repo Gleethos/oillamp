@@ -1561,7 +1561,7 @@ current detail; the Status column here is the summary.
 | **M0** | Spikes | ⬜ not started — **S11 resolved** (§36.3), 13 spikes open | all items in §33, as throwaway scripts in `spikes/` | every ⚠ VERIFY item is confirmed or replaced by its fallback, and this spec is updated |
 | **M1** | Skeleton and host | ✅ **built and verified** | Gradle setup with ArchUnit rules (single module, D-26); `Result`/`Problem`/catalog; ProcessRunner; HostProbe; HostPlanner incl. APT install and subuid fix; `doctor`; ConsoleRenderer; Journal | `oillamp doctor` on a fresh Ubuntu VM reports and (via `at --dry-run`) plans the right fixes; unit + golden tests |
 | **M2** | Lamp and config | ✅ **built and verified** | lamp classification/init/migration, layout, lock + stale detection, TOML config pipeline with all validations, key generation, rendering of `session/`, `ssh_config`, runtime dir | `oillamp at <new dir> --dry-run` prints a complete, correct plan; config errors are reported all at once with key paths |
-| **M3** | Image and container | 🟡 **image works end to end** — built, starts, reaches ready, SSH + desktop + recording verified by `./gradlew spikes`. Remaining: drive it from oillamp itself (content-hash tag, `podman build`/`run` as Steps, readiness wait) | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
+| **M3** | Image and container | ✅ **done** — `oillamp at` builds the image (content-hash tag), starts the container and waits for `ready.json`. `--dry-run` shows the whole plan including every podman flag | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
 | **M4** | Supervisor | ⬜ not started | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
 | **M5** | Network | ⬜ not started — *policy engine already built* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
 | **M6** | Recording and agent tooling | ⬜ not started — *retention already built* | wf-recorder, retention, `recordings` command; `lamp` helper script (D-27); agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
@@ -1686,6 +1686,16 @@ changed for convenience alone.
   search for. **Resolved:** `crun` is now a required package in §11.1, installed alongside podman,
   with the reason carried in the step detail. A scenario pins it so it is not later removed as
   redundant — which it looks like, because podman does run without it.
+- **`--verbose` parsed correctly and did nothing.** `ConsoleRenderer.verbose(…)` returned a
+  *copy*, and the event sink was holding the original, so the flag had never once changed the
+  output. Found while trying to read the `podman run` arguments a dry run had just planned. The
+  renderer now carries the flag itself, and a planned step prints its full detail under
+  `--verbose`, which is where those arguments live.
+- **`--dry-run` stopped before the part most worth inspecting.** It returned after Phase B, so the
+  container was never even planned — the `podman run` flags *are* the sandbox's guarantees, and
+  someone checking that `--network=none` is really passed should not have to read the source. It
+  now plans Phase C too, and still takes no lock, so it cannot block a running session.
+
 - **`setpriv` changes the user but not the environment.** Every process the entrypoint drops
   inherited root's `HOME=/root`, which is mode 0700 and owned by root, so each one was denied its
   own home directory. wayvnc called this *"Failed to load config. Permission denied"* and

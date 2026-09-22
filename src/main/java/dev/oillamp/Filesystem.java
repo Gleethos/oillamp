@@ -43,16 +43,36 @@ final class Filesystem {
 
     /** Writes atomically, then applies the mode — never leaves a partially written file. */
     public static void writeFile(Path path, String content, PosixMode mode) throws IOException {
+        writeBytes(path, content.getBytes(StandardCharsets.UTF_8), mode);
+    }
+
+    /**
+     * The same, for content that is not text.
+     *
+     * <p>Needed because the sandbox image carries a PNG. Writing that through the text path would
+     * put it through a charset encoder and corrupt it, and the symptom would be a desktop with no
+     * wallpaper rather than anything that mentions encoding.
+     */
+    public static void writeBytes(Path path, byte[] content, PosixMode mode) throws IOException {
         Path parent = path.getParent();
         if (parent != null) Files.createDirectories(parent);
         Path temporary = Files.createTempFile(parent == null ? path : parent, ".oillamp-", ".tmp");
         try {
-            Files.writeString(temporary, content, StandardCharsets.UTF_8);
+            Files.write(temporary, content);
             setMode(temporary, mode);
             Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } finally {
             Files.deleteIfExists(temporary);
         }
+    }
+
+    /** Creates a directory and every missing parent, applying the mode to those it creates. */
+    public static void createDirectories(Path path, PosixMode mode) throws IOException {
+        if (Files.isDirectory(path)) return;
+        Path parent = path.getParent();
+        if (parent != null) createDirectories(parent, mode);
+        if (!Files.isDirectory(path))
+            Files.createDirectory(path, PosixFilePermissions.asFileAttribute(mode.permissions()));
     }
 
     public static void copyFile(Path from, Path to, PosixMode mode) throws IOException {

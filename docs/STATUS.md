@@ -25,7 +25,7 @@ so, rather than pretending.
 |---|---|
 | `oillamp doctor` | **Works.** Probes the host, reports every deficiency at once with fix instructions, exits 0 or 3. |
 | `oillamp at <dir> --dry-run` | **Works.** Prints the complete plan — package installs, subuid allocation, every file and directory of the lamp with its mode — and changes nothing. |
-| `oillamp at <dir>` | **Works up to the container.** Installs prerequisites, creates and populates the lamp, generates keys, writes the session files, then reports that starting the container is the next milestone. |
+| `oillamp at <dir>` | **Starts a sandbox.** Installs prerequisites, builds the lamp, builds the image if its content hash changed, starts the container and waits for it to report ready. Prints the `ssh` and `vncviewer` commands to reach it — launching those windows automatically is M4. |
 | `oillamp at <dir> --init` | **Works.** Writes a commented `oillamp.toml` and stops. |
 | `oillamp config check <dir>` | **Works.** Reports every configuration error in one pass, each with its key path and file. |
 | `oillamp config show-effective <dir>` | **Works.** Prints the merged global + lamp configuration. |

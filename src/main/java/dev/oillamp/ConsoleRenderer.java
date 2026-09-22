@@ -24,7 +24,13 @@ final class ConsoleRenderer {
 
     private final StringBuilder captured = new StringBuilder();
     private final boolean colour;
-    private final boolean verbose;
+    /**
+     * Mutable, and deliberately so: the renderer has to exist before the command line is parsed
+     * (a usage error must still print in colour), but {@code --verbose} is only known afterwards.
+     * Returning a copy instead left the sink holding the original, which is how this flag came to
+     * parse correctly and then do nothing at all.
+     */
+    private boolean verbose;
     private boolean echoToTerminal = true;
 
     private ConsoleRenderer(boolean colour, boolean verbose) {
@@ -38,11 +44,10 @@ final class ConsoleRenderer {
         return new ConsoleRenderer(colour, false);
     }
 
+    /** Told once, as soon as the options are parsed. Returns this renderer, not a copy. */
     public ConsoleRenderer verbose(boolean verbose) {
-        ConsoleRenderer renderer = new ConsoleRenderer(colour, verbose);
-        renderer.echoToTerminal = echoToTerminal;
-        renderer.captured.append(captured);
-        return renderer;
+        this.verbose = verbose;
+        return this;
     }
 
     /** Used by tests, which read {@link #text()} instead of watching a terminal. */
@@ -67,8 +72,15 @@ final class ConsoleRenderer {
                     line(area(ok.area()) + colour(GREEN, "✓ ") + ok.text());
             case LampEvent.Info info ->
                     line(area(info.area()) + dim("· " + info.text()));
-            case LampEvent.StepPlanned planned ->
-                    line(area("plan") + dim("→ ") + planned.step().describe());
+            case LampEvent.StepPlanned planned -> {
+                line(area("plan") + dim("→ ") + planned.step().describe());
+                // The detail is normally for the session log, but a dry run writes no log, and
+                // the detail is exactly what someone dry-running wants to read: the podman
+                // arguments, the packages and why each one is being installed.
+                if (verbose && !planned.step().detail().equals(planned.step().describe()))
+                    for (String detailLine : planned.step().detail().lines().toList())
+                        line(dim(" ".repeat(10) + "  " + detailLine));
+            }
             case LampEvent.StepStarted started ->
                     { if (verbose) line(area("step") + dim("→ " + started.step().describe())); }
             case LampEvent.StepSucceeded succeeded ->

@@ -63,6 +63,25 @@ sealed interface Step {
 
     record RemoveContainer(ContainerName name, String reason) implements Step {}
 
+    /**
+     * Start the sandbox — spec §15.3.
+     *
+     * <p>The whole argument list is data, so that {@code --dry-run} can show exactly what will be
+     * run. That matters more here than anywhere else in oillamp: these flags are the sandbox's
+     * guarantees, and a user who wants to check that {@code --network=none} is really being passed
+     * should not have to read the source to find out.
+     */
+    record RunContainer(ContainerName name, ImageTag image, Tuple<String> argv) implements Step {}
+
+    /**
+     * Wait for the sandbox to say it is ready, by writing {@code ready.json} — spec §16.
+     *
+     * <p>A step rather than a bare sleep, because it can fail in a way worth reporting: the
+     * container may exit during startup, and then the useful thing to show the user is its log,
+     * not a timeout.
+     */
+    record AwaitReady(ContainerName name, Path readyFile, java.time.Duration timeout) implements Step {}
+
     /** Files owned by a container uid, so they need {@code podman unshare rm} to delete. */
     record DeleteContainerOwnedFiles(Tuple<Path> files, String reason) implements Step {}
 
@@ -90,6 +109,9 @@ sealed interface Step {
             case ExtractImageContext s -> "extract the image build context into " + s.targetDir();
             case BuildImage s      -> (s.noCache() ? "rebuild " : "build ") + "sandbox image " + s.tag();
             case RemoveContainer s -> "remove leftover container " + s.name() + " (" + s.reason() + ")";
+            case RunContainer s    -> "start sandbox container " + s.name() + " from " + s.image();
+            case AwaitReady s      -> "wait for the sandbox to report itself ready (up to "
+                                      + s.timeout().toSeconds() + "s)";
             case DeleteContainerOwnedFiles s -> "delete " + s.files().size() + " file(s) owned by the sandbox ("
                                       + s.reason() + ")";
             case RemovePath s      -> "remove " + s.path() + " (" + s.reason() + ")";
@@ -125,6 +147,18 @@ sealed interface Step {
             }
             // Listed individually rather than behind a `default`, so that adding a Step
             // forces a decision about how it appears in the log (spec section 23, rule 2).
+            case RunContainer s -> {
+                // The full argument list, one flag per line. These flags *are* the sandbox: no
+                // network, read-only root, the user mapping of §9.2. Anyone auditing what oillamp
+                // actually does should find it here rather than in the source.
+                StringBuilder out = new StringBuilder("podman run");
+                for (String argument : s.argv())
+                    out.append(argument.startsWith("-") ? "\n  " : " ").append(argument);
+                yield out.toString();
+            }
+            case AwaitReady s -> "waiting for " + s.readyFile()
+                               + "\n  written by the container once sway, the VNC server and the "
+                               + "ssh listener have all proved themselves (§16)";
             case PodmanMigrate ignored      -> describe();
             case CreateDirectory ignored    -> describe();
             case CopyFile ignored           -> describe();

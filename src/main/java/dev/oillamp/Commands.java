@@ -73,7 +73,18 @@ final class Commands {
         LampPhase.Prepared prepared = ((Result.Ok<LampPhase.Prepared>) lamp).value();
         context.report(lamp.warnings());
 
+        // A dry run shows the *whole* plan, the container included, and takes no lock: it changes
+        // nothing, so it must not be able to block a session that is actually running. Stopping
+        // here instead would hide the one part of the plan a user most wants to inspect — the
+        // podman arguments that are the sandbox's guarantees (§15.3).
         if (context.options().dryRun()) {
+            Result<SandboxPhase.Running> planned =
+                    new SandboxPhase(machine, context).start(prepared, host.facts());
+            if (planned instanceof Result.Err<SandboxPhase.Running> failure) {
+                context.report(failure.problems());
+                return ExitStatus.ERROR;
+            }
+            context.report(planned.warnings());
             context.info("lamp", "dry run — nothing above was actually done");
             return ExitStatus.SUCCESS;
         }
@@ -98,8 +109,29 @@ final class Commands {
             context.ok("lamp", "ready — agent " + prepared.layout().agentId()
                     + ", desktop " + prepared.config().display().size()
                     + ", renderer " + prepared.gpu().renderer());
-            context.info("session", "starting the sandbox container is the next milestone; "
-                    + "everything up to this point is done and persisted in " + prepared.layout().root());
+
+            Result<SandboxPhase.Running> sandbox =
+                    new SandboxPhase(machine, context).start(prepared, host.facts());
+            if (sandbox instanceof Result.Err<SandboxPhase.Running> failure) {
+                context.report(failure.problems());
+                return ExitStatus.ERROR;
+            }
+            context.report(sandbox.warnings());
+            if (context.options().dryRun()) return ExitStatus.SUCCESS;
+
+            SandboxPhase.Running running = ((Result.Ok<SandboxPhase.Running>) sandbox).value();
+            context.ok("session", "sandbox running — container " + running.container());
+            // M4 turns this into a supervised session: the SSH relay, the viewer and terminal
+            // windows, and a shutdown that stops all of it when the user closes the terminal.
+            // Until then the container keeps running, so say how to reach it and how to stop it
+            // rather than leaving one behind with no explanation.
+            context.info("session", "the supervisor, the viewer window and the terminal are M4. "
+                    + "Until then, reach the sandbox yourself with:\n"
+                    + "    ssh -F " + prepared.layout().sshConfig()
+                    + " -o ProxyCommand='socat - UNIX-CONNECT:" + prepared.layout().agentSshSocket() + "'"
+                    + " lamp-" + prepared.layout().agentId() + "\n"
+                    + "    vncviewer " + prepared.layout().vncSocket() + "\n"
+                    + "  and stop it with:  podman rm -f " + running.container());
             return ExitStatus.SUCCESS;
         } finally {
             try {

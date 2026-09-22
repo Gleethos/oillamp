@@ -120,17 +120,116 @@ final class StepRunner {
                 case Step.ChownForContainer s -> chownForContainer(s);
                 case Step.RemoveContainer s -> podman(step, "rm", "-f", s.name().value());
                 case Step.DeleteContainerOwnedFiles s -> deleteContainerOwnedFiles(s);
-                case Step.ExtractImageContext ignored ->
-                        Result.err(Problems.internal("StepRunner",
-                                "building the sandbox image arrives with milestone M3"));
-                case Step.BuildImage ignored ->
-                        Result.err(Problems.internal("StepRunner",
-                                "building the sandbox image arrives with milestone M3"));
+                case Step.ExtractImageContext s -> extractImageContext(s);
+                case Step.BuildImage s -> buildImage(s);
+                case Step.RunContainer s -> runContainer(s);
+                case Step.AwaitReady s -> awaitReady(s);
             };
         } catch (IOException e) {
             return Result.err(Problems.internal("StepRunner." + step.kind(),
                     step.describe() + " failed: " + Problems.reason(e)));
         }
+    }
+
+    // ─── the image and the container ───────────────────────────────────────────────────────
+
+    /**
+     * Unpacks the image's files out of the jar and onto disk, where podman can read them.
+     *
+     * <p>The mode from the manifest is applied rather than assumed: an entrypoint written without
+     * its executable bit gives a container that dies immediately as pid 1, and the message podman
+     * reports for that names the file but not the reason.
+     */
+    private Result<Step> extractImageContext(Step.ExtractImageContext step) throws IOException {
+        Filesystem.createDirectories(step.targetDir(), PosixMode.PUBLIC_DIR);
+        for (ImageResources.Entry entry : ImageResources.entries()) {
+            Path target = step.targetDir().resolve(entry.path());
+            Path parent = target.getParent();
+            if (parent != null) Filesystem.createDirectories(parent, PosixMode.PUBLIC_DIR);
+            Filesystem.writeBytes(target, ImageResources.read(entry.path()), entry.mode());
+        }
+        return Result.ok(step);
+    }
+
+    private Result<Step> buildImage(Step.BuildImage step) {
+        java.util.List<String> argv = new java.util.ArrayList<>(
+                java.util.List.of("podman", "build", "--tag", step.tag().value()));
+        if (step.noCache()) argv.add("--no-cache");
+        for (var argument : step.buildArgs()) {
+            argv.add("--build-arg");
+            argv.add(argument.first() + "=" + argument.second());
+        }
+        argv.add(step.context().toString());
+        // Generous: a first build installs a desktop and a JDK over the network. The user is
+        // watching a progress line, not a frozen terminal, because the build streams to the log.
+        Machine.Outcome outcome = run("podman build", Duration.ofMinutes(45),
+                                      argv.toArray(String[]::new));
+        return outcomeToResult(step, outcome, "podman build");
+    }
+
+    private Result<Step> runContainer(Step.RunContainer step) {
+        java.util.List<String> argv = new java.util.ArrayList<>(java.util.List.of("podman", "run"));
+        for (String argument : step.argv()) argv.add(argument);
+        Machine.Outcome outcome = run("podman run", Duration.ofMinutes(2),
+                                      argv.toArray(String[]::new));
+        return outcomeToResult(step, outcome, "podman run");
+    }
+
+    /**
+     * Waits for the container's own readiness signal, and explains a failure with its log.
+     *
+     * <p>Polling a file is not elegant, but it is the only signal that crosses the user-namespace
+     * boundary without giving the container a way to talk back — which §16 is careful not to do.
+     * The container exiting is checked on every pass, so a sandbox that dies during startup is
+     * reported in a second with its own log rather than after the full timeout with nothing.
+     */
+    private Result<Step> awaitReady(Step.AwaitReady step) {
+        java.time.Instant deadline = machine.now().plus(step.timeout());
+        while (machine.now().isBefore(deadline)) {
+            if (Filesystem.exists(step.readyFile())) return Result.ok(step);
+            if (!containerIsRunning(step.name())) {
+                return Result.err(Problems.sandboxDied(step.name().value(),
+                        lastLinesOfContainerLog(step.name())));
+            }
+            try {
+                Thread.sleep(250);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Result.err(Problems.internal("AwaitReady", "interrupted while waiting"));
+            }
+        }
+        return Result.err(Problems.sandboxNotReady(step.name().value(), step.timeout(),
+                lastLinesOfContainerLog(step.name())));
+    }
+
+    private boolean containerIsRunning(ContainerName name) {
+        Machine.Outcome outcome = run("podman inspect", Duration.ofSeconds(15),
+                "podman", "container", "inspect", "--format", "{{.State.Running}}", name.value());
+        return outcome instanceof Machine.Outcome.Finished finished
+                && finished.exitCode() == 0
+                && finished.standardOutput().strip().equals("true");
+    }
+
+    private String lastLinesOfContainerLog(ContainerName name) {
+        Machine.Outcome outcome = run("podman logs", Duration.ofSeconds(20),
+                "podman", "logs", "--tail", "20", name.value());
+        if (!(outcome instanceof Machine.Outcome.Finished finished)) return "(no log available)";
+        String text = (finished.standardOutput() + finished.standardError()).strip();
+        return text.isEmpty() ? "(the container logged nothing)" : text;
+    }
+
+    private Result<Step> outcomeToResult(Step step, Machine.Outcome outcome, String what) {
+        return switch (outcome) {
+            case Machine.Outcome.Finished finished when finished.exitCode() == 0 -> Result.ok(step);
+            case Machine.Outcome.Finished finished -> Result.err(Problems.podmanFailed(
+                    what, finished.exitCode(),
+                    (finished.standardError() + finished.standardOutput()).strip()));
+            case Machine.Outcome.NotFound notFound ->
+                    Result.err(Problems.commandNotFound(notFound.executable()));
+            case Machine.Outcome.TimedOut timedOut ->
+                    Result.err(Problems.podmanFailed(what, -1,
+                            "timed out after " + timedOut.after()));
+        };
     }
 
     // ─── the steps that shell out ──────────────────────────────────────────────────────────

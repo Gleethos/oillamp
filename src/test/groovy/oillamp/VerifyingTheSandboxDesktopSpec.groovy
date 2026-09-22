@@ -218,16 +218,15 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             var described = Spike.run('file', shot.toString())
             described.mentions('PNG image data, 1280 x 720')
 
-        and: 'the empty desktop really is the background colour the sway config sets'
+        and: 'the desktop before the window was already drawn — it has the wallpaper on it'
             var empty = agentHome.resolve('screenshots/empty.png')
             Files.exists(empty)
-            foregroundPixels(empty) == 0
 
-        and: 'and the second capture has a window on it, not just a differently-sized file'
-            // Counting pixels that are not the background beats comparing file sizes: a PNG of a
-            // window happened to be 1.7x the empty one here, which would have made any threshold
-            // either arbitrary or wrong. This asks the actual question.
-            foregroundPixels(shot) > 10_000
+        and: 'and launching the application visibly changed the screen'
+            // Comparing the two captures beats comparing file sizes, and beats counting
+            // non-background pixels now that the desktop has a wallpaper: it asks exactly the
+            // question S4 exists for — did an application appear — and nothing else.
+            differingPixels(empty, shot) > 10_000
 
         and: 'the locale is set, so applications do not fall back to C'
             inSandbox('echo "$LANG"').mentions('UTF-8')
@@ -283,20 +282,22 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
     }
 
     /**
-     * How many pixels are not the desktop background of Appendix C ({@code #1f2430}).
+     * How many pixels differ between two captures of the same desktop.
      *
-     * <p>Zero means an empty desktop; a terminal window is tens of thousands. This is the whole
-     * of S4's question — "do applications actually appear" — asked directly, rather than inferred
-     * from how well a PNG happened to compress.
+     * <p>This is the whole of S4's question — "do applications actually appear" — asked directly,
+     * rather than inferred from how well a PNG happened to compress. Both images come from the
+     * same desktop seconds apart, so the only thing that can differ is what was launched.
      */
-    private static int foregroundPixels(Path png) {
-        var image = javax.imageio.ImageIO.read(png.toFile())
-        assert image != null, "$png is not a readable image"
-        var background = 0x1f2430
+    private static int differingPixels(Path before, Path after) {
+        var a = javax.imageio.ImageIO.read(before.toFile())
+        var b = javax.imageio.ImageIO.read(after.toFile())
+        assert a != null && b != null, "could not read $before or $after as images"
+        assert a.width == b.width && a.height == b.height,
+                "captures of the same desktop should be the same size"
         var count = 0
-        for (int y = 0; y < image.height; y++)
-            for (int x = 0; x < image.width; x++)
-                if ((image.getRGB(x, y) & 0xffffff) != background) count++
+        for (int y = 0; y < a.height; y++)
+            for (int x = 0; x < a.width; x++)
+                if ((a.getRGB(x, y) & 0xffffff) != (b.getRGB(x, y) & 0xffffff)) count++
         count
     }
 

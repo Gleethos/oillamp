@@ -68,11 +68,26 @@ class TheSandboxImageSpec extends Specification {
             Appendix A still showed the jar being built into the image when these resources were
             written, so this scenario exists to make sure the sketch was not copied faithfully.
         """
-        expect:
+        expect: 'no file in the image mentions either, text or otherwise'
             allImageFiles.every { file ->
-                var text = Files.readString(file)
-                !text.contains('lamp-helper') && !text.contains('oillamp-rfb')
+                // Bytes rather than readString: the image carries a PNG, and decoding that as
+                // text throws. Searching the raw bytes also catches a reference embedded in
+                // something that is not a text file at all.
+                !containsAscii(file, 'lamp-helper') && !containsAscii(file, 'oillamp-rfb')
             }
+    }
+
+    /** True when the file's bytes contain this ASCII sequence, whatever kind of file it is. */
+    private static boolean containsAscii(Path file, String needle) {
+        var haystack = Files.readAllBytes(file)
+        var target = needle.getBytes('US-ASCII')
+        for (int start = 0; start <= haystack.length - target.length; start++) {
+            var matched = true
+            for (int i = 0; i < target.length; i++)
+                if (haystack[start + i] != target[i]) { matched = false; break }
+            if (matched) return true
+        }
+        false
     }
 
     def 'the compositor config binds no key to running a command'() {

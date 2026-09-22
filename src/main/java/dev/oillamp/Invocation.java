@@ -50,6 +50,11 @@ final class Invocation {
             }
         }
 
+        // Now that the options are known, tell the renderer. Until this line --verbose parsed
+        // correctly and changed nothing, because the sink was holding the renderer built before
+        // the command line was read.
+        console.verbose(options.verbose());
+
         if (positional.isEmpty()) {
             console.banner(version, "");
             sink.accept(new LampEvent.Answer(usage()));
