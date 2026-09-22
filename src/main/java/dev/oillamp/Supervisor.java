@@ -78,6 +78,7 @@ final class Supervisor {
     private volatile Optional<Relay> primary = Optional.empty();
     private volatile Optional<Relay> extras = Optional.empty();
     private volatile Optional<Control.Server> control = Optional.empty();
+    private volatile Optional<Egress> egress = Optional.empty();
     private volatile Optional<Machine.Window> terminal = Optional.empty();
     /** What the last health check found, so that only a <em>change</em> is reported. */
     private boolean desktopAnswering = true;
@@ -342,6 +343,14 @@ final class Supervisor {
         if (server instanceof Result.Err<Control.Server> failure) return Result.err(failure.problems());
         control = Optional.of(((Result.Ok<Control.Server>) server).value());
 
+        // The sandbox has no network of its own (FR-40), so this is the whole of it: without
+        // something listening here, every outbound connection an agent makes fails, whatever the
+        // policy says. Binding it is therefore part of opening the session, not an extra.
+        Result<Egress> proxy = Egress.open(layout, prepared.config(), prepared.session(),
+                new EgressListener());
+        if (proxy instanceof Result.Err<Egress> failure) return Result.err(failure.problems());
+        egress = Optional.of(((Result.Ok<Egress>) proxy).value());
+
         Tuple<Problem> warnings = Tuple.of(Problem.class);
         try {
             Filesystem.writeFile(layout.sessionMeta(), sessionJson(), PosixMode.PRIVATE_FILE);
@@ -422,6 +431,7 @@ final class Supervisor {
                         ? "; the recording may end a moment early" : ""));
 
         // 4. The host-only sockets, and the windows that were opened onto the session.
+        egress.ifPresent(Egress::close);
         control.ifPresent(Control.Server::close);
         for (Machine.Window viewer : viewers) viewer.close();
         terminal.ifPresent(Machine.Window::close);
@@ -553,8 +563,14 @@ final class Supervisor {
                             lastLinesOfTheSandboxLog())));
         desktopAnswering = desktop;
         shellAnswering = shell;
+        // The proxy is the sandbox's only way out, so it belongs in the same breath as the other
+        // two: a session whose proxy stopped answering has an agent that cannot fetch anything,
+        // and nothing else about the session looks any different.
+        boolean network = Egress.answers(prepared.layout().proxySocket());
         if (reportEvenIfUnchanged && desktop && shell && state.isLive())
-            context.info("health", "desktop and shell both still answering");
+            context.info("health", network
+                    ? "desktop, shell and network all still answering"
+                    : "desktop and shell answering — the egress proxy is NOT");
     }
 
     /**
@@ -607,9 +623,17 @@ final class Supervisor {
                         : "viewer         open now — another with `oillamp view " + layout.root() + "`"),
                 "shell          open now — extra shells with `oillamp shell " + layout.root() + "`",
                 "the agent sees " + layout.agentDir() + " and nothing else of this lamp",
-                "network        " + config.network().defaultDecision().configName() + " by default, "
-                        + config.network().rules().size() + " rule(s), "
-                        + config.forwards().size() + " forward(s)");
+                // Said in terms of what the agent can do, not of how the policy is spelled. A
+                // user reading "allow by default, 1 rule" had no way to tell that the sandbox
+                // could reach nothing at all, which was true of every build before M5.
+                "network        " + (config.network().defaultDecision() == Decision.ALLOW
+                        ? "the open web, through oillamp's proxy"
+                        : "denied by default — only what the rules allow")
+                        + " (" + config.network().rules().size() + " rule(s), "
+                        + config.forwards().size() + " forward(s))",
+                "               the host's own loopback and private ranges stay out of reach; "
+                        + "denials are printed here",
+                "network log    " + layout.networkLog(prepared.session()));
         // Said either way. Recording is off by default, and a user who assumes it is on and finds
         // nothing afterwards has lost the very thing they wanted it for — so the line that says
         // it is off also says how to turn it on.
@@ -654,6 +678,21 @@ final class Supervisor {
     private final class ExtraListener implements Relay.Listener {
         @Override public void connected()    { post(new SessionEvent.ShellConnected()); }
         @Override public void disconnected() { post(new SessionEvent.ShellDisconnected()); }
+        @Override public void trouble(Problem problem) { context.emit(new LampEvent.Warning(problem)); }
+    }
+
+    /**
+     * What the egress proxy has to say — §18.3's {@code console_denied}.
+     *
+     * <p>A denied connection is printed, once, in the terminal the user is already watching. That
+     * is the difference between "my build failed" and "my build failed because oillamp denied
+     * nexus.corp:443 by the private-ranges rule, and I should add an allow rule above it".
+     */
+    private final class EgressListener implements Egress.Listener {
+        @Override public void denied(Egress.Journey journey) {
+            if (prepared.config().network().consoleDenied())
+                context.info("network", "denied " + journey.describe());
+        }
         @Override public void trouble(Problem problem) { context.emit(new LampEvent.Warning(problem)); }
     }
 

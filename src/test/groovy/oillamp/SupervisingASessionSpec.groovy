@@ -236,9 +236,10 @@ class SupervisingASessionSpec extends Specification {
             checked once, at startup; a desktop that died an hour into a session looked - from
             any cheaper check - exactly like one that was fine.
 
-            So the session keeps opening both sockets while it runs, and keeps saying so in the
-            terminal it was started from. Connecting is the only check that distinguishes a
-            server from a file with the right name, which is the whole lesson of OIL-SANDBOX-004.
+            So the session keeps opening all three sockets while it runs - the desktop, the shell
+            and, since M5, the egress proxy - and keeps saying so in the terminal it was started
+            from. Connecting is the only check that distinguishes a server from a file with the
+            right name, which is the whole lesson of OIL-SANDBOX-004.
         """
         given: 'a session that stays up long enough to report on itself'
             sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(4)) }
@@ -249,8 +250,8 @@ class SupervisingASessionSpec extends Specification {
         then:
             outcome.status() == ExitStatus.SUCCESS
 
-        and: 'it went on checking that both sockets still answer'
-            outcome.console().contains('desktop and shell both still answering')
+        and: 'it went on checking that all three sockets still answer'
+            outcome.console().contains('desktop, shell and network all still answering')
 
         and: 'and reported how long the session had been up, and where to ask for more'
             outcome.console().contains('oillamp status ')

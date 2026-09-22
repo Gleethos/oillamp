@@ -1554,7 +1554,7 @@ oillamp [--verbose] [--debug] [--no-color] <command>
 
 Each milestone ends with its tests green and a short demo.
 
-**M1–M4 are built and verified. M0 and M5–M7 are not started.** `docs/STATUS.md` has the
+**M1–M5 are built and verified. M0, M6 and M7 are not started.** `docs/STATUS.md` has the
 current detail; the Status column here is the summary.
 
 | # | Milestone | Status | Scope | Done when |
@@ -1564,7 +1564,7 @@ current detail; the Status column here is the summary.
 | **M2** | Lamp and config | ✅ **built and verified** | lamp classification/init/migration, layout, lock + stale detection, TOML config pipeline with all validations, key generation, rendering of `session/`, `ssh_config`, runtime dir | `oillamp at <new dir> --dry-run` prints a complete, correct plan; config errors are reported all at once with key paths |
 | **M3** | Image and container | ✅ **done** — `oillamp at` builds the image (content-hash tag), starts the container and waits for `ready.json`. `--dry-run` shows the whole plan including every podman flag | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
 | **M4** | Supervisor | ✅ **done** — `oillamp at` runs a session: two new windows, both relays, the control socket, the §10.7 shutdown, and the five session commands. Verified on real podman for all three endings, plus `kill -9` recovery | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
-| **M5** | Network | ⬜ not started — *policy engine already built* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
+| **M5** | Network | ✅ **done** — the egress proxy is up: `CONNECT` and absolute-form HTTP, per-address policy, forwards, the JSONL journal and denials on the console. Verified on real podman: `npm install`, `pip install` and `git clone` over HTTPS all work from inside the sandbox, while the host's loopback and the LAN are refused by rule. *Firefox policy and LLM preconfiguration are not done* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
 | **M6** | Recording and agent tooling | ⬜ not started — *retention already built* | wf-recorder, retention, `recordings` command; `lamp` helper script (D-27); agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
 | **M7** | Packaging and polish | ⬜ not started | jpackage `.deb`, completion scripts, README, E2E checklist on Ubuntu 24.04 + 26.04 | acceptance criteria §34 all pass |
 
@@ -1610,7 +1610,7 @@ weakened; they are the same criteria the finished tool must meet.
 4. ⬜ `kill -9` of the supervisor, followed by `oillamp at` on the same lamp, cleans up the leftover container with a `OIL-LOCK-002` warning and starts normally.
 5. ⬜ In the sandbox, `ls /` shows no host files; the only host paths visible are those of §13.3. Files created by the agent in `~` appear on the host in `agent-lamp-<id>/` owned by the host user.
 6. ⬜ As `agent`: `kill` of any `lamp`-owned process fails; connecting to sway's IPC socket fails; `wayvncctl` cannot reach wayvnc; writing to `/oillamp/recordings` fails; reading `oillamp.toml` is impossible (not mounted).
-7. ⬜ `curl -I https://example.com` succeeds; `curl -I http://10.0.0.1` and `curl -I http://<host LAN IP>:22` return 403 with the rule label; `curl` with `--noproxy '*'` fails (no network). All are in `network-<session>.jsonl`; denials appear on the supervisor console.
+7. 🟡 `curl -I https://example.com` succeeds; `curl -I http://10.0.0.1` and `curl -I http://<host LAN IP>:22` return 403 with the rule label; `curl` with `--noproxy '*'` fails (no network). All are in `network-<session>.jsonl`; denials appear on the supervisor console.
 8. ⬜ With a forward `llm` configured, `curl http://127.0.0.1:<port>/v1/models` inside reaches the target; OpenCode and pi, started without further setup, can chat with the configured model.
 9. ⬜ A Swing test application (with a modal dialog) started from the SSH terminal appears on the agent's desktop and in the viewer; `lamp screenshot` produces a PNG showing it; `lamp click` on its button triggers the action; `lamp type` enters text into a text field.
 10. ⬜ Firefox ESR opens on the desktop and loads a public website through the proxy.
@@ -1618,7 +1618,7 @@ weakened; they are the same criteria the finished tool must meet.
 12. ✅ An invalid `oillamp.toml` (unknown key + bad CIDR + duplicate forward) produces exactly three `OIL-CONFIG-*` problems in one run, each with file, key path, value, and expectation; exit code 2.
 13. ✅ `oillamp at <dir> --dry-run` on a new directory prints every step (including the podman argv) and changes nothing on disk.
 14. ⬜ With `display.gpu = "on"` on a machine without a usable render node, a clear `OIL-GPU-003` is shown; with `auto`, the session starts in software mode and says why.
-15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(82 fast scenarios, 7 spikes and the architecture rules pass. Integration tests need podman.)*
+15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(89 fast scenarios, 7 spikes and the architecture rules pass. Integration tests need podman.)*
 
 ## 35. Remaining open points (non-blocking)
 
@@ -1723,6 +1723,16 @@ changed for convenience alone.
 - **The in-sandbox banner asks before claiming network.** Appendix E stated "network via policy
   proxy" unconditionally, which is false in every build before M5 and whenever the proxy is not
   listening. It now probes the proxy port and reports what it finds.
+
+- **`pip` needs `PIP_USER` and `PIP_BREAK_SYSTEM_PACKAGES` set (§18.6, Appendix E).** §18.6 lists
+  the proxy variables and assumes that is enough for a package manager to work. It is not enough
+  for pip on Debian: PEP 668 marks the system Python externally-managed and refuses to install
+  into it, and the container's read-only root filesystem rules out the usual escape of installing
+  system-wide anyway. Both variables are now set in the login environment, which sends pip into
+  `~/.local` — the agent's own home, so writable and kept between sessions.
+- **The agent guide claimed `pi install` could not work.** True before M5 and false after it, and
+  it named an `extensions/` directory that pi does not create. Corrected to the real layout
+  (`settings.json` plus `git/`) and to the fact that installing now works and persists.
 
 ### 36.3 Defects found in this specification
 

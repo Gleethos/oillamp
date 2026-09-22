@@ -30,6 +30,13 @@ export LD_LIBRARY_PATH="$HOME/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export JAVA_TOOL_OPTIONS="-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Djava.library.path=$HOME/libs"
 export PATH="$HOME/.local/bin:$PATH"
 
+# Debian marks its Python installation externally-managed (PEP 668), so a plain `pip install`
+# refuses to do anything — and the container's root filesystem is read-only, so the escape hatch
+# of installing system-wide would fail too. Together these send pip into ~/.local, which is the
+# agent's own home and therefore both writable and kept between sessions. An agent that makes a
+# virtualenv has to `unset PIP_USER`, which the agent guide says.
+export PIP_USER=1 PIP_BREAK_SYSTEM_PACKAGES=1
+
 # Asked, not assumed. This line used to state "network via policy proxy" unconditionally, and
 # said so just as loudly in a sandbox where nothing was listening on the proxy port at all — so
 # the agent read "you have network", tried, and failed for reasons the banner had denied.

@@ -88,7 +88,12 @@ final class AgentGuide {
             """);
         out.append("There is no direct network and **no DNS**. Any tool that resolves host names\n")
            .append("itself will fail; tools that honour the standard proxy variables work normally,\n")
-           .append("and those variables are already set for you.\n\n");
+           .append("and those variables are already set for you. `npm`, `pip`, `curl`, `git` over\n")
+           .append("HTTPS and the JVM all do, so installing project dependencies works. (`apt` can\n")
+           .append("reach its mirrors but still cannot install: the root filesystem is read-only.)\n\n")
+           .append("`pip` installs into `~/.local` (`PIP_USER` is set), which is in your home and so\n")
+           .append("survives the session. If you make a virtualenv, `unset PIP_USER` first: pip\n")
+           .append("refuses a `--user` install inside one.\n\n");
         out.append("Outbound HTTP and HTTPS go through a proxy that applies a policy you cannot see\n")
            .append("or change. The default for anything not matched by a rule is **")
            .append(config.network().defaultDecision() == Decision.ALLOW ? "allow" : "deny")
@@ -109,10 +114,11 @@ final class AgentGuide {
                .append("here to install them from now:\n\n");
             for (String tool : config.agentTools().install())
                 out.append("- `").append(tool).append("`\n");
-            out.append("\n`pi` has the Eden AI provider extension in `~/.pi/agent/extensions/`. It\n")
-               .append("needs `EDENAI_API_KEY`, which is set here only if the human had it set on\n")
-               .append("the host. `pi install` will not work — it needs a network you do not have,\n")
-               .append("so ask the human to add what you need to the image instead.\n\n");
+            out.append("\n`pi` has the Eden AI provider extension already installed — it is listed in\n")
+               .append("`~/.pi/agent/settings.json` with its clone under `~/.pi/agent/git/`. It needs\n")
+               .append("`EDENAI_API_KEY`, which is set here only if the human had it set on the host.\n")
+               .append("`pi install` works through the proxy, and what it writes lands in your home,\n")
+               .append("so it lasts beyond this session.\n\n");
         }
 
         config.llmForward().ifPresent(forward -> out

@@ -58,6 +58,7 @@ final class Problems {
     public static final Code SSH_PRIMARY_TAKEN     = new Code("OIL-SSH-002");
     public static final Code NET_SOCKET_PATH_LONG  = new Code("OIL-NET-001");
     public static final Code NET_CANNOT_LISTEN     = new Code("OIL-NET-002");
+    public static final Code NET_FORWARD_UNREACHABLE = new Code("OIL-NET-010");
     public static final Code SESSION_NOT_RUNNING   = new Code("OIL-SESSION-001");
     public static final Code SESSION_UNREACHABLE   = new Code("OIL-SESSION-002");
     public static final Code IMAGE_BUILD_FAILED    = new Code("OIL-IMAGE-001");
@@ -69,6 +70,27 @@ final class Problems {
     public static final Code EXEC_NOT_FOUND        = new Code("OIL-EXEC-001");
     public static final Code EXEC_TIMED_OUT        = new Code("OIL-EXEC-002");
     public static final Code INTERNAL              = new Code("OIL-INTERNAL-001");
+
+    // ─── network ───────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A forward whose target will not answer — §18.5, {@code OIL-NET-010}.
+     *
+     * <p>A warning, never an error. A forward is a convenience pointed at something outside
+     * oillamp's control, and an internal service being down is not a reason to refuse the user
+     * their sandbox — but it is very much a reason to say so, because inside the sandbox it looks
+     * only like a connection that closed.
+     */
+    public static Problem forwardUnreachable(Forward forward, String why) {
+        return warning(NET_FORWARD_UNREACHABLE, "A forward target cannot be reached",
+                "the forward '" + forward.name() + "' could not connect to " + forward.target(),
+                "the sandbox sees this as a closed connection on 127.0.0.1:" + forward.port()
+              + ", which says nothing about why")
+            .withEvidence(new Evidence.Value("target", forward.target().toString()))
+            .withEvidence(new Evidence.Value("reason", why))
+            .withFix(Fix.of("check the target is up and reachable from this machine, "
+                          + "including any VPN the sandbox cannot see for itself"));
+    }
 
     // ─── host ──────────────────────────────────────────────────────────────────────────────
 

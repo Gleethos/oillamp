@@ -38,6 +38,7 @@ has no outbound network at all, which is the safe direction to be incomplete in.
 | `oillamp stop <dir>` | **Works.** Asks the running session to shut down; cleans up after a crashed one if there is nobody to ask. |
 | `oillamp status <dir>` | **Works.** State, uptime, container, desktop and attached shells, from the supervisor itself. |
 | `oillamp list` | **Works.** Every oillamp sandbox running on this host, asked of podman. |
+| the egress proxy | **Works.** Started with every session. `npm`, `pip`, `git` over HTTPS and `curl` all reach the internet from inside the sandbox; the host's loopback and private ranges are refused by rule and the refusal is printed where the user can see it. |
 | `recordings` `image` | **Parse, then refuse**, because each needs the milestone that gives it meaning (M6, M7). |
 
 ### Verified end to end on real hardware
@@ -76,7 +77,7 @@ user's involvement.
 It also produced the first finding that only real hardware could produce — see
 *Known gaps on Ubuntu 24.04* below.
 
-Plus **82 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
+Plus **89 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
 `build/spock-reports/*.md` after `./gradlew test`.
 
 ### Findings from that run
@@ -149,6 +150,40 @@ Four came out of one evening's use. Three were real; one was not.
 does — an audit trail a user opts into, not something to switch on for them. `recording.enabled
 = true` per lamp turns it back on, and the session briefing says which of the two it is, so a
 user who assumed wrong finds out at the start rather than afterwards.
+
+---
+
+### The sandbox can reach the internet (M5)
+
+Verified from inside a real container, through the real proxy, on 22 September:
+
+| Asked for | Result |
+|---|---|
+| `curl https://registry.npmjs.org/` | 200, via `CONNECT` |
+| `curl http://deb.debian.org/debian/` | 200, absolute-form HTTP |
+| `apt-get update` | reaches its mirrors, then fails to write — the root filesystem is read-only by design, as the agent guide says |
+| `npm install left-pad` | installed |
+| `pip install requests` | installed, into `~/.local` |
+| `git clone https://github.com/...` | cloned |
+| `curl http://192.168.1.1/` | **denied**, quoting the rule, printed on the supervisor console |
+
+The container still runs `--network=none`. It has no route, no DNS and no interface but loopback;
+everything above went through a Unix socket to a proxy on the host that resolved the name, checked
+the policy and connected on the agent's behalf. Anything that ignores the proxy variables still
+has no network at all, which is the intended failure.
+
+**Why "allow by default" is the right default and not a shrug.** The decision is made per
+*resolved address*, not per host name. A name is a claim its owner controls — `totally-normal.
+example.com` can point at `127.0.0.1` whenever its DNS operator likes — so a proxy that trusted
+names would wave that straight through to whatever is running on the user's own machine. Checking
+every address the name resolves to against the deny rule catches it regardless. The agent gets the
+open web; the host and the network behind it stay out of reach.
+
+Every connection is in `.oillamp/logs/network-<session>.jsonl` with host, port, resolved address,
+decision, deciding rule and byte counts — and never content, because a `CONNECT` tunnel is copied
+without being read.
+
+Not done in M5: the Firefox proxy policy file and the LLM preconfiguration from §19.5.
 
 ---
 
@@ -279,7 +314,7 @@ Two ideas carry most of the design:
 ## Running it
 
 ```bash
-./gradlew build                 # compile, run all 82 fast scenarios
+./gradlew build                 # compile, run all 89 fast scenarios
 ./gradlew installDist           # build/install/oillamp/bin/oillamp
 ./gradlew test                  # then read build/spock-reports/*.md
 ./gradlew spikes                # §33 assumptions against real podman; needs podman

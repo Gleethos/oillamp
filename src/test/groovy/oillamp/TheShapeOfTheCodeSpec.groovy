@@ -92,7 +92,11 @@ class TheShapeOfTheCodeSpec extends Specification {
                            // and start the windows - the part of oillamp that has no pure core
                            // because it IS the effect. What they must not do is decide anything,
                            // and they do not: every choice a session makes is SessionMachine's.
-                           'Supervisor', 'Relay', 'Control'] as Set
+                           'Supervisor', 'Relay', 'Control',
+                           // M5: the egress proxy. Sockets, DNS and byte copying - and, like the
+                           // three above, it decides nothing: what a connection is allowed to do
+                           // is Policy's answer, computed from values, with no socket in sight.
+                           'Egress'] as Set
 
         and: 'the things only they may use'
             var effects = ['java.nio.file.Files', 'java.lang.ProcessBuilder', 'java.lang.Process',
