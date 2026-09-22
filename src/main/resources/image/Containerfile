@@ -1,0 +1,87 @@
+# The sandbox image — design spec §15.2, Appendix A.
+#
+# Built once per content hash and then cached, so this file's *text* is part of the image
+# identity: change a line and the next session rebuilds. Nothing here may depend on the host,
+# the lamp directory or the session, because all three change without the hash changing.
+#
+# Layers are ordered slowest-and-most-stable first, so that editing the rootfs — which is what
+# actually changes during development — re-runs only the last few steps.
+
+ARG BASE_IMAGE=docker.io/library/debian:trixie
+FROM ${BASE_IMAGE}
+
+ARG JDK_PACKAGE=temurin-25-jdk
+ARG NODE_MAJOR=24
+ARG AGENT_TOOLS=""
+ARG EXTRA_APT_PACKAGES=""
+# When false, the JDK, Node and the agent tools are skipped. The desktop, SSH and the lamp
+# tooling are all still there, which is everything M3 needs — and it builds in a fraction of
+# the time, so the container work is not gated on a 2 GB download.
+ARG WITH_TOOLCHAIN=true
+
+ENV DEBIAN_FRONTEND=noninteractive LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+
+# ── base, locale, and the Adoptium repository ────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl gnupg locales \
+ && sed -i 's/^# *en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen && locale-gen \
+ && install -d -m 0755 /etc/apt/keyrings \
+ && curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
+      | gpg --dearmor -o /etc/apt/keyrings/adoptium.gpg \
+ && echo "deb [signed-by=/etc/apt/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb trixie main" \
+      > /etc/apt/sources.list.d/adoptium.list \
+ && rm -rf /var/lib/apt/lists/*
+
+# ── the desktop, SSH, and the tools `lamp` wraps ─────────────────────────────────────────────
+# wlrctl is listed separately because spike S7 doubts it exists in trixie; if it does not, the
+# build still succeeds and `lamp click`/`move`/`scroll` report that they are unavailable. Losing
+# the pointer is a degraded desktop, not a failed build.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      bash coreutils util-linux procps less file tzdata \
+      sway xwayland wayvnc wf-recorder grim slurp wtype \
+      foot dbus dbus-x11 at-spi2-core xdg-utils \
+      mesa-utils libgl1-mesa-dri libegl1 libgles2 \
+      fonts-dejavu fonts-liberation2 adwaita-icon-theme \
+      openssh-server socat catatonit \
+ && (apt-get install -y --no-install-recommends wlrctl || echo "wlrctl unavailable (spike S7 fallback)") \
+ && rm -rf /var/lib/apt/lists/*
+
+# ── developer tooling, the part a user is most likely to want changed ────────────────────────
+RUN if [ "${WITH_TOOLCHAIN}" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends \
+        git wget unzip zip jq ripgrep fd-find build-essential cmake pkg-config gdb strace \
+        python3 python3-venv python3-pip \
+        firefox-esr libatk-wrapper-java \
+        ${JDK_PACKAGE} ${EXTRA_APT_PACKAGES} \
+      && rm -rf /var/lib/apt/lists/* ; \
+    else \
+      echo "WITH_TOOLCHAIN=false — skipping JDK, browser and build tools" ; \
+    fi
+
+COPY build/ /tmp/oillamp-build/
+RUN if [ "${WITH_TOOLCHAIN}" = "true" ]; then \
+      /tmp/oillamp-build/install-node.sh "${NODE_MAJOR}" \
+      && /tmp/oillamp-build/install-agent-tools.sh ${AGENT_TOOLS} ; \
+    fi \
+ && rm -rf /tmp/oillamp-build
+
+# ── the two users the whole boundary is made of (§9.2) ───────────────────────────────────────
+# agent (1000) is who the human's agent runs as. lamp (1001) runs the compositor, the VNC server
+# and the recorder. The agent must not be able to signal lamp's processes or reach its sockets —
+# that separation is what makes the recording trustworthy, and spike S13 confirms the uid mapping
+# that carries it across the user namespace.
+RUN groupadd -g 1000 agent && useradd -u 1000 -g 1000 -d /home/agent -M -s /bin/bash agent \
+ && groupadd -g 1001 lamp  && useradd -u 1001 -g 1001 -d /var/lib/lamp -M -s /usr/sbin/nologin lamp \
+ && mkdir -p /oillamp/session /oillamp/sockets /oillamp/recordings /home/agent /var/lib/lamp \
+ && chown lamp:lamp /var/lib/lamp
+
+COPY rootfs/ /
+RUN chmod 0755 /usr/local/lib/oillamp/entrypoint /usr/local/bin/lamp
+
+# Nothing in this image should be setuid: the sandbox's guarantees come from the user namespace,
+# and a setuid binary inside it is a way for the agent to become `lamp`. Host keys are removed
+# because the real one is generated per lamp and bind-mounted in at session start (Appendix D).
+RUN find / -xdev -perm /6000 -type f -exec chmod ug-s {} + \
+ ; rm -f /etc/ssh/ssh_host_*
+
+ENTRYPOINT ["/usr/local/lib/oillamp/entrypoint"]

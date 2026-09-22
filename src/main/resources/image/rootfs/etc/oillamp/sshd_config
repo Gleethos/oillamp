@@ -1,0 +1,31 @@
+# sshd for the agent account — design spec Appendix D.
+#
+# Run as `sshd -i` from socat, one process per connection, as the `agent` user. Every forwarding
+# mechanism is off on purpose: SSH is how the human gets a shell, and must not become a second
+# way out of the sandbox that bypasses the egress proxy.
+
+HostKey /oillamp/session/ssh_host_ed25519_key
+AuthorizedKeysFile /oillamp/session/authorized_keys
+AllowUsers agent
+
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM no
+PermitRootLogin no
+PermitUserEnvironment no
+
+# The session files are bind-mounted from the host, so their ownership will not satisfy the
+# usual checks. The directory they live in is the boundary, not the mode bits.
+StrictModes no
+
+# Not a hardening extra: with these on, `ssh -L` would tunnel straight past the proxy policy.
+AllowTcpForwarding no
+AllowStreamLocalForwarding no
+AllowAgentForwarding no
+X11Forwarding no
+PermitTunnel no
+
+PrintMotd no
+PidFile none
+Subsystem sftp internal-sftp

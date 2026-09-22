@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# lamp — drive the sandbox desktop from a shell. Design spec §19.4, decision D-27.
+#
+# This is deliberately a shell script and deliberately thin. An agent that needs something this
+# does not do should call grim/wtype/wlrctl directly rather than wait for us to add a subcommand,
+# so every command below is one obvious line and the script says so in its own help. Reading it
+# with `cat $(command -v lamp)` is a supported way to find out what it does.
+#
+# It is also why there is no Java here: a binary the agent cannot read is a worse tool than a
+# script it can.
+
+set -Eeuo pipefail
+
+SCREENSHOT_DIR="${HOME}/screenshots"
+
+die() { printf 'lamp: %s\n' "$*" >&2; exit 1; }
+
+need() {
+    command -v "$1" >/dev/null 2>&1 || die "this needs '$1', which is not installed in this sandbox.
+Everything lamp does is a thin wrapper over standard Wayland tools; if one is missing, say so and
+the human adds it to image.extra_apt_packages."
+}
+
+timestamped() {
+    mkdir -p "$SCREENSHOT_DIR"
+    printf '%s/%s-%s.png' "$SCREENSHOT_DIR" "$1" "$(date +%Y%m%d-%H%M%S)"
+}
+
+cmd_screenshot() {
+    need grim
+    local region='' output=''
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --region) region="$2"; shift 2 ;;
+            --out)    output="$2"; shift 2 ;;
+            *)        die "unknown option for screenshot: $1" ;;
+        esac
+    done
+    [ -n "$output" ] || output=$(timestamped screenshot)
+    if [ -n "$region" ]; then
+        # grim wants "X,Y WxH"; the friendlier "X,Y,W,H" is what the agent guide documents.
+        local x y w h
+        IFS=, read -r x y w h <<<"$region"
+        [ -n "$h" ] || die "--region takes X,Y,W,H (for example 0,0,800,600)"
+        grim -g "$x,$y ${w}x${h}" "$output"
+    else
+        grim "$output"
+    fi
+    printf '%s\n' "$output"
+}
+
+cmd_click() {
+    need wlrctl
+    [ $# -ge 2 ] || die "click takes X and Y"
+    wlrctl pointer move "$1" "$2"
+    wlrctl pointer click "${3:-left}"
+}
+
+cmd_move()   { need wlrctl; [ $# -ge 2 ] || die "move takes X and Y"; wlrctl pointer move "$1" "$2"; }
+cmd_scroll() { need wlrctl; [ $# -ge 1 ] || die "scroll takes an amount"; wlrctl pointer scroll "${1}" "${2:-0}"; }
+
+cmd_drag() {
+    need wlrctl
+    [ $# -ge 4 ] || die "drag takes X1 Y1 X2 Y2"
+    wlrctl pointer move "$1" "$2"
+    wlrctl pointer click left state:press
+    wlrctl pointer move "$3" "$4"
+    wlrctl pointer click left state:release
+}
+
+cmd_type() { need wtype; [ $# -ge 1 ] || die "type takes the text to type"; wtype -- "$*"; }
+
+cmd_key() {
+    need wtype
+    [ $# -ge 1 ] || die "key takes a combination such as ctrl+shift+t"
+    local combination="$1" args=() part
+    # wtype wants each modifier as -M and the final key as -k: ctrl+shift+t is
+    # `wtype -M ctrl -M shift -k t`.
+    IFS='+' read -ra parts <<<"$combination"
+    local last=$(( ${#parts[@]} - 1 )) i=0
+    for part in "${parts[@]}"; do
+        if [ "$i" -eq "$last" ]; then args+=(-k "$part"); else args+=(-M "$part"); fi
+        i=$((i + 1))
+    done
+    wtype "${args[@]}"
+}
+
+cmd_wait_stable() {
+    need grim
+    # Deciseconds throughout, so this needs no `bc` — which is not installed, and a desktop helper
+    # that depends on an arbitrary-precision calculator to count to ten deserves what it gets.
+    local timeout_ds=$(( ${1:-10} * 10 )) interval_ds=5 elapsed_ds=0 a b
+    a=$(mktemp /tmp/lamp-stable-XXXXXX.png); b=$(mktemp /tmp/lamp-stable-XXXXXX.png)
+    trap 'rm -f "$a" "$b"' RETURN
+    grim "$a"
+    while [ "$elapsed_ds" -lt "$timeout_ds" ]; do
+        sleep 0.5
+        grim "$b"
+        # Two identical captures half a second apart means nothing is animating any more. This is
+        # cheaper and far more reliable than guessing a fixed sleep after launching an application.
+        if cmp -s "$a" "$b"; then printf 'stable\n'; return 0; fi
+        mv "$b" "$a"
+        elapsed_ds=$(( elapsed_ds + interval_ds ))
+    done
+    printf 'still changing after %ss\n' "${1:-10}"
+    return 1
+}
+
+cmd_info() {
+    printf 'size       %s\n' "${OILLAMP_DISPLAY_WIDTH:-?}x${OILLAMP_DISPLAY_HEIGHT:-?}"
+    printf 'renderer   %s\n' "${OILLAMP_RENDERER:-?}"
+    printf 'output     HEADLESS-1\n'
+    printf 'screenshots %s\n' "$SCREENSHOT_DIR"
+    if command -v swaymsg >/dev/null 2>&1; then
+        printf '\nwindows:\n'
+        swaymsg -t get_tree 2>/dev/null | grep -o '"name": "[^"]*"' | sed 's/"name": /  /' || true
+    fi
+}
+
+usage() {
+    cat <<'EOF'
+lamp — drive this sandbox's desktop.
+
+  lamp screenshot [--region X,Y,W,H] [--out FILE]   capture the screen; prints the path
+  lamp click X Y [left|right|middle]                click at absolute coordinates
+  lamp move X Y                                     move the pointer
+  lamp drag X1 Y1 X2 Y2                             press, move, release
+  lamp scroll AMOUNT [HORIZONTAL]                   scroll
+  lamp type "some text"                             type text
+  lamp key ctrl+shift+t                             press a key combination
+  lamp wait-stable [SECONDS]                        block until the screen stops changing
+  lamp info                                         size, renderer, open windows
+
+This is a thin wrapper, not a gate. It runs grim, slurp, wtype and wlrctl, all of which are
+installed here and which you may call directly whenever lamp does not do what you need:
+
+  grim -g "0,0 800x600" out.png     capture a region
+  slurp                             pick a region interactively
+  wtype -M ctrl -M shift -k t       press a combination
+  wlrctl pointer move 100 200       move the pointer
+
+Read this script with `cat $(command -v lamp)` to see exactly what it runs. If it should do
+something it does not, say so — it is one file.
+EOF
+}
+
+[ $# -ge 1 ] || { usage; exit 2; }
+# Not named `command`: bash keeps variables and builtins in separate namespaces so it would
+# work, but `command -v` appears three lines up and the reader should not have to know that.
+subcommand="$1"; shift
+case "$subcommand" in
+    screenshot)   cmd_screenshot "$@" ;;
+    click)        cmd_click "$@" ;;
+    move)         cmd_move "$@" ;;
+    drag)         cmd_drag "$@" ;;
+    scroll)       cmd_scroll "$@" ;;
+    type)         cmd_type "$@" ;;
+    key)          cmd_key "$@" ;;
+    wait-stable)  cmd_wait_stable "$@" ;;
+    info)         cmd_info "$@" ;;
+    -h|--help|help) usage ;;
+    *)            die "unknown command '$subcommand'. Run 'lamp help'." ;;
+esac

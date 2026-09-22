@@ -69,7 +69,7 @@ user's involvement.
 It also produced the first finding that only real hardware could produce — see
 *Known gaps on Ubuntu 24.04* below.
 
-Plus **36 Spock scenarios**, all passing, rendered to readable Markdown at
+Plus **57 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
 `build/spock-reports/*.md` after `./gradlew test`.
 
 ### Findings from that run
@@ -105,7 +105,7 @@ the container work can be written and verified against a real runtime rather tha
 
 | Milestone | Needs | Blocked on |
 |---|---|---|
-| **M3** Image and container | image resources (Containerfile, entrypoint, sway config, sshd_config — Appendices A–F are sketches, not code), content-hash image tag, `podman build`, container spec and run, readiness protocol | **unblocked** — podman 4.9.3 is now installed here |
+| **M3** Image and container | **image resources are written** (Containerfile, entrypoint, `lamp` script, sway/sshd/profile configs — no longer sketches). Still to do: content-hash image tag, `podman build` as a Step, container spec and run, readiness protocol | needs `slirp4netns` installed before the image can be built at all |
 | **M4** Supervisor | session state machine (§25.1), SSH relays over Unix sockets, terminal and viewer launch (the D-22 profile table already exists), control socket, shutdown sequence, and the five session commands | M3 |
 | **M5** Network | egress proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, LLM preconfiguration. *The policy model, rules, CIDR and host-pattern matching are already written and tested* — what is missing is the proxy that applies them. | M3 |
 | **M6** Recording and agent tooling | wf-recorder, retention (already written), `recordings` command, the `lamp` helper **script** (D-27 — no Java RFB client), agent guide delivery, GPU auto mode | M3 |
@@ -160,7 +160,13 @@ Two ideas carry most of the design:
 ## Running it
 
 ```bash
-./gradlew build                 # compile, run all 36 scenarios
+./gradlew build                 # compile, run all 57 fast scenarios
 ./gradlew installDist           # build/install/oillamp/bin/oillamp
 ./gradlew test                  # then read build/spock-reports/*.md
+./gradlew spikes                # §33 assumptions against real podman; needs podman
 ```
+
+Two suites, on purpose. `test` is fast, offline and deterministic — it runs entirely against
+`Machine.simulated()`, so it is green on any machine. `spikes` is the opposite: it pulls images
+and starts containers to confirm things about podman, sway and sshd that a simulation cannot
+know, because a simulation only replays what we already believed.

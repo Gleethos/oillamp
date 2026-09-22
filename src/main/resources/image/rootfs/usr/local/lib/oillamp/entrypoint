@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# The sandbox's pid 1 — design spec §16, Appendix B.
+#
+# Starts the compositor, the VNC server, the recorder and the two socket bridges, each as the
+# right user with the right umask, then supervises them. When any *critical* process dies the
+# sandbox stops: a desktop without a compositor, or a session whose recording has silently ended,
+# is worse than no session, because the human watching would not know.
+#
+# Everything this script needs comes from /oillamp/session/runtime.env, written by the host
+# before the container starts. Nothing here reads the host directly.
+
+set -Eeuo pipefail
+
+log() { printf '[entrypoint] %s\n' "$*"; }
+fail() { log "$*"; exit 70; }
+
+[ -r /oillamp/session/runtime.env ] || fail "no /oillamp/session/runtime.env — the host did not finish setting this session up"
+# shellcheck disable=SC1091
+set -a; . /oillamp/session/runtime.env; set +a
+
+: "${OILLAMP_DISPLAY_WIDTH:?runtime.env is missing OILLAMP_DISPLAY_WIDTH}"
+: "${OILLAMP_DISPLAY_HEIGHT:?runtime.env is missing OILLAMP_DISPLAY_HEIGHT}"
+: "${OILLAMP_DISPLAY_SCALE:=1}"
+: "${OILLAMP_RENDERER:=pixman}"
+: "${OILLAMP_SESSION:?runtime.env is missing OILLAMP_SESSION}"
+: "${OILLAMP_PROXY_PORT:=3128}"
+: "${OILLAMP_VNC_MAX_FPS:=30}"
+: "${OILLAMP_RECORDING_ENABLED:=false}"
+: "${OILLAMP_RECORDING_CODEC:=libx264}"
+: "${OILLAMP_FORWARDS:=}"
+
+# ── drop privileges ──────────────────────────────────────────────────────────────────────────
+# Starts a command in the background as another user with output prefixed, and sets LAST_PID to
+# the pid of the command itself. Must not be called inside $(...): the process has to be a direct
+# child of this shell or `wait -n` cannot see it.
+drop() {
+    local user=$1 mask=$2 tag=$3; shift 3
+    local groups_opt=--init-groups
+    # GPU mode needs the host's render group carried in, which only --keep-groups does — and only
+    # under crun. This is why crun is a required host package (§36.3).
+    [ "${OILLAMP_RENDERER}" = gles2 ] && groups_opt=--keep-groups
+    ( umask "$mask"
+      exec setpriv --reuid="$user" --regid="$user" $groups_opt \
+           --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- "$@"
+    ) > >(sed -u "s/^/[$tag] /") 2>&1 &
+    LAST_PID=$!
+}
+
+wait_for() {
+    local path=$1 limit=${2:-20} waited=0
+    while [ ! -e "$path" ]; do
+        sleep 0.25; waited=$((waited + 1))
+        [ "$waited" -ge $((limit * 4)) ] && return 1
+    done
+    return 0
+}
+
+# ── the runtime directories each user owns ───────────────────────────────────────────────────
+install -d -o lamp  -g lamp  -m 0711 /run/lamp
+install -d -o lamp  -g lamp  -m 0700 /run/lamp/private
+install -d -o agent -g agent -m 0700 /run/agent
+printf 'output HEADLESS-1 mode --custom %sx%s scale %s\n' \
+    "$OILLAMP_DISPLAY_WIDTH" "$OILLAMP_DISPLAY_HEIGHT" "$OILLAMP_DISPLAY_SCALE" \
+    > /run/lamp/output.conf
+chown lamp:lamp /run/lamp/output.conf
+
+# ── the compositor ───────────────────────────────────────────────────────────────────────────
+start_sway() {
+    drop lamp 077 sway env XDG_RUNTIME_DIR=/run/lamp WLR_BACKENDS=headless \
+         WLR_LIBINPUT_NO_DEVICES=1 WLR_RENDERER="$1" sway -c /etc/oillamp/sway/config
+    SWAY_PID=$LAST_PID
+}
+
+renderer=$OILLAMP_RENDERER
+gpu_fallback=false
+start_sway "$renderer"
+if ! wait_for /run/lamp/wayland-1 20; then
+    if [ "$renderer" = gles2 ]; then
+        # The GPU was requested but the compositor could not use it. Software rendering is a
+        # worse desktop but a working one, and the human is told which they got.
+        log "sway did not start with the GPU renderer; falling back to software rendering"
+        kill "$SWAY_PID" 2>/dev/null || true
+        renderer=pixman; gpu_fallback=true
+        start_sway pixman
+        wait_for /run/lamp/wayland-1 20 || fail "sway did not start (software rendering either)"
+    else
+        fail "sway did not create /run/lamp/wayland-1 within 20s"
+    fi
+fi
+# The agent must reach the Wayland socket; sway's IPC socket deliberately stays 0700, so that
+# keyboard input can never be turned into commands running as `lamp`.
+chmod 0666 /run/lamp/wayland-1
+log "compositor up (${renderer}${gpu_fallback:+, fell back from GPU})"
+
+# ── the VNC server the human watches through ─────────────────────────────────────────────────
+drop lamp 000 wayvnc env XDG_RUNTIME_DIR=/run/lamp WAYLAND_DISPLAY=wayland-1 \
+     wayvnc --unix-socket --socket=/run/lamp/private/wayvncctl --render-cursor \
+            --max-fps="$OILLAMP_VNC_MAX_FPS" --output=HEADLESS-1 \
+            /oillamp/sockets/infra/vnc.sock
+VNC_PID=$LAST_PID
+
+# ── the recording ────────────────────────────────────────────────────────────────────────────
+REC_PID=""
+if [ "$OILLAMP_RECORDING_ENABLED" = true ]; then
+    drop lamp 022 rec env XDG_RUNTIME_DIR=/run/lamp WAYLAND_DISPLAY=wayland-1 \
+         wf-recorder --output=HEADLESS-1 --codec="$OILLAMP_RECORDING_CODEC" \
+                     --file="/oillamp/recordings/${OILLAMP_SESSION}.mkv"
+    REC_PID=$LAST_PID
+fi
+
+# ── the bridges that give the agent a network without giving it a network ────────────────────
+BRIDGE_PIDS=()
+drop lamp 077 proxy socat "TCP-LISTEN:${OILLAMP_PROXY_PORT},bind=127.0.0.1,reuseaddr,fork" \
+     UNIX-CONNECT:/oillamp/sockets/host/proxy.sock
+BRIDGE_PIDS+=("$LAST_PID")
+for forward in $OILLAMP_FORWARDS; do
+    name=${forward%%:*}; port=${forward##*:}
+    drop lamp 077 "fwd-$name" socat "TCP-LISTEN:${port},bind=127.0.0.1,reuseaddr,fork" \
+         "UNIX-CONNECT:/oillamp/sockets/host/fwd-${name}.sock"
+    BRIDGE_PIDS+=("$LAST_PID")
+done
+
+# ── the agent's own processes ────────────────────────────────────────────────────────────────
+AGENT_PIDS=()
+drop agent 077 dbus dbus-daemon --session --address=unix:path=/run/agent/bus --nofork --nopidfile
+AGENT_PIDS+=("$LAST_PID")
+drop agent 077 sshd socat UNIX-LISTEN:/oillamp/sockets/agent/ssh.sock,fork,unlink-early,mode=600 \
+     EXEC:"/usr/sbin/sshd -i -f /etc/oillamp/sshd_config"
+AGENT_PIDS+=("$LAST_PID")
+
+# ── tell the host we are ready ───────────────────────────────────────────────────────────────
+wait_for /oillamp/sockets/infra/vnc.sock 10 || fail "wayvnc never created its socket"
+wait_for /oillamp/sockets/agent/ssh.sock 10 || fail "the ssh listener never created its socket"
+setpriv --reuid=lamp --regid=lamp --init-groups -- sh -c \
+    "cat > /oillamp/sockets/infra/ready.json" <<EOF
+{"renderer":"${renderer}","gpu_fallback":${gpu_fallback},"width":${OILLAMP_DISPLAY_WIDTH},"height":${OILLAMP_DISPLAY_HEIGHT},"session":"${OILLAMP_SESSION}"}
+EOF
+log "ready"
+
+# ── supervision ──────────────────────────────────────────────────────────────────────────────
+CRITICAL=("$SWAY_PID" "$VNC_PID" "${BRIDGE_PIDS[@]}")
+[ -n "$REC_PID" ] && CRITICAL+=("$REC_PID")
+
+stop_all() {
+    trap - TERM INT
+    if [ -n "$REC_PID" ]; then
+        # SIGINT, not SIGTERM: wf-recorder finalises the container on INT, and a .mkv killed with
+        # TERM may not be playable. Spike S6 is what settles how long that takes.
+        kill -INT "$REC_PID" 2>/dev/null || true
+        timeout 10 tail --pid="$REC_PID" -f /dev/null || log "recorder did not finish in time"
+    fi
+    kill -TERM "${CRITICAL[@]}" "${AGENT_PIDS[@]}" 2>/dev/null || true
+    sleep 2
+    exit "$1"
+}
+trap 'log "shutdown requested"; stop_all 0' TERM INT
+
+set +e
+wait -n "${CRITICAL[@]}"
+code=$?
+log "a critical process exited (code $code) — stopping the sandbox"
+stop_all 70

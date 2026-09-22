@@ -1,0 +1,29 @@
+# The sandbox compositor — design spec Appendix C.
+#
+# Read the last line before adding anything: this config runs as the `lamp` user, which owns the
+# recording and the VNC server. A keybinding that runs a command would let anyone typing into the
+# desktop execute it as `lamp`, and the agent can type into the desktop. That is the whole reason
+# the agent and the compositor are different users.
+
+include /run/lamp/output.conf
+output * bg #1f2430 solid_color
+
+xwayland enable
+default_border normal
+default_floating_border normal
+focus_follows_mouse no
+input * accel_profile flat
+
+for_window [window_type="dialog"] floating enable
+for_window [window_role="dialog"] floating enable
+for_window [window_role="pop-up"] floating enable
+
+set $mod Mod4
+bindsym $mod+Left  focus left
+bindsym $mod+Right focus right
+bindsym $mod+Up    focus up
+bindsym $mod+Down  focus down
+bindsym $mod+f     fullscreen toggle
+bindsym $mod+space floating toggle
+
+# NO exec, NO exit, NO reload bindings — keyboard input must never run commands as `lamp`.

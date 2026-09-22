@@ -1616,7 +1616,7 @@ weakened; they are the same criteria the finished tool must meet.
 12. ✅ An invalid `oillamp.toml` (unknown key + bad CIDR + duplicate forward) produces exactly three `OIL-CONFIG-*` problems in one run, each with file, key path, value, and expectation; exit code 2.
 13. ✅ `oillamp at <dir> --dry-run` on a new directory prints every step (including the podman argv) and changes nothing on disk.
 14. ⬜ With `display.gpu = "on"` on a machine without a usable render node, a clear `OIL-GPU-003` is shown; with `auto`, the session starts in software mode and says why.
-15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(36 Spock scenarios and the architecture rules pass. Integration tests need podman.)*
+15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(57 fast scenarios, 7 spikes and the architecture rules pass. Integration tests need podman.)*
 
 ## 35. Remaining open points (non-blocking)
 
