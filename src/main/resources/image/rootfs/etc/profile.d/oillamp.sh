@@ -37,6 +37,19 @@ export PATH="$HOME/.local/bin:$PATH"
 # virtualenv has to `unset PIP_USER`, which the agent guide says.
 export PIP_USER=1 PIP_BREAK_SYSTEM_PACKAGES=1
 
+# SDKMAN, for the JDK, Groovy, Gradle or Maven version a project actually asks for — none of which
+# can be apt-installed in here. The copy that matters is the one in the agent's home, put there by
+# the entrypoint, because that is the only writable and persistent place: `sdk install java 21`
+# lands under ~/.sdkman and is still there next session.
+#
+# Sourcing the init script is what defines the `sdk` function and puts installed candidates on
+# PATH. It makes no network calls of its own, so this costs a login nothing when the agent has
+# installed nothing. It is bash-only, hence the guard.
+export SDKMAN_DIR="$HOME/.sdkman"
+if [ -n "${BASH_VERSION:-}" ] && [ -r "$SDKMAN_DIR/bin/sdkman-init.sh" ]; then
+    . "$SDKMAN_DIR/bin/sdkman-init.sh"
+fi
+
 # Asked, not assumed. This line used to state "network via policy proxy" unconditionally, and
 # said so just as loudly in a sandbox where nothing was listening on the proxy port at all — so
 # the agent read "you have network", tried, and failed for reasons the banner had denied.

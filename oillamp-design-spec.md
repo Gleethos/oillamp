@@ -456,6 +456,7 @@ Base: `docker.io/library/debian:trixie` (configurable `image.base`, for internal
 | SSH & bridges | `openssh-server socat` |
 | Dev tools | `git curl wget unzip zip jq ripgrep fd-find build-essential cmake pkg-config gdb strace python3 python3-venv python3-pip` |
 | Java | Eclipse Temurin 25 JDK from the Adoptium APT repository (`temurin-25-jdk`), plus `libatk-wrapper-java` (future a11y) |
+| JVM toolchains | SDKMAN into `/usr/local/share/oillamp/sdkman`, prompts disabled, seeded into `~/.sdkman` by the entrypoint. The image's JDK is one JDK; `sdk install java|groovy|gradle|maven` supplies the rest, into the agent's home where they persist and where a read-only root filesystem is not in the way |
 | Browser | `firefox-esr` with an enterprise policy file configuring the proxy (§18.6) |
 | Node.js | official Node.js 24 LTS linux-x64 tarball into `/opt/node` (version configurable), symlinked into `/usr/local/bin` |
 | Agent tools | `npm install -g` of each configured tool: OpenCode (`opencode-ai`), pi (`@mariozechner/pi-coding-agent`) (**⚠ VERIFY** package names and binaries `opencode`, `pi`) |
@@ -1564,15 +1565,17 @@ current detail; the Status column here is the summary.
 | **M2** | Lamp and config | ✅ **built and verified** | lamp classification/init/migration, layout, lock + stale detection, TOML config pipeline with all validations, key generation, rendering of `session/`, `ssh_config`, runtime dir | `oillamp at <new dir> --dry-run` prints a complete, correct plan; config errors are reported all at once with key paths |
 | **M3** | Image and container | ✅ **done** — `oillamp at` builds the image (content-hash tag), starts the container and waits for `ready.json`. `--dry-run` shows the whole plan including every podman flag | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
 | **M4** | Supervisor | ✅ **done** — `oillamp at` runs a session: two new windows, both relays, the control socket, the §10.7 shutdown, and the five session commands. Verified on real podman for all three endings, plus `kill -9` recovery | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
-| **M5** | Network | ✅ **done** — the egress proxy is up: `CONNECT` and absolute-form HTTP, per-address policy, forwards, the JSONL journal and denials on the console. Verified on real podman: `npm install`, `pip install` and `git clone` over HTTPS all work from inside the sandbox, while the host's loopback and the LAN are refused by rule. *Firefox policy and LLM preconfiguration are not done* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
+| **M5** | Network | ✅ **done** — the egress proxy is up: `CONNECT` and absolute-form HTTP, per-address policy, forwards, the JSONL journal and denials on the console. Verified on real podman: `npm install`, `pip install` and `git clone` over HTTPS all work from inside the sandbox, while the host's loopback and the LAN are refused by rule. **M5.1** adds SDKMAN to the image, seeded into the agent's home, so a JVM project can have the JDK, Groovy or Gradle it asks for. *Firefox policy and LLM preconfiguration are not done* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
 | **M6** | Recording and agent tooling | ⬜ not started — *retention already built* | wf-recorder, retention, `recordings` command; `lamp` helper script (D-27); agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
 | **M7** | Packaging and polish | ⬜ not started | jpackage `.deb`, completion scripts, README, E2E checklist on Ubuntu 24.04 + 26.04 | acceptance criteria §34 all pass |
 
 ## 33. Verification spikes (⚠ VERIFY items)
 
-**Eleven of the fourteen are resolved — S1, S2, S3, S4, S6, S7, S8, S9, S11, S12, S13 — and
-every one of them held.** Not a single fallback in the right-hand column was needed. S5 (GPU),
-S10 (agent tools) and S14 (wayvnc desktop name) remain open.
+**Twelve of the fourteen are resolved — S1, S2, S3, S4, S6, S7, S8, S9, S10, S11, S12, S13 — and
+every one of them held.** Not a single fallback in the right-hand column was needed. S10 closed
+with M5: the harness package names were confirmed against a real image, and `npm`, `pip`, `git`
+and `pi install` all work through the egress proxy from inside a container. S5 (GPU) and S14
+(wayvnc desktop name) remain open.
 
 They are now executable rather than historical: `./gradlew spikes` builds the real image, starts
 the real container, logs in over SSH and drives the desktop, in about a minute. They are
@@ -1592,7 +1595,7 @@ without them.
 | S7 | ✅ **confirmed** — all present, `wlrctl` 0.2.2 included | trixie has `sway xwayland wayvnc wf-recorder grim wtype wlrctl firefox-esr`; Adoptium APT repo supports trixie; Firefox ESR policies path | `podman run debian:trixie apt-cache policy …` | drop `wlrctl`; install Temurin from tarball; find policies path with `dpkg -L firefox-esr` |
 | S8 | ✅ **confirmed** | Rootless Podman works out of the box on Ubuntu 24.04 and 26.04 with the AppArmor userns restriction (profiles shipped) | fresh VMs | document remedies in `OIL-PODMAN-004` text precisely |
 | S9 | 🟡 **verified for the terminals on the dev host**; the rest are still guesses | Terminal argument templates (§17.4) | smoke-test each installed terminal | adjust the profile table (it's data) |
-| S10 | 🟡 **half resolved** — package names, binaries and pi's agent-directory layout confirmed against a real image (`@earendil-works/pi-coding-agent` → `/usr/bin/pi` 0.87.1; `opencode-ai` → `/usr/bin/opencode` 1.18.32; the Eden AI extension only via `git:`, not `npm:`). The proxy half needs M5 | OpenCode/pi npm package names, binaries, global config/instruction file paths and schemas; whether their HTTP stacks honour `HTTPS_PROXY`/`NODE_USE_ENV_PROXY` | install in the image, run against a test server | adjust templates; for tools ignoring proxy env, document that only forwards reach them |
+| S10 | ✅ **resolved** — package names, binaries and pi's agent-directory layout confirmed against a real image (`@earendil-works/pi-coding-agent` → `/usr/bin/pi` 0.87.1; `opencode-ai` → `/usr/bin/opencode` 1.18.32; the Eden AI extension only via `git:`, not `npm:`), and M5 settled the proxy half: `npm`, `pip`, `git` and `pi install` all work through it from inside a container | OpenCode/pi npm package names, binaries, global config/instruction file paths and schemas; whether their HTTP stacks honour `HTTPS_PROXY`/`NODE_USE_ENV_PROXY` | install in the image, run against a test server | adjust templates; for tools ignoring proxy env, document that only forwards reach them |
 | S11 | ✅ **resolved** — Jackson 2.x, classpath mode | Jackson 3.x provides a TOML dataformat module; Sprouts API names; Sprouts usable as a JPMS (automatic) module with jlink/jpackage | build a hello-world with jpackage | Jackson 2.x; classpath mode for jpackage |
 | S12 | ✅ **confirmed** — both socket directions | Bind mounts onto pre-created mount points work with `--read-only`; Unix sockets in bind-mounted dirs are connectable across the user namespace in both directions with the permissions of §9.2 | spike | adjust modes (e.g. 0777 dirs inside the 0700 state dir) |
 | S13 | ✅ **confirmed** | `--userns=keep-id:uid=1000,gid=1000` maps container 1000 → host user, and `podman unshare chown 1001:1001` produces the subuid container uid 1001 sees as its own | spike | compute subuid manually from `/etc/subuid` and use `podman unshare` with numeric ids |
@@ -1734,6 +1737,22 @@ changed for convenience alone.
   it named an `extensions/` directory that pi does not create. Corrected to the real layout
   (`settings.json` plus `git/`) and to the fact that installing now works and persists.
 
+- **SDKMAN is part of the image (§15.2, Appendix A, Appendix E).** The spec gives the sandbox one
+  JDK and no way to get another: there is no `sudo`, no `apt` and the root filesystem is
+  read-only, so every ordinary answer is unavailable to an agent doing JVM work. SDKMAN installs
+  into a directory instead, which is the one shape this sandbox can accommodate. It is built into
+  `/usr/local/share/oillamp/sdkman` and copied to `~/.sdkman` by the entrypoint, for the two
+  reasons that apply to pi's extensions and one that does not: the home is a bind mount that
+  would hide it, the copy has to be writable because SDKMAN writes as it works, and a JDK
+  installed in one session is then still there in the next. `sdkman_auto_answer=true` is the only
+  upstream default changed — an agent reaching the sandbox over ssh cannot answer a prompt, so
+  each one would be a hung command. Like the harnesses, it may not fail the build.
+- **The agent guide announced a recording that is usually not running.** `~/AGENTS.md` opened by
+  telling every agent that "everything on screen is being recorded", which stopped being true the
+  moment `recording.enabled` defaulted to `false`. It now says which of the two is the case. The
+  same paragraph's claim that harnesses could not be installed at run time, obsolete since M5, is
+  also gone — it sat three lines above a sentence explaining that `pi install` works.
+
 ### 36.3 Defects found in this specification
 
 - **§10.2's example `agentId` `k3v9x2ab` is invalid under its own alphabet.** The identifier is
@@ -1839,6 +1858,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY build/ /tmp/oillamp-build/
 RUN /tmp/oillamp-build/install-node.sh "${NODE_MAJOR}" \
+ && /tmp/oillamp-build/install-sdkman.sh \
  && /tmp/oillamp-build/install-agent-tools.sh ${AGENT_TOOLS} \
  && rm -rf /tmp/oillamp-build
 
@@ -2044,6 +2064,9 @@ export NODE_USE_ENV_PROXY=1
 export LD_LIBRARY_PATH="$HOME/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export JAVA_TOOL_OPTIONS="-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=${OILLAMP_PROXY_PORT} -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=${OILLAMP_PROXY_PORT} -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Djava.library.path=$HOME/libs"
 export PATH="$HOME/.local/bin:$PATH"
+export PIP_USER=1 PIP_BREAK_SYSTEM_PACKAGES=1
+export SDKMAN_DIR="$HOME/.sdkman"
+[ -n "${BASH_VERSION:-}" ] && [ -r "$SDKMAN_DIR/bin/sdkman-init.sh" ] && . "$SDKMAN_DIR/bin/sdkman-init.sh"
 [ -t 1 ] && [ -z "${OILLAMP_BANNER_SHOWN:-}" ] && export OILLAMP_BANNER_SHOWN=1 && cat <<EOB
 🪔 lamp ${OILLAMP_LAMP_NAME} — desktop ${OILLAMP_DISPLAY_WIDTH}x${OILLAMP_DISPLAY_HEIGHT} (${OILLAMP_RENDERER}), network via policy proxy
    Read ~/AGENTS.md for how this sandbox works. Put repos in ~/workspace, native libs in ~/libs.

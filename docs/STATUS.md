@@ -77,7 +77,7 @@ user's involvement.
 It also produced the first finding that only real hardware could produce — see
 *Known gaps on Ubuntu 24.04* below.
 
-Plus **89 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
+Plus **91 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
 `build/spock-reports/*.md` after `./gradlew test`.
 
 ### Findings from that run
@@ -185,6 +185,36 @@ without being read.
 
 Not done in M5: the Firefox proxy policy file and the LLM preconfiguration from §19.5.
 
+### JVM toolchains in the sandbox (M5.1)
+
+The image ships one JDK, and that was the whole story: an agent doing JVM work could not install
+another, because there is no `sudo`, no `apt` and a read-only root filesystem. SDKMAN is the tool
+that fits those constraints — it installs into a directory — so it is now in the image.
+
+It is built into `/usr/local/share/oillamp/sdkman` and copied to `~/.sdkman` the first time a lamp
+starts, for three reasons at once: the agent's home is a bind mount that would hide anything the
+build wrote there, SDKMAN writes as it works and so cannot run from a read-only `/usr/local`, and a
+JDK installed in one session is then still there in the next. The login shell defines `sdk`; that
+costs nothing, because `sdkman-init.sh` makes no network calls.
+
+One upstream default is changed: `sdkman_auto_answer=true`. An agent reaching the sandbox over ssh
+cannot answer *"Do you want java 25 to be set as default? (Y/n)"*, so every prompt would be a hung
+command with a turn's worth of its thinking already spent.
+
+Like the agent harnesses, it cannot fail the build. A sandbox without SDKMAN still has a JDK, a
+desktop, a shell and ssh.
+
+Verified in a real session, over the real proxy, on 22 September:
+
+| Asked for | Result |
+|---|---|
+| `sdk version` in a login shell | `5.23.1`, native `0.7.34 (linux x86_64)` — the `sdk` function is defined |
+| `sdk list java` | reached `api.sdkman.io` through the proxy |
+| `sdk install java 21.0.12+1.1-tem` | installed, and set as default **without prompting** |
+| a fresh login shell afterwards | `JAVA_HOME=/home/agent/.sdkman/candidates/java/current`, `java -version` → 21.0.12.1, in place of the image's 25 |
+| `sdk install groovy`, `sdk install gradle` | Groovy 6.0.0 and Gradle 9.7.1, both running on the installed JDK |
+| stop the session, start it again | a new container, and all three still there — the entrypoint saw `~/.sdkman` and left it alone |
+
 ---
 
 ## "Does it not install podman itself?"
@@ -260,17 +290,17 @@ the recording and ssh are the product.
 **`EDENAI_API_KEY`** (and `EDENAI_BASE_URL`, `EDENAI_EU_ONLY`, `EDENAI_MAX_TOKENS`) are passed
 from the host environment into the session if they are set there, so a user who has already
 configured Eden AI does not have to do it again inside a sandbox. oillamp logs which names it
-found and never the values. **Reaching api.edenai.run still needs M5** — until the egress proxy
-exists the sandbox has no outbound network at all.
+found and never the values. Since M5, api.edenai.run is reachable through the egress proxy, so
+`pi install` works inside a session too.
 
-### Still open: the verification spikes
+### The verification spikes that are left
 
-Three of the 14 remain, and none of them blocks M3:
+S5 and S14; S10 closed with M5. Neither of the two blocks anything:
 
 | # | Assumption | Why it is still open |
 |---|---|---|
 | **S5** | GPU passthrough via `--device` + `--keep-groups` | Needs a host whose user is in the `render` group. This one is not — oillamp detects that and says so, and the desktop runs on software rendering meanwhile. |
-| **S10** | Whether their HTTP stacks honour the proxy variables | **Half resolved.** The package names, binaries and install are now confirmed against a real toolchain image (see below). What is still open is the proxy half, which needs M5. |
+| **S10** | Whether their HTTP stacks honour the proxy variables | **Resolved.** Package names, binaries and install were confirmed against a real toolchain image (see below); M5 settled the proxy half, with `npm`, `pip`, `git` and `pi install` all working through it from inside a container. |
 | **S14** | wayvnc can set the desktop name shown in the viewer's title bar | Cosmetic; §33's fallback is "ignore". |
 
 What these were guarding against turned out not to happen. The load-bearing one was S13 — whether
@@ -314,7 +344,7 @@ Two ideas carry most of the design:
 ## Running it
 
 ```bash
-./gradlew build                 # compile, run all 89 fast scenarios
+./gradlew build                 # compile, run all 91 fast scenarios
 ./gradlew installDist           # build/install/oillamp/bin/oillamp
 ./gradlew test                  # then read build/spock-reports/*.md
 ./gradlew spikes                # §33 assumptions against real podman; needs podman

@@ -40,6 +40,7 @@ class TheSandboxImageSpec extends Specification {
                 IMAGE.resolve('rootfs/usr/local/bin/lamp'),
                 IMAGE.resolve('build/install-node.sh'),
                 IMAGE.resolve('build/install-agent-tools.sh'),
+                IMAGE.resolve('build/install-sdkman.sh'),
                 IMAGE.resolve('rootfs/etc/profile.d/oillamp.sh'),
             ]
     }
@@ -57,6 +58,7 @@ class TheSandboxImageSpec extends Specification {
         and: 'and the files it then runs or chmods are in them'
             Files.isExecutable(IMAGE.resolve('build/install-node.sh'))
             Files.isExecutable(IMAGE.resolve('build/install-agent-tools.sh'))
+            Files.isExecutable(IMAGE.resolve('build/install-sdkman.sh'))
             Files.exists(IMAGE.resolve('rootfs/usr/local/lib/oillamp/entrypoint'))
             Files.exists(IMAGE.resolve('rootfs/usr/local/bin/lamp'))
     }
@@ -231,6 +233,60 @@ class TheSandboxImageSpec extends Specification {
 
         and: 'and cannot take the session down with it'
             entrypoint.contains('seed_pi_agent_dir || true')
+    }
+
+    def 'sdkman is installed where it can be written to, which is not where it is built'() {
+        given: """
+            SDKMAN is how a JVM project gets the JDK, Groovy or Gradle it actually asks for, and
+            it is the only way to get one in here: there is no sudo, no apt and a read-only root
+            filesystem, so the usual answers are all unavailable.
+
+            That read-only filesystem is also why SDKMAN cannot simply live in /usr/local and be
+            used from there. It writes while it works - candidates, caches, a lock file - so the
+            copy that gets used has to be somewhere writable. The agent's home is both writable
+            and persistent, which additionally means a JDK installed in one session is still
+            there in the next.
+
+            The copy is made as `agent`, not as root. /home/agent is a bind mount from the lamp,
+            and uid 1000 inside the container is the human outside it, while root inside is a
+            subuid they would find hard to delete afterwards.
+        """
+        when:
+            var installer = Files.readString(IMAGE.resolve('build/install-sdkman.sh'))
+            var entrypoint = Files.readString(
+                    IMAGE.resolve('rootfs/usr/local/lib/oillamp/entrypoint'))
+            var profile = Files.readString(IMAGE.resolve('rootfs/etc/profile.d/oillamp.sh'))
+
+        then: 'the build puts it outside the home, where a bind mount cannot hide it'
+            installer.contains('SDKMAN_DIR=/usr/local/share/oillamp/sdkman')
+
+        and: 'and does not let the installer edit a shell profile of its own choosing'
+            installer.contains('rcupdate=false')
+
+        and: 'prompts are turned off, because an agent over ssh cannot answer one'
+            installer.contains('sdkman_auto_answer=true')
+
+        and: 'and nothing about it can fail the build'
+            installer.contains('exit 0')
+            installer.readLines().any { it.startsWith('main ||') }
+
+        then: 'the entrypoint copies it into the home as the agent, once'
+            entrypoint.contains('seed_sdkman')
+            entrypoint.contains('setpriv --reuid=agent --regid=agent')
+            entrypoint.contains('cp -a "$source" /home/agent/.sdkman')
+
+        and: 'leaving an existing one alone, candidates and all'
+            entrypoint.contains('[ -e /home/agent/.sdkman ] && return 0')
+
+        and: 'and cannot take the session down with it'
+            entrypoint.contains('seed_sdkman || true')
+
+        then: 'the login shell sources the copy in the home, not the one in the image'
+            profile.contains('export SDKMAN_DIR="$HOME/.sdkman"')
+            profile.contains('. "$SDKMAN_DIR/bin/sdkman-init.sh"')
+
+        and: 'guarded, because sdkman-init.sh is bash and /bin/sh here is not'
+            profile.contains('[ -n "${BASH_VERSION:-}" ]')
     }
 
     private static List<Path> getAllImageFiles() {

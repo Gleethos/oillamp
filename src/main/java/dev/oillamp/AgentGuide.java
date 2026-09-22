@@ -26,8 +26,18 @@ final class AgentGuide {
             # This machine
 
             You are working inside a sandbox created by oillamp. It is a container with its own
-            Linux user, its own graphical desktop, and no direct network access. A human is
-            watching this desktop live and everything on screen is being recorded.
+            Linux user, its own graphical desktop, and no direct network access.
+
+            """);
+        // Said, not assumed. Recording is off unless the human turned it on (§16), and a guide
+        // that announces a recording to every agent regardless is telling most of them something
+        // false about how their work is being watched.
+        out.append(config.recording().enabled()
+                ? "A human can watch this desktop live, and everything on screen is being "
+                + "recorded\nto a file they keep. You cannot stop, read or alter that recording.\n"
+                : "A human can watch this desktop live. Nothing is being recorded — this lamp "
+                + "has\nrecording switched off.\n");
+        out.append("""
 
             ## What persists
 
@@ -41,8 +51,9 @@ final class AgentGuide {
             - `~/screenshots` — where `lamp screenshot` writes by default.
 
             Language-level dependencies (Maven, npm, pip, venvs) install into your home and so
-            persist. System packages do not: there is no `sudo` and no `apt` here. If you need
-            one, say so — the human adds it to `image.extra_apt_packages` and rebuilds.
+            persist, as does anything you install with SDKMAN — see below. System packages do
+            not: there is no `sudo` and no `apt` here. If you need one, say so — the human adds
+            it to `image.extra_apt_packages` and rebuilds.
 
             ## The desktop
 
@@ -108,10 +119,33 @@ final class AgentGuide {
            .append("Report that message verbatim rather than retrying — it tells the human exactly\n")
            .append("which rule to change.\n\n");
 
+        out.append("## JVM toolchains\n\n")
+           .append("One JDK is installed system-wide (`")
+           .append(config.image().jdkPackage())
+           .append("`). For any other version, or for\n")
+           .append("Groovy, Gradle, Maven, Kotlin, Scala or sbt, use SDKMAN. It is already here and\n")
+           .append("`sdk` is defined in your shell:\n\n")
+           .append("""
+            ```
+            sdk list java                  # the identifiers, e.g. 21.0.8-tem
+            sdk install java <identifier>  # into ~/.sdkman, so it outlasts this session
+            sdk use java <identifier>      # this shell only
+            sdk default java <identifier>  # every shell from now on
+            sdk install groovy             # latest of any candidate; same for gradle, maven, sbt
+            ```
+
+            `sdk use` and `sdk default` set `JAVA_HOME` and `PATH` for you. For a project that
+            pins its own, `sdk env init` writes a `.sdkmanrc` and `sdk env install` installs what
+            it names. Downloads go through the proxy like everything else, and SDKMAN is
+            configured not to prompt, so none of these will sit waiting for an answer you cannot
+            give.
+
+            """);
+
         if (!config.agentTools().install().isEmpty()) {
             out.append("## Harnesses already installed\n\n")
-               .append("These were installed when the image was built, because there is no network\n")
-               .append("here to install them from now:\n\n");
+               .append("These were installed when the image was built, so they are here the moment\n")
+               .append("you log in:\n\n");
             for (String tool : config.agentTools().install())
                 out.append("- `").append(tool).append("`\n");
             out.append("\n`pi` has the Eden AI provider extension already installed — it is listed in\n")

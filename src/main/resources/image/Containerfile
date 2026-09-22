@@ -77,11 +77,14 @@ RUN if [ "${WITH_TOOLCHAIN}" = "true" ]; then \
     fi
 
 COPY build/ /tmp/oillamp-build/
-# The agent tooling never fails the build (the script exits 0 whatever happens): a sandbox with
-# no harness still has a desktop, a shell, a recording and a working ssh, and losing all of that
-# because a registry was briefly unreachable would be a poor trade.
+# The agent tooling and SDKMAN never fail the build (both scripts exit 0 whatever happens): a
+# sandbox with no harness still has a desktop, a shell, a recording and a working ssh, and losing
+# all of that because a registry was briefly unreachable would be a poor trade. Both install into
+# /usr/local/share/oillamp, not into /home/agent, which is a bind mount that would hide them; the
+# entrypoint seeds each into the home at session start.
 RUN if [ "${WITH_TOOLCHAIN}" = "true" ]; then \
       /tmp/oillamp-build/install-node.sh "${NODE_MAJOR}" \
+      && /tmp/oillamp-build/install-sdkman.sh \
       && PI_EXTENSIONS="${PI_EXTENSIONS}" /tmp/oillamp-build/install-agent-tools.sh ${AGENT_TOOLS} ; \
     fi \
  && rm -rf /tmp/oillamp-build

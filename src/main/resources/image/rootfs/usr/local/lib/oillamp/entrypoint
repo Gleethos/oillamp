@@ -148,6 +148,29 @@ seed_pi_agent_dir() {
 }
 seed_pi_agent_dir || true
 
+# ── SDKMAN ───────────────────────────────────────────────────────────────────────────────────
+# Same problem as pi's extensions, a slightly different answer. SDKMAN cannot be read from
+# /usr/local and used in place, because it writes as it works — candidates, caches, a lock file —
+# and the root filesystem is read-only. So the whole thing is copied into the agent's home, once,
+# the first time a lamp starts. That is also what the agent wants: a JDK installed with `sdk
+# install java` lands under ~/.sdkman and is still there next session.
+#
+# Copied as `agent`, never as root: /home/agent is a bind mount, and uid 1000 inside the container
+# is the human outside it, while root inside is a subuid they cannot easily clean up afterwards.
+seed_sdkman() {
+    local source=/usr/local/share/oillamp/sdkman
+    [ -d "$source" ] || return 0
+    # An existing ~/.sdkman belongs to the agent, candidates and all. Never touched.
+    [ -e /home/agent/.sdkman ] && return 0
+    if setpriv --reuid=agent --regid=agent --init-groups -- \
+           cp -a "$source" /home/agent/.sdkman; then
+        log "sdkman is set up for the agent"
+    else
+        log "sdkman could not be set up - the sandbox is unaffected"
+    fi
+}
+seed_sdkman || true
+
 # ── the compositor ───────────────────────────────────────────────────────────────────────────
 start_sway() {
     drop lamp 077 sway env XDG_RUNTIME_DIR=/run/lamp WLR_BACKENDS=headless \
