@@ -63,12 +63,22 @@ final class Supervisor {
     private final BlockingQueue<Timed> events = new LinkedBlockingQueue<>();
     private final AtomicBoolean shuttingDown = new AtomicBoolean();
 
-    private SessionState state;
-    private Instant sessionStarted;
-    private Optional<Relay> primary = Optional.empty();
-    private Optional<Relay> extras = Optional.empty();
-    private Optional<Control.Server> control = Optional.empty();
-    private Optional<Machine.Window> terminal = Optional.empty();
+    /**
+     * The session's state. Written only by the event loop, but read by four other threads — the
+     * container watcher, the control socket, the shutdown sequence and the JVM's shutdown hook.
+     *
+     * <p>{@code volatile} is what entitles those reads to see it. Without it the memory model
+     * allows the shutdown hook to keep watching a stale copy until its own thirty-second patience
+     * runs out — long after the session it is waiting for has finished. That failure would be
+     * unusually hard to notice, because everything the hook is responsible for would have worked:
+     * the sandbox stopped, the container removed, and only the process left hanging about.
+     */
+    private volatile SessionState state;
+    private volatile Instant sessionStarted;
+    private volatile Optional<Relay> primary = Optional.empty();
+    private volatile Optional<Relay> extras = Optional.empty();
+    private volatile Optional<Control.Server> control = Optional.empty();
+    private volatile Optional<Machine.Window> terminal = Optional.empty();
     /** What the last health check found, so that only a <em>change</em> is reported. */
     private boolean desktopAnswering = true;
     private boolean shellAnswering = true;
@@ -558,7 +568,12 @@ final class Supervisor {
         Tuple<String> lines = Tuple.of(String.class,
                 "desktop        " + config.display().size() + ", renderer " + prepared.gpu().renderer()
                         + (prepared.gpu() instanceof Gpu.Decision.Hardware ? " (hardware)" : " (software)"),
-                "viewer         open now — another with `oillamp view " + layout.root() + "`",
+                // What is actually on screen, not what was asked for: `--no-viewer` and a viewer
+                // that refused to start both end here, and telling the user a window is open
+                // when it is not would send them looking for it.
+                (viewers.isEmpty()
+                        ? "viewer         none — open one with `oillamp view " + layout.root() + "`"
+                        : "viewer         open now — another with `oillamp view " + layout.root() + "`"),
                 "shell          open now — extra shells with `oillamp shell " + layout.root() + "`",
                 "the agent sees " + layout.agentDir() + " and nothing else of this lamp",
                 "network        " + config.network().defaultDecision().configName() + " by default, "

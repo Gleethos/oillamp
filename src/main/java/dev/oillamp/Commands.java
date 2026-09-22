@@ -218,20 +218,52 @@ final class Commands {
      * exactly the case it is needed: after a supervisor was killed.
      */
     public ExitStatus list() {
+        // JSON rather than a --format template. Templates reach into podman's own internal
+        // struct, and the field that holds a label is spelled differently between podman 4 and
+        // 5 — a listing that works here and not on the user's machine is worse than no listing.
         Machine.Outcome outcome = machine.run(Machine.Command
-                .of("podman", "ps", "--filter", "label=oillamp.agent-id",
-                    "--format", "{{.Names}}\t{{.Label \"oillamp.lamp\"}}\t{{.Status}}")
+                .of("podman", "ps", "--filter", "label=oillamp.agent-id", "--format", "json")
                 .withTimeout(java.time.Duration.ofSeconds(20)).labelled("podman ps"));
         if (!outcome.succeeded()) {
             context.report(Tuple.of(Problem.class, Problems.podmanFailed(
                     "podman ps", outcome.exitCode(), outcome.errorOutput().strip())));
             return ExitStatus.ERROR;
         }
-        String listing = outcome.output().strip();
-        context.emit(new LampEvent.Answer(listing.isEmpty()
+        Tuple<String> rows = describeRunningSandboxes(outcome.output());
+        context.emit(new LampEvent.Answer(rows.isEmpty()
                 ? "no oillamp sandboxes are running on this host"
-                : "CONTAINER\tLAMP\tSTATUS\n" + listing));
+                : String.join("\n", rows)));
         return ExitStatus.SUCCESS;
+    }
+
+    /** Turns {@code podman ps --format json} into one line per sandbox, lamp path included. */
+    private static Tuple<String> describeRunningSandboxes(String json) {
+        Tuple<String> rows = Tuple.of(String.class);
+        try {
+            com.fasterxml.jackson.databind.JsonNode listing =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+            if (!listing.isArray()) return rows;
+            for (com.fasterxml.jackson.databind.JsonNode container : listing) {
+                com.fasterxml.jackson.databind.JsonNode labels = container.get("Labels");
+                com.fasterxml.jackson.databind.JsonNode names = container.get("Names");
+                String name = names != null && names.isArray() && !names.isEmpty()
+                        ? names.get(0).asText()
+                        : text(container, "Names");
+                String lamp = labels == null ? "" : text(labels, "oillamp.lamp");
+                rows = rows.add(column(name) + column(text(container, "State")) + lamp);
+            }
+        } catch (com.fasterxml.jackson.core.JacksonException unreadable) {
+            // A podman that answers with something other than the JSON it was asked for is a
+            // reason to show nothing, not a reason to fail the command.
+            return Tuple.of(String.class);
+        }
+        return rows.isEmpty() ? rows
+                : Tuple.of(String.class, column("CONTAINER") + column("STATE") + "LAMP").addAll(rows);
+    }
+
+    private static String text(com.fasterxml.jackson.databind.JsonNode node, String field) {
+        com.fasterxml.jackson.databind.JsonNode value = node.get(field);
+        return value == null ? "" : value.asText();
     }
 
     // ─── reaching the supervisor ───────────────────────────────────────────────────────────
@@ -316,9 +348,15 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
-    private static String pad(String label) {
-        StringBuilder out = new StringBuilder(label);
-        while (out.length() < 12) out.append(' ');
+    /** The label column of {@code status}. */
+    private static String pad(String label) { return padTo(label, 12); }
+
+    /** The wider columns of {@code list}, which hold container names and paths. */
+    private static String column(String value) { return padTo(value, 22); }
+
+    private static String padTo(String text, int width) {
+        StringBuilder out = new StringBuilder(text);
+        while (out.length() < width) out.append(' ');
         return out.toString();
     }
 
