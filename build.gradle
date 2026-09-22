@@ -1,0 +1,39 @@
+plugins {
+    id 'java'
+    // For static null checking:
+    id "net.ltgt.errorprone" version "4.2.0"
+}
+
+group = 'org.example'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    errorprone "com.uber.nullaway:nullaway:0.12.15"
+    compileOnly "com.google.code.findbugs:jsr305:3.0.2"
+    errorprone "com.google.errorprone:error_prone_core:2.45.0"
+    implementation group: 'com.google.errorprone', name: 'error_prone_annotations', version: '2.45.0'
+    implementation group: 'org.jspecify', name: 'jspecify', version: '1.0.0'
+
+    implementation group: 'io.github.globaltcad', name: 'sprouts', version: '2.8.0'
+
+    testImplementation platform('org.junit:junit-bom:6.0.0')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile) {
+    options.errorprone { // list of bug patterns https://errorprone.info/bugpatterns
+        check("NullAway", name.toLowerCase(Locale.ROOT).contains("test") ? net.ltgt.gradle.errorprone.CheckSeverity.WARN : net.ltgt.gradle.errorprone.CheckSeverity.ERROR)  // remove the if condition if you want to run NullAway on test code
+        option("NullAway:AnnotatedPackages", "")
+    }
+    options.compilerArgs += ['--should-stop=ifError=FLOW']
+    options.errorprone.disable("StringConcatToTextBlock") // Workaround for: https://github.com/google/error-prone/issues/4918#issuecomment-2952215463
+}
+
+test {
+    useJUnitPlatform()
+}
