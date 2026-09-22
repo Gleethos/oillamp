@@ -80,7 +80,21 @@ sealed interface Step {
      * container may exit during startup, and then the useful thing to show the user is its log,
      * not a timeout.
      */
-    record AwaitReady(ContainerName name, Path readyFile, java.time.Duration timeout) implements Step {}
+    record AwaitReady(ContainerName name, Path readyFile, SessionId session,
+                      java.time.Duration timeout) implements Step {}
+
+    /** One socket the sandbox is expected to be answering on, and what it is for. */
+    record Endpoint(String what, Path socket) {}
+
+    /**
+     * Connect to each of the sandbox's sockets before calling the session good — spec §16.
+     *
+     * <p>{@code ready.json} is the sandbox's own account of itself, and a report written by the
+     * thing being reported on is worth checking. This step is the host doing exactly what the
+     * human is about to do — open the socket — so that "the desktop is ready" is a statement
+     * oillamp has tested rather than one it was told.
+     */
+    record CheckEndpoints(ContainerName name, Tuple<Endpoint> endpoints) implements Step {}
 
     /** Files owned by a container uid, so they need {@code podman unshare rm} to delete. */
     record DeleteContainerOwnedFiles(Tuple<Path> files, String reason) implements Step {}
@@ -112,6 +126,8 @@ sealed interface Step {
             case RunContainer s    -> "start sandbox container " + s.name() + " from " + s.image();
             case AwaitReady s      -> "wait for the sandbox to report itself ready (up to "
                                       + s.timeout().toSeconds() + "s)";
+            case CheckEndpoints s  -> "check the sandbox answers on all " + s.endpoints().size()
+                                      + " of its sockets";
             case DeleteContainerOwnedFiles s -> "delete " + s.files().size() + " file(s) owned by the sandbox ("
                                       + s.reason() + ")";
             case RemovePath s      -> "remove " + s.path() + " (" + s.reason() + ")";
@@ -156,9 +172,17 @@ sealed interface Step {
                     out.append(argument.startsWith("-") ? "\n  " : " ").append(argument);
                 yield out.toString();
             }
+            case CheckEndpoints s -> {
+                StringBuilder out = new StringBuilder("connect to each socket the session depends on:");
+                for (Endpoint endpoint : s.endpoints())
+                    out.append("\n  ").append(endpoint.socket()).append(" — ").append(endpoint.what());
+                yield out.toString();
+            }
             case AwaitReady s -> "waiting for " + s.readyFile()
                                + "\n  written by the container once sway, the VNC server and the "
-                               + "ssh listener have all proved themselves (§16)";
+                               + "ssh listener have all proved themselves (§16)"
+                               + "\n  it must carry session " + s.session()
+                               + ", or it is the previous session's file and says nothing about this one";
             case PodmanMigrate ignored      -> describe();
             case CreateDirectory ignored    -> describe();
             case CopyFile ignored           -> describe();

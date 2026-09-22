@@ -69,6 +69,46 @@ wait_for() {
     return 0
 }
 
+# Proof that a server is listening, rather than evidence that a file exists.
+#
+# `[ -e ]` is the wrong question for a socket. /oillamp/sockets is a bind mount from the host, so
+# it outlives the container and a path left behind by the previous session satisfies an existence
+# test with nothing behind it. Connecting is the only test that distinguishes the two, and it is
+# the same thing the human's viewer will do a second later.
+#
+# Checking the process as well means a server that died during startup is reported in a fraction
+# of a second, by name, instead of as a ten-second timeout on a path.
+wait_until_listening() {
+    local pid=$1 name=$2 path=$3 limit=${4:-10} waited=0
+    while :; do
+        if [ -S "$path" ] && socat -u /dev/null "UNIX-CONNECT:$path" >/dev/null 2>&1; then
+            return 0
+        fi
+        if ! kill -0 "$pid" 2>/dev/null; then
+            log "$name exited during startup - its own output above says why"
+            return 1
+        fi
+        sleep 0.25; waited=$((waited + 1))
+        if [ "$waited" -ge $((limit * 4)) ]; then
+            log "$name did not accept a connection on $path within ${limit}s"
+            return 1
+        fi
+    done
+}
+
+# ── clear what the previous session left behind ──────────────────────────────────────────────
+# /oillamp/sockets is a bind mount from the host and therefore outlives the container. socat
+# unlinks its own path before binding (`unlink-early`) so the ssh listener survives this; wayvnc
+# has no such option and simply fails to bind, which is how a second session on the same lamp
+# ended up with a working shell and a dead desktop.
+#
+# ready.json has to go first and for a different reason: the host starts watching for it the
+# moment the container starts, so one left here is the previous session answering a question the
+# host is asking now. Everything removed here is recreated below.
+rm -f /oillamp/sockets/infra/vnc.sock \
+      /oillamp/sockets/infra/ready.json \
+      /oillamp/sockets/agent/ssh.sock
+
 # ── the runtime directories each user owns ───────────────────────────────────────────────────
 install -d -o lamp  -g lamp  -m 0711 /run/lamp
 install -d -o lamp  -g lamp  -m 0700 /run/lamp/private
@@ -149,11 +189,16 @@ drop agent 077 dbus dbus-daemon --session --address=unix:path=/run/agent/bus --n
 AGENT_PIDS+=("$LAST_PID")
 drop agent 077 sshd socat UNIX-LISTEN:/oillamp/sockets/agent/ssh.sock,fork,unlink-early,mode=600 \
      EXEC:"/usr/sbin/sshd -i -f /etc/oillamp/sshd_config"
+SSH_PID=$LAST_PID
 AGENT_PIDS+=("$LAST_PID")
 
 # ── tell the host we are ready ───────────────────────────────────────────────────────────────
-wait_for /oillamp/sockets/infra/vnc.sock 10 || fail "wayvnc never created its socket"
-wait_for /oillamp/sockets/agent/ssh.sock 10 || fail "the ssh listener never created its socket"
+# ready.json is a promise to the human that the desktop is there. It must therefore be written
+# only once both servers have accepted a connection - not once their paths exist.
+wait_until_listening "$VNC_PID" wayvnc /oillamp/sockets/infra/vnc.sock 10 \
+    || fail "the VNC server is not accepting connections"
+wait_until_listening "$SSH_PID" sshd /oillamp/sockets/agent/ssh.sock 10 \
+    || fail "the ssh listener is not accepting connections"
 setpriv --reuid=lamp --regid=lamp --init-groups -- sh -c \
     "cat > /oillamp/sockets/infra/ready.json" <<EOF
 {"renderer":"${renderer}","gpu_fallback":${gpu_fallback},"width":${OILLAMP_DISPLAY_WIDTH},"height":${OILLAMP_DISPLAY_HEIGHT},"session":"${OILLAMP_SESSION}"}

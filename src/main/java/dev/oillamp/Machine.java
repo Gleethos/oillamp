@@ -248,6 +248,18 @@ public interface Machine {
             return this;
         }
 
+        /**
+         * A socket whose file is present but which refuses connections.
+         *
+         * <p>The shape of a real failure: wayvnc could not bind because the previous session's
+         * socket file was already there, so the path looks exactly right and nothing is behind
+         * it. Scenarios use this to check that oillamp finds out before the user does.
+         */
+        public Simulation endpointRefusingConnections(String socketFileName) {
+            builder.endpointRefusingConnections(socketFileName);
+            return this;
+        }
+
         public Simulation withoutPackages(String... packages) {
             builder.removePackages(Tuple.of(String.class, packages));
             return this;

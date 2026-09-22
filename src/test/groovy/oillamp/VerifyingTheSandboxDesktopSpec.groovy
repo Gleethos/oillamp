@@ -281,6 +281,67 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             probe.text =~ /duration=[1-9]/
     }
 
+    def 'a second session on the same lamp comes up with a working desktop'() {
+        reportInfo """
+            The regression this spec exists to prevent, and the one bug here that a user found
+            before the suite did. The first session on a lamp always worked. The second came up
+            with a working shell and a dead desktop: the viewer was refused, while oillamp had
+            already printed a green tick and gone away.
+
+            /oillamp/sockets is a bind mount, so it outlives the container, and `vnc.sock` from
+            the previous session was still sitting there. wayvnc has no equivalent of socat's
+            `unlink-early` - it binds its path or it exits - so it exited, and the ssh listener,
+            which does have that option, came up fine. That asymmetry is the whole bug.
+
+            What made it reach the user rather than a log nobody reads is that every check on
+            both sides of the mount tested whether the path existed, which the leftover file
+            satisfied perfectly. The entrypoint wrote ready.json for a dead VNC server, and the
+            host believed it.
+
+            Note where this scenario sits: immediately after S6, which stops the container. The
+            sockets directory is therefore in exactly the state that broke - full of the previous
+            session's files - and no setup is needed to arrange it.
+        """
+        given: 'the previous session left its socket and its readiness file behind'
+            var vncSocket = lamp.resolve('sockets/infra/vnc.sock')
+            var readyFile = lamp.resolve('sockets/infra/ready.json')
+            Files.exists(vncSocket)
+            Files.exists(readyFile)
+            Spike.run('podman', 'rm', '-f', CONTAINER)
+
+        when: 'the lamp is used again, exactly as before'
+            var restarted = Spike.run('podman', 'run', '-d', '--name', CONTAINER,
+                    '--network=none', '--read-only', '--user', '0:0',
+                    '--userns=keep-id:uid=1000,gid=1000',
+                    '--tmpfs', '/run:rw,mode=755', '--tmpfs', '/tmp:rw',
+                    '-v', "${lamp.resolve('session')}:/oillamp/session:ro".toString(),
+                    '-v', "${lamp.resolve('sockets')}:/oillamp/sockets".toString(),
+                    '-v', "${lamp.resolve('recordings')}:/oillamp/recordings".toString(),
+                    '-v', "${agentHome}:/home/agent".toString(),
+                    IMAGE)
+
+        then: 'it starts'
+            restarted.ok
+
+        and: 'and reports itself ready, as it did the first time'
+            waitForFile(readyFile, 60)
+
+        and: 'without the bind failure that used to be the only trace of this'
+            var logs = Spike.run('podman', 'logs', CONTAINER)
+            !logs.mentions('Failed to listen on socket')
+            !logs.mentions('exited during startup')
+
+        and: """the desktop actually answers - the assertion that matters, because every
+                weaker one passed while this was broken"""
+            var viewer = Spike.run(Duration.ofSeconds(15), 'timeout', '8', 'vncviewer',
+                    vncSocket.toString())
+            viewer.mentions('Connected to socket')
+            viewer.mentions('RFB protocol version 3.8')
+
+        and: 'and so does the shell, which is what made the failure look partial'
+            inSandbox('echo second-session-ok').mentions('second-session-ok')
+    }
+
     /**
      * How many pixels differ between two captures of the same desktop.
      *

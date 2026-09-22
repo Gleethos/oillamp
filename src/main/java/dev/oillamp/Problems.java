@@ -57,6 +57,7 @@ final class Problems {
     public static final Code SANDBOX_START_FAILED  = new Code("OIL-SANDBOX-001");
     public static final Code SANDBOX_DIED          = new Code("OIL-SANDBOX-002");
     public static final Code SANDBOX_NOT_READY     = new Code("OIL-SANDBOX-003");
+    public static final Code SANDBOX_ENDPOINT_DEAD = new Code("OIL-SANDBOX-004");
     public static final Code EXEC_NOT_FOUND        = new Code("OIL-EXEC-001");
     public static final Code EXEC_TIMED_OUT        = new Code("OIL-EXEC-002");
     public static final Code INTERNAL              = new Code("OIL-INTERNAL-001");
@@ -371,6 +372,39 @@ final class Problems {
             .withFix(Fix.of("if the log shows it still working, the machine may simply be slow — "
                           + "raise the timeout with session.ready_timeout"))
             .withFix(Fix.run("stop the container that is still running", "podman rm -f " + container));
+    }
+
+    /**
+     * The sandbox said it was ready, but one of its sockets refuses connections.
+     *
+     * <p>This is the problem that exists because the sandbox reports on itself. A server can die
+     * after writing {@code ready.json}, or fail to bind and leave the previous session's socket
+     * file standing in for it — and in both cases the sandbox looks healthy from the outside while
+     * the human's viewer is refused. Finding that here, rather than letting the user find it, is
+     * the whole point of connecting before saying the session is up.
+     */
+    public static Problem sandboxEndpointDead(String what, java.nio.file.Path socket,
+                                              String container, String log) {
+        return error(SANDBOX_ENDPOINT_DEAD, "The sandbox is not answering on " + what,
+                socket + " refused the connection, although the sandbox reported itself ready",
+                "oillamp connects to every socket it is about to hand you, so that a session it "
+              + "calls ready is one you can actually reach")
+            .withEvidence(new Evidence.Value("socket", socket.toString()))
+            .withEvidence(new Evidence.Value("last lines of the sandbox log", log))
+            // Only promise the log when there is one. A container that died before it could say
+            // anything is a different situation, and pointing at an empty log for the reason
+            // sends the reader looking for something that is not there.
+            .withFix(hasContent(log)
+                    ? Fix.of("the log above is from inside the sandbox and names the process that failed")
+                    : Fix.of("the sandbox logged nothing, so it stopped before it could report a "
+                           + "reason — an image that no longer matches its tag is the usual cause"))
+            .withFix(Fix.of("starting the session again clears anything an earlier one left behind"))
+            .withFix(Fix.run("stop the container that is still running", "podman rm -f " + container));
+    }
+
+    /** Whether a captured log holds anything a reader could act on. */
+    private static boolean hasContent(String log) {
+        return !log.isBlank() && !log.startsWith("(");
     }
 
     public static Problem commandNotFound(String executable) {

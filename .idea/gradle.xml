@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="GradleMigrationSettings" migrationVersion="1" />
   <component name="GradleSettings">
     <option name="linkedExternalProjectsSettings">
       <GradleProjectSettings>
@@ -7,14 +8,6 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/lamp-helper" />
-            <option value="$PROJECT_DIR$/oillamp-app" />
-            <option value="$PROJECT_DIR$/oillamp-cli" />
-            <option value="$PROJECT_DIR$/oillamp-core" />
-            <option value="$PROJECT_DIR$/oillamp-host" />
-            <option value="$PROJECT_DIR$/oillamp-image" />
-            <option value="$PROJECT_DIR$/oillamp-net" />
-            <option value="$PROJECT_DIR$/oillamp-rfb" />
           </set>
         </option>
         <option name="myGradleHome" value="" />

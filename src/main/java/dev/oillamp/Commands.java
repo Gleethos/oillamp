@@ -121,6 +121,10 @@ final class Commands {
 
             SandboxPhase.Running running = ((Result.Ok<SandboxPhase.Running>) sandbox).value();
             context.ok("session", "sandbox running — container " + running.container());
+            // Said out loud because it is the difference between a tick that was reported and one
+            // that was tested: oillamp opened both of these sockets before printing this.
+            context.ok("session", "desktop and shell both answering — "
+                    + "oillamp connected to each socket before handing it over");
             // M4 turns this into a supervised session: the SSH relay, the viewer and terminal
             // windows, and a shutdown that stops all of it when the user closes the terminal.
             // Until then the container keeps running, so say how to reach it and how to stop it

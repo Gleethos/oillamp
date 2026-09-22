@@ -40,10 +40,12 @@ final class SimulatedMachine implements Machine {
     private final String randomToken;
     private final boolean interactive;
     private final java.util.Set<String> passThrough;
+    private final java.util.Set<String> deadEndpoints;
     private final RealMachine realMachine = new RealMachine();
 
     private SimulatedMachine(Builder builder) {
         this.passThrough = java.util.Set.copyOf(builder.passThrough);
+        this.deadEndpoints = java.util.Set.copyOf(builder.deadEndpoints);
         this.operatingSystemName = builder.operatingSystemName;
         this.systemFiles = Map.copyOf(builder.systemFiles);
         this.environment = Map.copyOf(builder.environment);
@@ -74,9 +76,14 @@ final class SimulatedMachine implements Machine {
     @Override public Outcome run(Command command) {
         if (passThrough.contains(command.executable())) return realMachine.run(command);
         String commandLine = command.commandLine();
-        if (commandLine.startsWith("podman run ")) return startSimulatedSandbox(command);
+        // A scenario that scripts a command outranks the built-in simulation of it. Without this
+        // the behaviours modelled below could not be made to fail, and a scenario that cannot
+        // fail is not evidence of anything.
         for (Map.Entry<String, Outcome> scripted : scriptedCommands.entrySet())
             if (commandLine.startsWith(scripted.getKey())) return scripted.getValue();
+        if (commandLine.startsWith("podman run ")) return startSimulatedSandbox(command);
+        if (commandLine.startsWith("podman unshare rm ")) return simulatedUnshareRemove(command);
+        if (commandLine.contains("UNIX-CONNECT:")) return simulatedConnect(command);
         if (!executables.containsKey(command.executable()))
             return new Outcome.NotFound(command.executable());
         return new Outcome.Finished(0, "", "", Duration.ofMillis(1));
@@ -105,15 +112,90 @@ final class SimulatedMachine implements Machine {
             return new Outcome.Finished(125, "",
                     "Error: the sandbox has nowhere to report readiness — "
                   + "no --volume was mounted at /oillamp/sockets\n", Duration.ofMillis(30));
+        // Same reasoning as the sockets mount: the session id comes from the runtime.env the host
+        // actually wrote, so a host that stops writing it fails here exactly as the real
+        // entrypoint does — it refuses to start without OILLAMP_SESSION.
+        Optional<String> session = simulatedSessionId(command);
+        if (session.isEmpty())
+            return new Outcome.Finished(70, "",
+                    "[entrypoint] runtime.env is missing OILLAMP_SESSION\n", Duration.ofMillis(30));
         try {
             Path infra = sockets.get().resolve("infra");
             java.nio.file.Files.createDirectories(infra);
+            java.nio.file.Files.createDirectories(sockets.get().resolve("agent"));
+            // The sockets before the readiness file, in that order, because that is the promise
+            // ready.json makes: both servers are already accepting connections.
+            java.nio.file.Files.writeString(infra.resolve("vnc.sock"), "");
+            java.nio.file.Files.writeString(sockets.get().resolve("agent").resolve("ssh.sock"), "");
             java.nio.file.Files.writeString(infra.resolve("ready.json"),
-                    "{\"renderer\":\"pixman\",\"gpu_fallback\":false,\"simulated\":true}\n");
+                    "{\"renderer\":\"pixman\",\"gpu_fallback\":false,\"simulated\":true,"
+                  + "\"session\":\"" + session.get() + "\"}\n");
         } catch (java.io.IOException e) {
             return new Outcome.Finished(125, "", "Error: " + e.getMessage() + "\n", Duration.ofMillis(30));
         }
         return new Outcome.Finished(0, "simulated-container-id\n", "", Duration.ofMillis(120));
+    }
+
+    /**
+     * Deletes for real, because the scenarios that matter here are about files that outlive a
+     * container: a socket the previous session left behind, and a {@code ready.json} that answers
+     * a question the host has not asked yet. A simulation that only pretended to delete them
+     * would make every one of those scenarios pass while the bug stayed.
+     */
+    private Outcome simulatedUnshareRemove(Command command) {
+        Tuple<String> argv = command.argv();
+        for (int i = 3; i < argv.size(); i++) {
+            String argument = argv.get(i);
+            if (argument.startsWith("-")) continue;
+            try {
+                java.nio.file.Files.deleteIfExists(Path.of(argument));
+            } catch (java.io.IOException e) {
+                return new Outcome.Finished(1, "",
+                        "rm: cannot remove '" + argument + "': " + e.getMessage() + "\n",
+                        Duration.ofMillis(5));
+            }
+        }
+        return new Outcome.Finished(0, "", "", Duration.ofMillis(20));
+    }
+
+    /**
+     * Models connecting to a Unix socket — the check that tells a listening server apart from a
+     * file with the right name (§16).
+     *
+     * <p>In simulation a socket "answers" when the file is there, which is enough to catch the
+     * host forgetting to create one or clean one up. {@link Simulation#endpointRefusingConnections}
+     * models the other case, where the file exists and nothing is behind it — the shape of the
+     * failure that let a session with a dead VNC server report itself healthy.
+     */
+    private Outcome simulatedConnect(Command command) {
+        String address = "";
+        for (String argument : command.argv())
+            if (argument.startsWith("UNIX-CONNECT:")) address = argument.substring("UNIX-CONNECT:".length());
+        Path socket = Path.of(address);
+        Path fileName = socket.getFileName();
+        String name = fileName == null ? "" : fileName.toString();
+        if (deadEndpoints.contains(name) || !java.nio.file.Files.exists(socket))
+            return new Outcome.Finished(1, "",
+                    "socat: E connect(, AF=1 \"" + socket + "\"): Connection refused\n",
+                    Duration.ofMillis(5));
+        return new Outcome.Finished(0, "", "", Duration.ofMillis(5));
+    }
+
+    /** The session id the host wrote into runtime.env, which the real entrypoint insists on. */
+    private static Optional<String> simulatedSessionId(Command command) {
+        Optional<Path> sessionDir = mountedHostPath(command, "/oillamp/session");
+        if (sessionDir.isEmpty()) return Optional.empty();
+        try {
+            return java.nio.file.Files.readAllLines(sessionDir.get().resolve("runtime.env")).stream()
+                    .filter(line -> line.startsWith("OILLAMP_SESSION="))
+                    // The host writes shell quoting, because the entrypoint sources this file.
+                    .map(line -> line.substring("OILLAMP_SESSION=".length()).strip()
+                                     .replaceAll("^['\"]|['\"]$", ""))
+                    .filter(value -> !value.isEmpty())
+                    .findFirst();
+        } catch (java.io.IOException e) {
+            return Optional.empty();
+        }
     }
 
     /** The host side of {@code --volume <host>:<inContainer>}, if oillamp asked for that mount. */
@@ -159,6 +241,7 @@ final class SimulatedMachine implements Machine {
         private final List<RenderNode> renderNodes = new ArrayList<>();
         private final List<String> foreignSubIds = new ArrayList<>();
         private final List<String> passThrough = new ArrayList<>();
+        private final List<String> deadEndpoints = new ArrayList<>();
 
         private Instant clock = Instant.parse("2026-09-22T14:15:03Z");
         // Valid base32: the alphabet has no 0, 1, 8 or 9.
@@ -244,6 +327,10 @@ final class SimulatedMachine implements Machine {
         public void randomToken(String token) { this.randomToken = token; }
         public void scriptCommand(String prefix, Outcome outcome) { scriptedCommands.put(prefix, outcome); }
         public void filesystemType(String type) { this.filesystemType = type; }
+        public void endpointRefusingConnections(String socketFileName) {
+            deadEndpoints.add(socketFileName);
+        }
+
         public void passThrough(Tuple<String> executables) {
             for (String executable : executables) {
                 passThrough.add(executable);

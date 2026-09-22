@@ -3,6 +3,7 @@ package dev.oillamp;
 import sprouts.Association;
 import sprouts.Tuple;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -67,8 +68,14 @@ final class SandboxPhase {
             context.ok("image", "sandbox image ready — " + image);
 
         Tuple<Step> session = Tuple.of(Step.class,
+                new Step.DeleteContainerOwnedFiles(staleSessionFiles(layout),
+                        "left behind by the previous session on this lamp"),
                 new Step.RunContainer(container, image, containerArgv(container, image, prepared, host)),
-                new Step.AwaitReady(container, layout.readyFile(), readyTimeout(imagePresent)));
+                new Step.AwaitReady(container, layout.readyFile(), prepared.session(),
+                                    readyTimeout(imagePresent)),
+                new Step.CheckEndpoints(container, Tuple.of(Step.Endpoint.class,
+                        new Step.Endpoint("the desktop (VNC)", layout.vncSocket()),
+                        new Step.Endpoint("the shell (SSH)", layout.agentSshSocket()))));
 
         Result<Plan> started = runner.run(Plan.of(LampEvent.Phase.SESSION, session));
         if (started instanceof Result.Err<Plan> failure) return Result.err(failure.problems());
@@ -128,6 +135,25 @@ final class SandboxPhase {
                     "--group-add", "keep-groups"));
 
         return argv.add(image.value());
+    }
+
+    /**
+     * The files the last session left in the sockets directory — spec §9.2, §16.
+     *
+     * <p>That directory is a bind mount, so it outlives the container: {@code vnc.sock} from the
+     * previous run is still there when wayvnc tries to bind, and wayvnc has no way to take a path
+     * that is already taken. {@code ready.json} is worse, because the host starts watching for it
+     * the instant the container starts and would otherwise read the previous session's answer.
+     *
+     * <p>They belong to a container uid, which is why this is a
+     * {@link Step.DeleteContainerOwnedFiles} and not an ordinary delete: {@code rm} from the host
+     * gets EPERM on a directory inside the subuid range, so it has to go through
+     * {@code podman unshare}.
+     */
+    private static Tuple<Path> staleSessionFiles(LampLayout layout) {
+        return Tuple.of(layout.readyFile(),
+                        layout.infraSocketsDir().resolve("vnc.sock"),
+                        layout.agentSocketsDir().resolve("ssh.sock"));
     }
 
     /**

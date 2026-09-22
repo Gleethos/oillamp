@@ -124,6 +124,7 @@ final class StepRunner {
                 case Step.BuildImage s -> buildImage(s);
                 case Step.RunContainer s -> runContainer(s);
                 case Step.AwaitReady s -> awaitReady(s);
+                case Step.CheckEndpoints s -> checkEndpoints(s);
             };
         } catch (IOException e) {
             return Result.err(Problems.internal("StepRunner." + step.kind(),
@@ -186,7 +187,7 @@ final class StepRunner {
     private Result<Step> awaitReady(Step.AwaitReady step) {
         java.time.Instant deadline = machine.now().plus(step.timeout());
         while (machine.now().isBefore(deadline)) {
-            if (Filesystem.exists(step.readyFile())) return Result.ok(step);
+            if (readyForThisSession(step)) return Result.ok(step);
             if (!containerIsRunning(step.name())) {
                 return Result.err(Problems.sandboxDied(step.name().value(),
                         lastLinesOfContainerLog(step.name())));
@@ -200,6 +201,42 @@ final class StepRunner {
         }
         return Result.err(Problems.sandboxNotReady(step.name().value(), step.timeout(),
                 lastLinesOfContainerLog(step.name())));
+    }
+
+    /**
+     * True once {@code ready.json} exists <em>and</em> belongs to this session.
+     *
+     * <p>The sockets directory is a bind mount that outlives the container, so a file from the
+     * previous session is sitting there when the wait begins. Testing only for existence makes
+     * every session after the first report itself ready instantly — against a container that has
+     * not started yet. The session id is already in the file, so this costs nothing.
+     */
+    private boolean readyForThisSession(Step.AwaitReady step) {
+        return Filesystem.readString(step.readyFile())
+                .filter(json -> json.contains("\"session\":\"" + step.session().value() + "\""))
+                .isPresent();
+    }
+
+    /**
+     * Opens every socket the session is about to depend on — spec §16.
+     *
+     * <p>Connecting is the only test that tells a listening server apart from a file with the
+     * right name, and it is exactly what the viewer and the shell will do moments later. A
+     * refusal here becomes a problem with the sandbox's own log attached, rather than a green
+     * tick followed by a connection the user has to diagnose themselves.
+     */
+    private Result<Step> checkEndpoints(Step.CheckEndpoints step) {
+        for (Step.Endpoint endpoint : step.endpoints()) {
+            // socat rather than a Java Unix socket, so that this effect goes through the same
+            // seam as every other one and the simulation can model a socket that refuses.
+            Machine.Outcome outcome = run("socat", Duration.ofSeconds(10),
+                    Tuple.of(String.class, "socat", "-u", "/dev/null",
+                             "UNIX-CONNECT:" + endpoint.socket()));
+            if (!outcome.succeeded())
+                return Result.err(Problems.sandboxEndpointDead(endpoint.what(), endpoint.socket(),
+                        step.name().value(), lastLinesOfContainerLog(step.name())));
+        }
+        return Result.ok(step);
     }
 
     private boolean containerIsRunning(ContainerName name) {
@@ -285,9 +322,10 @@ final class StepRunner {
         for (Path file : step.files()) argv = argv.add(file.toString());
         Machine.Outcome outcome = run("podman", Duration.ofSeconds(60), argv);
         if (outcome.succeeded()) return Result.ok(step);
-        // Retention failing is a nuisance, not a reason to refuse to start a session.
+        // Not fatal on its own: the entrypoint clears anything left here before it binds, and
+        // the endpoint check afterwards catches the case where that did not work either.
         return Result.ok(step, Tuple.of(Problem.class,
-                Problems.internal("retention", "could not delete old recordings: "
+                Problems.internal("cleanup", "could not delete files " + step.reason() + ": "
                         + outcome.errorOutput().trim())));
     }
 
