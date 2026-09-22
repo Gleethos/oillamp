@@ -11,6 +11,9 @@ import java.util.function.Consumer;
  * <p>oillamp never prints directly. Everything it has to say becomes a {@link LampEvent}, which
  * the CLI renders, the log records and — later — the Swing front end displays (NFR-08). That is
  * also why a scenario can assert on what the user was told without parsing console text.
+ *
+ * <p>Deliberately <b>package-private</b>: the ambient state one run carries around — a convenience
+ * for the imperative shell, not a concept any user has.
  */
 final class Context {
 

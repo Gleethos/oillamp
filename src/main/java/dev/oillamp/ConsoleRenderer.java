@@ -10,6 +10,9 @@ package dev.oillamp;
  * without guessing, and a stack trace is not that.
  *
  * <p>Everything is also captured verbatim, so a scenario can assert on exactly what the user saw.
+ *
+ * <p>Deliberately <b>package-private</b>: how oillamp looks in a terminal must stay free to change
+ * without that being a breaking change for anyone.
  */
 final class ConsoleRenderer {
 

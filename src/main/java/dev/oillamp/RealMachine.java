@@ -27,6 +27,9 @@ import sprouts.Tuple;
  *       because a hung {@code podman} that left children behind would otherwise outlive oillamp
  *       and keep the lamp locked (NFR-02).</li>
  * </ul>
+ *
+ * <p>Deliberately <b>package-private</b>: reached only through {@link Machine#real()}. Nobody
+ * outside can name the real implementation, and that is exactly what keeps the seam a seam.
  */
 final class RealMachine implements Machine {
 

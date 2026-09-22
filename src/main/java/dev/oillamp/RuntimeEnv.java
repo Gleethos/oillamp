@@ -19,6 +19,9 @@ import sprouts.Tuple;
  * </ul>
  *
  * <p>Keys are emitted in sorted order so the file is stable across runs and diffable in the log.
+ *
+ * <p>Deliberately <b>package-private</b>: it renders the environment file the container is started
+ * with. Quoting rules and variable names change with the image.
  */
 final class RuntimeEnv {
 

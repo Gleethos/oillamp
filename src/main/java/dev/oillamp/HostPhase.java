@@ -9,6 +9,9 @@ import sprouts.Tuple;
  * The second probe is not belt-and-braces — the first one ran on a machine that did not have
  * podman yet, so its answers about podman were meaningless. Only after the fixes have been
  * applied can oillamp truthfully say the host is ready.
+ *
+ * <p>Deliberately <b>package-private</b>: Phase A of §10.5, wired together. On the effects
+ * allowlist. Users meet it as {@code doctor} and as the first half of {@code at}.
  */
 final class HostPhase {
 

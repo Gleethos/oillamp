@@ -15,6 +15,10 @@ import sprouts.Tuple;
  * <p>Each code has one fixed title, one fixed "why it matters", and default fixes; call sites
  * add the concrete evidence. Keeping the wording here — rather than at the throw site — is what
  * makes the messages consistent and reviewable, and lets tests assert on a code rather than prose.
+ *
+ * <p>Deliberately <b>package-private</b>: the catalogue of everything oillamp can report. The
+ * problem <em>codes</em> are the stable thing scripts match on (§27.2) — this class is only where
+ * their text lives, and that text should improve freely.
  */
 final class Problems {
 

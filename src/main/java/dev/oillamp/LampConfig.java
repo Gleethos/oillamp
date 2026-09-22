@@ -13,6 +13,9 @@ import sprouts.Tuple;
  * that actually exists. Everything downstream can therefore read it without re-validating, and a
  * configuration mistake can only surface in one place — the loader — where it can be reported
  * with a file, a key path and an expectation (FR-52).
+ *
+ * <p>Deliberately <b>package-private</b>: {@code oillamp.toml} is what users depend on. This record
+ * is only today's in-memory shape of it, and it grows a field with every new option.
  */
 record LampConfig(
     Display display,

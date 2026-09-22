@@ -18,6 +18,9 @@ import sprouts.Tuple;
  * <p>The ownership rules of §9.2 are expressed here and nowhere else. They are what makes
  * NFR-06 true: the recordings directory and the infra socket directory belong to container uid
  * 1001, so the agent — which is uid 1000 — can read its own recordings but cannot alter them.
+ *
+ * <p>Deliberately <b>package-private</b>: it plans the lamp skeleton and the per-session files.
+ * Users see the result as {@code --dry-run} output, which is the contract worth keeping.
  */
 final class LampPlanner {
 

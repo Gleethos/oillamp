@@ -5,6 +5,9 @@ package dev.oillamp;
  *
  * <p>Fatal for {@code at}, {@code view} and {@code shell}, which all open windows; {@code doctor}
  * runs anyway, because being told "you have no display" over SSH is exactly what doctor is for.
+ *
+ * <p>Deliberately <b>package-private</b>: what kind of desktop session the host has, as probed. A
+ * fact, not a concept users name.
  */
 sealed interface GraphicalSession {
     record Wayland(String display, String desktop) implements GraphicalSession {}

@@ -13,6 +13,10 @@ import java.nio.file.Path;
  *
  * <p>Host-side socket paths go through {@link #runtimeDir()} rather than the lamp itself, because
  * Unix socket paths are capped at 107 bytes and lamp paths can be long (D-25).
+ *
+ * <p>Deliberately <b>package-private</b>: the layout of §9.1 is a promise about the
+ * <em>directory</em>. It is not a promise about this class, which is simply where that layout is
+ * written down once.
  */
 record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
 

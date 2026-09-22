@@ -9,6 +9,9 @@ import java.time.format.DateTimeFormatter;
  *
  * <p>A timestamp is enough to be unique per lamp because sessions never overlap (FR-04), and it
  * sorts chronologically, which is what the recordings and log listings want.
+ *
+ * <p>Deliberately <b>package-private</b>: names one run. Derived from the clock, which is why it
+ * comes through the seam.
  */
 record SessionId(String value) {
 

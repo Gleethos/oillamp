@@ -1,6 +1,10 @@
 package dev.oillamp;
 
-/** A half-open range of subordinate user or group ids, as written in {@code /etc/subuid}. */
+/**
+ * A half-open range of subordinate user or group ids, as written in {@code /etc/subuid}.
+ *
+ * <p>Deliberately <b>package-private</b>: a subordinate uid/gid range.
+ */
 record IdRange(int start, int count) implements Comparable<IdRange> {
 
     public IdRange {

@@ -12,6 +12,8 @@ import sprouts.Tuple;
  * <p>The {@code label} is required because it is what the user sees: it appears in the network
  * log and in the {@code 403} body the agent receives, so the agent can report <em>why</em>
  * something failed instead of guessing (§18.2).
+ *
+ * <p>Deliberately <b>package-private</b>: one {@code [[network.rules]]} entry.
  */
 record Rule(String label, Decision action,
                    Tuple<HostPattern> hosts, Tuple<PortRange> ports, Tuple<Cidr> cidrs) {

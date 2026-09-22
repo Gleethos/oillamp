@@ -12,6 +12,10 @@ import sprouts.Tuple;
  * follows {@code --} or {@code -e}, whether a window is even a new process. The differences are
  * kept here as <em>data</em>, so supporting one more terminal is a table row plus a smoke test
  * rather than a new branch in the launcher.
+ *
+ * <p>Deliberately <b>package-private</b>: the terminal profile table of D-22, which that decision
+ * explicitly calls data. New terminals get added without ceremony, which requires that nobody
+ * depend on the table.
  */
 final class Terminals {
 

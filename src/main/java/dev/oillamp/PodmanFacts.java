@@ -1,6 +1,11 @@
 package dev.oillamp;
 
-/** What {@code podman version} and {@code podman info} reported — spec §11.2. */
+/**
+ * What {@code podman version} and {@code podman info} reported — spec §11.2.
+ *
+ * <p>Deliberately <b>package-private</b>: parsed {@code podman version} and {@code podman info}
+ * output.
+ */
 record PodmanFacts(
     String version,
     boolean rootless,

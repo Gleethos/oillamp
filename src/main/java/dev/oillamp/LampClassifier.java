@@ -16,6 +16,10 @@ import sprouts.Tuple;
  * <p>The shell reads the directory and {@code lamp.json}; this decides what they mean. The
  * distinction that matters for the user is between "empty, so I will set it up", "an existing
  * lamp, so I will reuse the agent's home", and "your files, so I will not touch this" (FR-02).
+ *
+ * <p>Deliberately <b>package-private</b>: it decides whether a directory is empty, already a lamp,
+ * or someone else's. The rules are tuned from experience — see §36.2 — so they must stay
+ * changeable.
  */
 final class LampClassifier {
 

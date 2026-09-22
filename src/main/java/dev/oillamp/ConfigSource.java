@@ -8,6 +8,9 @@ import java.nio.file.Path;
  * <p>The loader is pure, so it receives text rather than reading files itself. Keeping the
  * {@code origin} with the text is what lets a problem say <em>which</em> file the bad key is in
  * when a lamp file and the user-global file both contribute.
+ *
+ * <p>Deliberately <b>package-private</b>: records which file a value came from so a problem can
+ * point at it. A reporting detail.
  */
 record ConfigSource(Path origin, String text, Kind kind) {
 

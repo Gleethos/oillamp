@@ -10,6 +10,9 @@ import sprouts.ValueSet;
  * <p>Deliberately data keyed by {@link DistroFamily}, so a dnf or pacman variant is a new table
  * entry rather than a new code path. The reasons are not decoration: FR-60 requires oillamp to
  * tell the user what it is about to install on their machine and why, before it does it.
+ *
+ * <p>Deliberately <b>package-private</b>: the package list. It changes whenever the image or the
+ * host stack does.
  */
 record HostRequirements(DistroFamily family, Tuple<String> packages,
                                Association<String, String> reasons) {

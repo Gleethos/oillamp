@@ -13,6 +13,9 @@ import sprouts.ValueSet;
  * deciding what to install and fix is pure and takes only this record. A probe that fails
  * becomes a <em>fact</em> (an empty Optional, a {@code Fails} variant) rather than an exception,
  * so one broken check never hides the other nine.
+ *
+ * <p>Deliberately <b>package-private</b>: everything probed about the host, in one record. It gains
+ * a field whenever a new check is added, and that must never be a breaking change.
  */
 record HostFacts(
     OsRelease os,

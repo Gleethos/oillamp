@@ -22,6 +22,10 @@ import sprouts.ValueSet;
  * whether podman is new enough and conclude that user namespaces work — it runs
  * {@code podman unshare true}, because on Ubuntu 23.10 and later an AppArmor profile can stop a
  * perfectly modern podman, and only trying reveals that (§11.2).
+ *
+ * <p>Deliberately <b>package-private</b>: it asks the machine questions and turns the answers into
+ * facts. On the effects allowlist; the parsing of tool output changes whenever those tools change
+ * theirs.
  */
 final class HostProbe {
 

@@ -14,6 +14,9 @@ import sprouts.Tuple;
  * <p>Does the reading the pure planners cannot: resolves the path, looks at what is there, reads
  * the configuration files, checks that the filesystem can host Unix sockets, and takes the lock.
  * Every decision that follows from those facts is made by a pure function in the core.
+ *
+ * <p>Deliberately <b>package-private</b>: Phase B of §10.5, wired together. On the effects
+ * allowlist.
  */
 final class LampPhase {
 

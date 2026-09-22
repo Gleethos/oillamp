@@ -11,6 +11,9 @@ import sprouts.Tuple;
  *
  * <p>The per-lamp key pair and pinned host key mean the user is never asked to accept a host key,
  * and the user's own SSH identities are never offered to the sandbox.
+ *
+ * <p>Deliberately <b>package-private</b>: key generation and {@code ssh_config} rendering (D-08,
+ * Appendix D). The file it produces is what must be right, not this class's shape.
  */
 final class Ssh {
 

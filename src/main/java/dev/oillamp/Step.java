@@ -16,6 +16,10 @@ import sprouts.ValueSet;
  *
  * <p>{@link #describe()} is the one line the console and {@code --dry-run} show; {@link #detail()}
  * is the full story for the session log.
+ *
+ * <p>Deliberately <b>package-private</b>: one described effect. Steps are the mechanism that keeps
+ * {@code --dry-run} and the real run on the same code path, and adding a step kind must never be an
+ * API change.
  */
 sealed interface Step {
 

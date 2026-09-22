@@ -7,6 +7,10 @@ import sprouts.Tuple;
  *
  * <p>Lives in {@code oillamp.toml}, which sits outside the agent directory precisely so that the
  * agent cannot rewrite its own jail (D-10).
+ *
+ * <p>Deliberately <b>package-private</b>: first-match-wins evaluation over the rules. Public would
+ * commit us to that evaluation model forever; the rule syntax in {@code oillamp.toml} is the
+ * commitment instead.
  */
 record NetworkPolicy(Decision defaultDecision, Tuple<Rule> rules,
                             boolean logAllowed, boolean consoleDenied) {

@@ -1,6 +1,10 @@
 package dev.oillamp;
 
-/** A TCP endpoint as written in configuration, e.g. {@code llm.corp.example.com:8000}. */
+/**
+ * A TCP endpoint as written in configuration, e.g. {@code llm.corp.example.com:8000}.
+ *
+ * <p>Deliberately <b>package-private</b>: a parsed target for a forward or a policy rule.
+ */
 record HostAndPort(String host, int port) {
 
     public HostAndPort {

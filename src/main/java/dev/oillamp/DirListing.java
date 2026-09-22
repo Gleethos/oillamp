@@ -10,6 +10,9 @@ import sprouts.Tuple;
  * from the future") be a unit test.
  *
  * @param entries at most a handful of names, enough to show the user what is in the way
+ *
+ * <p>Deliberately <b>package-private</b>: an intermediate result on the way to classifying a
+ * directory.
  */
 record DirListing(boolean exists, boolean readable, Tuple<String> entries) {
 

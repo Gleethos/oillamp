@@ -17,6 +17,9 @@ import sprouts.Tuple;
  * <p>Pure, and deliberately phrased as "select what to delete" rather than "delete": the caller
  * shows the list, logs it, and only then removes the files — which for these files needs
  * {@code podman unshare} anyway, since they belong to the container's infra user (§9.2).
+ *
+ * <p>Deliberately <b>package-private</b>: which recordings to delete. Policy that should stay
+ * tunable.
  */
 final class Retention {
 

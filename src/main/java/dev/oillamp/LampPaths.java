@@ -14,6 +14,9 @@ import sprouts.Tuple;
  *
  * <p>The refusal is deliberately not configurable. A flag to override it would be used exactly
  * once, by someone in a hurry, on the wrong directory.
+ *
+ * <p>Deliberately <b>package-private</b>: the refusals of FR-03 — that you may not turn {@code /}
+ * or your home directory into a lamp. The refusal is the promise; the list is data that will grow.
  */
 final class LampPaths {
 

@@ -13,6 +13,8 @@ import java.util.Optional;
  * <p>oillamp compares addresses rather than only host names because a public name that resolves
  * into the company intranet must still be refused (§18.3). That check is only trustworthy if
  * the comparison itself is exact, which is why this is a tested value type and not string work.
+ *
+ * <p>Deliberately <b>package-private</b>: a parsed v4/v6 address for the policy engine.
  */
 record IpAddress(long high, long low, boolean ipv6) implements Comparable<IpAddress> {
 

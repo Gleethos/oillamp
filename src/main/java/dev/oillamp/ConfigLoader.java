@@ -19,6 +19,10 @@ import sprouts.Tuple;
  * <p>Pure on purpose: the shell reads the bytes, this decides what they mean. That is what makes
  * "an unknown key, a bad CIDR and a duplicate forward produce exactly three located problems"
  * a unit test rather than a manual experiment.
+ *
+ * <p>Deliberately <b>package-private</b>: the precedence merge — global then lamp, tables merged
+ * key-by-key, arrays replaced wholesale — is a rule we may yet need to revisit. Nothing outside
+ * should depend on it.
  */
 final class ConfigLoader {
 

@@ -15,6 +15,9 @@ import sprouts.Tuple;
  * a handful of subcommands with a handful of flags, and the two things that actually matter here
  * — a helpful message for a mistyped command, and exit code 2 for every usage error — are easier
  * to get exactly right directly than to configure.
+ *
+ * <p>Deliberately <b>package-private</b>: the parsed command line. §28's grammar is the contract
+ * users type against; this record is merely how it is represented in memory today.
  */
 final class Invocation {
 

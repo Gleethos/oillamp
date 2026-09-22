@@ -22,6 +22,10 @@ import sprouts.Tuple;
  * <p>Writes are atomic — a temporary file in the same directory, then an atomic rename — so an
  * interrupted run can never leave a half-written {@code lamp.json} or {@code runtime.env} behind
  * for the next run to misread (NFR-02).
+ *
+ * <p>Deliberately <b>package-private</b>: the POSIX operations the layout needs — modes, ownership,
+ * symlinks. It is on the effects allowlist, and nothing outside should be able to invoke them at
+ * all.
  */
 final class Filesystem {
 

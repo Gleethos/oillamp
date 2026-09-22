@@ -23,6 +23,8 @@ Conventions used throughout:
 - **MUST / MUST NOT / SHOULD / MAY** have their RFC 2119 meaning.
 - Requirements are numbered (`FR-…` functional, `NFR-…` non-functional) and decisions are numbered (`D-…`) so code, tests, and commit messages can reference them.
 - `<lamp>` is the directory the user passes to `oillamp at`. `<agentId>` is the lamp's generated identifier (§10.2). `<session>` is a session identifier (§10.3).
+- **Status markers.** Requirements, milestones and acceptance criteria carry ✅ (built and verified), 🟡 (partly built — the bullet says which part) or ⬜ (not started). They describe the code as it stands, not the intent; `docs/STATUS.md` has the detail and the reasons.
+- **§36 records every deviation taken while implementing this spec, and why.** The spec was written before the code; where the two disagree, §36 says which won and for what reason. Read it before trusting a detail in Part III.
 - Items marked **⚠ VERIFY** are facts about third-party tools that the author is fairly but not fully sure about. They are collected again in §33 and MUST be confirmed with a quick spike before the dependent code is written. If a spike disproves an assumption, apply the listed fallback and update this spec.
 
 ### 0.1 Glossary
@@ -70,6 +72,10 @@ It does *all* setup itself — installing host prerequisites, building the sandb
 
 ## 3. The golden-path workflow
 
+> **Status:** steps 1–3 are built and work today. Steps 4–10 need M3 and M4 (§32). The
+> numbering is unmarked below because this section describes the finished experience, which is
+> unchanged — see §4 for what exists.
+
 This is the end-to-end user experience oillamp MUST deliver. Every other requirement serves it.
 
 1. The user runs `oillamp at ~/lamps/feature-x` in any terminal.
@@ -91,70 +97,70 @@ This is the end-to-end user experience oillamp MUST deliver. Every other require
 
 ### 4.1 Command and lifecycle
 
-- **FR-01** `oillamp at <dir>` MUST perform all setup and start a session as described in §3. No manual configuration is required for the first run.
-- **FR-02** If `<dir>` does not exist, oillamp MUST create it (including parents). If it exists and is empty, oillamp MUST initialize it as a lamp. If it exists, is non-empty, and is not a lamp, oillamp MUST refuse (Problem `OIL-LAMP-002`) unless `--init` is given.
-- **FR-03** oillamp MUST refuse to use dangerous locations as a lamp: `/`, the user's home directory itself, and anything under `/bin /boot /dev /etc /lib* /proc /run /sbin /sys /usr /var` (Problem `OIL-LAMP-003`).
-- **FR-04** At most **one session per lamp** may run at a time. A second `oillamp at` on a busy lamp MUST fail fast with `OIL-LOCK-001`, reporting the supervisor PID, start time, and the commands `oillamp view <dir>` / `oillamp shell <dir>` / `oillamp stop <dir>`.
-- **FR-05** Any number of lamps at different locations MAY run concurrently and MUST NOT interfere with each other.
-- **FR-06** The session MUST end when the **primary SSH session** ends (terminal closed or shell exited), when the user presses Ctrl+C in the supervisor terminal, when `oillamp stop <dir>` is run, or when a critical sandbox process dies.
-- **FR-07** Shutdown MUST finalize the screen recording, stop and remove the container, persist logs, release the lock, and print a session summary. Shutdown MUST also happen on SIGTERM/SIGHUP to the supervisor.
-- **FR-08** If a previous supervisor died without cleanup (crash, kill -9, power loss), the next `oillamp at` MUST detect the leftover container and stale state, clean it up, and say so.
-- **FR-09** The terminal window MUST open already connected to the sandbox via SSH, without password or host-key prompts, in `~/workspace`.
-- **FR-10** The viewer window MUST show the agent's desktop live, allow input from the user, and support host-to-agent clipboard (configurable).
-- **FR-11** Auxiliary commands MUST exist: `doctor`, `view`, `shell`, `stop`, `status`, `list`, `recordings`, `image` (§28).
-- **FR-12** `oillamp at <dir> --dry-run` MUST print the complete setup plan (every step, command, file) without changing anything.
+- 🟡 **FR-01** `oillamp at <dir>` MUST perform all setup and start a session as described in §3. No manual configuration is required for the first run. *(Built: everything up to and including the lamp directory. Missing: the container and the session — M3/M4.)*
+- ✅ **FR-02** If `<dir>` does not exist, oillamp MUST create it (including parents). If it exists and is empty, oillamp MUST initialize it as a lamp. If it exists, is non-empty, and is not a lamp, oillamp MUST refuse (Problem `OIL-LAMP-002`) unless `--init` is given.
+- ✅ **FR-03** oillamp MUST refuse to use dangerous locations as a lamp: `/`, the user's home directory itself, and anything under `/bin /boot /dev /etc /lib* /proc /run /sbin /sys /usr /var` (Problem `OIL-LAMP-003`).
+- ✅ **FR-04** At most **one session per lamp** may run at a time. A second `oillamp at` on a busy lamp MUST fail fast with `OIL-LOCK-001`, reporting the supervisor PID, start time, and the commands `oillamp view <dir>` / `oillamp shell <dir>` / `oillamp stop <dir>`.
+- 🟡 **FR-05** Any number of lamps at different locations MAY run concurrently and MUST NOT interfere with each other. *(Lamps are independent by construction — separate directories, separate locks. Untestable until sessions exist.)*
+- ⬜ **FR-06** The session MUST end when the **primary SSH session** ends (terminal closed or shell exited), when the user presses Ctrl+C in the supervisor terminal, when `oillamp stop <dir>` is run, or when a critical sandbox process dies.
+- ⬜ **FR-07** Shutdown MUST finalize the screen recording, stop and remove the container, persist logs, release the lock, and print a session summary. Shutdown MUST also happen on SIGTERM/SIGHUP to the supervisor.
+- 🟡 **FR-08** If a previous supervisor died without cleanup (crash, kill -9, power loss), the next `oillamp at` MUST detect the leftover container and stale state, clean it up, and say so. *(Built: stale lock detection. Missing: leftover container cleanup — M3.)*
+- ⬜ **FR-09** The terminal window MUST open already connected to the sandbox via SSH, without password or host-key prompts, in `~/workspace`.
+- ⬜ **FR-10** The viewer window MUST show the agent's desktop live, allow input from the user, and support host-to-agent clipboard (configurable).
+- 🟡 **FR-11** Auxiliary commands MUST exist: `doctor`, `view`, `shell`, `stop`, `status`, `list`, `recordings`, `image` (§28). *(Built: `doctor` and `config`. The rest parse and then report that they need a running session.)*
+- ✅ **FR-12** `oillamp at <dir> --dry-run` MUST print the complete setup plan (every step, command, file) without changing anything.
 
 ### 4.2 Sandbox
 
-- **FR-20** The sandbox MUST be a rootless Podman container with no access to the host filesystem except the explicitly listed mounts (§13.3). The only writable area the agent can see on the host is the agent dir.
-- **FR-21** The agent dir MUST be mounted as the agent's home directory (`/home/agent`) and MUST persist across sessions.
-- **FR-22** The sandbox MUST run its own **Wayland compositor** with a virtual monitor (default 1920×1080, scale 1). **Xwayland** MUST be available (Swing currently renders through X11/Xwayland, see D-07).
-- **FR-23** The agent MUST be able to start GUI applications, take screenshots, and inject mouse and keyboard input on its own desktop (§19.4).
-- **FR-24** A **web browser** (Firefox ESR) MUST be available on the agent's desktop and MUST use the network proxy.
-- **FR-25** The image MUST include a Java 25 JDK, Node.js LTS, common build tools, and the agent tools OpenCode and pi (configurable, §12).
-- **FR-26** Native libraries placed in `~/libs` (inside the agent dir) MUST be found automatically by native loaders (`LD_LIBRARY_PATH`) and Java (`java.library.path` via the environment).
-- **FR-27** GPU acceleration SHOULD be used when a suitable render node exists (`gpu = "auto"`), and the sandbox MUST fall back to software rendering automatically when it doesn't work.
+- ⬜ **FR-20** The sandbox MUST be a rootless Podman container with no access to the host filesystem except the explicitly listed mounts (§13.3). The only writable area the agent can see on the host is the agent dir.
+- ⬜ **FR-21** The agent dir MUST be mounted as the agent's home directory (`/home/agent`) and MUST persist across sessions.
+- ⬜ **FR-22** The sandbox MUST run its own **Wayland compositor** with a virtual monitor (default 1920×1080, scale 1). **Xwayland** MUST be available (Swing currently renders through X11/Xwayland, see D-07).
+- ⬜ **FR-23** The agent MUST be able to start GUI applications, take screenshots, and inject mouse and keyboard input on its own desktop (§19.4).
+- ⬜ **FR-24** A **web browser** (Firefox ESR) MUST be available on the agent's desktop and MUST use the network proxy.
+- ⬜ **FR-25** The image MUST include a Java 25 JDK, Node.js LTS, common build tools, and the agent tools OpenCode and pi (configurable, §12).
+- ⬜ **FR-26** Native libraries placed in `~/libs` (inside the agent dir) MUST be found automatically by native loaders (`LD_LIBRARY_PATH`) and Java (`java.library.path` via the environment).
+- ⬜ **FR-27** GPU acceleration SHOULD be used when a suitable render node exists (`gpu = "auto"`), and the sandbox MUST fall back to software rendering automatically when it doesn't work.
 
 ### 4.3 Monitoring and recording
 
-- **FR-30** The VNC endpoint MUST be a Unix domain socket, never a TCP port on the host.
-- **FR-31** The viewer MUST be launched automatically at session start; `oillamp view <dir>` MUST re-open it at any time during the session.
-- **FR-32** The agent's screen MUST be **recorded by default** for the whole session to a video file in the state dir, invisible and unmodifiable for the agent.
-- **FR-33** Recording MUST be configurable (on/off, frame rate, quality, retention by age and total size).
+- ⬜ **FR-30** The VNC endpoint MUST be a Unix domain socket, never a TCP port on the host.
+- ⬜ **FR-31** The viewer MUST be launched automatically at session start; `oillamp view <dir>` MUST re-open it at any time during the session.
+- ⬜ **FR-32** The agent's screen MUST be **recorded by default** for the whole session to a video file in the state dir, invisible and unmodifiable for the agent.
+- 🟡 **FR-33** Recording MUST be configurable (on/off, frame rate, quality, retention by age and total size). *(Built: the configuration and the retention calculation. Missing: the recorder — M6.)*
 
 ### 4.4 Network
 
-- **FR-40** The container MUST have **no direct network access** (`--network=none`). All outbound traffic goes through oillamp-controlled channels: the **egress proxy** and explicit **forwards**.
-- **FR-41** Egress MUST be governed by a **policy in the config file**. The shipped default is permissive: the public web is open, private/internal address ranges and the host's loopback are blocked (§18.4).
-- **FR-42** Every proxied connection MUST be logged (host, port, resolved address, decision, matched rule, bytes, duration). Denied requests MUST additionally be shown in the supervisor console.
-- **FR-43** **Forwards** MUST allow exposing a specific host-reachable TCP endpoint (e.g. the company LLM) at a fixed `127.0.0.1:<port>` inside the container, independent of the proxy policy.
-- **FR-44** An `[llm]` config section MUST let oillamp preconfigure the agent tools to use the self-hosted LLM through a forward.
+- ⬜ **FR-40** The container MUST have **no direct network access** (`--network=none`). All outbound traffic goes through oillamp-controlled channels: the **egress proxy** and explicit **forwards**.
+- 🟡 **FR-41** Egress MUST be governed by a **policy in the config file**. The shipped default is permissive: the public web is open, private/internal address ranges and the host's loopback are blocked (§18.4). *(Built: the policy model and its evaluation — rules, host patterns, CIDRs, first-match. Missing: the proxy that applies it — M5.)*
+- ⬜ **FR-42** Every proxied connection MUST be logged (host, port, resolved address, decision, matched rule, bytes, duration). Denied requests MUST additionally be shown in the supervisor console.
+- 🟡 **FR-43** **Forwards** MUST allow exposing a specific host-reachable TCP endpoint (e.g. the company LLM) at a fixed `127.0.0.1:<port>` inside the container, independent of the proxy policy. *(Built: configuration and validation. Missing: the listener — M5.)*
+- 🟡 **FR-44** An `[llm]` config section MUST let oillamp preconfigure the agent tools to use the self-hosted LLM through a forward. *(Built: the config section and the URL it implies, which the agent guide already renders. Missing: writing the tool config files — M5.)*
 
 ### 4.5 Configuration
 
-- **FR-50** Configuration MUST live in `<lamp>/oillamp.toml` (outside the agent dir, so the agent cannot change its own policy). On lamp init, oillamp writes a fully commented default.
-- **FR-51** An optional user-global file `~/.config/oillamp/config.toml` MAY provide defaults for all lamps (typical use: company LLM endpoint). Precedence: built-in defaults < global < lamp.
-- **FR-52** Invalid configuration MUST be reported with file, key path, the offending value, and the expected form. Unknown keys MUST be errors (typo protection).
+- ✅ **FR-50** Configuration MUST live in `<lamp>/oillamp.toml` (outside the agent dir, so the agent cannot change its own policy). On lamp init, oillamp writes a fully commented default.
+- ✅ **FR-51** An optional user-global file `~/.config/oillamp/config.toml` MAY provide defaults for all lamps (typical use: company LLM endpoint). Precedence: built-in defaults < global < lamp.
+- ✅ **FR-52** Invalid configuration MUST be reported with file, key path, the offending value, and the expected form. Unknown keys MUST be errors (typo protection).
 
 ### 4.6 Host setup
 
-- **FR-60** oillamp MUST detect and **install missing host prerequisites itself** (APT), logging each command and its output.
-- **FR-61** oillamp MUST detect and fix a missing subordinate UID/GID range for the user (`/etc/subuid`, `/etc/subgid`).
-- **FR-62** oillamp MUST verify that rootless Podman actually works (functional check), including Ubuntu's AppArmor restriction on unprivileged user namespaces, and report precise remedies if not.
-- **FR-63** `--no-install` (and config `host.auto_install = false`) MUST switch installation off: oillamp then reports the exact commands to run instead.
+- ✅ **FR-60** oillamp MUST detect and **install missing host prerequisites itself** (APT), logging each command and its output.
+- ✅ **FR-61** oillamp MUST detect and fix a missing subordinate UID/GID range for the user (`/etc/subuid`, `/etc/subgid`).
+- ✅ **FR-62** oillamp MUST verify that rootless Podman actually works (functional check), including Ubuntu's AppArmor restriction on unprivileged user namespaces, and report precise remedies if not.
+- ✅ **FR-63** `--no-install` (and config `host.auto_install = false`) MUST switch installation off: oillamp then reports the exact commands to run instead.
 
 ## 5. Non-functional requirements
 
-- **NFR-01 Out of the box.** A user with a stock Ubuntu desktop and sudo rights MUST get from zero to both windows open with one command and no manual edits.
-- **NFR-02 Robustness.** Every failure MUST leave the system in a clean or recoverable state (no orphaned containers, no stale locks that block the next run). Every external command has a timeout.
-- **NFR-03 Diagnosability.** Every error MUST be reported as a structured *Problem* (§27): what failed, why that matters, the evidence (command line, exit code, stderr excerpt, relevant paths), concrete fix steps, and where the full log is. No bare stack traces on the console (they go to the log file; `--debug` shows them).
-- **NFR-04 Transparency.** Everything oillamp does to the host (installs, file writes, podman invocations) MUST be logged to the session log. `--dry-run` shows it in advance.
-- **NFR-05 Least privilege.** Rootless Podman, all Linux capabilities dropped except the few the container entrypoint needs to drop privileges (§13.2), `no-new-privileges`, read-only image root filesystem, no host network, no host display/D-Bus/Wayland sockets shared into the container.
-- **NFR-06 Monitoring cannot be disabled by the agent.** The compositor, VNC server, recorder, and network bridges run as a different container user than the agent, and the agent cannot signal, reconfigure, or read/write their private sockets or recordings.
-- **NFR-07 Startup time.** With the image already built, `oillamp at` SHOULD show both windows within ~10 seconds on a typical laptop.
-- **NFR-08 GUI-ready core.** All decision logic MUST be pure and UI-independent; progress and state MUST be exposed as event streams, so a Swing GUI can drive the same core without changes (§23).
-- **NFR-09 No preview features.** Only final Java language/library features of Java 25.
-- **NFR-10 Resource limits.** The container MUST run with configurable memory, CPU, and PID limits.
+- 🟡 **NFR-01 Out of the box.** A user with a stock Ubuntu desktop and sudo rights MUST get from zero to both windows open with one command and no manual edits. *(Built: the host and lamp preparation, including installing prerequisites. The windows need M3/M4.)*
+- ✅ **NFR-02 Robustness.** Every failure MUST leave the system in a clean or recoverable state (no orphaned containers, no stale locks that block the next run). Every external command has a timeout.
+- ✅ **NFR-03 Diagnosability.** Every error MUST be reported as a structured *Problem* (§27): what failed, why that matters, the evidence (command line, exit code, stderr excerpt, relevant paths), concrete fix steps, and where the full log is. No bare stack traces on the console (they go to the log file; `--debug` shows them).
+- ✅ **NFR-04 Transparency.** Everything oillamp does to the host (installs, file writes, podman invocations) MUST be logged to the session log. `--dry-run` shows it in advance.
+- ⬜ **NFR-05 Least privilege.** Rootless Podman, all Linux capabilities dropped except the few the container entrypoint needs to drop privileges (§13.2), `no-new-privileges`, read-only image root filesystem, no host network, no host display/D-Bus/Wayland sockets shared into the container.
+- ⬜ **NFR-06 Monitoring cannot be disabled by the agent.** The compositor, VNC server, recorder, and network bridges run as a different container user than the agent, and the agent cannot signal, reconfigure, or read/write their private sockets or recordings.
+- ⬜ **NFR-07 Startup time.** With the image already built, `oillamp at` SHOULD show both windows within ~10 seconds on a typical laptop.
+- ✅ **NFR-08 GUI-ready core.** All decision logic MUST be pure and UI-independent; progress and state MUST be exposed as event streams, so a Swing GUI can drive the same core without changes (§23).
+- ✅ **NFR-09 No preview features.** Only final Java language/library features of Java 25.
+- ⬜ **NFR-10 Resource limits.** The container MUST run with configurable memory, CPU, and PID limits.
 
 ## 6. Decisions and rationale
 
@@ -166,7 +172,7 @@ These are the conclusions of the design discussion. Implementers MUST NOT silent
 | **D-02** | The sandbox desktop is a **headless Wayland compositor inside the container**, exposed via **VNC**. | A VNC boundary is much safer than nesting the agent's compositor as a window on the host: a nested compositor would be a client of the host session with access to host clipboard and protocols. VNC also enables recording, multiple viewers, and a future built-in viewer. |
 | **D-03** | The compositor is **sway (wlroots) with the headless backend**. | Best tooling ecosystem for automation: `wayvnc`, `grim`, `wf-recorder`, `wtype`, `wlrctl`; light and fast; scriptable config. |
 | **D-04** | The VNC server is **wayvnc** listening on a **Unix domain socket**. | No network port exists at all; access control by filesystem permissions. TigerVNC's `vncviewer` can connect to a socket path directly. |
-| **D-05** | Host viewer in v1: **TigerVNC `vncviewer`**. v2: built-in Swing viewer (shares the `oillamp-rfb` module). | TigerVNC supports Unix sockets and clipboard direction flags. JDK 16+ supports Unix domain sockets natively, making a Swing viewer straightforward later. |
+| **D-05** | Host viewer in v1: **TigerVNC `vncviewer`**. v2: built-in Swing viewer. | TigerVNC supports Unix sockets and clipboard direction flags. JDK 16+ supports Unix domain sockets natively, making a Swing viewer straightforward later. |
 | **D-06** | No GNOME/Mutter fidelity mode. | Explicitly not needed. Keeps the image small and the startup fast. |
 | **D-07** | **Xwayland is included**. | Stock OpenJDK Swing still renders via X11 (native Wayland AWT is experimental, e.g. in JetBrains Runtime / project Wakefield). The apps under test are Swing. |
 | **D-08** | The user's shell into the sandbox is **SSH over a Unix socket** (no TCP), with per-lamp generated ed25519 keys and a pinned host key. | User requirement (SSH). SSH over Unix socket preserves `--network=none`, works across a future VM boundary, and gives agent tools a standard login environment. |
@@ -180,18 +186,20 @@ These are the conclusions of the design discussion. Implementers MUST NOT silent
 | **D-16** | **Supervisor stays in the foreground** of the terminal where `oillamp at` was typed and shows a live log. | Simple, transparent, and Ctrl+C is an obvious "stop everything". A `--detach` mode is a later extension. |
 | **D-17** | Host prerequisites are **installed automatically via `sudo apt-get`**, with every command logged. | User requirement: out-of-the-box experience. Opt-out via `--no-install`. |
 | **D-18** | **Base image: Debian 13 "trixie"**. JDK: Eclipse Temurin 25. Browser: Firefox ESR. Node.js: official LTS tarball. | Debian is close to Ubuntu (same tooling), and — unlike Ubuntu — ships Firefox as a normal `.deb` (Ubuntu's Firefox is a snap, which does not work in containers). |
-| **D-19** | Java stack: **Java 25, Gradle (Kotlin DSL), Jackson (JSON + TOML), picocli, Sprouts** (persistent collections), JUnit, AssertJ, ArchUnit. | User choice (Gradle, Jackson, Sprouts) plus picocli for a robust CLI. Sprouts' `Tuple`/`Association`/`ValueSet` give immutable, structurally shared collections for large value types; Sprouts also underpins SwingTree, a natural fit for the future GUI. |
+| **D-19** | Java stack: **Java 25, Gradle (Groovy DSL), Jackson 2.x (JSON + TOML), Sprouts** (persistent collections), **Spock** scenarios, ArchUnit. *Amended in implementation (§36): Groovy DSL rather than Kotlin, and no picocli.* | User choice (Gradle, Jackson, Sprouts). Sprouts' `Tuple`/`Association`/`ValueSet` give immutable, structurally shared collections for large value types; Sprouts also underpins SwingTree, a natural fit for the future GUI. Groovy DSL because the test sources are Groovy anyway, so the build uses one language less. picocli was dropped because the CLI is nine subcommands and hand-rolled parsing keeps exit code 2 (usage) exactly where §28 wants it — one fewer dependency on the golden path. |
 | **D-20** | Configuration format: **TOML**. | Human-friendly, supports comments, no YAML indentation/typing traps; parsed via Jackson's TOML module. |
 | **D-21** | Distribution: **`jpackage` `.deb`** with a bundled `jlink` runtime. No GraalVM native image. | No JDK needed on the host; keeps the Swing path open (native-image and AWT/Swing don't mix well). |
 | **D-22** | Terminal emulator: **auto-detected** from a built-in table of profiles, overridable in config. | Robustness across GNOME Terminal, Ptyxis, Console, Konsole, kitty, foot, Alacritty, WezTerm, xterm. |
 | **D-23** | Clipboard default: **host → agent only**. | Pasting into the sandbox is useful. Copying *out* of it is where accidental leaks of agent-produced content into the host could happen. Configurable. |
 | **D-24** | GPU: `gpu = "auto"` passes the DRM render node only if present, owned by a group the user belongs to, and driven by an open Mesa driver; otherwise software rendering. The entrypoint falls back to software rendering if the GPU renderer fails. | GPU is welcome but must never block the session. |
 | **D-25** | Host-side socket paths go through a short directory under `$XDG_RUNTIME_DIR/oillamp/<agentId>/`. | Unix socket paths are limited to 107 bytes. Lamp paths can be long. |
+| **D-26** | **One Gradle module, one package `dev.oillamp`, exactly five public types** (§22). Everything else is package-private, and every class states in its Javadoc *why* it is public or package-private. | The public API is the thing that can never be changed without breaking someone, so it is the thing to keep small. One package means the compiler — not a convention or a review — enforces the boundary: a package-private class simply cannot be referenced from outside. The tests live in package `oillamp`, outside `dev.oillamp`, so they physically cannot reach an internal and are forced to describe user-visible behaviour. Eight modules were tried first and bought nothing: the dependency rules they enforced are enforced here by one ArchUnit test, at a fraction of the build complexity. |
+| **D-27** | **No Java RFB client and no `lamp-helper` module.** The in-container `lamp` helper is a shell script over `grim`, `wtype`, `wlrctl` and `slurp`, which §12.1 already installs. | Writing an RFB 3.8 client to take a screenshot, when the image already contains tools that do it natively, costs a protocol implementation, PNG encoding, an AppCDS tuning step and a build-time coupling that bakes a jar into the image context — in exchange for nothing the native tools do not already do. Absolute pointer coordinates, the original motivation, are available from `wlrctl pointer move`. An agent that needs something the script does not cover can call the underlying tools directly; the generated environment guide (§19.3) names them for exactly that reason. |
 
 ## 7. Out of scope for v1 (planned extensions)
 
 - **Swing GUI** front-end (lamp list, start/stop, embedded viewer, live network log). The core is designed for it (NFR-08); SwingTree + Sprouts is the suggested UI stack.
-- **Built-in Swing VNC viewer** replacing TigerVNC (reuses `oillamp-rfb`).
+- **Built-in Swing VNC viewer** replacing TigerVNC. This needs an RFB 3.8 client, which v1 deliberately does not have (D-27); it would be written then, for the viewer, not for the `lamp` helper.
 - **Stronger isolation runtimes**: `--runtime=runsc` (gVisor) or `--runtime=krun` (libkrun microVM). Unix-socket mounts behave differently across a VM boundary, so this needs its own design pass.
 - **Accessibility-tree access** (AT-SPI) for the agent, e.g. `lamp a11y tree`, using `java-atk-wrapper` for Swing apps.
 - **MCP server** exposing the desktop tools (screenshot/click/type) to agent tools natively.
@@ -442,7 +450,7 @@ Base: `docker.io/library/debian:trixie` (configurable `image.base`, for internal
 | Group | Packages / sources |
 |---|---|
 | Core | `ca-certificates bash coreutils util-linux procps less file locales tzdata` (locale `en_US.UTF-8` generated) |
-| Desktop | `sway xwayland wayvnc wf-recorder grim slurp wtype wlrctl foot dbus at-spi2-core xdg-utils` (**⚠ VERIFY** `wlrctl` availability in trixie; fallback: drop it — the `lamp` helper uses RFB, §19.4) |
+| Desktop | `sway xwayland wayvnc wf-recorder grim slurp wtype wlrctl foot dbus at-spi2-core xdg-utils` (**⚠ VERIFY** `wlrctl` availability in trixie; fallback: `wtype` covers keyboard and `grim`+`slurp` cover capture, so only pointer control is lost — see §19.4) |
 | Graphics | `mesa-utils libgl1-mesa-dri libegl1 libgles2 mesa-vulkan-drivers` |
 | Fonts/themes | `fonts-dejavu fonts-liberation2 fonts-noto-core adwaita-icon-theme` |
 | SSH & bridges | `openssh-server socat` |
@@ -797,24 +805,42 @@ One JSON object per line:
 
 ### 19.3 Generated agent guide
 
-`/oillamp/session/agent-guide.md` is rendered per session (pure template function) and explains, concisely, for an AI agent: that it is in a sandbox; what persists (home) and what doesn't (everything else); where to put code; that it has a graphical desktop (size, how GUI apps find it); the `lamp` helper commands with examples; that network access goes through a policy-controlled proxy, with the default and a note that 403 bodies explain denials; that there's no DNS; the LLM forward URL; that `~/libs` is on the library path; that `sudo`/`apt` are not available and how the human can add packages (config + rebuild). Additionally, oillamp installs it as the tools' global instruction files **if those files do not exist yet** (**⚠ VERIFY** locations: OpenCode `~/.config/opencode/AGENTS.md`, pi `~/.pi/agent/AGENTS.md`).
+`/oillamp/session/agent-guide.md` is rendered per session (pure template function) and mounted into the agent's home as `~/AGENTS.md`. It is **the sandbox's description of itself**: an agent that does not know where it is will try `sudo apt install`, wonder why DNS does not resolve, and report "the network is broken" when in fact one policy rule refused one host. Every one of those is a wasted hour that a paragraph of text prevents.
+
+It states, concretely, and always from the live configuration rather than from prose written once:
+
+- that this is a sandbox, that a human is watching the desktop, and that the screen is being recorded;
+- **what persists** (`/home/agent` only) and what does not (system packages, `/tmp`, everything from the read-only image);
+- where to put code (`~/workspace`), where native libraries go (`~/libs`, already on `LD_LIBRARY_PATH` and `java.library.path`);
+- that there is a real graphical desktop, its size, and that Xwayland is present so Swing and X11 apps work;
+- **what it can do to that desktop** — the tools of §19.4, with examples;
+- that there is no DNS and no direct network; the proxy variables that are already set; the *actual* default decision and rule count from the merged config; and the exact shape of the 403 body that names the refusing rule, so the agent reports it verbatim instead of retrying;
+- the LLM base URL and any direct forwards, if configured;
+- that `sudo` and `apt` are absent, and that the human adds packages via `image.extra_apt_packages` and a rebuild;
+- **what it cannot do, and why** — it cannot signal the infra user's processes, read their sockets, or alter the recording of its own screen.
+
+That last section is deliberately not hidden. An agent that understands the boundary works inside it and reports accurately when it hits one; an agent that does not will guess, and its guesses will be wrong in ways that cost the human time.
+
+Additionally, oillamp installs it as the tools' global instruction files **if those files do not exist yet** (**⚠ VERIFY** locations: OpenCode `~/.config/opencode/AGENTS.md`, pi `~/.pi/agent/AGENTS.md`).
 
 ### 19.4 The `lamp` desktop helper
 
-A CLI inside the image, `/usr/local/bin/lamp`, for agents (and humans) to operate the desktop. It is a small Java program (module `lamp-helper`, §22) that speaks **RFB to `/oillamp/sockets/infra/vnc.sock`**. Using the VNC protocol gives absolute pointer coordinates, the exact same view the human sees, and no dependency on compositor-specific tools. (The agent is a legitimate VNC client of its own desktop; this socket is visible to it by design.)
+A CLI inside the image, `/usr/local/bin/lamp`, for agents (and humans) to operate the desktop. It is a **shell script** over the tools §12.1 already installs — `grim` (capture), `slurp` (regions), `wtype` (keyboard), `wlrctl` (pointer) — talking to the compositor through the agent's own `WAYLAND_DISPLAY` (D-27).
+
+It is a convenience, not a gate. Everything it does, the agent may also do by calling `grim`/`wtype`/`wlrctl` itself, and the generated guide (§19.3) says so. This matters: an agent that hits a case the script does not cover should reach for the underlying tool, not conclude that screenshots are impossible.
 
 | Command | Behaviour |
 |---|---|
-| `lamp screenshot [-o FILE] [--region X,Y,W,H] [--scale F]` | framebuffer → PNG (default `~/screenshots/<timestamp>.png`); prints the path |
-| `lamp click X Y [--button left\|middle\|right] [--double]` | absolute move + click |
-| `lamp move X Y` / `lamp drag X1 Y1 X2 Y2` | pointer |
-| `lamp scroll X Y (up\|down\|left\|right) [N]` | wheel |
-| `lamp type "text"` | types Unicode text (keysyms, Unicode keysym range for non-Latin-1) |
-| `lamp key ctrl+shift+t` | key chord (xkb keysym names) |
+| `lamp screenshot [-o FILE] [--region X,Y,W,H]` | `grim` → PNG (default `~/screenshots/<timestamp>.png`); prints the path |
+| `lamp click X Y [--button left\|middle\|right] [--double]` | `wlrctl pointer move` then `click` |
+| `lamp move X Y` / `lamp drag X1 Y1 X2 Y2` | `wlrctl pointer` |
+| `lamp scroll X Y (up\|down\|left\|right) [N]` | `wlrctl pointer scroll` |
+| `lamp type "text"` | `wtype`, which takes UTF-8 directly |
+| `lamp key ctrl+shift+t` | `wtype -M ctrl -M shift -k t` |
 | `lamp info` | desktop size, renderer, output name (from `ready.json`) |
-| `lamp wait-stable [--timeout S]` | waits until the framebuffer stops changing for 500 ms (useful after launching an app) |
+| `lamp wait-stable [--timeout S]` | two `grim` captures 500 ms apart until they are byte-identical (useful after launching an app) |
 
-Exit code 0 on success, 2 on usage error, 3 if the VNC socket is unavailable, with a one-line error on stderr. Startup cost is acceptable for a JVM; enable AppCDS for the helper jar at image build to keep it ~200 ms. `grim`, `wtype`, and `wlrctl` are also installed as low-level alternatives.
+Exit code 0 on success, 2 on usage error, 3 if the compositor cannot be reached, with a one-line error on stderr. Being a script it starts in milliseconds and can be read — and fixed — from inside the sandbox.
 
 ### 19.5 Agent tools and LLM configuration
 
@@ -964,44 +990,77 @@ Plain `KEY=value` lines, values single-quoted with shell escaping (pure renderer
 | Packaging | `jlink` + `jpackage` → `.deb` | §31 |
 | No other runtime dependencies | no logging framework, no HTTP client/server library, no SSH library, no DI container | keeps the jlink image small and the behaviour explicit |
 
-## 22. Gradle project structure
+## 22. Project structure and the public API
+
+> **Amended in implementation (D-26, §36).** This section originally specified eight Gradle
+> modules. One module replaced them. The rules the modules were there to enforce are unchanged —
+> they are now enforced by ArchUnit inside a single source set, which is where they are actually
+> checked rather than merely declared.
 
 ```
 oillamp/
-├── settings.gradle.kts
-├── gradle/libs.versions.toml
-├── build-logic/                    convention plugins (java-conventions: toolchain 25, -Werror, -Xlint:all, JUnit)
-├── oillamp-core/                   PURE: domain model, config parsing/merging/validation, planning, policy,
-│                                   session state machine, renderers (podman args, ssh config, runtime.env,
-│                                   agent guide, terminal/viewer command lines), problem catalog
-├── oillamp-rfb/                    RFB 3.8 client: pure codec (messages ⇄ bytes) + a small blocking client over a
-│                                   ByteChannel (Unix socket). Security type None. Encodings: Raw, CopyRect,
-│                                   DesktopSize pseudo-encoding, Cursor pseudo-encoding (ignored in v1)
-├── oillamp-host/                   SHELL: ProcessRunner, Podman, Apt, HostProbe, FileSystem ops, SshKeygen,
-│                                   TerminalLauncher, ViewerLauncher, UnixSockets utilities
-├── oillamp-net/                    SHELL: EgressProxy, ForwardListener, SshRelay, ByteCopier, NetworkJournal
-├── oillamp-app/                    SHELL: orchestration — PhaseRunner (probe → plan → execute), StepRunner,
-│                                   Supervisor (event loop), ShutdownSequence, EventBus, Journal (log file)
-├── oillamp-image/                  resources only: Containerfile, entrypoint, sway config, sshd_config,
-│                                   profile.d script, firefox policies, ssh proxy conf, tool config templates,
-│                                   agent-guide template; bundles lamp-helper.jar into the context
-├── oillamp-cli/                    picocli commands, ConsoleRenderer, Main; application + jpackage config
-├── lamp-helper/                    in-container `lamp` CLI (depends only on oillamp-rfb)
-└── (future) oillamp-swing/         Swing GUI (SwingTree + Sprouts), depends on oillamp-app
+├── build.gradle                    one module: Java 25 toolchain, Error Prone + NullAway, Spock
+├── settings.gradle
+├── docs/                           SproutsCheatSheet.md, STATUS.md
+├── src/main/java/dev/oillamp/      all production code — one package, 74 classes, 5 of them public
+├── src/test/groovy/oillamp/        Spock scenarios — a DIFFERENT package, deliberately (see below)
+└── src/main/resources/image/       Containerfile, entrypoint, sway config, sshd_config, templates
 ```
 
-Dependency rules (enforced by ArchUnit tests in each module):
+### 22.1 The public API is five types
 
-- `oillamp-core` depends on Sprouts and Jackson only. It MUST NOT use `java.nio.file.Files`, `java.io.File*Stream`, `ProcessBuilder`, `java.net.Socket*`, `java.nio.channels.*`, `Thread`, `System.getenv`, `System.currentTimeMillis`, `Instant.now()`, `SecureRandom`, or any other source of I/O, time, or randomness. Those enter as parameters (`HostFacts`, `Instant now`, `AgentId` generated in the shell).
-- `oillamp-rfb` separates `codec` (pure) from `client` (I/O).
-- `oillamp-host`, `oillamp-net` depend on `oillamp-core`, never on each other.
-- `oillamp-app` depends on core, host, net, image.
-- `oillamp-cli` depends on app only (plus core for types). No business logic in picocli classes.
-- `lamp-helper` depends on `oillamp-rfb` only.
+| Type | Why it is public |
+|---|---|
+| `OilLamp` | The entry point. `OilLamp.on(machine).run(argv)` is the whole tool; `main` is a three-line wrapper around it. |
+| `Machine` | The single seam through which effects happen. Public because a caller — a test, or a future GUI — must be able to supply one. |
+| `LampEvent` | The progress stream. Public because NFR-08 requires a GUI to be able to drive the same core and render its own view of it. |
+| `Problem` | What went wrong, structured (NFR-03). Public because a caller has to be able to inspect and re-render failures, not just read English. |
+| `ExitStatus` | The process exit codes of §28, so a caller can act on them by name instead of by number. |
 
-Root Java package: `dev.oillamp` (rename if the company requires a different namespace). Package per module, e.g. `dev.oillamp.core.model`, `dev.oillamp.core.config`, `dev.oillamp.core.plan`, `dev.oillamp.core.policy`, `dev.oillamp.core.session`, `dev.oillamp.core.render`, `dev.oillamp.core.problem`.
+**Everything else is package-private**, and *every class says in its Javadoc which of the two it is
+and why*. That sentence is not decoration: it is the record of a decision that is otherwise
+invisible, and the thing a later contributor needs in order to widen the surface on purpose rather
+than by reflex. "Deliberately package-private: this is the TOML merge, and the merge rule — tables
+merge key-by-key, arrays replace wholesale — is a choice we may need to revisit; nothing outside
+should depend on it" is a sentence that prevents a future mistake. Its absence invites one.
 
-JPMS: each module has a `module-info.java` (helps `jlink`). If Sprouts turns out not to be a proper module, use it as an automatic module and document it.
+### 22.2 Why one package
+
+A package-private class cannot be referenced from another package. That is a compiler rule, not a
+review convention, and it is the cheapest enforcement available. One package therefore buys the
+largest possible number of package-private classes — 69 of 74 — and the boundary holds without
+anyone having to remember it.
+
+The tests are the other half of the same mechanism. They live in package **`oillamp`**, outside
+`dev.oillamp`, so they *cannot* reach an internal even by accident. A scenario has no choice but
+to go through `OilLamp.run(...)` and assert on events, problems and exit codes — which is to say,
+it has no choice but to describe something a user could recognise. This is why the scenarios read
+like *"Every missing prerequisite is reported in one run, not one per attempt"* rather than
+`HostPlannerTest.testCombine()`.
+
+The cost is real and accepted: no sub-package structure, one directory with 74 files, and internal
+helpers that are only distinguishable from domain types by reading them. For a tool this size that
+is a better trade than eight build units, eight `module-info.java` files and a dependency graph to
+keep honest.
+
+### 22.3 The rules that survived from the module split
+
+Enforced by `TheShapeOfTheCodeSpec`:
+
+- **Exactly five public types.** A sixth fails the build. Adding one is a deliberate act with a
+  test to change.
+- **No internal type in a public signature.** The API cannot leak by accident — a public method
+  returning a package-private type would be unusable anyway, but one returning `Plan` or `Result`
+  would drag the internals into the contract.
+- **Effects are confined to an allowlist.** Only `RealMachine`, `SimulatedMachine`, `Filesystem`,
+  `LampLock`, `HostProbe`, `StepRunner`, `LampPhase`, `HostPhase`, `Commands`, `ConsoleRenderer`,
+  `OilLamp`, `Invocation` and `Machine` may touch `ProcessBuilder`, `Files`, sockets, threads,
+  `System.getenv`, `Instant.now()` or `SecureRandom`. This is the original `oillamp-core` purity
+  rule (it was the point of the module split) applied per class instead of per module, and it is
+  strictly stronger: it names the exceptions rather than granting a whole module the privilege.
+
+Root Java package: `dev.oillamp`. JPMS is not used; `jlink`/`jpackage` run in classpath mode
+(S11's fallback), which removes the question of whether Sprouts is a proper module.
 
 ## 23. Programming model (rules for all code)
 
@@ -1471,12 +1530,12 @@ oillamp [--verbose] [--debug] [--no-color] <command>
 
 | Level | What | Tooling |
 |---|---|---|
-| Unit (pure) | every function in §25, all config validation cases, policy engine (host patterns, ports, CIDRs v4/v6, first-match, per-address evaluation), sub-ID allocation, retention, session machine (every row of §25.1), runtime.env quoting | JUnit, AssertJ, optional jqwik |
+| **Scenarios (primary)** | user-visible behaviour only, driven through `OilLamp.run(argv)` against a described `Machine`: checking a machine, setting up a lamp, configuring one, using the command line. Each carries a `reportInfo` block saying *why the scenario exists*, and `./gradlew test` renders them to `build/spock-reports/*.md` as readable documentation. | **Spock**, from package `oillamp` — outside `dev.oillamp`, so internals are unreachable (§22.2) |
+| Unit (pure) | reached *through* the scenarios rather than directly: config validation, policy engine, sub-ID allocation, retention, session machine, runtime.env quoting. A pure function with no scenario that needs it is a function with no user. | Spock |
 | Golden files | `podman run` argv, `ssh_config`, agent guide, runtime.env, terminal commands per profile, viewer command, default config template round-trip, problem rendering | `src/test/resources/golden/**`, update with `-Dgolden.update=true` |
-| Architecture | module dependency rules and the forbidden-API list for `oillamp-core` (§22) | ArchUnit |
+| Architecture | the five-public-types rule, no internals in public signatures, and the effects allowlist (§22.3) | ArchUnit, inside a Spock spec |
 | Adapter | ProcessRunner (timeouts, descendants killed, tails), Unix socket relay, proxy against a local `com.sun.net.httpserver` + a local TCP echo server, JSONL journal | JUnit (no podman) |
-| RFB | codec round-trips; client against a recorded handshake fixture | JUnit |
-| Integration (`@Tag("podman")`) | image builds; container becomes ready; `ssh … echo ok` via relay; RFB handshake on `vnc.sock`; `lamp screenshot` returns a PNG of the right size; `curl https://example.com` inside succeeds via proxy; `curl http://10.0.0.1` gets 403; forward to a host-side test server works; `podman stop` produces a playable non-empty `.mkv`; agent cannot `kill` wf-recorder (`kill` returns EPERM) and cannot connect to sway IPC | run with `./gradlew integrationTest` on a real Ubuntu host |
+| Integration (`@Tag("podman")`) | image builds; container becomes ready; `ssh … echo ok` via relay; `vncviewer` connects to `vnc.sock`; `lamp screenshot` returns a PNG of the right size; `curl https://example.com` inside succeeds via proxy; `curl http://10.0.0.1` gets 403; forward to a host-side test server works; `podman stop` produces a playable non-empty `.mkv`; agent cannot `kill` wf-recorder (`kill` returns EPERM) and cannot connect to sway IPC | run with `./gradlew integrationTest` on a real Ubuntu host |
 | Manual E2E checklist | golden path §3 on Ubuntu 24.04 and 26.04 GNOME; terminal closed → cleanup; Ctrl+C; kill -9 of supervisor → next run cleans up; two lamps concurrently; long lamp path (> 150 chars) | `docs/e2e-checklist.md` |
 
 ## 31. Packaging and distribution
@@ -1494,53 +1553,64 @@ oillamp [--verbose] [--debug] [--no-color] <command>
 
 Each milestone ends with its tests green and a short demo.
 
-| # | Milestone | Scope | Done when |
-|---|---|---|---|
-| **M0** | Spikes | all items in §33, as throwaway scripts in `spikes/` | every ⚠ VERIFY item is confirmed or replaced by its fallback, and this spec is updated |
-| **M1** | Skeleton and host | Gradle multi-module setup with ArchUnit rules; `Result`/`Problem`/catalog; ProcessRunner; HostProbe; HostPlanner incl. APT install and subuid fix; `doctor`; ConsoleRenderer; Journal | `oillamp doctor` on a fresh Ubuntu VM reports and (via `at --dry-run`) plans the right fixes; unit + golden tests |
-| **M2** | Lamp and config | lamp classification/init/migration, layout, lock + stale detection, TOML config pipeline with all validations, key generation, rendering of `session/`, `ssh_config`, runtime dir | `oillamp at <new dir> --dry-run` prints a complete, correct plan; config errors are reported all at once with key paths |
-| **M3** | Image and container | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
-| **M4** | Supervisor | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
-| **M5** | Network | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
-| **M6** | Recording and agent tooling | wf-recorder, retention, `recordings` command; `oillamp-rfb` + `lamp` helper; agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
-| **M7** | Packaging and polish | jpackage `.deb`, completion scripts, README, E2E checklist on Ubuntu 24.04 + 26.04 | acceptance criteria §34 all pass |
+**M1 and M2 are built and verified. M0 and M3–M7 are not started.** `docs/STATUS.md` has the
+current detail; the Status column here is the summary.
+
+| # | Milestone | Status | Scope | Done when |
+|---|---|---|---|---|
+| **M0** | Spikes | ⬜ not started — **S11 resolved** (§36.3), 13 spikes open | all items in §33, as throwaway scripts in `spikes/` | every ⚠ VERIFY item is confirmed or replaced by its fallback, and this spec is updated |
+| **M1** | Skeleton and host | ✅ **built and verified** | Gradle setup with ArchUnit rules (single module, D-26); `Result`/`Problem`/catalog; ProcessRunner; HostProbe; HostPlanner incl. APT install and subuid fix; `doctor`; ConsoleRenderer; Journal | `oillamp doctor` on a fresh Ubuntu VM reports and (via `at --dry-run`) plans the right fixes; unit + golden tests |
+| **M2** | Lamp and config | ✅ **built and verified** | lamp classification/init/migration, layout, lock + stale detection, TOML config pipeline with all validations, key generation, rendering of `session/`, `ssh_config`, runtime dir | `oillamp at <new dir> --dry-run` prints a complete, correct plan; config errors are reported all at once with key paths |
+| **M3** | Image and container | ⬜ not started — needs a host with podman | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
+| **M4** | Supervisor | ⬜ not started | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
+| **M5** | Network | ⬜ not started — *policy engine already built* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
+| **M6** | Recording and agent tooling | ⬜ not started — *retention already built* | wf-recorder, retention, `recordings` command; `lamp` helper script (D-27); agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
+| **M7** | Packaging and polish | ⬜ not started | jpackage `.deb`, completion scripts, README, E2E checklist on Ubuntu 24.04 + 26.04 | acceptance criteria §34 all pass |
 
 ## 33. Verification spikes (⚠ VERIFY items)
 
-| # | Assumption | How to verify | Fallback if false |
-|---|---|---|---|
-| S1 | TigerVNC `vncviewer` accepts a Unix socket path as the server argument (documented in its man page) and supports `AcceptClipboard`, `SendClipboard`, `SendPrimary`, `Shared`, `ViewOnly`, `RemoteResize` in the Ubuntu-packaged version | run against wayvnc `-u` socket | bridge with `socat TCP-LISTEN:<random>,bind=127.0.0.1 UNIX-CONNECT:…` owned by the supervisor (loopback only, per-session random port, VNC password enabled) |
-| S2 | Non-root `sshd -i` works with trixie's OpenSSH (sshd-session split) for the same user | spike container | `dropbear -i -s -j -k` with equivalent restrictions |
-| S3 | Clients accept `WAYLAND_DISPLAY` as an absolute path | run `foot`, GTK, and Firefox as `agent` | symlink into `/run/agent` and relative name |
-| S4 | sway headless honours `output HEADLESS-1 mode --custom WxH` and `scale`; Xwayland starts on demand; a Swing app renders and receives input via VNC with `_JAVA_AWT_WM_NONREPARENTING=1` | spike with a Swing hello-world incl. a modal dialog | `WLR_HEADLESS_OUTPUTS` + `swaymsg create_output`/`output` from the entrypoint (entrypoint as `lamp` may use the IPC socket) |
-| S5 | GPU mode: `--device` render node + `--group-add keep-groups` + `setpriv --keep-groups` lets `lamp` and `agent` open the render node; `WLR_RENDERER=gles2` works headless | spike on Intel/AMD laptop | GPU only for `lamp` (compositor), software GL for agent apps; or `gpu=off` default |
-| S6 | wf-recorder flags (`--codec`, frame-rate limit, codec params) and that `.mkv` is playable after SIGINT and after SIGKILL | spike | adjust flags; if unplayable after SIGKILL, segment recordings (restart recorder every N minutes) |
-| S7 | trixie has `sway xwayland wayvnc wf-recorder grim wtype wlrctl firefox-esr`; Adoptium APT repo supports trixie; Firefox ESR policies path | `podman run debian:trixie apt-cache policy …` | drop `wlrctl`; install Temurin from tarball; find policies path with `dpkg -L firefox-esr` |
-| S8 | Rootless Podman works out of the box on Ubuntu 24.04 and 26.04 with the AppArmor userns restriction (profiles shipped) | fresh VMs | document remedies in `OIL-PODMAN-004` text precisely |
-| S9 | Terminal argument templates (§17.4) | smoke-test each installed terminal | adjust the profile table (it's data) |
-| S10 | OpenCode/pi npm package names, binaries, global config/instruction file paths and schemas; whether their HTTP stacks honour `HTTPS_PROXY`/`NODE_USE_ENV_PROXY` | install in the image, run against a test server | adjust templates; for tools ignoring proxy env, document that only forwards reach them |
-| S11 | Jackson 3.x provides a TOML dataformat module; Sprouts API names; Sprouts usable as a JPMS (automatic) module with jlink/jpackage | build a hello-world with jpackage | Jackson 2.x; classpath mode for jpackage |
-| S12 | Bind mounts onto pre-created mount points work with `--read-only`; Unix sockets in bind-mounted dirs are connectable across the user namespace in both directions with the permissions of §9.2 | spike | adjust modes (e.g. 0777 dirs inside the 0700 state dir) |
-| S13 | `--userns=keep-id:uid=1000,gid=1000` maps container 1000 → host user, and `podman unshare chown 1001:1001` produces the subuid container uid 1001 sees as its own | spike | compute subuid manually from `/etc/subuid` and use `podman unshare` with numeric ids |
-| S14 | wayvnc can set the desktop name (window title of the viewer) | read man page of the packaged version | ignore |
+**S11 is resolved in favour of its fallback (§36.3). The other 13 are open**, and §0 says why
+that matters: each is a fact about a third-party tool that MUST be confirmed before the code
+depending on it is written. Most need a host with podman installed.
+
+| # | Status | Assumption | How to verify | Fallback if false |
+|---|---|---|---|---|
+| S1 | ⬜ open | TigerVNC `vncviewer` accepts a Unix socket path as the server argument (documented in its man page) and supports `AcceptClipboard`, `SendClipboard`, `SendPrimary`, `Shared`, `ViewOnly`, `RemoteResize` in the Ubuntu-packaged version | run against wayvnc `-u` socket | bridge with `socat TCP-LISTEN:<random>,bind=127.0.0.1 UNIX-CONNECT:…` owned by the supervisor (loopback only, per-session random port, VNC password enabled) |
+| S2 | ⬜ open | Non-root `sshd -i` works with trixie's OpenSSH (sshd-session split) for the same user | spike container | `dropbear -i -s -j -k` with equivalent restrictions |
+| S3 | ⬜ open | Clients accept `WAYLAND_DISPLAY` as an absolute path | run `foot`, GTK, and Firefox as `agent` | symlink into `/run/agent` and relative name |
+| S4 | ⬜ open | sway headless honours `output HEADLESS-1 mode --custom WxH` and `scale`; Xwayland starts on demand; a Swing app renders and receives input via VNC with `_JAVA_AWT_WM_NONREPARENTING=1` | spike with a Swing hello-world incl. a modal dialog | `WLR_HEADLESS_OUTPUTS` + `swaymsg create_output`/`output` from the entrypoint (entrypoint as `lamp` may use the IPC socket) |
+| S5 | ⬜ open | GPU mode: `--device` render node + `--group-add keep-groups` + `setpriv --keep-groups` lets `lamp` and `agent` open the render node; `WLR_RENDERER=gles2` works headless | spike on Intel/AMD laptop | GPU only for `lamp` (compositor), software GL for agent apps; or `gpu=off` default |
+| S6 | ⬜ open | wf-recorder flags (`--codec`, frame-rate limit, codec params) and that `.mkv` is playable after SIGINT and after SIGKILL | spike | adjust flags; if unplayable after SIGKILL, segment recordings (restart recorder every N minutes) |
+| S7 | ⬜ open | trixie has `sway xwayland wayvnc wf-recorder grim wtype wlrctl firefox-esr`; Adoptium APT repo supports trixie; Firefox ESR policies path | `podman run debian:trixie apt-cache policy …` | drop `wlrctl`; install Temurin from tarball; find policies path with `dpkg -L firefox-esr` |
+| S8 | ⬜ open | Rootless Podman works out of the box on Ubuntu 24.04 and 26.04 with the AppArmor userns restriction (profiles shipped) | fresh VMs | document remedies in `OIL-PODMAN-004` text precisely |
+| S9 | ⬜ open | Terminal argument templates (§17.4) | smoke-test each installed terminal | adjust the profile table (it's data) |
+| S10 | ⬜ open | OpenCode/pi npm package names, binaries, global config/instruction file paths and schemas; whether their HTTP stacks honour `HTTPS_PROXY`/`NODE_USE_ENV_PROXY` | install in the image, run against a test server | adjust templates; for tools ignoring proxy env, document that only forwards reach them |
+| S11 | ✅ **resolved** — Jackson 2.x, classpath mode | Jackson 3.x provides a TOML dataformat module; Sprouts API names; Sprouts usable as a JPMS (automatic) module with jlink/jpackage | build a hello-world with jpackage | Jackson 2.x; classpath mode for jpackage |
+| S12 | ⬜ open | Bind mounts onto pre-created mount points work with `--read-only`; Unix sockets in bind-mounted dirs are connectable across the user namespace in both directions with the permissions of §9.2 | spike | adjust modes (e.g. 0777 dirs inside the 0700 state dir) |
+| S13 | ⬜ open | `--userns=keep-id:uid=1000,gid=1000` maps container 1000 → host user, and `podman unshare chown 1001:1001` produces the subuid container uid 1001 sees as its own | spike | compute subuid manually from `/etc/subuid` and use `podman unshare` with numeric ids |
+| S14 | ⬜ open | wayvnc can set the desktop name (window title of the viewer) | read man page of the packaged version | ignore |
 
 ## 34. Acceptance criteria
 
-1. On a fresh Ubuntu 24.04 (and 26.04) GNOME installation with only the `.deb` installed, `oillamp at ~/lamps/a` installs prerequisites (one sudo prompt), builds the image, and opens a terminal (logged in as `agent` in `~/workspace`) and a viewer showing a 1920×1080 desktop. No manual step besides the sudo password.
-2. A second `oillamp at ~/lamps/a` while the first runs fails with `OIL-LOCK-001` and exit code 4; `oillamp at ~/lamps/b` starts an independent second sandbox.
-3. Closing the terminal window stops and removes the container within 20 s, finalizes a playable `.mkv`, removes sockets and the runtime dir, prints a summary, and exits 0.
-4. `kill -9` of the supervisor, followed by `oillamp at` on the same lamp, cleans up the leftover container with a `OIL-LOCK-002` warning and starts normally.
-5. In the sandbox, `ls /` shows no host files; the only host paths visible are those of §13.3. Files created by the agent in `~` appear on the host in `agent-lamp-<id>/` owned by the host user.
-6. As `agent`: `kill` of any `lamp`-owned process fails; connecting to sway's IPC socket fails; `wayvncctl` cannot reach wayvnc; writing to `/oillamp/recordings` fails; reading `oillamp.toml` is impossible (not mounted).
-7. `curl -I https://example.com` succeeds; `curl -I http://10.0.0.1` and `curl -I http://<host LAN IP>:22` return 403 with the rule label; `curl` with `--noproxy '*'` fails (no network). All are in `network-<session>.jsonl`; denials appear on the supervisor console.
-8. With a forward `llm` configured, `curl http://127.0.0.1:<port>/v1/models` inside reaches the target; OpenCode and pi, started without further setup, can chat with the configured model.
-9. A Swing test application (with a modal dialog) started from the SSH terminal appears on the agent's desktop and in the viewer; `lamp screenshot` produces a PNG showing it; `lamp click` on its button triggers the action; `lamp type` enters text into a text field.
-10. Firefox ESR opens on the desktop and loads a public website through the proxy.
-11. A native library copied to `agent-lamp-<id>/libs/` is loadable by the Swing app via `System.loadLibrary` without extra flags.
-12. An invalid `oillamp.toml` (unknown key + bad CIDR + duplicate forward) produces exactly three `OIL-CONFIG-*` problems in one run, each with file, key path, value, and expectation; exit code 2.
-13. `oillamp at <dir> --dry-run` on a new directory prints every step (including the podman argv) and changes nothing on disk.
-14. With `display.gpu = "on"` on a machine without a usable render node, a clear `OIL-GPU-003` is shown; with `auto`, the session starts in software mode and says why.
-15. All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host.
+Three of the fifteen can be checked today (12, 13, and the non-integration half of 15). The
+other twelve all need a running container, so they are gated on M3 and M4. None has been
+weakened; they are the same criteria the finished tool must meet.
+
+1. ⬜ On a fresh Ubuntu 24.04 (and 26.04) GNOME installation with only the `.deb` installed, `oillamp at ~/lamps/a` installs prerequisites (one sudo prompt), builds the image, and opens a terminal (logged in as `agent` in `~/workspace`) and a viewer showing a 1920×1080 desktop. No manual step besides the sudo password.
+2. ⬜ A second `oillamp at ~/lamps/a` while the first runs fails with `OIL-LOCK-001` and exit code 4; `oillamp at ~/lamps/b` starts an independent second sandbox.
+3. ⬜ Closing the terminal window stops and removes the container within 20 s, finalizes a playable `.mkv`, removes sockets and the runtime dir, prints a summary, and exits 0.
+4. ⬜ `kill -9` of the supervisor, followed by `oillamp at` on the same lamp, cleans up the leftover container with a `OIL-LOCK-002` warning and starts normally.
+5. ⬜ In the sandbox, `ls /` shows no host files; the only host paths visible are those of §13.3. Files created by the agent in `~` appear on the host in `agent-lamp-<id>/` owned by the host user.
+6. ⬜ As `agent`: `kill` of any `lamp`-owned process fails; connecting to sway's IPC socket fails; `wayvncctl` cannot reach wayvnc; writing to `/oillamp/recordings` fails; reading `oillamp.toml` is impossible (not mounted).
+7. ⬜ `curl -I https://example.com` succeeds; `curl -I http://10.0.0.1` and `curl -I http://<host LAN IP>:22` return 403 with the rule label; `curl` with `--noproxy '*'` fails (no network). All are in `network-<session>.jsonl`; denials appear on the supervisor console.
+8. ⬜ With a forward `llm` configured, `curl http://127.0.0.1:<port>/v1/models` inside reaches the target; OpenCode and pi, started without further setup, can chat with the configured model.
+9. ⬜ A Swing test application (with a modal dialog) started from the SSH terminal appears on the agent's desktop and in the viewer; `lamp screenshot` produces a PNG showing it; `lamp click` on its button triggers the action; `lamp type` enters text into a text field.
+10. ⬜ Firefox ESR opens on the desktop and loads a public website through the proxy.
+11. ⬜ A native library copied to `agent-lamp-<id>/libs/` is loadable by the Swing app via `System.loadLibrary` without extra flags.
+12. ✅ An invalid `oillamp.toml` (unknown key + bad CIDR + duplicate forward) produces exactly three `OIL-CONFIG-*` problems in one run, each with file, key path, value, and expectation; exit code 2.
+13. ✅ `oillamp at <dir> --dry-run` on a new directory prints every step (including the podman argv) and changes nothing on disk.
+14. ⬜ With `display.gpu = "on"` on a machine without a usable render node, a clear `OIL-GPU-003` is shown; with `auto`, the session starts in software mode and says why.
+15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(33 Spock scenarios and the architecture rules pass. Integration tests need podman.)*
 
 ## 35. Remaining open points (non-blocking)
 
@@ -1552,6 +1622,71 @@ Each milestone ends with its tests green and a short demo.
 # Appendices — file templates
 
 These are starting points. Spike results (§33) take precedence.
+
+## 36. Implementation amendments
+
+This section is the record required by §6: *"Implementers MUST NOT silently change these
+decisions. If one proves infeasible, document the reason and the replacement here."* Every
+deviation taken while building M1 and M2 is listed below with the reason. Nothing here was
+changed for convenience alone.
+
+### 36.1 Structure
+
+| Was | Is | Why |
+|---|---|---|
+| 8 Gradle modules (§22) | 1 module | The module boundaries existed to enforce purity and dependency direction. One ArchUnit spec enforces both, per class rather than per module, which is stricter. The modules cost eight build files, eight `module-info.java` files and a JPMS question (S11) for no enforcement the tests do not already provide. **D-26** |
+| ~12 packages, ~50 public types | 1 package, **5 public types** | A small public API is only real if the compiler enforces it. See §22.1–22.3. **D-26** |
+| Kotlin DSL | Groovy DSL | The test sources are Groovy (Spock). One language fewer in the build. **D-19** |
+| picocli | ~120 lines of hand-rolled parsing | Nine subcommands, and §28 needs exit code 2 on precisely the usage errors it lists. One fewer dependency on the golden path. **D-19** |
+| Wire model layer (§24.6) — Jackson binds to wire records, then validate | The config reader walks the merged JSON tree directly | Walking the tree *keeps the key path* (`network.rules[0].cidrs`), so a problem can say exactly where it is. Bind-then-validate loses that and needs a second parallel set of record types to get it back. Less code, better errors. |
+| `oillamp-rfb` + `lamp-helper` (a Java RFB 3.8 client) | A shell script over `grim`/`wtype`/`wlrctl` | **D-27.** The image already installs the tools; the Java path bought nothing and cost a protocol implementation, PNG encoding, AppCDS tuning and a jar-into-image-context build coupling. |
+
+### 36.2 Behaviour
+
+- **`LampEvent.Answer` added.** `config show-effective` and similar commands answer a question the
+  user asked. That is not "progress output" and must not be hidden behind `--verbose` — otherwise
+  the command prints nothing, which is what it did before this event type existed.
+- **Phase B plans in two passes.** Keys must exist on disk before `authorized_keys` and
+  `known_hosts` can contain them. A single pass would force a step to compute its own content at
+  execution time, which would make `--dry-run` a lie — it would print a plan whose contents did
+  not yet exist. §10.5's phase list is unchanged; only the planning within Phase B is split.
+- **`--dry-run` no longer requires working sudo.** A dry run changes nothing, so the state of
+  `sudo` is irrelevant to producing a plan. Previously `oillamp at --dry-run` on a machine whose
+  sudo needs a password was refused with `OIL-PKG-002` — refusing to *describe* work on the
+  grounds that it could not be *performed*. `HostPlanner.Options.willExecute` distinguishes them.
+- **Podman checks are skipped when podman is among the missing packages.** `doctor` reported both
+  `OIL-PKG-001` ("podman is not installed") and `OIL-PODMAN-001` ("podman did not answer") for the
+  same single fact. One fact, one problem.
+- **A directory containing only `oillamp.toml` is not "foreign".** §10.1 classifies a non-empty
+  directory as someone else's. But writing the config *before* the first `oillamp at` is the
+  documented way to configure a lamp, so `oillamp.toml` and `README.txt` are ignored when deciding
+  whether a directory is empty.
+- **`Problems.crash` and a top-level catch.** NFR-03 says no bare stack traces on the console. A
+  bug in oillamp itself is still an error the user sees, so `RuntimeException` and
+  `StackOverflowError` become `OIL-INTERNAL-001`, with the advice to re-run with `--debug`.
+
+### 36.3 Defects found in this specification
+
+- **§10.2's example `agentId` `k3v9x2ab` is invalid under its own alphabet.** The identifier is
+  specified as RFC 4648 lowercase base32, which is `[a-z2-7]` — it has no `8` or `9`. Examples
+  using it were changed to `k3v7x2ab`.
+- **S11 is resolved, in favour of the fallback.** Jackson 3.x has no TOML dataformat module;
+  Jackson 2.20 does. The build uses Jackson 2.x, and `jpackage` runs in classpath mode.
+
+### 36.4 Status
+
+**M1 and M2 are implemented and verified. M0 and M3–M7 are not started.**
+
+Status is recorded in three places, all of which describe the code as it stands rather than the
+intent:
+
+- **§4 and §5** — every requirement carries ✅, 🟡 or ⬜, and each 🟡 says which part is built.
+- **§32, §33 and §34** — milestones, verification spikes and acceptance criteria, same markers.
+- **`docs/STATUS.md`** — the detail: what each command does today, what each milestone still
+  needs, how the 74 classes are laid out, and how to run what exists.
+
+Of the fifteen acceptance criteria, three can be checked today; the other twelve need a running
+container. None has been weakened to fit what was built.
 
 ## Appendix A — `Containerfile` (sketch)
 

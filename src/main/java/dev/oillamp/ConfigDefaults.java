@@ -12,6 +12,9 @@ import sprouts.Tuple;
  * The commented template that {@code oillamp at} writes into a new lamp (§20.2) must agree with
  * them exactly; a scenario asserts that, so the documentation a user reads and the behaviour
  * they get can never drift apart.
+ *
+ * <p>Deliberately <b>package-private</b>: defaults are meant to change between releases. Freezing
+ * them in the API would turn every improved default into a compatibility question.
  */
 final class ConfigDefaults {
 

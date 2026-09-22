@@ -1,0 +1,131 @@
+# oillamp — implementation status
+
+Current as of the commit that added this file. The design spec (`oillamp-design-spec.md`)
+describes the finished tool; this file describes what actually exists today, what it was
+verified against, and what each remaining milestone needs. Every deviation from the spec is
+recorded in **spec §36**, with reasons.
+
+---
+
+## In one paragraph
+
+Milestones **M1 (host prerequisites)** and **M2 (lamp directory and configuration)** are
+implemented and verified. `oillamp doctor` and `oillamp at <dir> --dry-run` do the real thing on
+a real machine. `oillamp at <dir>` without `--dry-run` will install host prerequisites and build
+the lamp directory, then stop before starting a container, because **M3 onwards is not written
+yet**. The five session commands (`view`, `shell`, `stop`, `status`, `list`) parse and then say
+so, rather than pretending.
+
+---
+
+## What works today
+
+| Command | State |
+|---|---|
+| `oillamp doctor` | **Works.** Probes the host, reports every deficiency at once with fix instructions, exits 0 or 3. |
+| `oillamp at <dir> --dry-run` | **Works.** Prints the complete plan — package installs, subuid allocation, every file and directory of the lamp with its mode — and changes nothing. |
+| `oillamp at <dir>` | **Works up to the container.** Installs prerequisites, creates and populates the lamp, generates keys, writes the session files, then reports that starting the container is the next milestone. |
+| `oillamp at <dir> --init` | **Works.** Writes a commented `oillamp.toml` and stops. |
+| `oillamp config check <dir>` | **Works.** Reports every configuration error in one pass, each with its key path and file. |
+| `oillamp config show-effective <dir>` | **Works.** Prints the merged global + lamp configuration. |
+| `oillamp config path <dir>` | **Works.** |
+| `--verbose`, `--debug`, `--no-color`, `--no-install` | **Work.** |
+| `view` `shell` `stop` `status` `list` `recordings` `image` | **Parse, then refuse**, because each needs a running session (M4). |
+
+### Verified on this machine
+
+```
+$ oillamp doctor
+→ finds Ubuntu 24.04.5, GNOME on Wayland, names podman/uidmap/catatonit/socat
+  as missing, offers the apt command, exits 3
+$ oillamp at /tmp/lamp --dry-run
+→ prints ~35 steps and creates nothing
+```
+
+Plus **33 Spock scenarios**, all passing, rendered to readable Markdown at
+`build/spock-reports/*.md` after `./gradlew test`.
+
+---
+
+## "Does it not install podman itself?"
+
+**Yes — that is FR-01 and D-17, and it is implemented.** On a machine missing prerequisites,
+`oillamp at <dir>` runs `sudo apt-get install -y …` itself and logs every command. `--no-install`
+opts out and turns those into reported problems instead. Acceptance criterion §34.1 is explicit
+about it: *"installs prerequisites (one sudo prompt)"* — one prompt is the entire manual step.
+
+The catch is only about **who can type the password.** This machine's sudo requires one, and an
+automated agent session has no terminal to type it into, so the install step is the one thing an
+agent cannot carry out on its own. A human runs `oillamp at <dir>` once, types the password, and
+everything after that is automatic.
+
+The other half of the limit is real and unavoidable: **M3–M6 cannot be meaningfully tested until
+podman is present**, and the simulated machine deliberately does not fake it. It answers
+`podman unshare chown` with a plausible success, which is fine for testing *planning* and
+actively misleading for testing *execution*. So the container work wants a host with podman
+actually installed — this one, once the prerequisites are in.
+
+---
+
+## What is left
+
+| Milestone | Needs | Blocked on |
+|---|---|---|
+| **M3** Image and container | image resources (Containerfile, entrypoint, sway config, sshd_config — Appendices A–F are sketches, not code), content-hash image tag, `podman build`, container spec and run, readiness protocol | a host with podman |
+| **M4** Supervisor | session state machine (§25.1), SSH relays over Unix sockets, terminal and viewer launch (the D-22 profile table already exists), control socket, shutdown sequence, and the five session commands | M3 |
+| **M5** Network | egress proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, LLM preconfiguration. *The policy model, rules, CIDR and host-pattern matching are already written and tested* — what is missing is the proxy that applies them. | M3 |
+| **M6** Recording and agent tooling | wf-recorder, retention (already written), `recordings` command, the `lamp` helper **script** (D-27 — no Java RFB client), agent guide delivery, GPU auto mode | M3 |
+| **M7** Packaging | jpackage `.deb`, completion scripts, README, E2E checklist | M3–M6 |
+
+### Before M3: the verification spikes
+
+Spec §33 lists 14 **⚠ VERIFY** assumptions about third-party tools. **S11 is resolved** (Jackson
+2.x for TOML; classpath mode for jpackage — see §36.3). The remaining 13 are assumptions about
+sway, wayvnc, wf-recorder, rootless podman and the agent tools that the spec itself says must be
+confirmed with a spike *before* the dependent code is written. Most need a machine with podman.
+
+They are the real risk in this project. Nothing in the Java design is hard; whether
+`--userns=keep-id` maps the way S13 assumes is.
+
+---
+
+## Finding your way around the code
+
+74 classes, one package, five of them public. The rule and its reasons are in
+`src/main/java/dev/oillamp/package-info.java`; every class states in its Javadoc whether it is
+public or package-private **and why**.
+
+```
+src/main/java/dev/oillamp/
+  OilLamp Machine LampEvent Problem ExitStatus   ← the entire public API
+  Invocation Commands ConsoleRenderer Context    ← command line in, console out
+  HostProbe HostFacts HostPlanner HostPhase      ← phase A: is this machine usable?
+  LampClassifier LampLayout LampPlanner LampPhase← phase B: build the lamp directory
+  ConfigLoader ConfigTree ConfigSection LampConfig← TOML: merge, validate, locate errors
+  NetworkPolicy Rule HostPattern Cidr IpAddress  ← the policy engine (written, not yet applied)
+  Plan Step StepRunner                           ← every effect is described before it is done
+  Problems Result                                ← the problem catalogue and error accumulation
+  RealMachine SimulatedMachine Filesystem        ← the effects, confined to an allowlist
+src/test/groovy/oillamp/                         ← a DIFFERENT package, deliberately (§22.2)
+```
+
+Two ideas carry most of the design:
+
+1. **Everything is planned as data before it is done.** `Step` describes an effect; `StepRunner`
+   performs it. `--dry-run` is the same code path with the performing left out, which is why the
+   plan it prints is necessarily the plan that would have run.
+2. **One seam for all effects.** `Machine` is the only way to run a command, read a system file,
+   ask the time or get randomness. A scenario describes a machine in a sentence
+   (`ubuntu("24.04").waylandSession("GNOME").withoutPodman().sudoNeedsPassword()`) and the real
+   entry point runs against it. The lamp directory itself is a real temp dir, because its security
+   story is POSIX modes and symlinks and a faked filesystem would test nothing.
+
+---
+
+## Running it
+
+```bash
+./gradlew build                 # compile, run all 33 scenarios
+./gradlew installDist           # build/install/oillamp/bin/oillamp
+./gradlew test                  # then read build/spock-reports/*.md
+```

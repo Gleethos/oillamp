@@ -8,6 +8,9 @@ import java.util.Locale;
  * <p>Only three forms exist, and a wildcard deliberately does <em>not</em> match the apex:
  * {@code *.example.com} covers {@code docs.example.com} but not {@code example.com}. Allowing
  * a rule to quietly mean more than it says is exactly the kind of surprise a sandbox must not have.
+ *
+ * <p>Deliberately <b>package-private</b>: host matching for policy rules, including wildcards. The
+ * pattern syntax is documented in {@code oillamp.toml}; the matcher is not.
  */
 sealed interface HostPattern {
 

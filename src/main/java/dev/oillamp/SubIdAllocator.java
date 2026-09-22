@@ -9,6 +9,9 @@ import sprouts.Tuple;
  * silently lets one user's container write files as another user; and it is only discovered
  * much later. Being pure means every awkward case (ranges touching, ranges out of order,
  * a range that ends exactly where ours would start) is a unit test rather than a field report.
+ *
+ * <p>Deliberately <b>package-private</b>: it picks a free subordinate id range around the ones
+ * already taken. An algorithm, and free to get smarter.
  */
 final class SubIdAllocator {
 

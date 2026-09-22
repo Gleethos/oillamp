@@ -10,6 +10,8 @@ import sprouts.Tuple;
  * <p>The shell reads the directory; this type records what was there; a pure function then
  * decides what to do about it. Splitting it this way is what lets "you pointed me at your
  * Documents folder" be tested without a filesystem.
+ *
+ * <p>Deliberately <b>package-private</b>: the lifecycle state of §10. An internal vocabulary.
  */
 sealed interface LampState {
 

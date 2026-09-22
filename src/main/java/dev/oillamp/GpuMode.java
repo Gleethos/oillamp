@@ -1,6 +1,10 @@
 package dev.oillamp;
 
-/** {@code display.gpu} — spec §14.3 (D-24). GPU is welcome, but must never block a session. */
+/**
+ * {@code display.gpu} — spec §14.3 (D-24). GPU is welcome, but must never block a session.
+ *
+ * <p>Deliberately <b>package-private</b>: one configuration value.
+ */
 enum GpuMode {
     /** Use the GPU if everything lines up; fall back to software silently otherwise. */
     AUTO,

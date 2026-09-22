@@ -7,6 +7,9 @@ package dev.oillamp;
  * <p>Held as text blocks rather than classpath resources so that the pure core stays free of I/O
  * (§22) and so that a scenario can assert the shipped template and the built-in defaults agree.
  * A commented template that has drifted from the real defaults is worse than no template at all.
+ *
+ * <p>Deliberately <b>package-private</b>: the text of generated files. All of it is meant to be
+ * edited freely.
  */
 final class Templates {
 

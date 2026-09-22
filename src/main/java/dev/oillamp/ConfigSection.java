@@ -23,6 +23,10 @@ import sprouts.Tuple;
  *
  * <p>Every problem carries the file, the dotted key path, the offending value and what was
  * expected, because "invalid configuration" without a location is just a puzzle.
+ *
+ * <p>Deliberately <b>package-private</b>: an accumulating reader that turns a TOML subtree into
+ * located problems. Its shape follows the error-reporting strategy of §27.1, which is free to
+ * change.
  */
 final class ConfigSection {
 

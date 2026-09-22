@@ -19,6 +19,9 @@ import sprouts.Association;
  *
  * <p>Origins are tracked per key path so that a problem can name the file the offending value
  * actually came from, which matters as soon as two files are in play.
+ *
+ * <p>Deliberately <b>package-private</b>: a thin walk over Jackson's tree, and the only place
+ * Jackson is named. That is only true while it stays internal — which is the point.
  */
 record ConfigTree(JsonNode root, Association<String, Path> origins) {
 

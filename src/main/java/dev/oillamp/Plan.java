@@ -8,6 +8,9 @@ import sprouts.Tuple;
  * <p>Startup is four rounds of <em>probe facts → plan (pure) → execute plan</em>. Re-probing
  * between rounds is required because earlier rounds change the host: installing podman changes
  * what the next probe sees.
+ *
+ * <p>Deliberately <b>package-private</b>: an ordered list of steps. Users see plans as {@code
+ * --dry-run} text, and that text is the contract.
  */
 record Plan(LampEvent.Phase phase, Tuple<Step> steps) {
 

@@ -11,6 +11,9 @@ import java.util.Set;
  * that other host users cannot reach the sockets inside it, and then relaxes individual socket
  * files to {@code 0666} so the container's infra user can connect. Getting one of those wrong
  * either breaks the sandbox or opens it up, so the mode is a typed value, not an int passed around.
+ *
+ * <p>Deliberately <b>package-private</b>: a permission bit set, so §9.2's modes are written as
+ * names rather than octal literals scattered through the code.
  */
 record PosixMode(int bits) {
 

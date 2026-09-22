@@ -20,6 +20,10 @@ import sprouts.Tuple;
  * {@code podman info} JSON, real {@code dpkg-query} lines — so the production parsers are what
  * runs. A simulation that returned pre-parsed facts would quietly stop testing the half of the
  * code most likely to break when a tool changes its output.
+ *
+ * <p>Deliberately <b>package-private</b>: reached only through {@link Machine#simulated()}. The
+ * builder on {@code Machine.Simulation} is the API a scenario writes against; this is what it
+ * constructs.
  */
 final class SimulatedMachine implements Machine {
 

@@ -24,6 +24,10 @@ import sprouts.Tuple;
  * Those use the real filesystem even in tests, because the lamp's whole security story is made
  * of POSIX permission bits, ownership and symlinks (§9.2), and a simulated filesystem that got
  * those subtly wrong would be worse than no test at all.
+ *
+ * <p>Deliberately <b>public</b>: a caller must be able to supply one — that is what makes it a
+ * seam. Scenarios describe a machine, {@code main} passes the real one, and a future GUI would do
+ * the same.
  */
 public interface Machine {
 

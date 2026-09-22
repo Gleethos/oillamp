@@ -2,7 +2,11 @@ package dev.oillamp;
 
 import java.util.Optional;
 
-/** A port or an inclusive range of ports in a network rule — spec §18.3. */
+/**
+ * A port or an inclusive range of ports in a network rule — spec §18.3.
+ *
+ * <p>Deliberately <b>package-private</b>: ports for a policy rule.
+ */
 record PortRange(int from, int to) {
 
     public PortRange {

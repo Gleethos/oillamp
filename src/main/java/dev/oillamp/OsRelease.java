@@ -2,7 +2,11 @@ package dev.oillamp;
 
 import sprouts.Tuple;
 
-/** The contents of {@code /etc/os-release} that matter, plus {@code os.name} — spec §11.2. */
+/**
+ * The contents of {@code /etc/os-release} that matter, plus {@code os.name} — spec §11.2.
+ *
+ * <p>Deliberately <b>package-private</b>: a parsed {@code /etc/os-release}.
+ */
 record OsRelease(String osName, String id, Tuple<String> idLike, String versionId, String prettyName) {
 
     public boolean isLinux() { return osName.toLowerCase(java.util.Locale.ROOT).contains("linux"); }

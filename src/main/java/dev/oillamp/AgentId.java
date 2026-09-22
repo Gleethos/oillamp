@@ -7,6 +7,9 @@ package dev.oillamp;
  * {@code SecureRandom} in the shell and never changed. Every derived name (container, hostname,
  * agent directory, runtime directory, SSH host alias) is a pure function of it, so a lamp that
  * is copied or moved can never be mistaken for another one.
+ *
+ * <p>Deliberately <b>package-private</b>: the identifier that names a lamp forever. Nothing outside
+ * constructs one, and making it public would freeze its base32 alphabet into the API.
  */
 record AgentId(String value) {
 

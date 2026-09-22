@@ -11,6 +11,10 @@ package dev.oillamp;
  *
  * <p>It deliberately does not hide the sandbox. An agent that understands the boundary can work
  * inside it and report accurately when it hits one; an agent that does not will guess.
+ *
+ * <p>Deliberately <b>package-private</b>: the Markdown it renders is the contract, not this class.
+ * The guide is rewritten whenever we learn something new about how agents misread their sandbox
+ * (§19.3).
  */
 final class AgentGuide {
 
@@ -49,7 +53,7 @@ final class AgentGuide {
            .append("X11 applications work. Launch GUI applications from your shell as you would\n")
            .append("anywhere else; they appear on that desktop and the human sees them.\n\n");
         out.append("""
-            The `lamp` command drives the desktop:
+            The `lamp` command drives it:
 
             ```
             lamp screenshot                 # PNG of the whole screen; prints the path
@@ -64,6 +68,20 @@ final class AgentGuide {
 
             After launching an application, `lamp wait-stable` then `lamp screenshot` is the
             reliable way to see what actually appeared.
+
+            `lamp` is a shell script and a convenience, not a gate. It is a thin wrapper over
+            ordinary Wayland tools that are installed here and that you may call directly
+            whenever it does not do what you need:
+
+            | Tool | For |
+            |---|---|
+            | `grim` | capture the screen or a region to PNG |
+            | `slurp` | pick a region interactively |
+            | `wtype` | type text, press key combinations |
+            | `wlrctl` | move the pointer, click, scroll |
+
+            Read the script with `cat $(command -v lamp)` if you want to see exactly what it
+            runs. If you find something it should do and does not, say so — it is one file.
 
             ## Network
 

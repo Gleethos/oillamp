@@ -5,6 +5,8 @@ package dev.oillamp;
  *
  * <p>The order of the constants is the fallback order used when nothing better applies, so it
  * runs from "most likely to be the user's actual terminal on a modern desktop" to "always works".
+ *
+ * <p>Deliberately <b>package-private</b>: names one row of the D-22 table.
  */
 enum TerminalProfileId {
     PTYXIS("ptyxis"),

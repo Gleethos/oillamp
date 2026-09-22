@@ -19,6 +19,9 @@ import sprouts.Tuple;
  * <p>In dry-run mode nothing happens at all — the same plan is announced rather than performed,
  * which is what makes {@code --dry-run} trustworthy instead of a parallel code path that drifts
  * (FR-12, NFR-04).
+ *
+ * <p>Deliberately <b>package-private</b>: it executes a plan and emits events. On the effects
+ * allowlist.
  */
 final class StepRunner {
 

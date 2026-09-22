@@ -21,6 +21,9 @@ import sprouts.Tuple;
  * <p>The entry point takes an argument vector rather than typed methods on purpose: it is what
  * the user actually types, so a scenario exercises the same path a person does, argument parsing
  * and usage errors included.
+ *
+ * <p>Deliberately <b>public</b>: this is the entry point. {@code OilLamp.on(machine).run(argv)} is
+ * the entire tool, and it is the only name a caller needs to know to use it.
  */
 public final class OilLamp {
 

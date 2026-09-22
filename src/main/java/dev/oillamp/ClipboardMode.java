@@ -6,6 +6,9 @@ package dev.oillamp;
  * <p>The default is one-way on purpose: pasting <em>into</em> the sandbox is useful, while
  * copying <em>out</em> of it is where content the agent produced could leak onto the host
  * clipboard unnoticed.
+ *
+ * <p>Deliberately <b>package-private</b>: one configuration value (D-23). Public would make every
+ * future clipboard direction a breaking change.
  */
 enum ClipboardMode {
     TO_AGENT, BOTH, NONE;

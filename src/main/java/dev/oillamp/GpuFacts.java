@@ -9,6 +9,9 @@ import sprouts.Tuple;
  *
  * <p>GPU acceleration is welcome but must never block a session (D-24), so this is only ever an
  * input to a decision that can always fall back to software rendering.
+ *
+ * <p>Deliberately <b>package-private</b>: what was found in {@code /dev/dri}, as facts to decide
+ * from.
  */
 record GpuFacts(Tuple<RenderNode> renderNodes) {
 

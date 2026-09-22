@@ -15,6 +15,10 @@ import java.util.Optional;
  * in its group, the driver has to be one of the open Mesa drivers known to work headless, and
  * the OCI runtime has to be crun — because passing the host's render group into the container
  * needs {@code --group-add keep-groups}, which only crun implements (§13.1).
+ *
+ * <p>Deliberately <b>package-private</b>: GPU selection is D-24's "auto, and never block the
+ * session" policy. The fallback behaviour is what is promised; this class is how it is decided
+ * today.
  */
 final class Gpu {
 

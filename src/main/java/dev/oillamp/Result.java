@@ -11,6 +11,10 @@ import sprouts.Tuple;
  * <p>The point of combining instead of throwing: a user with three mistakes in their
  * {@code oillamp.toml} should see all three in one run (FR-52, acceptance criterion 12),
  * not fix one, re-run, and discover the next.
+ *
+ * <p>Deliberately <b>package-private</b>: the internal "ok, or these problems" type whose {@code
+ * combine} is what lets one run report every config error at once. Callers get {@code Outcome} and
+ * {@code Problem}; making this public would put a second, redundant error model in the API.
  */
 sealed interface Result<T> {
 

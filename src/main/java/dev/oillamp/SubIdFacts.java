@@ -8,6 +8,8 @@ import sprouts.Tuple;
  * <p>Rootless podman needs a block of subordinate ids to map container users onto. oillamp needs
  * at least 65536 of them, because the sandbox uses two container users and the infra user must
  * land on an id the agent cannot become (D-14, NFR-06).
+ *
+ * <p>Deliberately <b>package-private</b>: parsed {@code /etc/subuid} and {@code /etc/subgid}.
  */
 sealed interface SubIdFacts {
 

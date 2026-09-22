@@ -5,6 +5,9 @@ package dev.oillamp;
  *
  * <p>Scripts and CI wrap this tool, so the codes are a contract: {@code 4} always means
  * "that lamp is already running", never "some other error".
+ *
+ * <p>Deliberately <b>public</b>: a caller should be able to act on how the process ended by name
+ * rather than by remembering that 3 means "prerequisites missing".
  */
 public enum ExitStatus {
     /** Success, or a session that ended cleanly. */

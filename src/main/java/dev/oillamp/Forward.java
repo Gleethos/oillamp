@@ -8,6 +8,9 @@ package dev.oillamp;
  * expect a plain base URL for the company LLM, and routing that through an HTTP proxy policy
  * would be both fragile and pointless. Because they bypass the policy, they are named, listed
  * in the agent guide, and logged like everything else.
+ *
+ * <p>Deliberately <b>package-private</b>: one entry of {@code [[network.forwards]]}. Part of the
+ * config model.
  */
 record Forward(String name, int port, HostAndPort target) {
 

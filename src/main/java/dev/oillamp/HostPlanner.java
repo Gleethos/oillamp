@@ -18,6 +18,10 @@ import sprouts.ValueSet;
  *       the first pass cannot ask a program that is not there yet; §10.5 re-probes after the
  *       fixes and the second pass ({@link Options#afterFixes()}) insists that everything is right.</li>
  * </ul>
+ *
+ * <p>Deliberately <b>package-private</b>: the decision "what must be fixed before a sandbox can
+ * run". Users meet it through {@code doctor} and {@code at --dry-run}, which is the only shape of
+ * it worth promising.
  */
 final class HostPlanner {
 

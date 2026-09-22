@@ -11,6 +11,10 @@ import sprouts.Tuple;
  * <p>Nothing here decides anything: it sequences the phases, turns their results into exit codes
  * and lets {@link Context} carry the events out. The decisions all live in pure functions in the
  * core, which is why they are tested as such.
+ *
+ * <p>Deliberately <b>package-private</b>: it assembles argv for podman, ssh and apt. Those command
+ * lines change whenever the tools do, which is precisely why nobody outside may depend on their
+ * shape.
  */
 final class Commands {
 
@@ -24,9 +28,9 @@ final class Commands {
 
     /**
      * {@code oillamp doctor [<dir>]} — check everything, change nothing.
-     *
-     * <p>Deliberately does not require a graphical session, because "you are running this over
-     * SSH with no display" is one of the things a user runs doctor to find out.
+ *
+ * <p>Deliberately does not require a graphical session, because "you are running this over
+ * SSH with no display" is one of the things a user runs doctor to find out.
      */
     public ExitStatus doctor(Optional<Path> lampPath) {
         Context.Options original = context.options();

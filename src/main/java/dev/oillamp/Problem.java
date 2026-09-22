@@ -16,6 +16,9 @@ import sprouts.Tuple;
  *
  * <p>This is part of the public API: it is what a caller — a terminal user, a test, or the
  * planned Swing front end — actually observes when something goes wrong.
+ *
+ * <p>Deliberately <b>public</b>: NFR-03 requires failures to be structured rather than prose —
+ * which only helps a caller that is allowed to inspect the structure instead of re-parsing English.
  */
 public record Problem(
     Code code,

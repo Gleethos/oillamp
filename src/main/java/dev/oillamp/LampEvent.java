@@ -9,6 +9,9 @@ import java.time.Duration;
  * render them: the CLI's console renderer, the session log, and — later — the Swing GUI,
  * which must be able to drive the same core without changes. Tests subscribe too, which is
  * why this is public API while the machinery producing it is not.
+ *
+ * <p>Deliberately <b>public</b>: NFR-08 requires a GUI to drive this same core and render its own
+ * view of progress. It can only do that if it can see the events, so they are part of the contract.
  */
 public sealed interface LampEvent {
 

@@ -8,6 +8,9 @@ import java.util.Optional;
  *
  * <p>{@code schemaVersion} is what lets a future oillamp migrate an old lamp instead of
  * misreading it, and lets this one refuse a lamp from the future rather than damaging it.
+ *
+ * <p>Deliberately <b>package-private</b>: the persisted {@code meta.json}. Its on-disk form is
+ * versioned and migrated (§10.4); the Java record is not the thing being promised.
  */
 record LampMeta(
     int schemaVersion,

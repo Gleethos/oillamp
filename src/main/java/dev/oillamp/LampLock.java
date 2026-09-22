@@ -18,6 +18,9 @@ import java.util.Optional;
  * normally instead of demanding manual cleanup (FR-08).
  *
  * <p>{@code session.json} beside it is informational only. The lock is the truth.
+ *
+ * <p>Deliberately <b>package-private</b>: one lamp, at most one running sandbox. On the effects
+ * allowlist; the lock's stale-detection strategy is free to improve.
  */
 final class LampLock implements AutoCloseable {
 
