@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -60,7 +62,7 @@ final class RealMachine implements Machine {
     }
 
     @Override public Outcome run(Command command) {
-        ProcessBuilder builder = new ProcessBuilder(asList(command.argv()));
+        ProcessBuilder builder = new ProcessBuilder(shield(command));
         for (Pair<String, String> variable : command.environment())
             builder.environment().put(variable.first(), variable.second());
         command.workingDirectory().ifPresent(directory -> builder.directory(directory.toFile()));
@@ -97,6 +99,28 @@ final class RealMachine implements Machine {
             Thread.currentThread().interrupt();
             return new Outcome.TimedOut(Duration.between(started, Instant.now()), out.toString());
         }
+    }
+
+    /**
+     * The argv to actually run, with a shielded command wrapped in {@code setsid}.
+     *
+     * <p>{@code --wait} is not optional: plain {@code setsid} forks when it is already a process
+     * group leader and returns 0 immediately, which would report every shutdown command as having
+     * succeeded whatever it did. With it, setsid waits and passes the real exit status back.
+     *
+     * <p>If {@code setsid} is somehow missing the command still runs, just unshielded — losing the
+     * ability to stop a container because a util-linux binary is absent would be the worse trade.
+     */
+    private List<String> shield(Command command) {
+        List<String> argv = asList(command.argv());
+        if (!command.shielded()) return argv;
+        Optional<Path> setsid = locateExecutable("setsid");
+        if (setsid.isEmpty()) return argv;
+        List<String> shielded = new ArrayList<>(argv.size() + 2);
+        shielded.add(setsid.get().toString());
+        shielded.add("--wait");
+        shielded.addAll(argv);
+        return shielded;
     }
 
     /**

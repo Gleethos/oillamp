@@ -38,12 +38,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       > /etc/apt/sources.list.d/adoptium.list \
  && rm -rf /var/lib/apt/lists/*
 
+# ── the shell an agent (and a person over ssh) actually expects to find ──────────────────────
+# Not gated on WITH_TOOLCHAIN: these are small, and a sandbox without `ping`, an editor or a way
+# to look at a process is a sandbox that feels broken rather than minimal. An agent that cannot
+# diagnose its own environment burns its turns guessing instead.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      bash bash-completion coreutils util-linux procps psmisc less file tzdata \
+      findutils diffutils patch grep sed gawk bc time \
+      tar gzip bzip2 xz-utils zstd \
+      iputils-ping iproute2 dnsutils traceroute netcat-openbsd \
+      openssh-client rsync ca-certificates \
+      vim nano htop tmux tree lsof man-db \
+ && rm -rf /var/lib/apt/lists/*
+
 # ── the desktop, SSH, and the tools `lamp` wraps ─────────────────────────────────────────────
 # wlrctl is listed separately because spike S7 doubts it exists in trixie; if it does not, the
 # build still succeeds and `lamp click`/`move`/`scroll` report that they are unavailable. Losing
 # the pointer is a degraded desktop, not a failed build.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      bash coreutils util-linux procps less file tzdata \
       sway xwayland wayvnc wf-recorder grim slurp wtype \
       foot dbus dbus-x11 at-spi2-core xdg-utils \
       mesa-utils libgl1-mesa-dri libegl1 libgles2 \

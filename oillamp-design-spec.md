@@ -610,7 +610,7 @@ See Appendix C for a template.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `recording.enabled` | `true` | |
+| `recording.enabled` | `false` | Off by default: a continuous screen recording of everything the agent does is an audit trail a user opts into, not a thing to switch on for them. Turn it on per lamp. |
 | `recording.codec` | `"libx264"` | passed to wf-recorder; `h264_vaapi` possible in GPU mode |
 | `recording.crf` | `30` | quality (x264 CRF) |
 | `recording.max_fps` | `10` | caps CPU cost; screen content rarely needs more |
@@ -619,7 +619,8 @@ See Appendix C for a template.
 
 - File: `recordings/<session>.mkv`.
 - Retention runs in Phase B (before the new recording starts) via a pure function `RetentionPolicy.select(Tuple<RecordingFile>, policy, now) → Tuple<RecordingFile>` and `podman unshare rm -f`.
-- wf-recorder only emits frames on damage, so idle periods cost almost nothing.
+- wf-recorder only emits frames on damage, so idle periods cost almost nothing — the default is about consent, not cost.
+- The recorder runs as `lamp`, so the agent can neither stop it nor read what it wrote.
 - `oillamp recordings <dir>` lists recordings (time, duration if cheaply available, size) and `--open <session>` opens one with `xdg-open`.
 
 ## 17. Terminal and SSH
@@ -1591,7 +1592,7 @@ without them.
 | S7 | ✅ **confirmed** — all present, `wlrctl` 0.2.2 included | trixie has `sway xwayland wayvnc wf-recorder grim wtype wlrctl firefox-esr`; Adoptium APT repo supports trixie; Firefox ESR policies path | `podman run debian:trixie apt-cache policy …` | drop `wlrctl`; install Temurin from tarball; find policies path with `dpkg -L firefox-esr` |
 | S8 | ✅ **confirmed** | Rootless Podman works out of the box on Ubuntu 24.04 and 26.04 with the AppArmor userns restriction (profiles shipped) | fresh VMs | document remedies in `OIL-PODMAN-004` text precisely |
 | S9 | 🟡 **verified for the terminals on the dev host**; the rest are still guesses | Terminal argument templates (§17.4) | smoke-test each installed terminal | adjust the profile table (it's data) |
-| S10 | ⬜ open | OpenCode/pi npm package names, binaries, global config/instruction file paths and schemas; whether their HTTP stacks honour `HTTPS_PROXY`/`NODE_USE_ENV_PROXY` | install in the image, run against a test server | adjust templates; for tools ignoring proxy env, document that only forwards reach them |
+| S10 | 🟡 **half resolved** — package names, binaries and pi's agent-directory layout confirmed against a real image (`@earendil-works/pi-coding-agent` → `/usr/bin/pi` 0.87.1; `opencode-ai` → `/usr/bin/opencode` 1.18.32; the Eden AI extension only via `git:`, not `npm:`). The proxy half needs M5 | OpenCode/pi npm package names, binaries, global config/instruction file paths and schemas; whether their HTTP stacks honour `HTTPS_PROXY`/`NODE_USE_ENV_PROXY` | install in the image, run against a test server | adjust templates; for tools ignoring proxy env, document that only forwards reach them |
 | S11 | ✅ **resolved** — Jackson 2.x, classpath mode | Jackson 3.x provides a TOML dataformat module; Sprouts API names; Sprouts usable as a JPMS (automatic) module with jlink/jpackage | build a hello-world with jpackage | Jackson 2.x; classpath mode for jpackage |
 | S12 | ✅ **confirmed** — both socket directions | Bind mounts onto pre-created mount points work with `--read-only`; Unix sockets in bind-mounted dirs are connectable across the user namespace in both directions with the permissions of §9.2 | spike | adjust modes (e.g. 0777 dirs inside the 0700 state dir) |
 | S13 | ✅ **confirmed** | `--userns=keep-id:uid=1000,gid=1000` maps container 1000 → host user, and `podman unshare chown 1001:1001` produces the subuid container uid 1001 sees as its own | spike | compute subuid manually from `/etc/subuid` and use `podman unshare` with numeric ids |
@@ -1617,7 +1618,7 @@ weakened; they are the same criteria the finished tool must meet.
 12. ✅ An invalid `oillamp.toml` (unknown key + bad CIDR + duplicate forward) produces exactly three `OIL-CONFIG-*` problems in one run, each with file, key path, value, and expectation; exit code 2.
 13. ✅ `oillamp at <dir> --dry-run` on a new directory prints every step (including the podman argv) and changes nothing on disk.
 14. ⬜ With `display.gpu = "on"` on a machine without a usable render node, a clear `OIL-GPU-003` is shown; with `auto`, the session starts in software mode and says why.
-15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(57 fast scenarios, 7 spikes and the architecture rules pass. Integration tests need podman.)*
+15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(82 fast scenarios, 7 spikes and the architecture rules pass. Integration tests need podman.)*
 
 ## 35. Remaining open points (non-blocking)
 
@@ -1702,6 +1703,26 @@ changed for convenience alone.
   `PI_CODING_AGENT_DIR`) and copied into the agent's home at session start, because that home is
   a bind mount and would otherwise hide anything the image put there. None of it may fail the
   build or the session: a sandbox without a harness still has a desktop, a shell and a recording.
+
+- **`recording.enabled` now defaults to `false` (§16).** The specified default was `true`. A
+  continuous screen recording of everything an agent does is an audit trail a user should switch
+  on deliberately, not find already running; the cost argument the old default rested on (frames
+  only on damage) is true but answers the wrong question. Every other recording default is
+  unchanged, and the session briefing states which of the two is in force.
+- **Everyday shell tooling is part of the base image layer.** §15.2 lists the desktop and the
+  toolchain and takes the ordinary shell for granted, so the image had no `ping`, no editor and
+  no way to look at a process. Thirty packages of it now install before the desktop layer and
+  outside `WITH_TOOLCHAIN`, because an agent that cannot diagnose its own environment spends its
+  turns guessing at it.
+- **Cleanup commands run shielded from the terminal's signals.** §10.7 describes the shutdown
+  sequence without saying who may interrupt it. oillamp's children share the launching terminal's
+  process group, so a second Ctrl-C — the natural response to a shutdown that takes a moment —
+  killed the `podman stop` that was finalising the recording. `podman stop` and `podman rm` now
+  run under `setsid --wait`, and the sequence is judged by whether the container is gone rather
+  than by each command's exit code, with a new `OIL-SANDBOX-005` for the case where it is not.
+- **The in-sandbox banner asks before claiming network.** Appendix E stated "network via policy
+  proxy" unconditionally, which is false in every build before M5 and whenever the proxy is not
+  listening. It now probes the proxy port and reports what it finds.
 
 ### 36.3 Defects found in this specification
 

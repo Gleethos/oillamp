@@ -114,7 +114,7 @@ final class HostProbe {
         argv = argv.addAll(requirements.packages());
         Machine.Outcome outcome = machine.run(new Machine.Command(argv,
                 sprouts.Association.between(String.class, String.class),
-                Optional.empty(), QUICK, "dpkg-query"));
+                Optional.empty(), QUICK, "dpkg-query", false));
         ValueSet<String> installed = ValueSet.of(String.class);
         for (String line : outcome.output().split("\n", -1)) {
             if (!line.contains("install ok installed")) continue;

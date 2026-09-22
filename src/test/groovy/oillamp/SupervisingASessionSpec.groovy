@@ -255,4 +255,68 @@ class SupervisingASessionSpec extends Specification {
         and: 'and reported how long the session had been up, and where to ask for more'
             outcome.console().contains('oillamp status ')
     }
+
+    def 'A second Ctrl-C during shutdown does not turn a clean session into a bug report'() {
+        reportInfo """
+            Found on real hardware. Shutting down takes a moment - the container has to stop and,
+            if recording is on, the recorder has to finalise the file - and the natural thing to
+            do when a terminal seems to hang is to press Ctrl-C again.
+
+            The catch is that `podman stop` is a child of oillamp and so shares the launching
+            terminal's process group, so that second Ctrl-C went straight to it. It died with no
+            output at all, and oillamp reported OIL-INTERNAL-001: "this is a bug in oillamp,
+            please report" - on a session that had in fact cleaned up perfectly, because
+            `podman rm -f` then removed the container anyway.
+
+            Two things had to change. The cleanup commands now run shielded from the terminal's
+            signals, so the second Ctrl-C cannot reach them. And what gets reported is the end
+            state - is the container gone? - rather than each command's opinion of itself.
+        """
+        given: 'a `podman stop` that dies the way a signalled process does: non-zero, and silent'
+            sandbox.machine {
+                it.commandFailing('podman stop', 130, '')
+                  .windowsStayOpenFor(Duration.ofMillis(400))
+            }
+
+        when:
+            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+
+        then: 'the session still ends successfully, because the container did go away'
+            outcome.status() == ExitStatus.SUCCESS
+
+        and: 'nothing is reported as an internal error'
+            !outcome.console().contains('OIL-INTERNAL-001')
+            outcome.events().findAll { it instanceof LampEvent.Failure }.isEmpty()
+
+        and: 'it says plainly what happened instead, without a colon and then nothing'
+            outcome.console().contains('the container had to be forced')
+            !outcome.console().contains('did not stop cleanly: \n')
+    }
+
+    def 'A container that truly cannot be removed is reported, and not as an internal error'() {
+        reportInfo """
+            The other half. If neither stopping nor removing works the container really is still
+            there, and that is worth telling the user about: it holds its memory and CPU
+            reservations, and the next session on this lamp will find the name taken.
+
+            But it is still not a bug to report - it is podman or the machine - so it gets its own
+            code and the command that fixes it, rather than "please file a bug".
+        """
+        given:
+            sandbox.machine {
+                it.commandFailing('podman stop', 125, 'Error: no such container')
+                  .commandFailing('podman rm', 125, 'Error: container is in use')
+                  .windowsStayOpenFor(Duration.ofMillis(400))
+            }
+
+        when:
+            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+
+        then: 'the user is told, with the code for a container left behind'
+            outcome.console().contains('OIL-SANDBOX-005')
+            !outcome.console().contains('OIL-INTERNAL-001')
+
+        and: 'and given the one command that clears it'
+            outcome.console().contains('podman rm -f ')
+    }
 }

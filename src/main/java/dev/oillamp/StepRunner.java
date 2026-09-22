@@ -346,7 +346,7 @@ final class StepRunner {
     private Machine.Outcome run(String tag, Duration timeout, Tuple<String> argv) {
         Machine.Command command = new Machine.Command(argv,
                 sprouts.Association.between(String.class, String.class),
-                Optional.empty(), timeout, tag);
+                Optional.empty(), timeout, tag, false);
         context.emit(new LampEvent.Output(tag, "$ " + redacted(command)));
         Machine.Outcome outcome = machine.run(command);
         for (String line : outcome.errorOutput().split("\n", -1))

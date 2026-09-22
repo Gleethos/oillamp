@@ -391,23 +391,35 @@ final class Supervisor {
         extras.ifPresent(Relay::close);
 
         // 2. Ask the container to stop, so the entrypoint can finalise the recording on SIGTERM.
+        //    Both podman calls are shielded: they are children of oillamp and so share the
+        //    launching terminal's process group, which means a second Ctrl-C — the natural thing
+        //    to press when shutdown takes a moment — used to kill the cleanup itself.
         Duration stopTimeout = prepared.config().timeouts().stop();
+        context.info("session", "stopping the sandbox — up to "
+                + stopTimeout.toSeconds() + "s while the container finishes"
+                + (prepared.config().recording().enabled() ? " and the recording is finalised" : ""));
         Machine.Outcome stopped = machine.run(Machine.Command
                 .of("podman", "stop", "--time", String.valueOf(stopTimeout.toSeconds()),
                     sandbox.container().value())
-                .withTimeout(stopTimeout.plusSeconds(15)).labelled("podman stop"));
-        if (!stopped.succeeded())
-            problems = problems.add(Problems.internal("podman stop",
-                    "the sandbox did not stop cleanly: " + stopped.errorOutput().strip()));
+                .withTimeout(stopTimeout.plusSeconds(15)).labelled("podman stop").shieldedFromSignals());
 
         // 3. Remove it either way: a container left behind makes the next session fail on a name
         //    clash, which says nothing about what actually went wrong here.
         Machine.Outcome removed = machine.run(Machine.Command
                 .of("podman", "rm", "-f", sandbox.container().value())
-                .withTimeout(Duration.ofSeconds(30)).labelled("podman rm"));
-        if (!removed.succeeded())
-            problems = problems.add(Problems.internal("podman rm",
-                    "the sandbox container could not be removed: " + removed.errorOutput().strip()));
+                .withTimeout(Duration.ofSeconds(30)).labelled("podman rm").shieldedFromSignals());
+
+        // What matters is whether the container is gone, not whether each command liked its own
+        // exit code. `podman stop` failing and `podman rm -f` then succeeding is an ordinary,
+        // complete shutdown — reporting it as an internal bug (which is what this used to do)
+        // told the user to file a report about a session that had worked perfectly.
+        if (!stopped.succeeded() && !removed.succeeded())
+            problems = problems.add(Problems.containerNotRemoved(sandbox.container().value(),
+                    stopped.errorOutput().strip(), removed.errorOutput().strip()));
+        else if (!stopped.succeeded())
+            context.info("session", "the container had to be forced — "
+                    + describeFailure(stopped) + (prepared.config().recording().enabled()
+                        ? "; the recording may end a moment early" : ""));
 
         // 4. The host-only sockets, and the windows that were opened onto the session.
         control.ifPresent(Control.Server::close);
@@ -423,6 +435,25 @@ final class Supervisor {
         }
         problems = problems.addAll(recordLastSession());
         return problems;
+    }
+
+    /**
+     * Why a cleanup command did not succeed, in a few words.
+     *
+     * <p>An empty stderr is the normal case rather than an odd one — a command killed by a signal
+     * says nothing at all — and "did not stop cleanly: " with nothing after the colon was the
+     * least useful sentence oillamp printed.
+     */
+    private static String describeFailure(Machine.Outcome outcome) {
+        return switch (outcome) {
+            case Machine.Outcome.NotFound missing -> missing.executable() + " is not installed";
+            case Machine.Outcome.TimedOut timedOut -> "it did not finish within "
+                    + timedOut.after().toSeconds() + "s";
+            case Machine.Outcome.Finished finished -> finished.standardError().isBlank()
+                    ? "it exited " + finished.exitCode() + " without saying why"
+                      + (finished.exitCode() > 128 ? " (killed by a signal)" : "")
+                    : finished.standardError().strip();
+        };
     }
 
     /** {@code lamp.json.lastSessionAt} — the one thing a session leaves in the lamp's identity. */
@@ -579,8 +610,13 @@ final class Supervisor {
                 "network        " + config.network().defaultDecision().configName() + " by default, "
                         + config.network().rules().size() + " rule(s), "
                         + config.forwards().size() + " forward(s)");
-        if (config.recording().enabled())
-            lines = lines.add("recording      " + layout.recording(prepared.session()));
+        // Said either way. Recording is off by default, and a user who assumes it is on and finds
+        // nothing afterwards has lost the very thing they wanted it for — so the line that says
+        // it is off also says how to turn it on.
+        lines = config.recording().enabled()
+                ? lines.add("recording      " + layout.recording(prepared.session()))
+                : lines.add("recording      off — set `recording.enabled = true` in "
+                          + layout.config() + " to record this desktop");
         lines = lines.add("this terminal  keeps reporting the sandbox's health until the session ends");
         lines = lines.add("to finish      close the shell window, press Ctrl-C here, "
                         + "or run `oillamp stop " + layout.root() + "`");

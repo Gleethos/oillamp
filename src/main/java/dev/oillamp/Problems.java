@@ -65,6 +65,7 @@ final class Problems {
     public static final Code SANDBOX_DIED          = new Code("OIL-SANDBOX-002");
     public static final Code SANDBOX_NOT_READY     = new Code("OIL-SANDBOX-003");
     public static final Code SANDBOX_ENDPOINT_DEAD = new Code("OIL-SANDBOX-004");
+    public static final Code SANDBOX_NOT_REMOVED   = new Code("OIL-SANDBOX-005");
     public static final Code EXEC_NOT_FOUND        = new Code("OIL-EXEC-001");
     public static final Code EXEC_TIMED_OUT        = new Code("OIL-EXEC-002");
     public static final Code INTERNAL              = new Code("OIL-INTERNAL-001");
@@ -455,6 +456,27 @@ final class Problems {
               + "entrypoint stops the sandbox rather than leave a half-working one")
             .withEvidence(new Evidence.Value("last lines of the sandbox log", log))
             .withFix(Fix.of("the log above is from inside the sandbox and names which part failed"));
+    }
+
+    /**
+     * The one shutdown failure worth telling a user about: the container is still there.
+     *
+     * <p>Deliberately not an internal error. Neither {@code podman stop} nor {@code podman rm -f}
+     * working is a real problem the user has to deal with — the next session on this lamp will
+     * hit the leftover name — but it is a problem with podman or the machine, not a bug to report.
+     */
+    public static Problem containerNotRemoved(String container, String stopError, String removeError) {
+        return error(SANDBOX_NOT_REMOVED, "The sandbox container is still there",
+                "neither stopping nor removing container " + container + " worked",
+                "a container left behind keeps its memory and CPU reservations, and the next "
+              + "session on this lamp will find the name taken")
+            .withEvidence(new Evidence.Value("podman stop",
+                    stopError.isBlank() ? "(no output)" : stopError))
+            .withEvidence(new Evidence.Value("podman rm -f",
+                    removeError.isBlank() ? "(no output)" : removeError))
+            .withFix(Fix.run("remove it by hand", "podman rm -f " + container))
+            .withFix(Fix.run("if that fails, podman itself may be wedged",
+                             "podman system migrate"));
     }
 
     public static Problem sandboxNotReady(String container, java.time.Duration waited, String log) {

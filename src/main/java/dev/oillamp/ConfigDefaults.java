@@ -25,7 +25,7 @@ final class ConfigDefaults {
             new LampConfig.Display(1920, 1080, 1.0, GpuMode.AUTO),
             new LampConfig.Viewer(true, ClipboardMode.TO_AGENT, false, 30),
             new LampConfig.Terminal.Auto(),
-            new LampConfig.Recording(true, "libx264", 30, 10, 14, 20),
+            new LampConfig.Recording(false, "libx264", 30, 10, 14, 20),
             new LampConfig.Limits("16g", 0, 8192),
             NetworkPolicy.shippedDefault(),
             Tuple.of(Forward.class),

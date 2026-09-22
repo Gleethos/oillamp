@@ -30,10 +30,22 @@ export LD_LIBRARY_PATH="$HOME/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export JAVA_TOOL_OPTIONS="-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Djava.library.path=$HOME/libs"
 export PATH="$HOME/.local/bin:$PATH"
 
+# Asked, not assumed. This line used to state "network via policy proxy" unconditionally, and
+# said so just as loudly in a sandbox where nothing was listening on the proxy port at all — so
+# the agent read "you have network", tried, and failed for reasons the banner had denied.
+oillamp_network_state() {
+    if (exec 3<>"/dev/tcp/127.0.0.1/${OILLAMP_PROXY_PORT:-3128}") 2>/dev/null; then
+        exec 3<&- 3>&-
+        echo "network via policy proxy"
+    else
+        echo "NO network (nothing is listening on the proxy port)"
+    fi
+}
+
 if [ -t 1 ] && [ -z "${OILLAMP_BANNER_SHOWN:-}" ]; then
     export OILLAMP_BANNER_SHOWN=1
     cat <<EOB
-🪔 lamp ${OILLAMP_LAMP_NAME:-?} — desktop ${OILLAMP_DISPLAY_WIDTH:-?}x${OILLAMP_DISPLAY_HEIGHT:-?} (${OILLAMP_RENDERER:-?}), network via policy proxy
+🪔 lamp ${OILLAMP_LAMP_NAME:-?} — desktop ${OILLAMP_DISPLAY_WIDTH:-?}x${OILLAMP_DISPLAY_HEIGHT:-?} (${OILLAMP_RENDERER:-?}), $(oillamp_network_state)
    Read ~/AGENTS.md for how this sandbox works. Put repos in ~/workspace, native libs in ~/libs.
 EOB
 fi

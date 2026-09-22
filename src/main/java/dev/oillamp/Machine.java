@@ -165,7 +165,8 @@ public interface Machine {
                    Association<String, String> environment,
                    Optional<Path> workingDirectory,
                    Duration timeout,
-                   String label) {
+                   String label,
+                   boolean shielded) {
 
         public Command {
             if (argv.isEmpty())
@@ -176,26 +177,40 @@ public interface Machine {
             return new Command(Tuple.of(String.class, argv),
                                Association.between(String.class, String.class),
                                Optional.empty(), Duration.ofSeconds(30),
-                               argv.length == 0 ? "" : argv[0]);
+                               argv.length == 0 ? "" : argv[0], false);
         }
 
         /** The same, for an argv that was assembled rather than typed — a terminal or a viewer. */
         public static Command of(Tuple<String> argv) {
             return new Command(argv, Association.between(String.class, String.class),
                                Optional.empty(), Duration.ofSeconds(30),
-                               argv.isEmpty() ? "" : argv.first());
+                               argv.isEmpty() ? "" : argv.first(), false);
         }
 
         public Command withTimeout(Duration timeout) {
-            return new Command(argv, environment, workingDirectory, timeout, label);
+            return new Command(argv, environment, workingDirectory, timeout, label, shielded);
         }
 
         public Command labelled(String label) {
-            return new Command(argv, environment, workingDirectory, timeout, label);
+            return new Command(argv, environment, workingDirectory, timeout, label, shielded);
         }
 
         public Command withEnvironment(Association<String, String> environment) {
-            return new Command(argv, environment, workingDirectory, timeout, label);
+            return new Command(argv, environment, workingDirectory, timeout, label, shielded);
+        }
+
+        /**
+         * Runs this command out of reach of the terminal's signals.
+         *
+         * <p>Children of oillamp share its process group, so Ctrl-C in the launching terminal
+         * goes to <em>all</em> of them. That is right for the session, and wrong for the commands
+         * that clean it up: a user who presses Ctrl-C a second time because shutdown is taking a
+         * moment would otherwise kill the very {@code podman stop} that is finalising their
+         * recording. Shielded commands get their own session, so only oillamp decides when they
+         * end.
+         */
+        public Command shieldedFromSignals() {
+            return new Command(argv, environment, workingDirectory, timeout, label, true);
         }
 
         public String executable() { return argv.first(); }
@@ -365,6 +380,19 @@ public interface Machine {
          */
         public Simulation terminalThatNeverConnects() {
             builder.terminalNeverConnects();
+            return this;
+        }
+
+        /**
+         * A command that fails however often it is run, with the given exit code and stderr.
+         *
+         * <p>Written for the shape that actually happened: a user pressed Ctrl-C a second time
+         * while the session was shutting down, the signal reached {@code podman stop} because it
+         * shares oillamp's process group, and it died with exit 130 and nothing on stderr. A
+         * cleanup killed that way must not be reported as a bug in oillamp.
+         */
+        public Simulation commandFailing(String commandPrefix, int exitCode, String stderr) {
+            builder.commandFailing(commandPrefix, exitCode, stderr);
             return this;
         }
 

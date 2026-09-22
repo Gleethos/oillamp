@@ -76,7 +76,7 @@ user's involvement.
 It also produced the first finding that only real hardware could produce — see
 *Known gaps on Ubuntu 24.04* below.
 
-Plus **80 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
+Plus **82 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
 `build/spock-reports/*.md` after `./gradlew test`.
 
 ### Findings from that run
@@ -133,6 +133,22 @@ found the orphaned container and cleaned up after it (FR-08).
 | The session state was read by four threads and was not `volatile` | Nothing misbehaved, but the memory model allows the shutdown hook to watch a stale state until its own timeout — hard to spot, since everything it is responsible for would have worked | **Fixed.** |
 
 ---
+
+### Findings from using it (22 September, after M4)
+
+Four came out of one evening's use. Three were real; one was not.
+
+| Finding | Effect | Resolution |
+|---|---|---|
+| A second Ctrl-C during shutdown reported `OIL-INTERNAL-001` on a session that had cleaned up perfectly | `podman stop` is a child of oillamp and shares the launching terminal's process group, so the second Ctrl-C killed it. It died silently, and oillamp printed *"the sandbox did not stop cleanly: "* — nothing after the colon — and told the user to file a bug | **Fixed, twice over.** Cleanup commands run shielded from the terminal's signals (`setsid --wait`), so a second Ctrl-C cannot reach them; and what is reported is now the end state — *is the container gone?* — rather than each command's opinion of itself. `podman stop` failing while `podman rm -f` succeeds is an ordinary shutdown and says so. Two scenarios pin it. |
+| The sandbox banner said *"network via policy proxy"* in a sandbox with no network at all | The agent read it as a promise, tried, and failed for a reason the banner had denied | **Fixed.** The banner asks the proxy port whether anything is listening and says what it finds, so it stays true both before and after M5. |
+| `ping`, `vim`, `htop`, `dig` and most everyday shell tools were absent | An agent that cannot diagnose its own environment burns turns guessing | **Fixed.** 30 packages of ordinary shell tooling, in the base layer rather than behind `WITH_TOOLCHAIN`, all verified to exist in trixie. |
+| `pi` and `opencode` were missing from a running sandbox | Looked like the harness work had not taken effect | **Not a product bug.** The binary in `build/install/` predated the commit that added them by 24 minutes. Verified by rebuilding: the content hash moves (`76539a3b` → `fb14cd4c`) and both harnesses are present. Worth knowing as a trap: `./gradlew installDist` is what makes a change real for a locally-run oillamp. |
+
+**Recording is now off by default.** It is a continuous screen recording of everything an agent
+does — an audit trail a user opts into, not something to switch on for them. `recording.enabled
+= true` per lamp turns it back on, and the session briefing says which of the two it is, so a
+user who assumed wrong finds out at the start rather than afterwards.
 
 ---
 
@@ -263,7 +279,7 @@ Two ideas carry most of the design:
 ## Running it
 
 ```bash
-./gradlew build                 # compile, run all 57 fast scenarios
+./gradlew build                 # compile, run all 82 fast scenarios
 ./gradlew installDist           # build/install/oillamp/bin/oillamp
 ./gradlew test                  # then read build/spock-reports/*.md
 ./gradlew spikes                # §33 assumptions against real podman; needs podman

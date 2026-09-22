@@ -584,6 +584,10 @@ final class SimulatedMachine implements Machine {
             deadEndpoints.add(socketFileName);
         }
         public void windowRefusing(String executable) { refusedWindows.add(executable); }
+        public void commandFailing(String prefix, int exitCode, String stderr) {
+            scriptedCommands.put(prefix,
+                    new Outcome.Finished(exitCode, "", stderr, Duration.ofMillis(5)));
+        }
         public void terminalStaysOpen(Duration duration) { this.terminalStaysOpen = duration; }
         public void terminalNeverConnects() { this.terminalConnects = false; }
 

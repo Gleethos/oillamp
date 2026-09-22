@@ -44,13 +44,20 @@ final class Templates {
             profile = "auto"          # "auto" | "ptyxis" | "gnome-terminal" | "kgx" | "konsole" | "kitty" | "foot" | "alacritty" | "wezterm" | "xterm"
             # command = ["myterm", "--title", "{title}", "--", "{cmd}"]   # custom terminal; overrides profile
 
+            # Records the sandbox desktop to .oillamp/recordings/<session>.mkv, so you can watch
+            # back what an agent actually did. Off by default: it is a continuous screen recording
+            # of everything in the sandbox, and that is not something to switch on for somebody.
+            # Turn it on per lamp when you want an audit trail. Cost when on is small — wf-recorder
+            # only emits frames when the screen changes, so an idle desktop writes almost nothing.
+            # The agent cannot read, stop or tamper with the recording: it is written by the `lamp`
+            # user, outside the agent's home. `oillamp recordings <lamp>` lists them.
             [recording]
-            enabled        = true
-            codec          = "libx264"
-            crf            = 30
-            max_fps        = 10
-            max_age_days   = 14
-            max_total_gb   = 20
+            enabled        = false    # true to record the desktop for the whole session
+            codec          = "libx264" # wf-recorder codec; "h264_vaapi" when a GPU is in use
+            crf            = 30       # quality, lower is better and bigger (x264 CRF)
+            max_fps        = 10       # frame cap; screen content rarely needs more
+            max_age_days   = 14       # retention: delete recordings older than this
+            max_total_gb   = 20       # retention: delete oldest until the total fits
 
             [limits]
             memory = "16g"
