@@ -4,7 +4,7 @@ plugins {
     id "net.ltgt.errorprone" version "4.2.0"
 }
 
-group = 'org.example'
+group = 'oillamp'
 version = '1.0-SNAPSHOT'
 
 repositories {
