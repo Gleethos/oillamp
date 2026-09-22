@@ -103,6 +103,18 @@ final class AgentGuide {
            .append("Report that message verbatim rather than retrying — it tells the human exactly\n")
            .append("which rule to change.\n\n");
 
+        if (!config.agentTools().install().isEmpty()) {
+            out.append("## Harnesses already installed\n\n")
+               .append("These were installed when the image was built, because there is no network\n")
+               .append("here to install them from now:\n\n");
+            for (String tool : config.agentTools().install())
+                out.append("- `").append(tool).append("`\n");
+            out.append("\n`pi` has the Eden AI provider extension in `~/.pi/agent/extensions/`. It\n")
+               .append("needs `EDENAI_API_KEY`, which is set here only if the human had it set on\n")
+               .append("the host. `pi install` will not work — it needs a network you do not have,\n")
+               .append("so ask the human to add what you need to the image instead.\n\n");
+        }
+
         config.llmForward().ifPresent(forward -> out
                 .append("## Language model\n\n")
                 .append("An OpenAI-compatible endpoint is reachable at `")

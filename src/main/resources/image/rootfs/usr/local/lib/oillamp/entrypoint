@@ -122,6 +122,32 @@ printf 'output HEADLESS-1 mode --custom %sx%s scale %s\n' \
     > /run/lamp/output.conf
 chown lamp:lamp /run/lamp/output.conf
 
+# ── the agent's pi installation ──────────────────────────────────────────────────────────────
+# pi keeps its packages and its settings.json in its agent directory, which lives in the agent's
+# home — and that home is a bind mount from the lamp, so anything the image put there at build
+# time is hidden the moment the container starts. The build therefore installs into
+# /usr/local/share/oillamp/pi (via pi's own PI_CODING_AGENT_DIR) and this copies it across once
+# per session, entry by entry, never over anything the agent already has.
+#
+# Nothing in here may stop the sandbox. A missing extension costs the agent one model provider;
+# a desktop that failed to start over one would cost the user their whole session.
+seed_pi_agent_dir() {
+    local source=/usr/local/share/oillamp/pi
+    [ -d "$source" ] || return 0
+    setpriv --reuid=agent --regid=agent --init-groups -- \
+        env HOME=/home/agent SOURCE="$source" sh -c '
+            target="$HOME/.pi/agent"
+            mkdir -p "$target" || exit 0
+            for entry in "$SOURCE"/*; do
+                [ -e "$entry" ] || continue
+                name=${entry##*/}
+                [ -e "$target/$name" ] && continue
+                cp -a "$entry" "$target/" || echo "could not add $name" >&2
+            done
+        ' && log "pi is set up for the agent" || log "pi could not be set up - the sandbox is unaffected"
+}
+seed_pi_agent_dir || true
+
 # ── the compositor ───────────────────────────────────────────────────────────────────────────
 start_sway() {
     drop lamp 077 sway env XDG_RUNTIME_DIR=/run/lamp WLR_BACKENDS=headless \

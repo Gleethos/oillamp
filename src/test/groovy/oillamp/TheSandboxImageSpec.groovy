@@ -159,6 +159,80 @@ class TheSandboxImageSpec extends Specification {
             profile.contains('-Djava.library.path=$HOME/libs')
     }
 
+    def 'the agent harnesses are installed into the image, because the sandbox cannot fetch them'() {
+        given: """
+            The sandbox has no network of its own (FR-40), so an agent cannot install its own
+            harness once it is in there - `npm install` and `pi install` both need a network that
+            does not exist. Whatever the agent is meant to have must therefore already be in the
+            image, which is why the build installs it and why the default is not empty.
+
+            The friendly names a user writes in oillamp.toml are not package names, and the
+            mapping between them is the part that rots: a project renames, a scope changes, and
+            the sandbox quietly ships without a harness. So the mapping is pinned here.
+        """
+        when:
+            var script = Files.readString(IMAGE.resolve('build/install-agent-tools.sh'))
+
+        then: 'the two harnesses map to the packages that actually publish them'
+            script.contains('@earendil-works/pi-coding-agent')
+            script.contains('opencode-ai')
+
+        and: 'and the image asks for both by default, so a plain build is usable'
+            Files.readString(IMAGE.resolve('Containerfile')).contains('ARG AGENT_TOOLS="opencode pi"')
+    }
+
+    def 'nothing about the agent tooling can fail the image build'() {
+        given: """
+            The user was explicit about this, and they are right: a harness is a convenience, while
+            the desktop, the shell, the recording and ssh are the product. Losing all of them
+            because a registry was briefly unreachable would be a bad trade made automatically.
+
+            So the installer reports failures and exits 0 regardless, and the Containerfile layer
+            that runs it cannot fail either.
+        """
+        when:
+            var script = Files.readString(IMAGE.resolve('build/install-agent-tools.sh'))
+
+        then: 'the script ends by succeeding whatever happened inside it'
+            script.contains('exit 0')
+            script.readLines().any { it.startsWith('main "$@" ||') }
+
+        and: 'and each individual tool is attempted independently, not as one all-or-nothing step'
+            script.contains('WARNING: could not install')
+    }
+
+    def 'the pi extension is put where a bind-mounted home cannot hide it'() {
+        given: """
+            pi reads its extensions from its agent directory, which lives in the agent's home -
+            and that home is a bind mount from the lamp, so anything the image writes there at
+            build time is invisible the moment the container starts. This is the same class of
+            mistake as the sockets directory: a path that exists at build time and means something
+            different at run time.
+
+            So the extension is built into /usr/local/share and copied into the home once per
+            session, and - like everything else about the tooling - it may not stop the sandbox.
+        """
+        when:
+            var installer = Files.readString(IMAGE.resolve('build/install-agent-tools.sh'))
+            var entrypoint = Files.readString(
+                    IMAGE.resolve('rootfs/usr/local/lib/oillamp/entrypoint'))
+
+        then: 'the build installs it outside the home, using pi own relocation variable'
+            installer.contains('PI_CODING_AGENT_DIR')
+            installer.contains('/usr/local/share/oillamp/pi')
+            installer.contains('git:github.com/edenai/pi-edenai')
+
+        and: 'and the entrypoint copies the whole agent directory across, not just an extensions dir'
+            entrypoint.contains('seed_pi_agent_dir')
+            entrypoint.contains('target="$HOME/.pi/agent"')
+
+        and: 'never over anything the agent already has'
+            entrypoint.contains('[ -e "$target/$name" ] && continue')
+
+        and: 'and cannot take the session down with it'
+            entrypoint.contains('seed_pi_agent_dir || true')
+    }
+
     private static List<Path> getAllImageFiles() {
         Files.walk(IMAGE).filter { Files.isRegularFile(it) }.toList()
     }

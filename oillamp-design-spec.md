@@ -1553,7 +1553,7 @@ oillamp [--verbose] [--debug] [--no-color] <command>
 
 Each milestone ends with its tests green and a short demo.
 
-**M1 and M2 are built and verified. M0 and M3–M7 are not started.** `docs/STATUS.md` has the
+**M1–M4 are built and verified. M0 and M5–M7 are not started.** `docs/STATUS.md` has the
 current detail; the Status column here is the summary.
 
 | # | Milestone | Status | Scope | Done when |
@@ -1562,7 +1562,7 @@ current detail; the Status column here is the summary.
 | **M1** | Skeleton and host | ✅ **built and verified** | Gradle setup with ArchUnit rules (single module, D-26); `Result`/`Problem`/catalog; ProcessRunner; HostProbe; HostPlanner incl. APT install and subuid fix; `doctor`; ConsoleRenderer; Journal | `oillamp doctor` on a fresh Ubuntu VM reports and (via `at --dry-run`) plans the right fixes; unit + golden tests |
 | **M2** | Lamp and config | ✅ **built and verified** | lamp classification/init/migration, layout, lock + stale detection, TOML config pipeline with all validations, key generation, rendering of `session/`, `ssh_config`, runtime dir | `oillamp at <new dir> --dry-run` prints a complete, correct plan; config errors are reported all at once with key paths |
 | **M3** | Image and container | ✅ **done** — `oillamp at` builds the image (content-hash tag), starts the container and waits for `ready.json`. `--dry-run` shows the whole plan including every podman flag | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
-| **M4** | Supervisor | ⬜ not started | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
+| **M4** | Supervisor | ✅ **done** — `oillamp at` runs a session: two new windows, both relays, the control socket, the §10.7 shutdown, and the five session commands. Verified on real podman for all three endings, plus `kill -9` recovery | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
 | **M5** | Network | ⬜ not started — *policy engine already built* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
 | **M6** | Recording and agent tooling | ⬜ not started — *retention already built* | wf-recorder, retention, `recordings` command; `lamp` helper script (D-27); agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
 | **M7** | Packaging and polish | ⬜ not started | jpackage `.deb`, completion scripts, README, E2E checklist on Ubuntu 24.04 + 26.04 | acceptance criteria §34 all pass |
@@ -1634,7 +1634,7 @@ These are starting points. Spike results (§33) take precedence.
 
 This section is the record required by §6: *"Implementers MUST NOT silently change these
 decisions. If one proves infeasible, document the reason and the replacement here."* Every
-deviation taken while building M1 and M2 is listed below with the reason. Nothing here was
+deviation taken while building M1–M4 is listed below with the reason. Nothing here was
 changed for convenience alone.
 
 ### 36.1 Structure
@@ -1671,6 +1671,37 @@ changed for convenience alone.
 - **`Problems.crash` and a top-level catch.** NFR-03 says no bare stack traces on the console. A
   bug in oillamp itself is still an error the user sees, so `RuntimeException` and
   `StackOverflowError` become `OIL-INTERNAL-001`, with the advice to re-run with `--debug`.
+
+- **Three problem codes added to §27.3.** `OIL-TERM-003` (the terminal emulator would not start
+  at all, which is a different failure from `OIL-TERM-002`, the terminal that started and never
+  connected — and has a different fix), and `OIL-SESSION-001` / `OIL-SESSION-002` for the
+  commands of §26.6, which need to distinguish "no session is running here" from "a session's
+  control socket is there but nothing answers it", because only the second means a supervisor
+  died without tidying up.
+- **`Machine` gained one method: `launch(Command, Stdio)`.** §26.1 describes running a command to
+  completion, which is the wrong shape for a terminal window, a viewer or an interactive shell —
+  all three outlive the call and have no timeout that would mean anything. Keeping them on `run`
+  would have meant oillamp blocking for the length of a session on a command it started.
+- **The closing summary is emitted by the supervisor, not returned by the session machine.**
+  §25.1 lists `Emit(summary)` as an action of the final transition. The machine knows the
+  *reason* a session ended, which is what the exit code needs, but the duration, the recording
+  and what the shutdown managed to clean up are facts only the imperative side has. The machine
+  stays pure; the summary is assembled where its inputs are.
+- **`ShutdownReason.UserInterrupt` carries whether the session had reached `Running`.** §27.5
+  distinguishes "interrupted before the session was running" (130) from a normal end (0), and
+  that distinction has to be captured when the interrupt happens rather than looked up later,
+  when the state has already moved on.
+- **`agent_tools.install` is now passed to the image build.** The Containerfile always had an
+  `AGENT_TOOLS` argument and oillamp never supplied it, so a lamp that configured its harnesses
+  was silently building the default. It is part of the content hash now, which is the only way a
+  changed list can reach a sandbox that has no network to install anything with.
+- **The harnesses are installed at build time, and pi's Eden AI extension with them.** §19.5
+  describes configuring tools that are present; it does not say how they get there. Since FR-40
+  leaves the sandbox with no network of its own, `pi install` cannot work at runtime — so the
+  extension is fetched during the build into `/usr/local/share/oillamp/pi` (via pi's own
+  `PI_CODING_AGENT_DIR`) and copied into the agent's home at session start, because that home is
+  a bind mount and would otherwise hide anything the image put there. None of it may fail the
+  build or the session: a sandbox without a harness still has a desktop, a shell and a recording.
 
 ### 36.3 Defects found in this specification
 

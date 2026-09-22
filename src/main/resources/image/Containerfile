@@ -12,7 +12,13 @@ FROM ${BASE_IMAGE}
 
 ARG JDK_PACKAGE=temurin-25-jdk
 ARG NODE_MAJOR=24
-ARG AGENT_TOOLS=""
+# The harnesses the agent finds already installed. Named the way a user writes them in
+# oillamp.toml; install-agent-tools.sh maps them to packages. Defaulted here as well as passed
+# in, so an image built straight from this file is still usable out of the box.
+ARG AGENT_TOOLS="opencode pi"
+# pi extensions, fetched at build time because the sandbox has no network of its own to fetch
+# them with later. The default adds Eden AI as a provider.
+ARG PI_EXTENSIONS="git:github.com/edenai/pi-edenai"
 ARG EXTRA_APT_PACKAGES=""
 # When false, the JDK, Node and the agent tools are skipped. The desktop, SSH and the lamp
 # tooling are all still there, which is everything M3 needs — and it builds in a fraction of
@@ -59,9 +65,12 @@ RUN if [ "${WITH_TOOLCHAIN}" = "true" ]; then \
     fi
 
 COPY build/ /tmp/oillamp-build/
+# The agent tooling never fails the build (the script exits 0 whatever happens): a sandbox with
+# no harness still has a desktop, a shell, a recording and a working ssh, and losing all of that
+# because a registry was briefly unreachable would be a poor trade.
 RUN if [ "${WITH_TOOLCHAIN}" = "true" ]; then \
       /tmp/oillamp-build/install-node.sh "${NODE_MAJOR}" \
-      && /tmp/oillamp-build/install-agent-tools.sh ${AGENT_TOOLS} ; \
+      && PI_EXTENSIONS="${PI_EXTENSIONS}" /tmp/oillamp-build/install-agent-tools.sh ${AGENT_TOOLS} ; \
     fi \
  && rm -rf /tmp/oillamp-build
 

@@ -54,10 +54,21 @@ final class RuntimeEnv {
      * <p>Built sorted, so the rendered file — and therefore the image hash and the log — is
      * stable between runs that configured the same thing.
      */
+    /**
+     * Host environment variables the agent's tools are given, if the host has them set.
+     *
+     * <p>Kept to a named list rather than "everything", because this file crosses into the
+     * sandbox: the agent can read it, which is the point — its harness needs the key — and it is
+     * also why the list is short, explicit and written down here rather than inferred.
+     */
+    public static final Tuple<String> INHERITED_FROM_HOST = Tuple.of(String.class,
+            "EDENAI_API_KEY", "EDENAI_BASE_URL", "EDENAI_EU_ONLY", "EDENAI_MAX_TOKENS");
+
     public static Association<String, String> variables(LampConfig config,
                                                         LampLayout layout,
                                                         SessionId session,
-                                                        String renderer) {
+                                                        String renderer,
+                                                        Association<String, String> fromHost) {
         Association<String, String> env = Association.betweenSorted(String.class, String.class)
             .put("OILLAMP_SESSION",         session.value())
             .put("OILLAMP_AGENT_ID",        layout.agentId().value())
@@ -73,6 +84,9 @@ final class RuntimeEnv {
             .put("OILLAMP_RECORDING_MAX_FPS", Integer.toString(config.recording().maxFps()))
             .put("OILLAMP_PROXY_PORT",      Integer.toString(Forward.PROXY_PORT))
             .put("OILLAMP_FORWARDS",        forwardList(config));
+
+        for (Pair<String, String> inherited : fromHost)
+            env = env.put(inherited.first(), inherited.second());
 
         for (Forward forward : config.forwards())
             if (config.llm().isPresent() && config.llm().get().forward().equals(forward.name())) {

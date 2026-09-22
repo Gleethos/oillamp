@@ -9,13 +9,15 @@ recorded in **spec §36**, with reasons.
 
 ## In one paragraph
 
-Milestones **M1 (host prerequisites)** and **M2 (lamp directory and configuration)** are
-implemented and **verified end to end on a real Ubuntu 24.04 machine**, including the package
-install and the sudo prompt. `oillamp doctor` and `oillamp at <dir> --dry-run` do the real thing on
-a real machine. `oillamp at <dir>` without `--dry-run` will install host prerequisites and build
-the lamp directory, then stop before starting a container, because **M3 onwards is not written
-yet**. The five session commands (`view`, `shell`, `stop`, `status`, `list`) parse and then say
-so, rather than pretending.
+Milestones **M1** (host prerequisites), **M2** (lamp and configuration), **M3** (image and
+container) and **M4** (the supervisor) are implemented and **verified end to end on a real
+Ubuntu 24.04 machine**. `oillamp at <dir>` now runs a whole session: it installs what the host
+is missing, builds the lamp and the image, starts the sandbox, opens your shell in a new terminal
+window and the desktop in a viewer, reports the sandbox's health in the terminal it was started
+from, and takes everything down again when you are finished — whether you close the shell window,
+press Ctrl-C, or run `oillamp stop`. All five session commands work. What is left is the network
+(**M5**), the recording and agent tooling (**M6**) and packaging (**M7**); until M5 the sandbox
+has no outbound network at all, which is the safe direction to be incomplete in.
 
 ---
 
@@ -25,13 +27,18 @@ so, rather than pretending.
 |---|---|
 | `oillamp doctor` | **Works.** Probes the host, reports every deficiency at once with fix instructions, exits 0 or 3. |
 | `oillamp at <dir> --dry-run` | **Works.** Prints the complete plan — package installs, subuid allocation, every file and directory of the lamp with its mode — and changes nothing. |
-| `oillamp at <dir>` | **Starts a sandbox.** Installs prerequisites, builds the lamp, builds the image if its content hash changed, starts the container and waits for it to report ready. Prints the `ssh` and `vncviewer` commands to reach it — launching those windows automatically is M4. |
+| `oillamp at <dir>` | **Runs a session.** Installs prerequisites, builds the lamp and the image, starts the container, opens your shell in a new terminal window and the desktop in a viewer, then supervises until you are finished. Does not return until the session ends. |
 | `oillamp at <dir> --init` | **Works.** Writes a commented `oillamp.toml` and stops. |
 | `oillamp config check <dir>` | **Works.** Reports every configuration error in one pass, each with its key path and file. |
 | `oillamp config show-effective <dir>` | **Works.** Prints the merged global + lamp configuration. |
 | `oillamp config path <dir>` | **Works.** |
 | `--verbose`, `--debug`, `--no-color`, `--no-install` | **Work.** |
-| `view` `shell` `stop` `status` `list` `recordings` `image` | **Parse, then refuse**, because each needs a running session (M4). |
+| `oillamp view <dir> [--view-only]` | **Works.** Opens another window onto a running session's desktop. |
+| `oillamp shell <dir>` | **Works.** An extra shell in the current terminal. Closing it does not end the session. |
+| `oillamp stop <dir>` | **Works.** Asks the running session to shut down; cleans up after a crashed one if there is nobody to ask. |
+| `oillamp status <dir>` | **Works.** State, uptime, container, desktop and attached shells, from the supervisor itself. |
+| `oillamp list` | **Works.** Every oillamp sandbox running on this host, asked of podman. |
+| `recordings` `image` | **Parse, then refuse**, because each needs the milestone that gives it meaning (M6, M7). |
 
 ### Verified end to end on real hardware
 
@@ -69,7 +76,7 @@ user's involvement.
 It also produced the first finding that only real hardware could produce — see
 *Known gaps on Ubuntu 24.04* below.
 
-Plus **57 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
+Plus **80 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
 `build/spock-reports/*.md` after `./gradlew test`.
 
 ### Findings from that run
@@ -78,6 +85,54 @@ Plus **57 fast scenarios** and **7 spikes**, all passing, rendered to readable M
 |---|---|---|
 | Ubuntu 24.04 ships podman **4.9.3 with `runc`**, not `crun` | GPU passthrough degraded silently: the render group cannot be passed in, so the desktop fell back to software rendering (`pixman`) on the default `gpu = auto` | **Fixed.** `crun` is now a required package, installed with podman, and a scenario pins the reason. |
 | `doctor` advised *"drop `--no-install`"* to a user who never passed it | Read as though oillamp could not install packages at all — the opposite of FR-60, and it did mislead a reader | **Fixed.** `Installing.DECLINED` vs `Installing.NEVER`; `doctor` now points at `oillamp at`. |
+
+### A whole session, on real hardware (M4)
+
+Run against real podman on this machine, with a non-graphical stand-in for the terminal so the
+check could be automated. Everything else — the container, the relay, the ssh, the shutdown — was
+the real thing:
+
+```
+[session] ✓ sandbox running — container oillamp-fxjl7ga4
+[session] ✓ desktop and shell both answering — oillamp connected to each socket before handing it over
+[session] ✓ opened your shell, in a new terminal window
+
+— your session is up ———
+  desktop        1920x1080, renderer pixman (software)
+  viewer         open now — another with `oillamp view <dir>`
+  shell          open now — extra shells with `oillamp shell <dir>`
+  the agent sees <dir>/agent-lamp-fxjl7ga4 and nothing else of this lamp
+  network        allow by default, 1 rule(s), 0 forward(s)
+  this terminal  keeps reporting the sandbox's health until the session ends
+  to finish      close the shell window, press Ctrl-C here, or run `oillamp stop <dir>`
+
+[session] ✓ your shell is connected — closing that window ends the session
+[health]  · desktop and shell both still answering
+[session] · up 32s — oillamp-fxjl7ga4, 1920x1080, 0 extra shells
+[session] · shutting down — you closed the terminal window
+
+— session 20260922-200057 ———
+  ended because   you closed the terminal window
+  ran for         59s
+  sandbox         oillamp-fxjl7ga4 (removed)
+```
+
+All three endings were checked separately — the shell window closing, `oillamp stop`, and
+`SIGINT` — and each removed the container and left no `session.json`, no sockets and no lock.
+`oillamp shell` opened a second shell that ran as `agent` in `/home/agent/workspace` and, when it
+closed, the session carried on (D-09). `oillamp stop` on a lamp whose supervisor had been killed
+found the orphaned container and cleaned up after it (FR-08).
+
+### Findings from the M4 run
+
+| Finding | Effect | Resolution |
+|---|---|---|
+| `oillamp list` used a `--format` template field podman 4.9 does not have | The command failed outright on the podman version Ubuntu ships, while working on podman 5 | **Fixed.** It reads `--format json`, which does not move between versions. |
+| The startup briefing said a viewer was open under `--no-viewer` | A user told to look for a window that is not there | **Fixed.** It reports what is on screen, not what was configured. |
+| A session that failed to start exited 5 in silence | The `Problem` explaining why was carried inside the shutdown reason and never emitted — the one failure mode this tool exists to avoid | **Fixed.** Every `StartupFailed` is announced before the session tidies itself away. |
+| The session state was read by four threads and was not `volatile` | Nothing misbehaved, but the memory model allows the shutdown hook to watch a stale state until its own timeout — hard to spot, since everything it is responsible for would have worked | **Fixed.** |
+
+---
 
 ---
 
@@ -105,10 +160,10 @@ the container work can be written and verified against a real runtime rather tha
 
 | Milestone | Needs | Blocked on |
 |---|---|---|
-| **M3** Image and container | **image resources are written** (Containerfile, entrypoint, `lamp` script, sway/sshd/profile configs — no longer sketches). Still to do: content-hash image tag, `podman build` as a Step, container spec and run, readiness protocol | needs `slirp4netns` installed before the image can be built at all |
-| **M4** Supervisor | session state machine (§25.1), SSH relays over Unix sockets, terminal and viewer launch (the D-22 profile table already exists), control socket, shutdown sequence, and the five session commands | M3 |
+| **M3** Image and container | ✅ **done** — content-hash image tag, `podman build` as a step, the container spec, and a readiness protocol that connects to every socket before calling a session ready | — |
+| **M4** Supervisor | ✅ **done** — session machine (§25.1) as a pure function, both SSH relays, the control socket, the §10.7 shutdown sequence, `view`/`shell`/`stop`/`status`/`list`, and health reporting that continues for the life of the session | — |
 | **M5** Network | egress proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, LLM preconfiguration. *The policy model, rules, CIDR and host-pattern matching are already written and tested* — what is missing is the proxy that applies them. | M3 |
-| **M6** Recording and agent tooling | wf-recorder, retention (already written), `recordings` command, the `lamp` helper **script** (D-27 — no Java RFB client), agent guide delivery, GPU auto mode | M3 |
+| **M6** Recording and agent tooling | wf-recorder, retention (already written), `recordings` command, the `lamp` helper **script** (D-27 — no Java RFB client), GPU auto mode. *The harnesses are already installed into the image* — `opencode` and `pi`, the latter with the Eden AI provider extension | — |
 | **M7** Packaging | jpackage `.deb`, completion scripts, README, E2E checklist | M3–M6 |
 
 ### The golden path, verified
@@ -128,6 +183,35 @@ Eleven of the fourteen §33 assumptions are confirmed, **and not one fallback wa
 vncviewer takes a Unix socket path directly, non-root `sshd -i` works on trixie, libwayland
 accepts an absolute `WAYLAND_DISPLAY`, and wf-recorder leaves a playable file.
 
+### Agent harnesses, confirmed against a real image
+
+Built with `WITH_TOOLCHAIN=true` and checked inside the container, not assumed:
+
+| | |
+|---|---|
+| `pi` | `@earendil-works/pi-coding-agent` → `/usr/bin/pi`, version 0.87.1 |
+| `opencode` | `opencode-ai` → `/usr/bin/opencode`, version 1.18.32 |
+| Eden AI provider | `pi install git:github.com/edenai/pi-edenai` — **not** `npm:pi-edenai`, which its README suggests and which returns 404 from the registry |
+
+`pi install` writes a `git/` clone and a `settings.json` into pi's agent directory — not into an
+`extensions/` directory, which is what the extension's README implies. The build therefore
+installs into `/usr/local/share/oillamp/pi` (pi's `PI_CODING_AGENT_DIR` relocates it there) and
+the entrypoint copies the whole directory into the agent's home at session start, entry by entry,
+never over anything the agent already has. Confirmed by running the real installer and the real
+seeding function in a container: the files land owned by `agent`, and a second run leaves an
+edited `settings.json` untouched.
+
+The tolerance is not theoretical either. The first toolchain build hit an npm idle timeout while
+fetching `pi` — and finished successfully anyway, with `opencode` installed and a warning in the
+log. That is the required behaviour: a harness is a convenience, while the desktop, the shell,
+the recording and ssh are the product.
+
+**`EDENAI_API_KEY`** (and `EDENAI_BASE_URL`, `EDENAI_EU_ONLY`, `EDENAI_MAX_TOKENS`) are passed
+from the host environment into the session if they are set there, so a user who has already
+configured Eden AI does not have to do it again inside a sandbox. oillamp logs which names it
+found and never the values. **Reaching api.edenai.run still needs M5** — until the egress proxy
+exists the sandbox has no outbound network at all.
+
 ### Still open: the verification spikes
 
 Three of the 14 remain, and none of them blocks M3:
@@ -135,7 +219,7 @@ Three of the 14 remain, and none of them blocks M3:
 | # | Assumption | Why it is still open |
 |---|---|---|
 | **S5** | GPU passthrough via `--device` + `--keep-groups` | Needs a host whose user is in the `render` group. This one is not — oillamp detects that and says so, and the desktop runs on software rendering meanwhile. |
-| **S10** | Agent tool package names, binaries, config schemas, and whether their HTTP stacks honour the proxy variables | Needs the full image (`WITH_TOOLCHAIN=true`) and the egress proxy of M5. |
+| **S10** | Whether their HTTP stacks honour the proxy variables | **Half resolved.** The package names, binaries and install are now confirmed against a real toolchain image (see below). What is still open is the proxy half, which needs M5. |
 | **S14** | wayvnc can set the desktop name shown in the viewer's title bar | Cosmetic; §33's fallback is "ignore". |
 
 What these were guarding against turned out not to happen. The load-bearing one was S13 — whether

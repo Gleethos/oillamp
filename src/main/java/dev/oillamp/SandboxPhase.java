@@ -181,6 +181,11 @@ final class SandboxPhase {
         arguments.put("JDK_PACKAGE", config.image().jdkPackage());
         arguments.put("NODE_MAJOR", config.image().nodeVersion());
         arguments.put("EXTRA_APT_PACKAGES", String.join(" ", config.image().extraAptPackages()));
+        // Until now `agent_tools.install` was read, validated and then never used: the image was
+        // built with the Containerfile's own default whatever the lamp asked for. Passing it here
+        // also makes it part of the content hash, so changing the list rebuilds the image — which
+        // is the only way a new harness can appear in a sandbox that has no network of its own.
+        arguments.put("AGENT_TOOLS", String.join(" ", config.agentTools().install()));
         return arguments;
     }
 

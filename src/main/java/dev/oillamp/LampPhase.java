@@ -6,6 +6,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Optional;
 
+import sprouts.Association;
 import sprouts.Tuple;
 
 /**
@@ -99,6 +100,29 @@ final class LampPhase {
     }
 
     /**
+     * The handful of host variables the agent's tools are given — spec §19.5.
+     *
+     * <p>Out of the box matters here: a user who has already set {@code EDENAI_API_KEY} on their
+     * machine should not have to set it again inside a sandbox they cannot type into yet. Only
+     * the names in {@link RuntimeEnv#INHERITED_FROM_HOST} cross, and the log says which were
+     * found — never what they contain.
+     */
+    private Association<String, String> inheritedFromHost() {
+        Association<String, String> found = Association.between(String.class, String.class);
+        Tuple<String> names = Tuple.of(String.class);
+        for (String name : RuntimeEnv.INHERITED_FROM_HOST) {
+            Optional<String> value = machine.environmentVariable(name);
+            if (value.isEmpty()) continue;
+            found = found.put(name, value.get());
+            names = names.add(name);
+        }
+        if (!names.isEmpty())
+            context.info("lamp", "the agent's tools will see " + String.join(", ", names)
+                    + " from your environment (the value is never logged)");
+        return found;
+    }
+
+    /**
      * Renders the per-session files. Separate from the skeleton because it needs the keys that
      * the skeleton generated — see {@link LampPlanner#planSession}.
      */
@@ -117,7 +141,7 @@ final class LampPhase {
                     java.time.Duration.ZERO)));
 
         Result<String> environment = RuntimeEnv.render(
-                RuntimeEnv.variables(config, layout, session, gpu.renderer()));
+                RuntimeEnv.variables(config, layout, session, gpu.renderer(), inheritedFromHost()));
         if (environment instanceof Result.Err<String> failure) return Result.err(failure.problems());
 
         return LampPlanner.planSession(layout, clientKey.get(), hostKey.get(),
