@@ -27,6 +27,8 @@ record HostRequirements(DistroFamily family, Tuple<String> packages,
     private static HostRequirements debian() {
         Association<String, String> why = Association.betweenSorted(String.class, String.class)
             .put("podman",           "runs the sandbox container, rootless and without a daemon")
+            .put("crun",             "the OCI runtime podman uses to start the container; Ubuntu "
+                                   + "defaults to runc, which cannot pass the GPU render group in")
             .put("uidmap",           "newuidmap/newgidmap, which rootless podman needs to map container users")
             .put("catatonit",        "the init process inside the container, so orphaned processes get reaped")
             .put("socat",            "bridges the SSH connection over a Unix socket instead of a TCP port")

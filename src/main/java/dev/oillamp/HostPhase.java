@@ -28,7 +28,16 @@ final class HostPhase {
         public boolean succeeded() { return result.isOk(); }
     }
 
-    public Outcome prepare(java.nio.file.Path lampPathHint, boolean requiresDisplay) {
+    /**
+     * Probes the host, fixes what it is allowed to fix, then probes again and verifies.
+     *
+     * @param installing whether this run may install what is missing. {@code doctor} and
+     *                   {@code config check} pass {@link Installing#NEVER}, which is not the same
+     *                   as a user declining with {@code --no-install}: it changes what the user is
+     *                   told to do about missing packages.
+     */
+    public Outcome prepare(java.nio.file.Path lampPathHint, boolean requiresDisplay,
+                           Installing installing) {
         // The package names are the same for every family oillamp knows, so one probe suffices;
         // the planner refuses a non-APT distribution afterwards, with the list to install by hand.
         HostRequirements requirements =
@@ -37,8 +46,7 @@ final class HostPhase {
         // A dry run is allowed to plan things it could not currently carry out: the user asked
         // what oillamp *would* do, and "I cannot sudo right now" is not an answer to that.
         HostPlanner.Options options = new HostPlanner.Options(
-                context.options().autoInstall(), requiresDisplay, false,
-                !context.options().dryRun());
+                installing, requiresDisplay, false, !context.options().dryRun());
 
         Result<Plan> planned = HostPlanner.plan(facts, requirements, options);
         if (planned instanceof Result.Err<Plan> failure)

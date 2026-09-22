@@ -30,15 +30,20 @@ final class HostPlanner {
     /**
      * How much oillamp is allowed to do, and how strict this pass is.
      *
-     * @param autoInstall              may oillamp change this machine? ({@code --no-install} / {@code host.auto_install})
+     * @param installing               may oillamp change this machine, and if not, why not
      * @param requiresGraphicalSession true for commands that open windows; false for {@code doctor}
      * @param afterFixes               the verification pass after Phase A's fixes: plan nothing, demand everything
      * @param willExecute              false for a dry run, where steps are only described
      */
-    public record Options(boolean autoInstall, boolean requiresGraphicalSession,
+    public record Options(Installing installing, boolean requiresGraphicalSession,
                           boolean afterFixes, boolean willExecute) {
         public Options verifying() {
-            return new Options(autoInstall, requiresGraphicalSession, true, willExecute);
+            return new Options(installing, requiresGraphicalSession, true, willExecute);
+        }
+
+        /** True only when oillamp may actually fix what it finds on this run. */
+        public boolean mayInstall() {
+            return installing.allowed();
         }
     }
 
@@ -61,11 +66,13 @@ final class HostPlanner {
         // not just told. Report the missing package and leave it at that.
         boolean podmanIsAbsent = missing.contains("podman");
         if (!missing.isEmpty()) {
-            if (!options.autoInstall() || options.afterFixes()) {
-                problems = problems.add(Problems.packagesMissing(missing, requirements.installCommand(missing)));
+            if (!options.mayInstall() || options.afterFixes()) {
+                problems = problems.add(Problems.packagesMissing(
+                        missing, requirements.installCommand(missing), options.installing()));
             } else if (options.willExecute() && !facts.sudo().canInstall()) {
                 problems = problems.add(Problems.noSudo(sudoReason(facts.sudo())));
-                problems = problems.add(Problems.packagesMissing(missing, requirements.installCommand(missing)));
+                problems = problems.add(Problems.packagesMissing(
+                        missing, requirements.installCommand(missing), options.installing()));
             } else {
                 steps = steps.add(installStep(requirements, missing));
             }
@@ -73,7 +80,7 @@ final class HostPlanner {
 
         // ── subordinate id range ───────────────────────────────────────────────────────────
         if (facts.subIds() instanceof SubIdFacts.Missing gap) {
-            if (!options.autoInstall() || options.afterFixes()) {
+            if (!options.mayInstall() || options.afterFixes()) {
                 problems = problems.add(Problems.hostNoSubIds(facts.user().name()));
             } else if (options.willExecute() && !facts.sudo().canInstall()) {
                 if (problems.none(p -> p.code().equals(Problems.PKG_NO_SUDO)))

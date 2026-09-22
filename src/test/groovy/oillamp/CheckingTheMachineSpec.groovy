@@ -50,8 +50,14 @@ class CheckingTheMachineSpec extends Specification {
         reportInfo """
             FR-60 lets oillamp install prerequisites itself, but `doctor` never changes anything.
             So on a machine that is missing packages, the only useful thing doctor can do is name
-            them and hand over a command that can be pasted - which is also the fallback for
-            anyone running with --no-install (FR-63).
+            them and hand over a command that can be pasted.
+
+            The *second* remedy is the one this scenario guards. Doctor suppresses installing
+            internally, and when that was a plain boolean it was indistinguishable from the user
+            passing --no-install - so doctor told people to "drop --no-install", naming a flag they
+            had never passed and implying oillamp could not install packages at all. That is the
+            opposite of what FR-60 promises, and it misled a real reader. Doctor must instead point
+            at `oillamp at`, which does install.
 
             The exit code matters as much as the text: 3 means "prerequisites missing", distinct
             from a generic failure, so a script wrapping oillamp can tell the two apart.
@@ -77,8 +83,9 @@ class CheckingTheMachineSpec extends Specification {
             problem.fixes().any { it.command().orElse('').startsWith('sudo apt-get install -y') }
             problem.fixes().any { it.command().orElse('').contains('podman') }
 
-        and: 'and told how to let oillamp do it instead'
-            problem.fixes().any { it.description().contains('--no-install') }
+        and: 'and pointed at the command that installs them, not at a flag they never passed'
+            problem.fixes().any { it.description().contains('oillamp at') }
+            problem.fixes().every { !it.description().contains('--no-install') }
     }
 
     def 'Every missing prerequisite is reported in one run, not one per attempt'() {
@@ -137,6 +144,36 @@ class CheckingTheMachineSpec extends Specification {
 
         and: 'podman is told to re-read the id map afterwards, or it would keep the old one'
             outcome.stepKinds().contains('PodmanMigrate')
+    }
+
+    def 'crun is installed alongside podman, because Ubuntu would otherwise use runc'() {
+        reportInfo """
+            Found on the first real-hardware run, which no simulation would have caught: Ubuntu
+            24.04 ships podman 4.9.3 with **runc**, not crun. GPU passthrough needs crun, because
+            only it supports the `--keep-groups` that carries the host's render group into the
+            container (section 15.3).
+
+            The failure mode is what makes this worth a scenario rather than a comment. Nothing
+            breaks. The desktop simply renders in software, quietly, on the *default* setting
+            (`display.gpu = auto`) of the *primary target platform*. A user would have no reason
+            to suspect anything and no obvious thing to search for.
+
+            So crun is a required package, not an optional extra, and this scenario exists to
+            stop someone removing it later as "podman already works without it" - which is true,
+            and is exactly the trap.
+        """
+        given: 'a stock Ubuntu where podman is present but crun is not'
+            sandbox.machine { it.withoutPackages('crun') }
+
+        when: 'the user asks what oillamp would do'
+            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run')
+
+        then: 'crun is installed rather than left to chance'
+            outcome.stepKinds().contains('InstallPackages')
+            outcome.steps().any { it.contains('crun') }
+
+        and: 'and the user is told why a runtime they did not ask for is being installed'
+            outcome.stepDetails().any { it.contains('runc') && it.contains('render group') }
     }
 
     def 'A machine blocked by AppArmor gets the remedy for that, not a generic failure'() {

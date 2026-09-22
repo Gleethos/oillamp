@@ -100,13 +100,24 @@ final class Problems {
 
     // ─── packages and sudo ─────────────────────────────────────────────────────────────────
 
-    public static Problem packagesMissing(Tuple<String> missing, String installCommand) {
+    public static Problem packagesMissing(Tuple<String> missing, String installCommand,
+                                          Installing installing) {
+        // The second remedy has to match why oillamp is not installing them itself. Telling a
+        // `doctor` user to "drop --no-install" names a flag they never passed, and reads as though
+        // oillamp cannot install packages at all - which is the opposite of true (FR-60).
+        String letOillampDoIt = switch (installing) {
+            case ALLOWED, DECLINED ->
+                    "or let oillamp install them by dropping --no-install / setting host.auto_install = true";
+            case NEVER ->
+                    "or run `oillamp at <dir>`, which installs them for you after one sudo prompt "
+                  + "(this command only ever looks)";
+        };
         return error(PKG_MISSING, "Required host packages missing",
                 "these packages are not installed: " + String.join(" ", missing),
                 "oillamp drives podman, connects SSH through a Unix socket with socat, and opens "
               + "the desktop with a VNC viewer; each missing package disables one of those")
             .withFix(Fix.run("install them", installCommand))
-            .withFix(Fix.of("or let oillamp install them by dropping --no-install / setting host.auto_install = true"));
+            .withFix(Fix.of(letOillampDoIt));
     }
 
     public static Problem noSudo(String detail) {

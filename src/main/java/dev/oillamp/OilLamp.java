@@ -126,6 +126,25 @@ public final class OilLamp {
             return out;
         }
 
+        /**
+         * The fuller explanation attached to each step — what {@code --verbose} prints.
+         *
+         * <p>The counterpart to {@link #steps()}: FR-60 requires oillamp to say not just what it
+         * will change on someone's machine but <em>why</em>, and this is where that reasoning
+         * lives. Without it there is no way to assert that the reason is actually present, and a
+         * reason nothing checks is a reason that quietly rots.
+         */
+        public Tuple<String> stepDetails() {
+            Tuple<String> out = Tuple.of(String.class);
+            for (LampEvent event : events)
+                switch (event) {
+                    case LampEvent.StepPlanned planned -> out = out.add(planned.step().detail());
+                    case LampEvent.StepStarted started -> out = out.add(started.step().detail());
+                    default -> { }
+                }
+            return out;
+        }
+
         /** The kinds of step, e.g. {@code "InstallPackages"} — stable across wording changes. */
         public Tuple<String> stepKinds() {
             Tuple<String> out = Tuple.of(String.class);

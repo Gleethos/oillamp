@@ -36,7 +36,7 @@ final class Commands {
         Context.Options original = context.options();
         HostPhase host = new HostPhase(machine, new Context(context::emit,
                 original.withDryRun(true).withAutoInstall(false), context.version()));
-        HostPhase.Outcome outcome = host.prepare(lampPath.orElse(Path.of(".")), false);
+        HostPhase.Outcome outcome = host.prepare(lampPath.orElse(Path.of(".")), false, Installing.NEVER);
 
         if (!outcome.succeeded()) {
             context.report(outcome.result().problems());
@@ -58,7 +58,8 @@ final class Commands {
      * are the next milestones, so for now this stops after the lamp is ready and says so.
      */
     public ExitStatus at(Path lampPath) {
-        HostPhase.Outcome host = new HostPhase(machine, context).prepare(lampPath, true);
+        HostPhase.Outcome host = new HostPhase(machine, context).prepare(lampPath, true,
+                context.options().autoInstall() ? Installing.ALLOWED : Installing.DECLINED);
         if (!host.succeeded()) {
             context.report(host.result().problems());
             return HostPhase.exitStatusFor(host.result().problems());
@@ -114,7 +115,7 @@ final class Commands {
     public ExitStatus checkConfig(Path lampPath) {
         HostPhase.Outcome host = new HostPhase(machine, new Context(context::emit,
                 context.options().withDryRun(true).withAutoInstall(false), context.version()))
-                .prepare(lampPath, false);
+                .prepare(lampPath, false, Installing.NEVER);
         context.report(host.result().warnings());
         return checkConfiguration(lampPath, true);
     }

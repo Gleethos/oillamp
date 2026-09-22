@@ -3,7 +3,7 @@
  *
  * <h2>Five public types, and why that is the whole design</h2>
  *
- * <p>This package contains 74 classes. Five of them are {@code public}:
+ * <p>Exactly five types in this package are {@code public}, and a test enforces that number:
  *
  * <ul>
  *   <li>{@link dev.oillamp.OilLamp} — the entry point: {@code OilLamp.on(machine).run(argv)}</li>
@@ -13,7 +13,7 @@
  *   <li>{@link dev.oillamp.ExitStatus} — how the process ended</li>
  * </ul>
  *
- * <p>The other 69 are package-private, and that is not an accident of where they happened to be
+ * <p>Everything else is package-private, and that is not an accident of where they happened to be
  * written. The public API is the part that cannot be changed later without breaking somebody, so
  * it is the part worth keeping small — and a small API is only real if something enforces it. Java
  * enforces this one: a package-private class <em>cannot</em> be named from another package. Not by
@@ -23,7 +23,7 @@
  * <p>That is why everything lives in one package. Sub-packages would each need their own public
  * types to talk to one another, and every one of those would be public to the whole world too —
  * Java has no "public within these packages". Splitting for tidiness would quietly triple the
- * surface. One package is the price of 69 classes that are genuinely unreachable.
+ * surface. One package is the price of keeping every other class genuinely unreachable.
  *
  * <h2>Every class says which it is, and why</h2>
  *

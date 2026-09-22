@@ -10,7 +10,8 @@ recorded in **spec §36**, with reasons.
 ## In one paragraph
 
 Milestones **M1 (host prerequisites)** and **M2 (lamp directory and configuration)** are
-implemented and verified. `oillamp doctor` and `oillamp at <dir> --dry-run` do the real thing on
+implemented and **verified end to end on a real Ubuntu 24.04 machine**, including the package
+install and the sudo prompt. `oillamp doctor` and `oillamp at <dir> --dry-run` do the real thing on
 a real machine. `oillamp at <dir>` without `--dry-run` will install host prerequisites and build
 the lamp directory, then stop before starting a container, because **M3 onwards is not written
 yet**. The five session commands (`view`, `shell`, `stop`, `status`, `list`) parse and then say
@@ -32,18 +33,51 @@ so, rather than pretending.
 | `--verbose`, `--debug`, `--no-color`, `--no-install` | **Work.** |
 | `view` `shell` `stop` `status` `list` `recordings` `image` | **Parse, then refuse**, because each needs a running session (M4). |
 
-### Verified on this machine
+### Verified end to end on real hardware
+
+Ubuntu 24.04.5, GNOME on Wayland, on a machine that had none of the prerequisites. This is
+the full sequence, not a simulation:
 
 ```
-$ oillamp doctor
-→ finds Ubuntu 24.04.5, GNOME on Wayland, names podman/uidmap/catatonit/socat
-  as missing, offers the apt command, exits 3
+$ oillamp doctor                       # before anything was installed
+→ names podman/uidmap/catatonit/socat as missing, offers the apt command, exits 3
+
 $ oillamp at /tmp/lamp --dry-run
 → prints ~35 steps and creates nothing
+
+$ oillamp at /tmp/lamp                 # the real thing
+[host]    ✓ Ubuntu 24.04.5 LTS, Wayland (ubuntu:GNOME)
+[sudo] password for <user>:            ← the only manual step, exactly once
+[host]    ✓ Ubuntu 24.04.5 LTS, Wayland (ubuntu:GNOME)
+[host]    ✓ podman 4.9.3, rootless, runc
+[lamp]    ✓ config valid — network: default allow, 1 rule, no forwards
+[lamp]    ✓ desktop 1920x1080, renderer pixman (software)
+[lamp]    · the OCI runtime is runc, but passing the render group into the container needs crun
+[lamp]    ✓ ready — agent 4ygi5nkf, desktop 1920x1080, renderer pixman
+[session] · starting the sandbox container is the next milestone
+
+$ oillamp doctor                       # afterwards
+[host]    ✓ podman 4.9.3, rootless, runc
+[host]    ✓ this machine can run oillamp sandboxes
 ```
 
-Plus **33 Spock scenarios**, all passing, rendered to readable Markdown at
+This confirms the part of §34.1 that could not be checked before: oillamp installs its own
+prerequisites, the probe→fix→**re-probe** cycle of §10.5 works (note the host line printed
+twice, the second time with podman present), and the single sudo prompt is the whole of the
+user's involvement.
+
+It also produced the first finding that only real hardware could produce — see
+*Known gaps on Ubuntu 24.04* below.
+
+Plus **34 Spock scenarios**, all passing, rendered to readable Markdown at
 `build/spock-reports/*.md` after `./gradlew test`.
+
+### Findings from that run
+
+| Finding | Effect | Resolution |
+|---|---|---|
+| Ubuntu 24.04 ships podman **4.9.3 with `runc`**, not `crun` | GPU passthrough degraded silently: the render group cannot be passed in, so the desktop fell back to software rendering (`pixman`) on the default `gpu = auto` | **Fixed.** `crun` is now a required package, installed with podman, and a scenario pins the reason. |
+| `doctor` advised *"drop `--no-install`"* to a user who never passed it | Read as though oillamp could not install packages at all — the opposite of FR-60, and it did mislead a reader | **Fixed.** `Installing.DECLINED` vs `Installing.NEVER`; `doctor` now points at `oillamp at`. |
 
 ---
 
@@ -54,16 +88,16 @@ Plus **33 Spock scenarios**, all passing, rendered to readable Markdown at
 opts out and turns those into reported problems instead. Acceptance criterion §34.1 is explicit
 about it: *"installs prerequisites (one sudo prompt)"* — one prompt is the entire manual step.
 
-The catch is only about **who can type the password.** This machine's sudo requires one, and an
+The catch is only ever about **who can type the password.** sudo requires one here, and an
 automated agent session has no terminal to type it into, so the install step is the one thing an
 agent cannot carry out on its own. A human runs `oillamp at <dir>` once, types the password, and
-everything after that is automatic.
+everything after that is automatic. That is exactly what happened in the transcript above.
 
-The other half of the limit is real and unavoidable: **M3–M6 cannot be meaningfully tested until
-podman is present**, and the simulated machine deliberately does not fake it. It answers
-`podman unshare chown` with a plausible success, which is fine for testing *planning* and
-actively misleading for testing *execution*. So the container work wants a host with podman
-actually installed — this one, once the prerequisites are in.
+The second half of the limit was real but is now cleared: **M3–M6 could not be meaningfully
+tested until podman was present**, because the simulated machine deliberately does not fake it.
+It answers `podman unshare chown` with a plausible success, which is fine for testing *planning*
+and actively misleading for testing *execution*. podman 4.9.3 is now installed on this host, so
+the container work can be written and verified against a real runtime rather than a simulation.
 
 ---
 
@@ -71,7 +105,7 @@ actually installed — this one, once the prerequisites are in.
 
 | Milestone | Needs | Blocked on |
 |---|---|---|
-| **M3** Image and container | image resources (Containerfile, entrypoint, sway config, sshd_config — Appendices A–F are sketches, not code), content-hash image tag, `podman build`, container spec and run, readiness protocol | a host with podman |
+| **M3** Image and container | image resources (Containerfile, entrypoint, sway config, sshd_config — Appendices A–F are sketches, not code), content-hash image tag, `podman build`, container spec and run, readiness protocol | **unblocked** — podman 4.9.3 is now installed here |
 | **M4** Supervisor | session state machine (§25.1), SSH relays over Unix sockets, terminal and viewer launch (the D-22 profile table already exists), control socket, shutdown sequence, and the five session commands | M3 |
 | **M5** Network | egress proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, LLM preconfiguration. *The policy model, rules, CIDR and host-pattern matching are already written and tested* — what is missing is the proxy that applies them. | M3 |
 | **M6** Recording and agent tooling | wf-recorder, retention (already written), `recordings` command, the `lamp` helper **script** (D-27 — no Java RFB client), agent guide delivery, GPU auto mode | M3 |
@@ -82,7 +116,8 @@ actually installed — this one, once the prerequisites are in.
 Spec §33 lists 14 **⚠ VERIFY** assumptions about third-party tools. **S11 is resolved** (Jackson
 2.x for TOML; classpath mode for jpackage — see §36.3). The remaining 13 are assumptions about
 sway, wayvnc, wf-recorder, rootless podman and the agent tools that the spec itself says must be
-confirmed with a spike *before* the dependent code is written. Most need a machine with podman.
+confirmed with a spike *before* the dependent code is written. Most needed a machine with
+podman, which this one now is.
 
 They are the real risk in this project. Nothing in the Java design is hard; whether
 `--userns=keep-id` maps the way S13 assumes is.
@@ -91,7 +126,7 @@ They are the real risk in this project. Nothing in the Java design is hard; whet
 
 ## Finding your way around the code
 
-74 classes, one package, five of them public. The rule and its reasons are in
+75 classes, one package, five of them public. The rule and its reasons are in
 `src/main/java/dev/oillamp/package-info.java`; every class states in its Javadoc whether it is
 public or package-private **and why**.
 
@@ -125,7 +160,7 @@ Two ideas carry most of the design:
 ## Running it
 
 ```bash
-./gradlew build                 # compile, run all 33 scenarios
+./gradlew build                 # compile, run all 34 scenarios
 ./gradlew installDist           # build/install/oillamp/bin/oillamp
 ./gradlew test                  # then read build/spock-reports/*.md
 ```

@@ -1002,7 +1002,7 @@ oillamp/
 ├── build.gradle                    one module: Java 25 toolchain, Error Prone + NullAway, Spock
 ├── settings.gradle
 ├── docs/                           SproutsCheatSheet.md, STATUS.md
-├── src/main/java/dev/oillamp/      all production code — one package, 74 classes, 5 of them public
+├── src/main/java/dev/oillamp/      all production code — one package, 75 classes, 5 of them public
 ├── src/test/groovy/oillamp/        Spock scenarios — a DIFFERENT package, deliberately (see below)
 └── src/main/resources/image/       Containerfile, entrypoint, sway config, sshd_config, templates
 ```
@@ -1028,7 +1028,7 @@ should depend on it" is a sentence that prevents a future mistake. Its absence i
 
 A package-private class cannot be referenced from another package. That is a compiler rule, not a
 review convention, and it is the cheapest enforcement available. One package therefore buys the
-largest possible number of package-private classes — 69 of 74 — and the boundary holds without
+largest possible number of package-private classes — 70 of 75 — and the boundary holds without
 anyone having to remember it.
 
 The tests are the other half of the same mechanism. They live in package **`oillamp`**, outside
@@ -1038,7 +1038,7 @@ it has no choice but to describe something a user could recognise. This is why t
 like *"Every missing prerequisite is reported in one run, not one per attempt"* rather than
 `HostPlannerTest.testCombine()`.
 
-The cost is real and accepted: no sub-package structure, one directory with 74 files, and internal
+The cost is real and accepted: no sub-package structure, one directory with 75 files, and internal
 helpers that are only distinguishable from domain types by reading them. For a tool this size that
 is a better trade than eight build units, eight `module-info.java` files and a dependency graph to
 keep honest.
@@ -1561,7 +1561,7 @@ current detail; the Status column here is the summary.
 | **M0** | Spikes | ⬜ not started — **S11 resolved** (§36.3), 13 spikes open | all items in §33, as throwaway scripts in `spikes/` | every ⚠ VERIFY item is confirmed or replaced by its fallback, and this spec is updated |
 | **M1** | Skeleton and host | ✅ **built and verified** | Gradle setup with ArchUnit rules (single module, D-26); `Result`/`Problem`/catalog; ProcessRunner; HostProbe; HostPlanner incl. APT install and subuid fix; `doctor`; ConsoleRenderer; Journal | `oillamp doctor` on a fresh Ubuntu VM reports and (via `at --dry-run`) plans the right fixes; unit + golden tests |
 | **M2** | Lamp and config | ✅ **built and verified** | lamp classification/init/migration, layout, lock + stale detection, TOML config pipeline with all validations, key generation, rendering of `session/`, `ssh_config`, runtime dir | `oillamp at <new dir> --dry-run` prints a complete, correct plan; config errors are reported all at once with key paths |
-| **M3** | Image and container | ⬜ not started — needs a host with podman | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
+| **M3** | Image and container | ⬜ not started — **unblocked**, podman verified on the dev host | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
 | **M4** | Supervisor | ⬜ not started | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
 | **M5** | Network | ⬜ not started — *policy engine already built* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
 | **M6** | Recording and agent tooling | ⬜ not started — *retention already built* | wf-recorder, retention, `recordings` command; `lamp` helper script (D-27); agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
@@ -1610,7 +1610,7 @@ weakened; they are the same criteria the finished tool must meet.
 12. ✅ An invalid `oillamp.toml` (unknown key + bad CIDR + duplicate forward) produces exactly three `OIL-CONFIG-*` problems in one run, each with file, key path, value, and expectation; exit code 2.
 13. ✅ `oillamp at <dir> --dry-run` on a new directory prints every step (including the podman argv) and changes nothing on disk.
 14. ⬜ With `display.gpu = "on"` on a machine without a usable render node, a clear `OIL-GPU-003` is shown; with `auto`, the session starts in software mode and says why.
-15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(33 Spock scenarios and the architecture rules pass. Integration tests need podman.)*
+15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(34 Spock scenarios and the architecture rules pass. Integration tests need podman.)*
 
 ## 35. Remaining open points (non-blocking)
 
@@ -1672,10 +1672,24 @@ changed for convenience alone.
   using it were changed to `k3v7x2ab`.
 - **S11 is resolved, in favour of the fallback.** Jackson 3.x has no TOML dataformat module;
   Jackson 2.20 does. The build uses Jackson 2.x, and `jpackage` runs in classpath mode.
+- **§15.3 assumes `crun`, but Ubuntu 24.04 ships podman 4.9.3 with `runc`.** Found on the first
+  real-hardware run, not in any simulation. GPU passthrough needs `crun` for `--keep-groups`, so
+  on a stock install of the *primary target platform* the desktop silently fell back to software
+  rendering — on the default setting (`display.gpu = auto`), with nothing obviously wrong to
+  search for. **Resolved:** `crun` is now a required package in §11.1, installed alongside podman,
+  with the reason carried in the step detail. A scenario pins it so it is not later removed as
+  redundant — which it looks like, because podman does run without it.
+- **The remedy for missing packages named a flag the user had not passed.** `doctor` suppressed
+  installing through the same boolean that `--no-install` sets, so it advised the user to "drop
+  --no-install" — implying oillamp could not install packages at all, the opposite of FR-60. The
+  two reasons are now distinct (`Installing.DECLINED` vs `Installing.NEVER`) and `doctor` points
+  at `oillamp at` instead. A boolean that answers "may I?" cannot also answer "why not?".
 
 ### 36.4 Status
 
-**M1 and M2 are implemented and verified. M0 and M3–M7 are not started.**
+**M1 and M2 are implemented and verified end to end on real hardware — a stock Ubuntu 24.04.5
+machine with none of the prerequisites installed, through the sudo prompt to a populated lamp
+directory. M0 and M3–M7 are not started.**
 
 Status is recorded in three places, all of which describe the code as it stands rather than the
 intent:
@@ -1683,7 +1697,7 @@ intent:
 - **§4 and §5** — every requirement carries ✅, 🟡 or ⬜, and each 🟡 says which part is built.
 - **§32, §33 and §34** — milestones, verification spikes and acceptance criteria, same markers.
 - **`docs/STATUS.md`** — the detail: what each command does today, what each milestone still
-  needs, how the 74 classes are laid out, and how to run what exists.
+  needs, how the 75 classes are laid out, and how to run what exists.
 
 Of the fifteen acceptance criteria, three can be checked today; the other twelve need a running
 container. None has been weakened to fit what was built.
