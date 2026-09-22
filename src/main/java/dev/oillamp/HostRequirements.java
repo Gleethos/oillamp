@@ -29,6 +29,8 @@ record HostRequirements(DistroFamily family, Tuple<String> packages,
             .put("podman",           "runs the sandbox container, rootless and without a daemon")
             .put("crun",             "the OCI runtime podman uses to start the container; Ubuntu "
                                    + "defaults to runc, which cannot pass the GPU render group in")
+            .put("slirp4netns",      "gives rootless podman a network while the image is built; "
+                                   + "the sandbox itself then runs with --network=none")
             .put("uidmap",           "newuidmap/newgidmap, which rootless podman needs to map container users")
             .put("catatonit",        "the init process inside the container, so orphaned processes get reaped")
             .put("socat",            "bridges the SSH connection over a Unix socket instead of a TCP port")

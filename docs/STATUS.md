@@ -69,7 +69,7 @@ user's involvement.
 It also produced the first finding that only real hardware could produce — see
 *Known gaps on Ubuntu 24.04* below.
 
-Plus **34 Spock scenarios**, all passing, rendered to readable Markdown at
+Plus **36 Spock scenarios**, all passing, rendered to readable Markdown at
 `build/spock-reports/*.md` after `./gradlew test`.
 
 ### Findings from that run
@@ -160,7 +160,7 @@ Two ideas carry most of the design:
 ## Running it
 
 ```bash
-./gradlew build                 # compile, run all 34 scenarios
+./gradlew build                 # compile, run all 36 scenarios
 ./gradlew installDist           # build/install/oillamp/bin/oillamp
 ./gradlew test                  # then read build/spock-reports/*.md
 ```

@@ -176,6 +176,36 @@ class CheckingTheMachineSpec extends Specification {
             outcome.stepDetails().any { it.contains('runc') && it.contains('render group') }
     }
 
+    def 'slirp4netns is installed, because rootless podman cannot build an image without it'() {
+        reportInfo """
+            The second finding from driving real podman, and a good example of why section 33
+            insists on spikes. The error is not subtle - `podman run` fails outright with
+
+                could not find slirp4netns, the network namespace can't be configured
+
+            - but nothing in oillamp would have predicted it, because the simulation only knows
+            what we already believed, and we believed podman brought its own networking.
+
+            The subtlety is *where* it bites. The sandbox runs with `--network=none` (FR-40) and
+            genuinely needs no networking backend, so every scenario about running the container
+            would have passed. Building the image is the step that needs a network, because that
+            is where apt-get runs. So this would have surfaced as "M3 works on my machine" and
+            then failed on the first user who had never built the image before.
+        """
+        given: 'a machine with podman but no rootless networking backend'
+            sandbox.machine { it.withoutPackages('slirp4netns') }
+
+        when: 'the user asks what oillamp would do'
+            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run')
+
+        then: 'it is installed along with everything else, before an image build needs it'
+            outcome.stepKinds().contains('InstallPackages')
+            outcome.steps().any { it.contains('slirp4netns') }
+
+        and: 'and the reason distinguishes building the image from running the sandbox'
+            outcome.stepDetails().any { it.contains('--network=none') }
+    }
+
     def 'A machine blocked by AppArmor gets the remedy for that, not a generic failure'() {
         reportInfo """
             Ubuntu 23.10 and newer refuse unprivileged user namespaces to programs without a

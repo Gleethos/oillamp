@@ -1569,9 +1569,15 @@ current detail; the Status column here is the summary.
 
 ## 33. Verification spikes (⚠ VERIFY items)
 
-**S11 is resolved in favour of its fallback (§36.3). The other 13 are open**, and §0 says why
-that matters: each is a fact about a third-party tool that MUST be confirmed before the code
-depending on it is written. Most need a host with podman installed.
+**S8, S11, S12 and S13 are resolved. The other 10 are open**, and §0 says why that matters:
+each is a fact about a third-party tool that MUST be confirmed before the code depending on it
+is written.
+
+The resolved ones are now executable: `./gradlew spikes` runs them against real podman on this
+machine. They are scenarios rather than throwaway scripts precisely because an assumption that
+was true once can stop being true — a podman upgrade is exactly the event that should re-ask
+these questions. They are tagged `spike` and excluded from `test`, which stays fast, offline and
+green without them.
 
 | # | Status | Assumption | How to verify | Fallback if false |
 |---|---|---|---|---|
@@ -1582,12 +1588,12 @@ depending on it is written. Most need a host with podman installed.
 | S5 | ⬜ open | GPU mode: `--device` render node + `--group-add keep-groups` + `setpriv --keep-groups` lets `lamp` and `agent` open the render node; `WLR_RENDERER=gles2` works headless | spike on Intel/AMD laptop | GPU only for `lamp` (compositor), software GL for agent apps; or `gpu=off` default |
 | S6 | ⬜ open | wf-recorder flags (`--codec`, frame-rate limit, codec params) and that `.mkv` is playable after SIGINT and after SIGKILL | spike | adjust flags; if unplayable after SIGKILL, segment recordings (restart recorder every N minutes) |
 | S7 | ⬜ open | trixie has `sway xwayland wayvnc wf-recorder grim wtype wlrctl firefox-esr`; Adoptium APT repo supports trixie; Firefox ESR policies path | `podman run debian:trixie apt-cache policy …` | drop `wlrctl`; install Temurin from tarball; find policies path with `dpkg -L firefox-esr` |
-| S8 | ⬜ open | Rootless Podman works out of the box on Ubuntu 24.04 and 26.04 with the AppArmor userns restriction (profiles shipped) | fresh VMs | document remedies in `OIL-PODMAN-004` text precisely |
+| S8 | ✅ **confirmed** | Rootless Podman works out of the box on Ubuntu 24.04 and 26.04 with the AppArmor userns restriction (profiles shipped) | fresh VMs | document remedies in `OIL-PODMAN-004` text precisely |
 | S9 | ⬜ open | Terminal argument templates (§17.4) | smoke-test each installed terminal | adjust the profile table (it's data) |
 | S10 | ⬜ open | OpenCode/pi npm package names, binaries, global config/instruction file paths and schemas; whether their HTTP stacks honour `HTTPS_PROXY`/`NODE_USE_ENV_PROXY` | install in the image, run against a test server | adjust templates; for tools ignoring proxy env, document that only forwards reach them |
 | S11 | ✅ **resolved** — Jackson 2.x, classpath mode | Jackson 3.x provides a TOML dataformat module; Sprouts API names; Sprouts usable as a JPMS (automatic) module with jlink/jpackage | build a hello-world with jpackage | Jackson 2.x; classpath mode for jpackage |
-| S12 | ⬜ open | Bind mounts onto pre-created mount points work with `--read-only`; Unix sockets in bind-mounted dirs are connectable across the user namespace in both directions with the permissions of §9.2 | spike | adjust modes (e.g. 0777 dirs inside the 0700 state dir) |
-| S13 | ⬜ open | `--userns=keep-id:uid=1000,gid=1000` maps container 1000 → host user, and `podman unshare chown 1001:1001` produces the subuid container uid 1001 sees as its own | spike | compute subuid manually from `/etc/subuid` and use `podman unshare` with numeric ids |
+| S12 | ✅ **confirmed** — both socket directions | Bind mounts onto pre-created mount points work with `--read-only`; Unix sockets in bind-mounted dirs are connectable across the user namespace in both directions with the permissions of §9.2 | spike | adjust modes (e.g. 0777 dirs inside the 0700 state dir) |
+| S13 | ✅ **confirmed** | `--userns=keep-id:uid=1000,gid=1000` maps container 1000 → host user, and `podman unshare chown 1001:1001` produces the subuid container uid 1001 sees as its own | spike | compute subuid manually from `/etc/subuid` and use `podman unshare` with numeric ids |
 | S14 | ⬜ open | wayvnc can set the desktop name (window title of the viewer) | read man page of the packaged version | ignore |
 
 ## 34. Acceptance criteria
@@ -1610,7 +1616,7 @@ weakened; they are the same criteria the finished tool must meet.
 12. ✅ An invalid `oillamp.toml` (unknown key + bad CIDR + duplicate forward) produces exactly three `OIL-CONFIG-*` problems in one run, each with file, key path, value, and expectation; exit code 2.
 13. ✅ `oillamp at <dir> --dry-run` on a new directory prints every step (including the podman argv) and changes nothing on disk.
 14. ⬜ With `display.gpu = "on"` on a machine without a usable render node, a clear `OIL-GPU-003` is shown; with `auto`, the session starts in software mode and says why.
-15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(34 Spock scenarios and the architecture rules pass. Integration tests need podman.)*
+15. 🟡 All unit, golden, architecture, and adapter tests pass in CI; integration tests pass on a real Ubuntu host. *(36 Spock scenarios and the architecture rules pass. Integration tests need podman.)*
 
 ## 35. Remaining open points (non-blocking)
 
@@ -1679,6 +1685,16 @@ changed for convenience alone.
   search for. **Resolved:** `crun` is now a required package in §11.1, installed alongside podman,
   with the reason carried in the step detail. A scenario pins it so it is not later removed as
   redundant — which it looks like, because podman does run without it.
+- **Rootless podman on Ubuntu 24.04 has no networking backend.** `podman run` fails outright
+  with *"could not find slirp4netns, the network namespace can't be configured"*. The sandbox
+  runs `--network=none` (FR-40) and does not care, but **building the image does**, because that
+  is where apt-get runs — so this would have looked like "M3 works here" and failed for every
+  user who had not built the image before. `slirp4netns` is now a required package in §11.1.
+- **A directory handed to the infra user cannot be removed with plain `rm -rf`.** After
+  `podman unshare chown 1001:1001`, the host user does not own the resulting subuid and gets
+  *"Operation not permitted"*. Teardown of a lamp, and any cleanup path in M4, must go through
+  `podman unshare rm -rf` — and so must the advice given to a user removing a lamp by hand.
+
 - **The remedy for missing packages named a flag the user had not passed.** `doctor` suppressed
   installing through the same boolean that `--no-install` sets, so it advised the user to "drop
   --no-install" — implying oillamp could not install packages at all, the opposite of FR-60. The

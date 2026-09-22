@@ -1,3 +1,5 @@
+import java.time.Duration
+
 plugins {
     id 'java'
     id 'groovy'
@@ -73,10 +75,40 @@ tasks.withType(JavaCompile) {
     options.errorprone.disable("StringConcatToTextBlock") // Workaround for: https://github.com/google/error-prone/issues/4918#issuecomment-2952215463
 }
 
+// The default `test` task must stay fast, offline and deterministic: it runs entirely against
+// Machine.simulated(), so it works on any machine and in CI with no podman and no network.
 test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'spike'
+    }
     testLogging {
         events "failed"
         exceptionFormat "full"
     }
+}
+
+// The spikes of design spec section 33 are the opposite kind of test. Each one confirms an
+// assumption about a third-party tool - podman, sway, wayvnc, sshd - that the simulation cannot
+// tell us anything about, because the simulation only knows what we already believed. They pull
+// images, start containers and are therefore slow, online, and allowed to fail on a machine that
+// is not set up. That is why they are a separate task rather than @Ignore'd scenarios: `check`
+// stays green without them, and running them is a deliberate act.
+tasks.register('spikes', Test) {
+    group = 'verification'
+    description = 'Verifies the ⚠ VERIFY assumptions of spec §33 against real podman. Needs podman.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'spike'
+    }
+    // A spike that silently passes because it never ran is worse than no spike at all.
+    filter { failOnNoMatchingTests = true }
+    systemProperty 'com.athaydes.spockframework.report.outputDir', 'build/spike-reports'
+    outputs.upToDateWhen { false }
+    testLogging {
+        events "passed", "failed"
+        exceptionFormat "full"
+        showStandardStreams = true
+    }
+    timeout = Duration.ofMinutes(30)
 }
