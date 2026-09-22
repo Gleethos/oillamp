@@ -20,9 +20,12 @@ dependencies {
 
     implementation group: 'io.github.globaltcad', name: 'sprouts', version: '2.8.0'
 
-    testImplementation platform('org.junit:junit-bom:6.0.0')
-    testImplementation 'org.junit.jupiter:junit-jupiter'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // Test dependencies! : Groovy & Spock
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'  // needed since gradle 9
+    testRuntimeOnly 'org.junit.vintage:junit-vintage-engine:6.0.3' // Spock needs this engine
+    testImplementation "org.apache.groovy:groovy:5.0.6"
+    testImplementation "org.spockframework:spock-core:2.4-groovy-5.0"
+    testImplementation 'org.apache.groovy:groovy-json:5.0.6'
 }
 
 tasks.withType(JavaCompile) {
