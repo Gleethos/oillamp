@@ -111,16 +111,35 @@ the container work can be written and verified against a real runtime rather tha
 | **M6** Recording and agent tooling | wf-recorder, retention (already written), `recordings` command, the `lamp` helper **script** (D-27 — no Java RFB client), agent guide delivery, GPU auto mode | M3 |
 | **M7** Packaging | jpackage `.deb`, completion scripts, README, E2E checklist | M3–M6 |
 
-### Before M3: the verification spikes
+### The golden path, verified
 
-Spec §33 lists 14 **⚠ VERIFY** assumptions about third-party tools. **S11 is resolved** (Jackson
-2.x for TOML; classpath mode for jpackage — see §36.3). The remaining 13 are assumptions about
-sway, wayvnc, wf-recorder, rootless podman and the agent tools that the spec itself says must be
-confirmed with a spike *before* the dependent code is written. Most needed a machine with
-podman, which this one now is.
+`./gradlew spikes` now does this unattended in about a minute:
 
-They are the real risk in this project. Nothing in the Java design is hard; whether
-`--userns=keep-id` maps the way S13 assumes is.
+```
+build the image  →  start the container  →  wait for ready.json
+                 →  ssh in over a Unix socket as `agent`
+                 →  launch a terminal on the Wayland desktop
+                 →  screenshot it and count the pixels that are not background
+                 →  connect vncviewer to the wayvnc socket
+                 →  stop, and confirm the .mkv plays
+```
+
+Eleven of the fourteen §33 assumptions are confirmed, **and not one fallback was needed** —
+vncviewer takes a Unix socket path directly, non-root `sshd -i` works on trixie, libwayland
+accepts an absolute `WAYLAND_DISPLAY`, and wf-recorder leaves a playable file.
+
+### Still open: the verification spikes
+
+Three of the 14 remain, and none of them blocks M3:
+
+| # | Assumption | Why it is still open |
+|---|---|---|
+| **S5** | GPU passthrough via `--device` + `--keep-groups` | Needs a host whose user is in the `render` group. This one is not — oillamp detects that and says so, and the desktop runs on software rendering meanwhile. |
+| **S10** | Agent tool package names, binaries, config schemas, and whether their HTTP stacks honour the proxy variables | Needs the full image (`WITH_TOOLCHAIN=true`) and the egress proxy of M5. |
+| **S14** | wayvnc can set the desktop name shown in the viewer's title bar | Cosmetic; §33's fallback is "ignore". |
+
+What these were guarding against turned out not to happen. The load-bearing one was S13 — whether
+`--userns=keep-id` maps the way the whole two-user boundary assumes — and it does, exactly.
 
 ---
 

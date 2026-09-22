@@ -111,10 +111,11 @@ cmd_info() {
     printf 'renderer   %s\n' "${OILLAMP_RENDERER:-?}"
     printf 'output     HEADLESS-1\n'
     printf 'screenshots %s\n' "$SCREENSHOT_DIR"
-    if command -v swaymsg >/dev/null 2>&1; then
-        printf '\nwindows:\n'
-        swaymsg -t get_tree 2>/dev/null | grep -o '"name": "[^"]*"' | sed 's/"name": /  /' || true
-    fi
+    # No window list: sway's IPC socket is mode 0700 and owned by `lamp`, so the agent cannot
+    # ask it anything. That is deliberate (§16) — reaching the IPC socket would mean being able
+    # to run commands as the user that owns the recording. Take a screenshot instead.
+    printf '\nTo see what is on screen, use `lamp screenshot`: the window list is not available\n'
+    printf 'to you, because sway'"'"'s control socket belongs to another user.\n'
 }
 
 usage() {

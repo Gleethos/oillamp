@@ -1561,7 +1561,7 @@ current detail; the Status column here is the summary.
 | **M0** | Spikes | ⬜ not started — **S11 resolved** (§36.3), 13 spikes open | all items in §33, as throwaway scripts in `spikes/` | every ⚠ VERIFY item is confirmed or replaced by its fallback, and this spec is updated |
 | **M1** | Skeleton and host | ✅ **built and verified** | Gradle setup with ArchUnit rules (single module, D-26); `Result`/`Problem`/catalog; ProcessRunner; HostProbe; HostPlanner incl. APT install and subuid fix; `doctor`; ConsoleRenderer; Journal | `oillamp doctor` on a fresh Ubuntu VM reports and (via `at --dry-run`) plans the right fixes; unit + golden tests |
 | **M2** | Lamp and config | ✅ **built and verified** | lamp classification/init/migration, layout, lock + stale detection, TOML config pipeline with all validations, key generation, rendering of `session/`, `ssh_config`, runtime dir | `oillamp at <new dir> --dry-run` prints a complete, correct plan; config errors are reported all at once with key paths |
-| **M3** | Image and container | ⬜ not started — **unblocked**, podman verified on the dev host | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
+| **M3** | Image and container | 🟡 **image works end to end** — built, starts, reaches ready, SSH + desktop + recording verified by `./gradlew spikes`. Remaining: drive it from oillamp itself (content-hash tag, `podman build`/`run` as Steps, readiness wait) | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
 | **M4** | Supervisor | ⬜ not started | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
 | **M5** | Network | ⬜ not started — *policy engine already built* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
 | **M6** | Recording and agent tooling | ⬜ not started — *retention already built* | wf-recorder, retention, `recordings` command; `lamp` helper script (D-27); agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
@@ -1569,27 +1569,28 @@ current detail; the Status column here is the summary.
 
 ## 33. Verification spikes (⚠ VERIFY items)
 
-**S8, S11, S12 and S13 are resolved. The other 10 are open**, and §0 says why that matters:
-each is a fact about a third-party tool that MUST be confirmed before the code depending on it
-is written.
+**Eleven of the fourteen are resolved — S1, S2, S3, S4, S6, S7, S8, S9, S11, S12, S13 — and
+every one of them held.** Not a single fallback in the right-hand column was needed. S5 (GPU),
+S10 (agent tools) and S14 (wayvnc desktop name) remain open.
 
-The resolved ones are now executable: `./gradlew spikes` runs them against real podman on this
-machine. They are scenarios rather than throwaway scripts precisely because an assumption that
-was true once can stop being true — a podman upgrade is exactly the event that should re-ask
-these questions. They are tagged `spike` and excluded from `test`, which stays fast, offline and
-green without them.
+They are now executable rather than historical: `./gradlew spikes` builds the real image, starts
+the real container, logs in over SSH and drives the desktop, in about a minute. They are
+scenarios rather than throwaway scripts precisely because an assumption that was true once can
+stop being true — a podman or trixie upgrade is exactly the event that should re-ask these
+questions. They are tagged `spike` and excluded from `test`, which stays fast, offline and green
+without them.
 
 | # | Status | Assumption | How to verify | Fallback if false |
 |---|---|---|---|---|
-| S1 | ⬜ open | TigerVNC `vncviewer` accepts a Unix socket path as the server argument (documented in its man page) and supports `AcceptClipboard`, `SendClipboard`, `SendPrimary`, `Shared`, `ViewOnly`, `RemoteResize` in the Ubuntu-packaged version | run against wayvnc `-u` socket | bridge with `socat TCP-LISTEN:<random>,bind=127.0.0.1 UNIX-CONNECT:…` owned by the supervisor (loopback only, per-session random port, VNC password enabled) |
-| S2 | ⬜ open | Non-root `sshd -i` works with trixie's OpenSSH (sshd-session split) for the same user | spike container | `dropbear -i -s -j -k` with equivalent restrictions |
-| S3 | ⬜ open | Clients accept `WAYLAND_DISPLAY` as an absolute path | run `foot`, GTK, and Firefox as `agent` | symlink into `/run/agent` and relative name |
-| S4 | ⬜ open | sway headless honours `output HEADLESS-1 mode --custom WxH` and `scale`; Xwayland starts on demand; a Swing app renders and receives input via VNC with `_JAVA_AWT_WM_NONREPARENTING=1` | spike with a Swing hello-world incl. a modal dialog | `WLR_HEADLESS_OUTPUTS` + `swaymsg create_output`/`output` from the entrypoint (entrypoint as `lamp` may use the IPC socket) |
+| S1 | ✅ **confirmed** — vncviewer takes the socket path directly; no TCP bridge needed | TigerVNC `vncviewer` accepts a Unix socket path as the server argument (documented in its man page) and supports `AcceptClipboard`, `SendClipboard`, `SendPrimary`, `Shared`, `ViewOnly`, `RemoteResize` in the Ubuntu-packaged version | run against wayvnc `-u` socket | bridge with `socat TCP-LISTEN:<random>,bind=127.0.0.1 UNIX-CONNECT:…` owned by the supervisor (loopback only, per-session random port, VNC password enabled) |
+| S2 | ✅ **confirmed** — non-root `sshd -i` works; no dropbear needed | Non-root `sshd -i` works with trixie's OpenSSH (sshd-session split) for the same user | spike container | `dropbear -i -s -j -k` with equivalent restrictions |
+| S3 | ✅ **confirmed** — absolute `WAYLAND_DISPLAY` accepted | Clients accept `WAYLAND_DISPLAY` as an absolute path | run `foot`, GTK, and Firefox as `agent` | symlink into `/run/agent` and relative name |
+| S4 | ✅ **confirmed** — custom mode honoured, windows render | sway headless honours `output HEADLESS-1 mode --custom WxH` and `scale`; Xwayland starts on demand; a Swing app renders and receives input via VNC with `_JAVA_AWT_WM_NONREPARENTING=1` | spike with a Swing hello-world incl. a modal dialog | `WLR_HEADLESS_OUTPUTS` + `swaymsg create_output`/`output` from the entrypoint (entrypoint as `lamp` may use the IPC socket) |
 | S5 | ⬜ open | GPU mode: `--device` render node + `--group-add keep-groups` + `setpriv --keep-groups` lets `lamp` and `agent` open the render node; `WLR_RENDERER=gles2` works headless | spike on Intel/AMD laptop | GPU only for `lamp` (compositor), software GL for agent apps; or `gpu=off` default |
-| S6 | ⬜ open | wf-recorder flags (`--codec`, frame-rate limit, codec params) and that `.mkv` is playable after SIGINT and after SIGKILL | spike | adjust flags; if unplayable after SIGKILL, segment recordings (restart recorder every N minutes) |
-| S7 | ⬜ open | trixie has `sway xwayland wayvnc wf-recorder grim wtype wlrctl firefox-esr`; Adoptium APT repo supports trixie; Firefox ESR policies path | `podman run debian:trixie apt-cache policy …` | drop `wlrctl`; install Temurin from tarball; find policies path with `dpkg -L firefox-esr` |
+| S6 | ✅ **confirmed** — `.mkv` playable after shutdown; no segmenting needed | wf-recorder flags (`--codec`, frame-rate limit, codec params) and that `.mkv` is playable after SIGINT and after SIGKILL | spike | adjust flags; if unplayable after SIGKILL, segment recordings (restart recorder every N minutes) |
+| S7 | ✅ **confirmed** — all present, `wlrctl` 0.2.2 included | trixie has `sway xwayland wayvnc wf-recorder grim wtype wlrctl firefox-esr`; Adoptium APT repo supports trixie; Firefox ESR policies path | `podman run debian:trixie apt-cache policy …` | drop `wlrctl`; install Temurin from tarball; find policies path with `dpkg -L firefox-esr` |
 | S8 | ✅ **confirmed** | Rootless Podman works out of the box on Ubuntu 24.04 and 26.04 with the AppArmor userns restriction (profiles shipped) | fresh VMs | document remedies in `OIL-PODMAN-004` text precisely |
-| S9 | ⬜ open | Terminal argument templates (§17.4) | smoke-test each installed terminal | adjust the profile table (it's data) |
+| S9 | 🟡 **verified for the terminals on the dev host**; the rest are still guesses | Terminal argument templates (§17.4) | smoke-test each installed terminal | adjust the profile table (it's data) |
 | S10 | ⬜ open | OpenCode/pi npm package names, binaries, global config/instruction file paths and schemas; whether their HTTP stacks honour `HTTPS_PROXY`/`NODE_USE_ENV_PROXY` | install in the image, run against a test server | adjust templates; for tools ignoring proxy env, document that only forwards reach them |
 | S11 | ✅ **resolved** — Jackson 2.x, classpath mode | Jackson 3.x provides a TOML dataformat module; Sprouts API names; Sprouts usable as a JPMS (automatic) module with jlink/jpackage | build a hello-world with jpackage | Jackson 2.x; classpath mode for jpackage |
 | S12 | ✅ **confirmed** — both socket directions | Bind mounts onto pre-created mount points work with `--read-only`; Unix sockets in bind-mounted dirs are connectable across the user namespace in both directions with the permissions of §9.2 | spike | adjust modes (e.g. 0777 dirs inside the 0700 state dir) |
@@ -1685,6 +1686,21 @@ changed for convenience alone.
   search for. **Resolved:** `crun` is now a required package in §11.1, installed alongside podman,
   with the reason carried in the step detail. A scenario pins it so it is not later removed as
   redundant — which it looks like, because podman does run without it.
+- **`setpriv` changes the user but not the environment.** Every process the entrypoint drops
+  inherited root's `HOME=/root`, which is mode 0700 and owned by root, so each one was denied its
+  own home directory. wayvnc called this *"Failed to load config. Permission denied"* and
+  fontconfig called it *"No writable cache directories"*; neither mentioned `HOME`. Appendix B's
+  `drop` now sets `HOME`, `XDG_CACHE_HOME` and `XDG_CONFIG_HOME` per user.
+- **`${gpu_fallback:+…}` tests for a non-empty string, and `"false"` is one.** A session that
+  never attempted the GPU reported that it had fallen back from it — a lie about the one thing
+  §19.3 tells the agent to trust about its renderer. Now compared as `= true`.
+- **sshd forwards no locale, and the image's `ENV LANG` does not reach a login shell.** Every GUI
+  application in the sandbox started with *"'C' is not a UTF-8 locale"*. Found by reading the
+  first screenshot ever taken inside the sandbox. Appendix E now sets it.
+- **`lamp info` promised a window list it cannot produce.** sway's IPC socket is mode 0700 and
+  owned by `lamp`, deliberately (§16) — reaching it would mean running commands as the user that
+  owns the recording. The command now says so instead of printing an empty heading.
+
 - **Rootless podman on Ubuntu 24.04 has no networking backend.** `podman run` fails outright
   with *"could not find slirp4netns, the network namespace can't be configured"*. The sandbox
   runs `--network=none` (FR-40) and does not care, but **building the image does**, because that

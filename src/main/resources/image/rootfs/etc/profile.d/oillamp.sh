@@ -6,6 +6,11 @@
 
 [ -r /oillamp/session/runtime.env ] && set -a && . /oillamp/session/runtime.env && set +a
 
+# sshd deliberately does not forward the client's locale and the image's ENV does not reach a
+# login shell, so without this every GUI application starts with a "'C' is not a UTF-8 locale"
+# warning and non-ASCII output is mangled. Seen in the first screenshot ever taken in here.
+export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+
 export XDG_RUNTIME_DIR=/run/agent
 export WAYLAND_DISPLAY=/run/lamp/wayland-1 DISPLAY=:0 XDG_SESSION_TYPE=wayland
 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM='wayland;xcb' MOZ_ENABLE_WAYLAND=1
