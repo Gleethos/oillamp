@@ -118,7 +118,14 @@ final class SandboxPhase {
                 "--tmpfs", "/run:rw,mode=755",
                 "--tmpfs", "/tmp:rw,mode=1777",
                 "--memory", config.limits().memory(),
-                "--pids-limit", String.valueOf(config.limits().pids()));
+                "--cpus", String.valueOf(config.limits().resolveCpus(host.cpuCount())),
+                "--pids-limit", String.valueOf(config.limits().pids()),
+                // Labels, so that `oillamp list` can find every sandbox on this host without a
+                // registry of its own. podman already knows what is running; a second list kept
+                // beside it would only be a list that can disagree.
+                "--label", "oillamp.agent-id=" + layout.agentId(),
+                "--label", "oillamp.lamp=" + layout.root(),
+                "--label", "oillamp.session=" + prepared.session());
 
         argv = argv.addAll(Tuple.of(String.class,
                 "--volume", layout.sessionDir() + ":/oillamp/session:ro",

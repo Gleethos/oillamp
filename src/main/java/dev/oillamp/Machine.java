@@ -69,6 +69,80 @@ public interface Machine {
     Outcome run(Command command);
 
     /**
+     * Starts a process and does <em>not</em> wait for it — a window on the user's desktop.
+     *
+     * <p>The second kind of effect a session needs, and different enough from {@link #run} to be
+     * its own method rather than a flag on it. A terminal window and a desktop viewer outlive the
+     * call that opened them, have no timeout that would make sense, and are interesting mainly
+     * for whether they are <em>still</em> there. Running them through {@code run} would mean
+     * oillamp blocking for the length of the session on a command it started.
+     *
+     * <p>It is also what lets a scenario check the part of a session a human would otherwise have
+     * to watch for: that two windows were opened, which command each was given, and that neither
+     * of them was the terminal oillamp was launched from.
+     */
+    Window launch(Command command, Window.Stdio stdio);
+
+    /**
+     * A process oillamp started but is not waiting for.
+     *
+     * <p>Deliberately not a {@code Process}: a window that could not be opened at all is a normal
+     * outcome here, not an exception, and the callers care about four questions only — is it
+     * still there, how did it end, what did it say, and please go away now.
+     */
+    interface Window {
+
+        /** Where the process's input and output go. */
+        enum Stdio {
+            /**
+             * Its own window. oillamp keeps whatever it prints, because a window that dies on
+             * opening says why on its standard error and nowhere else.
+             */
+            DETACHED,
+            /**
+             * This terminal, handed over for as long as the process runs — what {@code oillamp
+             * shell} needs, since an interactive shell whose output was captured is not a shell.
+             */
+            TERMINAL
+        }
+
+        /** The process id, for the session log and for {@code status}. */
+        long pid();
+
+        boolean isRunning();
+
+        /** How it ended, or empty while it is still running. */
+        Optional<Integer> exitCode();
+
+        /** Why it could not be started at all — empty when it was started. */
+        Optional<String> failure();
+
+        /** Whatever it has printed. Empty for a window that was given the terminal. */
+        String output();
+
+        /** Waits for it to end and returns its exit code. Used by {@code oillamp shell}. */
+        int waitFor();
+
+        /** Asks it to close, and stops caring. Never throws: shutdown must not fail here. */
+        void close();
+
+        /** A window that never opened, because the executable is not there or could not run. */
+        static Window refused(String executable, String reason) {
+            return new Window() {
+                @Override public long pid() { return -1; }
+                @Override public boolean isRunning() { return false; }
+                @Override public Optional<Integer> exitCode() { return Optional.empty(); }
+                @Override public Optional<String> failure() {
+                    return Optional.of(executable + ": " + reason);
+                }
+                @Override public String output() { return ""; }
+                @Override public int waitFor() { return 127; }
+                @Override public void close() { }
+            };
+        }
+    }
+
+    /**
      * Reads a file that belongs to the host rather than to a lamp — {@code /etc/os-release},
      * {@code /etc/subuid}, a {@code /proc/sys} entry. Empty when it does not exist or cannot be read.
      */
@@ -103,6 +177,13 @@ public interface Machine {
                                Association.between(String.class, String.class),
                                Optional.empty(), Duration.ofSeconds(30),
                                argv.length == 0 ? "" : argv[0]);
+        }
+
+        /** The same, for an argv that was assembled rather than typed — a terminal or a viewer. */
+        public static Command of(Tuple<String> argv) {
+            return new Command(argv, Association.between(String.class, String.class),
+                               Optional.empty(), Duration.ofSeconds(30),
+                               argv.isEmpty() ? "" : argv.first());
         }
 
         public Command withTimeout(Duration timeout) {
@@ -260,6 +341,33 @@ public interface Machine {
             return this;
         }
 
+        /**
+         * A window that cannot be started at all — the executable is gone, or will not run.
+         *
+         * <p>The two windows fail very differently, which is the point of being able to describe
+         * this: a viewer that will not open is a warning on a session that carries on, and a
+         * terminal that will not open ends the session, because nobody is in the sandbox.
+         */
+        public Simulation windowRefusing(String executable) {
+            builder.windowRefusing(executable);
+            return this;
+        }
+
+        /** How long the simulated windows stay open before the user "closes" them. */
+        public Simulation windowsStayOpenFor(java.time.Duration duration) {
+            builder.terminalStaysOpen(duration);
+            return this;
+        }
+
+        /**
+         * The terminal window opens but no shell ever reaches the sandbox — the terminal emulator
+         * that starts and then fails on its own arguments, which §10.6 answers with OIL-TERM-002.
+         */
+        public Simulation terminalThatNeverConnects() {
+            builder.terminalNeverConnects();
+            return this;
+        }
+
         public Simulation withoutPackages(String... packages) {
             builder.removePackages(Tuple.of(String.class, packages));
             return this;
@@ -357,6 +465,18 @@ public interface Machine {
 
         public Simulation clockAt(Instant instant) {
             builder.clock(instant);
+            return this;
+        }
+
+        /**
+         * Lets time pass on this machine, instead of standing still.
+         *
+         * <p>Only for scenarios about waiting — a session's timeouts, a heartbeat. Everything
+         * else is better off with a clock that does not move, because that is what makes a
+         * session id, a recording's name and a retention decision the same on every run.
+         */
+        public Simulation clockRuns() {
+            builder.clockRuns();
             return this;
         }
 

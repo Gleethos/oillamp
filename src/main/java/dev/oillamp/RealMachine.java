@@ -99,6 +99,94 @@ final class RealMachine implements Machine {
         }
     }
 
+    /**
+     * Starts a window and leaves it running.
+     *
+     * <p>Two differences from {@link #run} matter. There is no timeout, because the thing being
+     * started is a window the user will close when they are done with it. And its output is kept
+     * in memory rather than discarded, because the one moment a viewer's output is worth having
+     * is when the window is gone a second after it opened — which is exactly when nobody was
+     * looking at it.
+     */
+    @Override public Window launch(Command command, Window.Stdio stdio) {
+        ProcessBuilder builder = new ProcessBuilder(asList(command.argv()));
+        for (Pair<String, String> variable : command.environment())
+            builder.environment().put(variable.first(), variable.second());
+        command.workingDirectory().ifPresent(directory -> builder.directory(directory.toFile()));
+        if (stdio == Window.Stdio.TERMINAL) {
+            builder.inheritIO();
+        } else {
+            // Nothing may be read from the user's terminal by a window running beside it: a
+            // detached process that inherited stdin would compete with oillamp for every
+            // keystroke, and the one that lost would be whichever the user was actually typing at.
+            builder.redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")));
+        }
+        Process process;
+        try {
+            process = builder.start();
+        } catch (IOException e) {
+            return Window.refused(command.executable(), reasonFor(e));
+        }
+        return new ProcessWindow(process, stdio);
+    }
+
+    private static String reasonFor(IOException e) {
+        String message = e.getMessage();
+        return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
+    }
+
+    /** A started process, seen through the four questions a window has to answer. */
+    private static final class ProcessWindow implements Window {
+
+        private final Process process;
+        private final StringBuilder said = new StringBuilder();
+
+        private ProcessWindow(Process process, Stdio stdio) {
+            this.process = process;
+            if (stdio == Stdio.DETACHED) {
+                drain(process.getInputStream(), said);
+                drain(process.getErrorStream(), said);
+            }
+        }
+
+        @Override public long pid() { return process.pid(); }
+
+        @Override public boolean isRunning() { return process.isAlive(); }
+
+        @Override public Optional<Integer> exitCode() {
+            return process.isAlive() ? Optional.empty() : Optional.of(process.exitValue());
+        }
+
+        @Override public Optional<String> failure() { return Optional.empty(); }
+
+        @Override public String output() { return said.toString().strip(); }
+
+        @Override public int waitFor() {
+            try {
+                return process.waitFor();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                destroyTree(process);
+                return 130;
+            }
+        }
+
+        /**
+         * Asks politely, then insists. A terminal emulator that ignores SIGTERM would otherwise
+         * keep a session's window on screen after the session it belonged to has ended.
+         */
+        @Override public void close() {
+            if (!process.isAlive()) return;
+            process.destroy();
+            try {
+                if (!process.waitFor(2, TimeUnit.SECONDS)) destroyTree(process);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                destroyTree(process);
+            }
+        }
+    }
+
     @Override public Optional<String> readSystemFile(Path path) {
         try {
             return Files.isReadable(path) ? Optional.of(Files.readString(path)) : Optional.empty();

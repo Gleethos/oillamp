@@ -28,6 +28,9 @@ final class Invocation {
         List<String> arguments = new ArrayList<>(List.of(argv));
 
         Context.Options options = Context.Options.defaults();
+        // Only `view` reads this, so it stays a local rather than joining Options, where every
+        // command would carry a switch that means nothing to it.
+        boolean viewOnly = false;
         List<String> positional = new ArrayList<>();
         for (String argument : arguments) {
             switch (argument) {
@@ -38,6 +41,7 @@ final class Invocation {
                 case "--no-install"    -> options = options.withAutoInstall(false);
                 case "--init"          -> options = options.withInit(true);
                 case "--no-viewer"     -> options = options.withViewer(false);
+                case "--view-only"     -> viewOnly = true;
                 default -> {
                     if (argument.startsWith("-")) {
                         console.banner(version, "");
@@ -106,9 +110,29 @@ final class Invocation {
                     }
                 };
             }
+            // The four that talk to a session already running (§26.6). None of them sets
+            // anything up: they are questions put to the supervisor that holds the lamp.
+            case "view" -> {
+                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "view");
+                yield commands.view(Path.of(rest.get(0)), viewOnly);
+            }
+            case "shell" -> {
+                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "shell");
+                yield commands.shell(Path.of(rest.get(0)));
+            }
+            case "stop" -> {
+                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "stop");
+                yield commands.stop(Path.of(rest.get(0)));
+            }
+            case "status" -> {
+                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "status");
+                yield commands.status(Path.of(rest.get(0)));
+            }
+            case "list" -> commands.list();
+
             // These arrive with the milestones that make them meaningful; saying so beats a
             // bare "unknown command" for something the help text lists.
-            case "view", "shell", "stop", "status", "list", "recordings", "image" -> {
+            case "recordings", "image" -> {
                 sink.accept(new LampEvent.Failure(Problems.usage(
                         "'" + command + "' needs a running session, which the next milestone adds",
                         usage())));
@@ -137,7 +161,17 @@ final class Invocation {
             oillamp [--verbose] [--debug] [--no-color] <command>
 
               at <dir> [--init] [--dry-run] [--no-install] [--no-viewer]
-                    Set up (if needed) and start a session.
+                    Set up (if needed) and run a session. Stays in the foreground until it ends.
+              view <dir> [--view-only]
+                    Open another window onto a running session's desktop.
+              shell <dir>
+                    Open an extra shell in this terminal. Closing it does not end the session.
+              stop <dir>
+                    Ask a running session to shut down, or clean up after one that crashed.
+              status <dir>
+                    What a running session is doing.
+              list
+                    Every oillamp sandbox running on this host.
               doctor [<dir>]
                     Check the host, and the lamp if one is given. Changes nothing.
               config <dir> (check | show-effective | path)

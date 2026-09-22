@@ -98,17 +98,28 @@ class UsingTheCommandLineSpec extends Specification {
             outcome.errors().first().fixes().any { it.description().contains('--debug') }
     }
 
-    def 'Commands that need a running session say so plainly'() {
+    def 'Commands that need a running session say which lamp has none'() {
         reportInfo """
-            `view`, `shell` and `stop` are listed in the help but only mean something once a
-            session exists. Until the session milestone lands, "not implemented yet" is a far
-            better answer than "unknown command", which would make the user doubt the help text.
-        """
-        when:
-            var outcome = sandbox.oillamp.run('view', sandbox.lampPath().toString())
+            `view`, `shell`, `stop` and `status` are questions put to a session that is already
+            running. Asked of a directory that is not a lamp at all, the honest answer names the
+            directory and offers the command that would make one - rather than "no session",
+            which would send the user looking for a session they never started.
 
-        then:
-            outcome.status() == ExitStatus.USAGE
-            outcome.errors().first().whatHappened().contains('running session')
+            They must also change nothing on the way to answering. A `status` that quietly
+            created or repaired a lamp would be the last thing anyone wants from a command whose
+            whole purpose is to report.
+        """
+        given: 'a directory that was never made into a lamp'
+            var lamp = sandbox.lampPath()
+
+        when:
+            var outcome = sandbox.oillamp.run('view', lamp.toString())
+
+        then: 'oillamp says so, and names the way out'
+            !outcome.succeeded()
+            outcome.errors().first().whatHappened().contains('not an oillamp lamp')
+
+        and: 'and the directory is still not there, because asking created nothing'
+            !java.nio.file.Files.exists(lamp)
     }
 }

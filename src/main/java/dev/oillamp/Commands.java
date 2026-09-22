@@ -52,10 +52,12 @@ final class Commands {
     }
 
     /**
-     * {@code oillamp at <dir>} — prepare the host and the lamp, then start a session.
+     * {@code oillamp at <dir>} — prepare the host and the lamp, then run a session.
      *
-     * <p>Phases A and B are complete; the image build and the session itself (phases C and D)
-     * are the next milestones, so for now this stops after the lamp is ready and says so.
+     * <p>All four phases of §10.5, in order, each re-reading what the one before it changed. The
+     * command does not return when the sandbox is up: it becomes the session's supervisor and
+     * returns when the session is over, which is what lets one Ctrl-C, one closed window or one
+     * {@code oillamp stop} take down everything it created.
      */
     public ExitStatus at(Path lampPath) {
         HostPhase.Outcome host = new HostPhase(machine, context).prepare(lampPath, true,
@@ -125,18 +127,12 @@ final class Commands {
             // that was tested: oillamp opened both of these sockets before printing this.
             context.ok("session", "desktop and shell both answering — "
                     + "oillamp connected to each socket before handing it over");
-            // M4 turns this into a supervised session: the SSH relay, the viewer and terminal
-            // windows, and a shutdown that stops all of it when the user closes the terminal.
-            // Until then the container keeps running, so say how to reach it and how to stop it
-            // rather than leaving one behind with no explanation.
-            context.info("session", "the supervisor, the viewer window and the terminal are M4. "
-                    + "Until then, reach the sandbox yourself with:\n"
-                    + "    ssh -F " + prepared.layout().sshConfig()
-                    + " -o ProxyCommand='socat - UNIX-CONNECT:" + prepared.layout().agentSshSocket() + "'"
-                    + " lamp-" + prepared.layout().agentId() + "\n"
-                    + "    vncviewer " + prepared.layout().vncSocket() + "\n"
-                    + "  and stop it with:  podman rm -f " + running.container());
-            return ExitStatus.SUCCESS;
+
+            // From here on `at` does not return until the session is over. It opens the two
+            // windows, holds the relays they come back through, and takes everything down again
+            // when the user closes the terminal — which is why this call is the last thing the
+            // command does rather than one more step in a list (§26.5).
+            return new Supervisor(machine, context, host.facts(), prepared, running).run();
         } finally {
             try {
                 held.close();
@@ -145,6 +141,185 @@ final class Commands {
                         Problems.internal("lock release", Problems.reason(e))));
             }
         }
+    }
+
+    // ─── the commands that talk to a session already running (§26.6) ───────────────────────
+
+    /** {@code oillamp view <dir> [--view-only]} — open another window onto the same desktop. */
+    public ExitStatus view(Path lampPath, boolean viewOnly) {
+        return askTheSession(lampPath, "view",
+                Control.Request.of("view").with("view_only", String.valueOf(viewOnly)),
+                reply -> context.ok("view", "another viewer window is opening"));
+    }
+
+    /**
+     * {@code oillamp shell <dir>} — an extra shell, in <em>this</em> terminal.
+     *
+     * <p>The supervisor hands back the command rather than running it, because the shell belongs
+     * to the terminal the user typed this into (§26.6). Closing it ends nothing: only the window
+     * oillamp opened itself has that power (D-09).
+     */
+    public ExitStatus shell(Path lampPath) {
+        Result<Control.Reply> reply = askTheSession(lampPath, "shell", Control.Request.of("shell"));
+        if (reply instanceof Result.Err<Control.Reply> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        Tuple<String> argv = ((Result.Ok<Control.Reply>) reply).value().argv();
+        if (argv.isEmpty()) {
+            context.report(Tuple.of(Problem.class,
+                    Problems.internal("shell", "the session did not say how to reach it")));
+            return ExitStatus.ERROR;
+        }
+        context.info("shell", "connecting — closing this shell does not end the session");
+        int code = machine.launch(Machine.Command.of(argv).labelled("shell"),
+                                  Machine.Window.Stdio.TERMINAL).waitFor();
+        return code == 0 ? ExitStatus.SUCCESS : ExitStatus.ERROR;
+    }
+
+    /**
+     * {@code oillamp stop <dir>} — ask the running session to end.
+     *
+     * <p>Asks rather than kills: the supervisor holds the lock, the relays and the recording, and
+     * a container removed behind its back would leave it believing it still had a session. When
+     * there is no supervisor to ask, this cleans up after one that died instead.
+     */
+    public ExitStatus stop(Path lampPath) {
+        Result<Control.Reply> reply = askTheSession(lampPath, "stop", Control.Request.of("stop"));
+        if (reply instanceof Result.Ok<Control.Reply>) {
+            context.ok("stop", "the session is shutting down");
+            return ExitStatus.SUCCESS;
+        }
+        return cleanUpAfterACrashedSession(lampPath, reply.problems());
+    }
+
+    /** {@code oillamp status <dir>} — what the running session is doing. */
+    public ExitStatus status(Path lampPath) {
+        Result<Control.Reply> reply = askTheSession(lampPath, "status", Control.Request.of("status"));
+        if (reply instanceof Result.Err<Control.Reply> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        Control.Reply answer = ((Result.Ok<Control.Reply>) reply).value();
+        StringBuilder out = new StringBuilder();
+        for (String key : java.util.List.of("state", "detail", "lamp", "session", "container",
+                                            "desktop", "renderer", "uptime", "shells", "viewer"))
+            answer.values().get(key).ifPresent(value ->
+                    out.append(pad(key)).append(value).append('\n'));
+        context.emit(new LampEvent.Answer(out.toString().stripTrailing()));
+        return ExitStatus.SUCCESS;
+    }
+
+    /**
+     * {@code oillamp list} — every sandbox running on this host.
+     *
+     * <p>Asks podman rather than keeping a list of its own. A second list beside the one the
+     * container runtime already maintains is a list that can be wrong, and it would be wrong in
+     * exactly the case it is needed: after a supervisor was killed.
+     */
+    public ExitStatus list() {
+        Machine.Outcome outcome = machine.run(Machine.Command
+                .of("podman", "ps", "--filter", "label=oillamp.agent-id",
+                    "--format", "{{.Names}}\t{{.Label \"oillamp.lamp\"}}\t{{.Status}}")
+                .withTimeout(java.time.Duration.ofSeconds(20)).labelled("podman ps"));
+        if (!outcome.succeeded()) {
+            context.report(Tuple.of(Problem.class, Problems.podmanFailed(
+                    "podman ps", outcome.exitCode(), outcome.errorOutput().strip())));
+            return ExitStatus.ERROR;
+        }
+        String listing = outcome.output().strip();
+        context.emit(new LampEvent.Answer(listing.isEmpty()
+                ? "no oillamp sandboxes are running on this host"
+                : "CONTAINER\tLAMP\tSTATUS\n" + listing));
+        return ExitStatus.SUCCESS;
+    }
+
+    // ─── reaching the supervisor ───────────────────────────────────────────────────────────
+
+    private ExitStatus askTheSession(Path lampPath, String command, Control.Request request,
+                                     java.util.function.Consumer<Control.Reply> onSuccess) {
+        Result<Control.Reply> reply = askTheSession(lampPath, command, request);
+        if (reply instanceof Result.Err<Control.Reply> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        onSuccess.accept(((Result.Ok<Control.Reply>) reply).value());
+        return ExitStatus.SUCCESS;
+    }
+
+    private Result<Control.Reply> askTheSession(Path lampPath, String command, Control.Request request) {
+        Result<LampLayout> layout = layoutOf(lampPath);
+        if (layout instanceof Result.Err<LampLayout> failure) return Result.err(failure.problems());
+        LampLayout found = ((Result.Ok<LampLayout>) layout).value();
+        return Control.ask(found.controlSocket(), found.root(), request, command);
+    }
+
+    /**
+     * Finds a lamp's paths without setting anything up.
+     *
+     * <p>{@code view}, {@code shell}, {@code stop} and {@code status} must not create, migrate or
+     * repair anything: they are questions about a session that is already running, and a command
+     * that fixed a lamp on its way to asking one would be the last thing a user wants from
+     * {@code status}.
+     */
+    private Result<LampLayout> layoutOf(Path lampPath) {
+        Path root = lampPath.toAbsolutePath().normalize();
+        LampState state = LampClassifier.classify(root, Filesystem.list(root),
+                Filesystem.readString(root.resolve(".oillamp").resolve("lamp.json")));
+        if (!(state instanceof LampState.Existing existing))
+            return Result.err(Problems.lampNotWritable(root,
+                    "this is not an oillamp lamp — run `oillamp at " + lampPath + "` to make one"));
+        return Result.ok(new LampLayout(root, existing.meta().agentId(), runtimeDirectory()));
+    }
+
+    private Path runtimeDirectory() {
+        return machine.environmentVariable("XDG_RUNTIME_DIR")
+                .map(Path::of)
+                .orElseGet(() -> Path.of("/run/user/" + machine.run(Machine.Command.of("id", "-u"))
+                        .output().strip()));
+    }
+
+    /**
+     * There is no supervisor. Either nothing is running, or one was killed without tidying up —
+     * and FR-08 is explicit that the second case must not need manual cleanup.
+     */
+    private ExitStatus cleanUpAfterACrashedSession(Path lampPath, Tuple<Problem> why) {
+        Result<LampLayout> found = layoutOf(lampPath);
+        if (found instanceof Result.Err<LampLayout> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        LampLayout layout = ((Result.Ok<LampLayout>) found).value();
+        ContainerName container = layout.containerName();
+        boolean wasThere = machine.run(Machine.Command
+                .of("podman", "container", "exists", container.value())
+                .labelled("podman container exists")).succeeded();
+        if (!wasThere) {
+            context.report(why);
+            return exitStatusFor(why);
+        }
+        context.info("stop", "no supervisor is running, but its sandbox is — cleaning up after it");
+        Machine.Outcome removed = machine.run(Machine.Command
+                .of("podman", "rm", "-f", container.value())
+                .withTimeout(java.time.Duration.ofSeconds(30)).labelled("podman rm"));
+        if (!removed.succeeded()) {
+            context.report(Tuple.of(Problem.class, Problems.podmanFailed(
+                    "podman rm", removed.exitCode(), removed.errorOutput().strip())));
+            return ExitStatus.ERROR;
+        }
+        try {
+            Filesystem.deleteIfPresent(layout.sessionMeta());
+        } catch (java.io.IOException e) {
+            context.report(Tuple.of(Problem.class, Problems.internal("session.json", Problems.reason(e))));
+        }
+        context.ok("stop", "the sandbox left by the previous session has been removed");
+        return ExitStatus.SUCCESS;
+    }
+
+    private static String pad(String label) {
+        StringBuilder out = new StringBuilder(label);
+        while (out.length() < 12) out.append(' ');
+        return out.toString();
     }
 
     /** {@code oillamp config <dir> check} — validate without touching anything. */

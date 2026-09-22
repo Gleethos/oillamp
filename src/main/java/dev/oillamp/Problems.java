@@ -52,7 +52,14 @@ final class Problems {
     public static final Code GPU_SOFTWARE          = new Code("OIL-GPU-001");
     public static final Code SSH_KEYGEN_FAILED     = new Code("OIL-SSH-001");
     public static final Code TERM_NONE_FOUND       = new Code("OIL-TERM-001");
+    public static final Code TERM_NO_CONNECT       = new Code("OIL-TERM-002");
+    public static final Code TERM_NOT_STARTED      = new Code("OIL-TERM-003");
+    public static final Code VIEWER_DIED           = new Code("OIL-VIEW-001");
+    public static final Code SSH_PRIMARY_TAKEN     = new Code("OIL-SSH-002");
     public static final Code NET_SOCKET_PATH_LONG  = new Code("OIL-NET-001");
+    public static final Code NET_CANNOT_LISTEN     = new Code("OIL-NET-002");
+    public static final Code SESSION_NOT_RUNNING   = new Code("OIL-SESSION-001");
+    public static final Code SESSION_UNREACHABLE   = new Code("OIL-SESSION-002");
     public static final Code IMAGE_BUILD_FAILED    = new Code("OIL-IMAGE-001");
     public static final Code SANDBOX_START_FAILED  = new Code("OIL-SANDBOX-001");
     public static final Code SANDBOX_DIED          = new Code("OIL-SANDBOX-002");
@@ -324,6 +331,93 @@ final class Problems {
             .withFix(Fix.of("make sure XDG_RUNTIME_DIR is set to a short path such as /run/user/1000"));
     }
 
+    public static Problem cannotListen(Path socket, String reason) {
+        return error(NET_CANNOT_LISTEN, "Cannot listen on a socket",
+                "oillamp could not bind " + socket + ": " + reason,
+                "the terminal and the viewer reach the sandbox through these sockets; without "
+              + "them there is no way into the session")
+            .withEvidence(new Evidence.File(socket, reason))
+            .withFix(Fix.of("check that $XDG_RUNTIME_DIR exists and belongs to you"))
+            .withFix(Fix.run("clear anything a crashed session left behind", "rm -f " + socket));
+    }
+
+    // ─── the windows of a session (§17.4, §15) ─────────────────────────────────────────────
+
+    /**
+     * The terminal window was started but never connected.
+     *
+     * <p>Reported rather than waited on forever, because the alternative is the worst outcome
+     * this tool has: a sandbox running with nobody in it and nothing that will ever end it. What
+     * the user sees is a window that opened and did nothing, so the evidence has to be the
+     * command that was run — the failure is almost always in the terminal's own arguments.
+     */
+    public static Problem terminalDidNotConnect(java.time.Duration waited) {
+        return error(TERM_NO_CONNECT, "The terminal window did not connect",
+                "the terminal was started but no shell reached the sandbox within "
+                        + waited.toSeconds() + "s",
+                "the terminal window is the session: oillamp ends a session nobody is in rather "
+              + "than leave a sandbox running unattended")
+            .withFix(Fix.of("run the ssh command above by hand — its output says what ssh could not do"))
+            .withFix(Fix.of("or name a terminal you know works with terminal.profile in oillamp.toml"));
+    }
+
+    /** The terminal emulator itself would not start — a different failure from not connecting. */
+    public static Problem terminalNotStarted(Tuple<String> argv, String reason, String output) {
+        Problem problem = error(TERM_NOT_STARTED, "The terminal window could not be opened",
+                "starting " + argv.first() + " failed: " + reason,
+                "without a terminal there is no shell in the sandbox, so the session has nothing "
+              + "to be for")
+            .withEvidence(new Evidence.Command(argv, 127, output, java.time.Duration.ZERO))
+            .withFix(Fix.of("check that " + argv.first() + " starts from this terminal"))
+            .withFix(Fix.of("or name another one with terminal.profile in oillamp.toml"));
+        return output.isBlank() ? problem : problem.withEvidence(
+                new Evidence.Excerpt("what it printed", output));
+    }
+
+    /**
+     * The viewer window closed straight after opening — a warning, never an error.
+     *
+     * <p>§10.6 is deliberate about this: the viewer's lifetime is independent of the session's.
+     * A session with no view of the desktop is degraded, not broken, and ending it would throw
+     * away work over a window the user can reopen with {@code oillamp view}.
+     */
+    public static Problem viewerDiedImmediately(Tuple<String> argv, int exitCode, String output) {
+        return warning(VIEWER_DIED, "The viewer window closed immediately",
+                argv.first() + " exited with code " + exitCode + " a moment after it was started",
+                "the session is running and you can still reach it; you simply cannot see the "
+              + "desktop until a viewer stays open")
+            .withEvidence(new Evidence.Command(argv, exitCode, output, java.time.Duration.ZERO))
+            .withFix(Fix.of("run the command above by hand to see what the viewer objects to"))
+            .withFix(Fix.of("open another one with `oillamp view <dir>` once it is fixed"));
+    }
+
+    /** A second connection to the primary socket, which belongs to one terminal only (§17.3). */
+    public static Problem extraPrimaryRejected(Path socket) {
+        return warning(SSH_PRIMARY_TAKEN, "A second connection to the session's own socket was refused",
+                socket + " accepts one connection per session, and it is already in use",
+                "closing that one terminal is what ends the session, so the slot cannot be shared; "
+              + "use `oillamp shell <dir>` for extra shells, which do not end anything")
+            .withEvidence(new Evidence.File(socket, "the primary relay (D-09)"))
+            .withFix(Fix.of("open extra shells with `oillamp shell <dir>`"));
+    }
+
+    // ─── reaching a running session (§26.6) ────────────────────────────────────────────────
+
+    public static Problem noSessionRunning(Path lamp, String command) {
+        return error(SESSION_NOT_RUNNING, "No session is running for this lamp",
+                "there is no supervisor listening for " + lamp,
+                "`oillamp " + command + "` talks to a running session; there is nothing to talk to yet")
+            .withFix(Fix.run("start one", "oillamp at " + lamp));
+    }
+
+    public static Problem supervisorUnreachable(Path socket, String reason) {
+        return error(SESSION_UNREACHABLE, "The running session did not answer",
+                "its control socket " + socket + " is there but did not respond: " + reason,
+                "the supervisor may have been killed without tidying up, which leaves the socket "
+              + "file behind")
+            .withFix(Fix.of("`oillamp stop <dir>` cleans up after a session that died this way"));
+    }
+
     public static Problem sshKeygenFailed(Evidence.Command command) {
         return error(SSH_KEYGEN_FAILED, "Key generation failed",
                 "ssh-keygen exited with code " + command.exitCode(),
@@ -472,6 +566,11 @@ final class Problems {
         return message == null || message.isBlank()
                 ? failure.getClass().getSimpleName()
                 : message;
+    }
+
+    private static Problem warning(Code code, String title, String whatHappened, String whyItMatters) {
+        return new Problem(code, Severity.WARNING, title, whatHappened, whyItMatters,
+                Tuple.of(Evidence.class), Tuple.of(Fix.class), Optional.empty());
     }
 
     private static Problem error(Code code, String title, String whatHappened, String whyItMatters) {

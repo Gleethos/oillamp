@@ -1,0 +1,70 @@
+package dev.oillamp;
+
+/**
+ * Something that happened to a running session — spec §24.5.
+ *
+ * <p>Everything that can change a session's course arrives here: the container reporting itself
+ * ready or exiting, a shell connecting or disconnecting, a signal, {@code oillamp stop}, the
+ * clock. They are produced by several threads and consumed by exactly one (§26.5), which is what
+ * makes the session's state a thing that never has to be locked.
+ *
+ * <p>Deliberately <b>package-private</b>: the supervisor's input alphabet. Users see the
+ * consequences as {@link LampEvent}s, which is the part that is promised.
+ */
+sealed interface SessionEvent {
+
+    /** One second has passed. The only way a timeout can be noticed. */
+    record Tick(java.time.Instant now) implements SessionEvent {}
+
+    /** The sandbox is up and answering on its sockets. */
+    record ContainerReady(ReadyInfo info) implements SessionEvent {}
+
+    /** The container is gone. Always bad news: nothing in a healthy session stops the container. */
+    record ContainerExited(int exitCode) implements SessionEvent {}
+
+    /** The terminal window oillamp opened has connected through the primary relay (D-09). */
+    record PrimaryConnected() implements SessionEvent {}
+
+    /** That terminal closed. In a running session this is the user saying they are finished. */
+    record PrimaryDisconnected() implements SessionEvent {}
+
+    record ShellConnected() implements SessionEvent {}
+    record ShellDisconnected() implements SessionEvent {}
+
+    /** A signal reached the process — Ctrl-C, or the session being killed politely. */
+    record Interrupted(String signal) implements SessionEvent {}
+
+    /** Someone asked for the session to end, over the control socket or from {@code stop}. */
+    record StopRequested(String source) implements SessionEvent {}
+
+    /**
+     * An action could not be carried out.
+     *
+     * <p>Which action it was decides how much it matters, and the difference is sharp: a viewer
+     * that will not open costs the user their view of a session that is otherwise fine, while a
+     * terminal that will not open leaves a sandbox nobody is in.
+     */
+    record ActionFailed(SessionAction action, Problem problem) implements SessionEvent {}
+
+    /** The shutdown sequence has finished, with whatever went wrong along the way. */
+    record ShutdownCompleted(sprouts.Tuple<Problem> problems) implements SessionEvent {}
+
+    /** What this event is called in the session log. */
+    default String describe() {
+        return switch (this) {
+            case Tick ignored               -> "tick";
+            case ContainerReady ready       -> "the sandbox is ready — " + ready.info().describe();
+            case ContainerExited exited     -> "the container exited with code " + exited.exitCode();
+            case PrimaryConnected ignored   -> "the terminal window connected";
+            case PrimaryDisconnected ignored-> "the terminal window closed";
+            case ShellConnected ignored     -> "an extra shell connected";
+            case ShellDisconnected ignored  -> "an extra shell closed";
+            case Interrupted interrupted    -> "interrupted by " + interrupted.signal();
+            case StopRequested stop         -> "stop requested by " + stop.source();
+            case ActionFailed failed        -> "could not " + failed.action().describe()
+                                             + " — " + failed.problem().code();
+            case ShutdownCompleted done     -> "shutdown finished with " + done.problems().size()
+                                             + " problem(s)";
+        };
+    }
+}

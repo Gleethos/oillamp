@@ -62,6 +62,30 @@ public sealed interface LampEvent {
      */
     record Answer(String text)                          implements LampEvent {}
 
+    /**
+     * How far a session has got — spec §26.7.
+     *
+     * <p>A rendering of the supervisor's own state, not the state itself: the states are
+     * internal and change with the design, while "running, up 3 minutes, one extra shell" is
+     * what a front end and a user both want, and neither should have to be recompiled when a
+     * state is added.
+     */
+    record SessionStatus(String state, String detail, Duration uptime, int extraShells) {}
+
+    record SessionStateChanged(SessionStatus status)    implements LampEvent {}
+
+    /**
+     * A window oillamp opened on the user's desktop — the sandbox terminal, or the viewer.
+     *
+     * <p>Carries the whole command line, which is deliberate. These are the two things oillamp
+     * does that a user cannot see the inside of, and when a terminal opens and closes again the
+     * first useful question is always "what exactly did you run?".
+     */
+    record WindowOpened(String what, sprouts.Tuple<String> argv) implements LampEvent {}
+
+    /** What a session came to: how long it ran, why it ended, what it left behind (§10.7). */
+    record Summary(String title, sprouts.Tuple<String> lines) implements LampEvent {}
+
     /** Something went wrong but oillamp carried on. */
     record Warning(Problem problem)                     implements LampEvent {}
     /** Something went wrong and oillamp stopped. */

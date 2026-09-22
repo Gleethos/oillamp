@@ -87,15 +87,20 @@ class TheShapeOfTheCodeSpec extends Specification {
         given: 'the classes whose job is to touch the outside world'
             var allowed = ['RealMachine', 'SimulatedMachine', 'Filesystem', 'LampLock', 'HostProbe',
                            'StepRunner', 'LampPhase', 'HostPhase', 'Commands', 'ConsoleRenderer',
-                           'OilLamp', 'Invocation', 'Machine'] as Set
+                           'OilLamp', 'Invocation', 'Machine',
+                           // M4: the session. These three bind sockets, move bytes between them
+                           // and start the windows - the part of oillamp that has no pure core
+                           // because it IS the effect. What they must not do is decide anything,
+                           // and they do not: every choice a session makes is SessionMachine's.
+                           'Supervisor', 'Relay', 'Control'] as Set
 
         and: 'the things only they may use'
             var effects = ['java.nio.file.Files', 'java.lang.ProcessBuilder', 'java.lang.Process',
                            'java.security.SecureRandom', 'java.lang.Thread', 'java.lang.System']
 
-        when:
+        when: 'a nested class is judged by the class it lives in, not by its own name'
             var offenders = [] as Set
-            code.findAll { !(it.simpleName.split('\\$')[0] in allowed) }.each { type ->
+            code.findAll { !(outermostNameOf(it) in allowed) }.each { type ->
                 type.directDependenciesFromSelf.each { dependency ->
                     if (dependency.targetClass.fullName in effects)
                         offenders << "${type.simpleName} -> ${dependency.targetClass.simpleName}"
@@ -104,5 +109,16 @@ class TheShapeOfTheCodeSpec extends Specification {
 
         then: 'no decision-making class reaches for an effect'
             offenders.isEmpty()
+    }
+
+    /**
+     *  The name of the top-level class a type lives in. A helper nested inside an allowed class
+     *  is part of that class's job - ArchUnit reports it under its own short name, which would
+     *  otherwise make every private inner worker look like a new offender.
+     */
+    private static String outermostNameOf(type) {
+        var outer = type
+        while (outer.enclosingClass.present) outer = outer.enclosingClass.get()
+        outer.simpleName
     }
 }

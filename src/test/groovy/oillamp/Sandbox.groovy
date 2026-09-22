@@ -22,11 +22,29 @@ class Sandbox {
 
     Sandbox(Path temporaryDirectory) {
         home = Files.createDirectories(temporaryDirectory.resolve('home/dev'))
-        runtime = Files.createDirectories(temporaryDirectory.resolve('run/user/1000'))
+        runtime = shortRuntimeDirectory()
         simulation = Machine.simulated()
                 .ubuntuWithEverything()
                 .user('dev', 1000, 1000, home)
                 .runtimeDirectory(runtime)
+    }
+
+    /**
+     * A stand-in for {@code $XDG_RUNTIME_DIR}, and deliberately not inside the scenario's own
+     * temporary directory.
+     *
+     * <p>The sockets a session binds are real, and the kernel caps a Unix socket path at 107
+     * bytes — which is the entire reason D-25 puts them under {@code $XDG_RUNTIME_DIR} rather
+     * than in the lamp. Spock's temporary directories are named after the scenario and are long
+     * enough on their own to break that, so a scenario run from one would fail for a reason that
+     * has nothing to do with what it is testing. A real runtime directory is {@code /run/user/1000};
+     * this is the same shape and the same length.
+     */
+    private static Path shortRuntimeDirectory() {
+        Path base = Path.of('/tmp', 'oil-t')
+        Path directory = Files.createTempDirectory(Files.createDirectories(base), '')
+        directory.toFile().deleteOnExit()
+        directory
     }
 
     /** Adjusts the machine, e.g. {@code sandbox.machine { it.withoutPodman() }}. */

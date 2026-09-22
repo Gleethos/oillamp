@@ -91,6 +91,23 @@ final class ConsoleRenderer {
             case LampEvent.Output output ->
                     { if (verbose) line(area(output.sourceTag()) + dim(output.line())); }
             case LampEvent.Answer answer -> line(answer.text());
+            // The state machine already says the things worth saying out loud, as Ok and Info;
+            // the state changes themselves are the log's account of how it got there.
+            case LampEvent.SessionStateChanged changed ->
+                    { if (verbose) line(area("session") + dim("· " + changed.status().state()
+                                                              + " — " + changed.status().detail())); }
+            case LampEvent.WindowOpened opened -> {
+                line(area("session") + colour(GREEN, "✓ ") + "opened " + opened.what());
+                // The command matters when the window misbehaves, and by then it is too late to
+                // ask for it — so --verbose keeps it, and a failure quotes it in full.
+                if (verbose) line(dim(" ".repeat(10) + "  $ " + String.join(" ", opened.argv())));
+            }
+            case LampEvent.Summary summary -> {
+                line("");
+                line(dim("— ") + summary.title() + dim(" ———"));
+                for (String detail : summary.lines()) line("  " + dim(detail));
+                line("");
+            }
             case LampEvent.Warning warning -> problem(warning.problem());
             case LampEvent.Failure failure -> problem(failure.problem());
         }
