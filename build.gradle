@@ -1,14 +1,26 @@
 plugins {
     id 'java'
+    id 'groovy'
+    id 'application'
     // For static null checking:
     id "net.ltgt.errorprone" version "4.2.0"
 }
 
-group = 'oillamp'
-version = '1.0-SNAPSHOT'
+group = 'dev.oillamp'
+version = '0.1.0-SNAPSHOT'
 
 repositories {
     mavenCentral()
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+application {
+    mainClass = 'dev.oillamp.OilLamp'
 }
 
 dependencies {
@@ -18,7 +30,16 @@ dependencies {
     implementation group: 'com.google.errorprone', name: 'error_prone_annotations', version: '2.45.0'
     implementation group: 'org.jspecify', name: 'jspecify', version: '1.0.0'
 
+    // Persistent collections: the only collection types allowed in domain records.
     implementation group: 'io.github.globaltcad', name: 'sprouts', version: '2.8.0'
+    // Sprouts pulls slf4j-api, which prints a "no providers found" warning on every run.
+    // oillamp deliberately has no logging framework - it reports through LampEvent - so give
+    // slf4j a no-op binding rather than letting it talk to the user.
+    runtimeOnly group: 'org.slf4j', name: 'slf4j-nop', version: '2.0.17'
+
+    // TOML for oillamp.toml, JSON for lamp.json and podman's output.
+    implementation group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.20.0'
+    implementation group: 'com.fasterxml.jackson.dataformat', name: 'jackson-dataformat-toml', version: '2.20.0'
 
     // Test dependencies! : Groovy & Spock
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'  // needed since gradle 9
@@ -26,17 +47,36 @@ dependencies {
     testImplementation "org.apache.groovy:groovy:5.0.6"
     testImplementation "org.spockframework:spock-core:2.4-groovy-5.0"
     testImplementation 'org.apache.groovy:groovy-json:5.0.6'
+
+    // Gives specifications `reportInfo`, and renders it into build/spock-reports, so the
+    // "why does this scenario exist" text is readable outside the source.
+    testImplementation('com.athaydes:spock-reports:2.5.1-groovy-4.0') {
+        // It is built against Groovy 4 and Spock 2.3; exclude those so this project's own
+        // Groovy 5 and Spock 2.4 are used, but keep the rest, which the report renderer needs.
+        exclude group: 'org.codehaus.groovy'
+        exclude group: 'org.apache.groovy'
+        exclude group: 'org.spockframework'
+    }
+    // The report renderer builds its pages with GStringTemplateEngine, which lives here.
+    testImplementation 'org.apache.groovy:groovy-templates:5.0.6'
+
+    // Used by ArchitectureSpec to keep the pure core free of I/O, time and randomness.
+    testImplementation group: 'com.tngtech.archunit', name: 'archunit', version: '1.4.1'
 }
 
 tasks.withType(JavaCompile) {
     options.errorprone { // list of bug patterns https://errorprone.info/bugpatterns
         check("NullAway", name.toLowerCase(Locale.ROOT).contains("test") ? net.ltgt.gradle.errorprone.CheckSeverity.WARN : net.ltgt.gradle.errorprone.CheckSeverity.ERROR)  // remove the if condition if you want to run NullAway on test code
-        option("NullAway:AnnotatedPackages", "")
+        option("NullAway:AnnotatedPackages", "dev.oillamp")
     }
-    options.compilerArgs += ['--should-stop=ifError=FLOW']
+    options.compilerArgs += ['--should-stop=ifError=FLOW', '-Xlint:all,-serial,-processing']
     options.errorprone.disable("StringConcatToTextBlock") // Workaround for: https://github.com/google/error-prone/issues/4918#issuecomment-2952215463
 }
 
 test {
     useJUnitPlatform()
+    testLogging {
+        events "failed"
+        exceptionFormat "full"
+    }
 }

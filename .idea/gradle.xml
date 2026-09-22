@@ -7,6 +7,14 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/lamp-helper" />
+            <option value="$PROJECT_DIR$/oillamp-app" />
+            <option value="$PROJECT_DIR$/oillamp-cli" />
+            <option value="$PROJECT_DIR$/oillamp-core" />
+            <option value="$PROJECT_DIR$/oillamp-host" />
+            <option value="$PROJECT_DIR$/oillamp-image" />
+            <option value="$PROJECT_DIR$/oillamp-net" />
+            <option value="$PROJECT_DIR$/oillamp-rfb" />
           </set>
         </option>
         <option name="myGradleHome" value="" />
