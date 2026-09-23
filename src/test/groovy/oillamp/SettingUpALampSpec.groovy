@@ -145,6 +145,170 @@ class SettingUpALampSpec extends Specification {
             Files.readString(lamp.resolve('.oillamp/known_hosts')).startsWith('lamp-')
     }
 
+    def 'The agent gets the same environment however its shell was started'() {
+        reportInfo """
+            /etc/profile is read by *login* shells only. The terminal oillamp opens gets one, so
+            everything works there - but `ssh <lamp> 'some command'`, which is how an agent drives
+            a sandbox from a script, does not. That shell would start with no proxy variables, no
+            DISPLAY and no `sdk`, and the same command would then behave differently depending on
+            how it was invoked. An agent cannot diagnose that; it reports "the network is broken".
+
+            Bash reads ~/.bashrc in exactly that case, so oillamp writes one. It is written once
+            and never again: from the moment it exists it belongs to the agent.
+
+            The guide is checked here for a related reason. The in-sandbox banner tells the agent
+            to read ~/AGENTS.md, and for four milestones nothing put a file there.
+        """
+        given:
+            var lamp = sandbox.lampPath()
+
+        when:
+            sandbox.oillamp.run('at', lamp.toString())
+            var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
+                                            .findFirst().orElseThrow()
+
+        then: 'a non-login shell is sent to the same place a login shell gets its environment from'
+            Files.readString(agentHome.resolve('.bashrc')).contains('/etc/profile.d/oillamp.sh')
+
+        and: 'and the guide is where the banner says it is'
+            Files.readString(agentHome.resolve('AGENTS.md')).contains('# This machine')
+
+        when: 'the agent makes the file its own'
+            Files.writeString(agentHome.resolve('.bashrc'), 'export EDITOR=vim\n')
+            sandbox.oillamp.run('at', lamp.toString())
+
+        then: 'oillamp does not write over it'
+            Files.readString(agentHome.resolve('.bashrc')) == 'export EDITOR=vim\n'
+
+        and: 'while the guide, which describes this session, is rewritten'
+            Files.readString(agentHome.resolve('AGENTS.md')).contains('# This machine')
+    }
+
+    def 'Removing a lamp takes what oillamp made, and needs to be asked twice'() {
+        reportInfo """
+            A lamp cannot be deleted with `rm -rf`. Part of one belongs to the sandbox's second
+            user - the infra sockets and the recordings, which is what stops the agent tampering
+            with the recording of its own screen - and those map onto subordinate ids the human
+            who owns the directory has no permission over. `rm -rf` stops halfway with "Permission
+            denied" on a path they have never heard of. So there is a command, and it goes through
+            podman's user namespace.
+
+            It deletes what oillamp created and nothing else. The lamp directory is the user's:
+            they named it, and they may well have put notes or scripts of their own beside
+            oillamp.toml. So the root survives - unless removal leaves it empty, in which case
+            keeping it would just be litter.
+
+            There is no prompt to answer in a tool that may be driven by a script, so --yes is the
+            confirmation. Without it the command prints what would go and stops.
+        """
+        given: 'a lamp with work in it, and a file of the user\'s own beside it'
+            var lamp = sandbox.lampPath()
+            sandbox.oillamp.run('at', lamp.toString())
+            var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
+                                            .findFirst().orElseThrow()
+            Files.writeString(agentHome.resolve('workspace').resolve('README.md'), 'the agent\'s work\n')
+            Files.writeString(lamp.resolve('my-notes.txt'), 'not oillamp\'s\n')
+
+        when: 'the user asks without saying --yes'
+            var asked = sandbox.oillamp.run('remove', lamp.toString())
+
+        then: 'it says what would go, names the agent\'s work, and stops'
+            asked.status() == ExitStatus.USAGE
+            asked.console().contains('workspace')
+            asked.console().contains('--yes')
+
+        and: 'nothing has been removed'
+            Files.exists(lamp.resolve('oillamp.toml'))
+            Files.exists(agentHome.resolve('workspace').resolve('README.md'))
+
+        when: 'the user says it'
+            var removed = sandbox.oillamp.run('remove', lamp.toString(), '--yes')
+
+        then: 'everything oillamp made is gone, the agent home included'
+            removed.status() == ExitStatus.SUCCESS
+            !Files.exists(lamp.resolve('oillamp.toml'))
+            !Files.exists(lamp.resolve('.oillamp'))
+            !Files.exists(agentHome)
+
+        and: 'and what was never oillamp\'s is not, nor is the directory holding it'
+            Files.readString(lamp.resolve('my-notes.txt')) == 'not oillamp\'s\n'
+
+        and: 'the directory that is not a lamp any more says so if asked again'
+            sandbox.oillamp.run('remove', lamp.toString(), '--yes')
+                    .errors().first().whatHappened().contains('not an oillamp lamp')
+    }
+
+    def 'A lamp somebody already tried to rm -rf can still be removed'() {
+        reportInfo """
+            This is the sequence that actually happens. A user reaches for `rm -rf` first, it
+            deletes lamp.json and then stops on the sockets it has no permission over, and what is
+            left is a directory that can no longer say which lamp it was - and still cannot be
+            deleted. Being told "this is not an oillamp lamp" at that point would be failing them
+            at the exact moment the command exists for.
+
+            So removal works from what is on disk rather than from an identity: any agent-lamp-*
+            directory, the state directory, the config. Only the two things named after the lamp's
+            id - its container and its runtime directory - are skipped, because without the id
+            there is nothing to name them with.
+        """
+        given: 'a lamp that a hand-rolled deletion got halfway through'
+            var lamp = sandbox.lampPath()
+            sandbox.oillamp.run('at', lamp.toString())
+            var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
+                                            .findFirst().orElseThrow()
+            Files.delete(lamp.resolve('.oillamp/lamp.json'))
+
+        when: 'its sandbox is still up, which the lamp can no longer say'
+            sandbox.machine { it.commandSucceeding('podman ps', """
+                [{"Names":["oillamp-y62b5ihg"],"State":"running",
+                  "Labels":{"oillamp.agent-id":"y62b5ihg","oillamp.lamp":"${lamp}"}}]
+            """) }
+            var refused = sandbox.oillamp.run('remove', lamp.toString(), '--yes')
+
+        then: 'podman is asked instead, by the label that carries the lamp path'
+            refused.status() == ExitStatus.LAMP_BUSY
+            refused.errors().first().whatHappened().contains('oillamp-y62b5ihg')
+
+        and: 'so nothing was pulled out from under a container that is still running'
+            Files.exists(agentHome)
+
+        when: 'the sandbox is gone'
+            sandbox.machine { it.commandSucceeding('podman ps', '[]') }
+            var outcome = sandbox.oillamp.run('remove', lamp.toString(), '--yes')
+
+        then: 'removal works anyway, and takes the agent home it found by name'
+            outcome.status() == ExitStatus.SUCCESS
+            !Files.exists(lamp.resolve('.oillamp'))
+            !Files.exists(agentHome)
+    }
+
+    def 'A lamp whose sandbox is still up is not removed out from under it'() {
+        reportInfo """
+            Deleting the agent's home while a container has it mounted would leave the session
+            working in directories that no longer exist, and the container would outlive
+            everything that describes it - a sandbox with nothing left to stop it with.
+
+            The answer names `oillamp stop`, which is also what clears up a container left behind
+            by a supervisor that died. Both cases are the same instruction, so they get the same
+            message.
+        """
+        given: 'a lamp whose container is still registered with podman'
+            var lamp = sandbox.lampPath()
+            sandbox.oillamp.run('at', lamp.toString())
+            sandbox.machine { it.commandSucceeding('podman container exists', '') }
+
+        when:
+            var outcome = sandbox.oillamp.run('remove', lamp.toString(), '--yes')
+
+        then: 'it refuses, and says which command to run first'
+            outcome.status() == ExitStatus.LAMP_BUSY
+            outcome.errors().first().whatHappened().contains('still there')
+            outcome.errors().first().fixes().any { it.command().orElse('').startsWith('oillamp stop') }
+
+        and: 'and the lamp is untouched'
+            Files.exists(lamp.resolve('oillamp.toml'))
+    }
+
     def 'Running oillamp again on the same lamp keeps the agent\'s world and the user\'s settings'() {
         reportInfo """
             The point of a lamp is that the agent comes back to the work it left: its repositories,

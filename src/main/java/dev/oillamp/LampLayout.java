@@ -27,6 +27,21 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
             throw new IllegalArgumentException("XDG_RUNTIME_DIR must be absolute, got: " + xdgRuntimeDir);
     }
 
+    /**
+     * The three paths a lamp has whatever its identity — knowable from the root alone.
+     *
+     * <p>They exist as statics because of one case: a lamp somebody already tried to delete by
+     * hand. {@code rm -rf} removes {@code lamp.json} and then stops on the sockets it has no
+     * permission over, leaving a directory that can no longer say which lamp it was and still
+     * cannot be deleted. {@code oillamp remove} has to be able to address it anyway, and it must
+     * not do that by spelling out ".oillamp" somewhere else in the codebase.
+     */
+    static Path stateDirOf(Path root) { return root.resolve(".oillamp"); }
+    static Path configOf(Path root)   { return root.resolve("oillamp.toml"); }
+    static Path readmeOf(Path root)   { return root.resolve("README.txt"); }
+    /** The prefix every agent home is named with, so a damaged lamp's can still be found. */
+    static final String AGENT_DIR_PREFIX = "agent-lamp-";
+
     /** The lamp's human name — the directory name the user thinks in. */
     public String name() {
         Path fileName = root.getFileName();
@@ -36,12 +51,12 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     // ─── the user's layer ──────────────────────────────────────────────────────────────────
 
     /** The policy file. Deliberately outside the agent dir: the agent cannot rewrite its own jail. */
-    public Path config()        { return root.resolve("oillamp.toml"); }
-    public Path readme()        { return root.resolve("README.txt"); }
+    public Path config()        { return configOf(root); }
+    public Path readme()        { return readmeOf(root); }
 
     // ─── the state layer (mode 0700, never mounted as a whole) ─────────────────────────────
 
-    public Path stateDir()      { return root.resolve(".oillamp"); }
+    public Path stateDir()      { return stateDirOf(root); }
     public Path lampMeta()      { return stateDir().resolve("lamp.json"); }
     public Path lockFile()      { return stateDir().resolve("lock"); }
     public Path sessionMeta()   { return stateDir().resolve("session.json"); }
@@ -83,11 +98,20 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
 
     // ─── the agent's layer (the only part mounted into the container as a home) ─────────────
 
-    public Path agentDir()   { return root.resolve("agent-lamp-" + agentId.value()); }
+    public Path agentDir()   { return root.resolve(AGENT_DIR_PREFIX + agentId.value()); }
     public Path workspace()  { return agentDir().resolve("workspace"); }
     public Path libs()       { return agentDir().resolve("libs"); }
     public Path screenshots(){ return agentDir().resolve("screenshots"); }
     public Path agentsMd()   { return agentDir().resolve("AGENTS.md"); }
+    /**
+     * The agent's own {@code ~/.bashrc}, written once and then left alone.
+     *
+     * <p>It exists because {@code /etc/profile} is read by <em>login</em> shells only. An agent
+     * that drives this sandbox with {@code ssh <lamp> 'some command'} gets a non-login shell,
+     * which would otherwise start with no proxy variables, no {@code DISPLAY} and no {@code sdk}.
+     * Bash reads this file in exactly that case, and in every interactive non-login shell.
+     */
+    public Path agentBashrc(){ return agentDir().resolve(".bashrc"); }
 
     // ─── the short runtime dir (D-25): host-only sockets and the symlink to socketsDir ──────
 

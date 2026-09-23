@@ -117,6 +117,35 @@ final class Filesystem {
         Files.deleteIfExists(path);
     }
 
+    /**
+     * Deletes a tree as far as this user is allowed to, and reports what survived.
+     *
+     * <p>Deliberately does not throw on the first refusal. Part of a lamp belongs to a container
+     * uid, and stopping at the first {@code Permission denied} would leave the caller unable to
+     * say <em>which</em> paths need {@code podman unshare} — which is the only useful thing to
+     * tell a user in that situation.
+     *
+     * <p>Symlinks are deleted, never followed: the runtime directory holds one pointing back into
+     * the lamp (D-25), and following it would delete the target's contents through the link.
+     */
+    public static Tuple<Path> deleteTree(Path root) {
+        Tuple<Path> survivors = Tuple.of(Path.class);
+        if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return survivors;
+        if (Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            try (Stream<Path> children = Files.list(root)) {
+                for (Path child : children.toList()) survivors = survivors.addAll(deleteTree(child));
+            } catch (IOException unreadable) {
+                return survivors.add(root);
+            }
+        }
+        try {
+            Files.deleteIfExists(root);
+        } catch (IOException refused) {
+            survivors = survivors.add(root);
+        }
+        return survivors;
+    }
+
     /** Looks at a candidate lamp directory, producing the value {@code LampClassifier} decides on. */
     public static DirListing list(Path path) {
         if (!Files.exists(path)) return DirListing.missing();

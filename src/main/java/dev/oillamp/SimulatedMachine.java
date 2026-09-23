@@ -280,11 +280,26 @@ final class SimulatedMachine implements Machine {
      */
     private Outcome simulatedUnshareRemove(Command command) {
         Tuple<String> argv = command.argv();
+        // `-r` matters: `oillamp remove` passes whole directories, and a simulation that could
+        // only unlink single files would send every removal down the fallback path instead of the
+        // one the real command takes.
+        boolean recursive = false;
+        for (String argument : argv)
+            if (argument.startsWith("-") && argument.contains("r")) recursive = true;
         for (int i = 3; i < argv.size(); i++) {
             String argument = argv.get(i);
             if (argument.startsWith("-")) continue;
+            Path path = Path.of(argument);
+            if (recursive) {
+                Tuple<Path> survivors = Filesystem.deleteTree(path);
+                if (!survivors.isEmpty())
+                    return new Outcome.Finished(1, "",
+                            "rm: cannot remove '" + survivors.first() + "': Permission denied\n",
+                            Duration.ofMillis(5));
+                continue;
+            }
             try {
-                java.nio.file.Files.deleteIfExists(Path.of(argument));
+                java.nio.file.Files.deleteIfExists(path);
             } catch (java.io.IOException e) {
                 return new Outcome.Finished(1, "",
                         "rm: cannot remove '" + argument + "': " + e.getMessage() + "\n",

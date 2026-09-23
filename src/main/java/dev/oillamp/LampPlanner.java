@@ -154,6 +154,10 @@ final class LampPlanner {
         steps = steps.add(new Step.CreateDirectory(layout.workspace(), PosixMode.PUBLIC_DIR));
         steps = steps.add(new Step.CreateDirectory(layout.libs(), PosixMode.PUBLIC_DIR));
         steps = steps.add(new Step.CreateDirectory(layout.screenshots(), PosixMode.PUBLIC_DIR));
+        // The one file in the agent's home that oillamp puts there and then never touches again.
+        // Without it `ssh <lamp> 'some command'` runs in a shell that has read no profile at all.
+        steps = steps.add(new Step.WriteFile(layout.agentBashrc(), Templates.agentBashrc(),
+                PosixMode.PUBLIC_FILE, Step.WritePolicy.IF_ABSENT));
 
         // ── the short runtime dir, so socket paths stay under the 107-byte limit (D-25) ────
         steps = steps.add(new Step.CreateDirectory(layout.runtimeDir(), PosixMode.PRIVATE_DIR));
@@ -161,6 +165,49 @@ final class LampPlanner {
         steps = steps.add(new Step.CreateSymlink(layout.shortSockets(), layout.socketsDir()));
 
         return Result.ok(Plan.of(LampEvent.Phase.LAMP, steps), warnings);
+    }
+
+    /**
+     * What {@code oillamp remove} found in a lamp directory that belongs to oillamp.
+     *
+     * <p>Found rather than derived, because the commonest reason to be removing a lamp by command
+     * is that removing it by hand went wrong: {@code rm -rf} deletes {@code lamp.json} and then
+     * stops on the sockets it has no permission over, and what is left can no longer say which
+     * lamp it was. {@code agentDirs} is therefore a list of what is actually on disk — usually
+     * one, occasionally none, and more than one if a lamp directory was copied.
+     *
+     * @param runtimeDir empty when the lamp's identity is gone, since the runtime directory is
+     *                   named after it
+     */
+    record Removal(Path root, Tuple<Path> agentDirs, Optional<Path> runtimeDir) {}
+
+    /**
+     * Everything {@code oillamp remove} deletes, in the order it deletes it.
+     *
+     * <p>Named paths rather than "the directory". The lamp directory is the user's — they chose
+     * where it went and what it was called, and notes or scripts of their own may sit beside
+     * {@code oillamp.toml}. What oillamp created is therefore what oillamp removes; the root
+     * survives unless removal leaves it empty, where keeping it would be litter.
+     *
+     * <p>The agent's home goes last. If podman is unavailable and the state directory cannot be
+     * fully deleted, the run stops there — with the agent's work still on disk rather than half
+     * gone.
+     */
+    public static Plan planRemoval(Removal found) {
+        Tuple<Step> steps = Tuple.of(Step.class);
+        if (found.runtimeDir().isPresent())
+            steps = steps.add(new Step.RemoveTree(found.runtimeDir().get(),
+                    "the session's sockets and the symlink into the lamp"));
+        steps = steps.add(new Step.RemoveTree(LampLayout.stateDirOf(found.root()),
+                "oillamp's own state: identity, keys, logs, recordings and sockets"));
+        steps = steps.add(new Step.RemovePath(LampLayout.configOf(found.root()),
+                "the lamp's configuration"));
+        steps = steps.add(new Step.RemovePath(LampLayout.readmeOf(found.root()),
+                "the note describing this directory"));
+        for (Path agentDir : found.agentDirs())
+            steps = steps.add(new Step.RemoveTree(agentDir,
+                    "the agent's home, and everything it did here"));
+        return Plan.of(LampEvent.Phase.LAMP, steps);
     }
 
     /**
@@ -185,6 +232,12 @@ final class LampPlanner {
         // sshd insists on a private host key; the copy is readable by container uid 1000 = this user.
         steps = steps.add(new Step.CopyFile(layout.hostKey(), layout.sshdHostKey(), PosixMode.PRIVATE_FILE));
         steps = steps.add(new Step.WriteFile(layout.agentGuide(), agentGuide,
+                PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
+        // And the same text where the banner says to look for it. §19.3 specified a symlink into
+        // /oillamp/session, but that is a container path: on the host — where the user reads this
+        // directory — it would dangle. A real file resolves on both sides, and it is rewritten
+        // each session because it describes *this* session's configuration.
+        steps = steps.add(new Step.WriteFile(layout.agentsMd(), agentGuide,
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
 
         steps = steps.add(new Step.WriteFile(layout.sshConfig(), Ssh.renderClientConfig(layout),

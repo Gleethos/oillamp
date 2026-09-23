@@ -396,6 +396,21 @@ public interface Machine {
             return this;
         }
 
+        /**
+         * The other half of {@link #commandFailing}: a command that succeeds where the simulation
+         * would otherwise say it had not.
+         *
+         * <p>{@code podman container exists} is the case that needs it. It reports absence with a
+         * non-zero exit rather than with output, so the simulation answers 1 by default — which
+         * is right for almost every scenario and wrong for the one about a container that is
+         * still there.
+         */
+        public Simulation commandSucceeding(String commandPrefix, String stdout) {
+            builder.scriptCommand(commandPrefix,
+                    new Outcome.Finished(0, stdout, "", Duration.ofMillis(1)));
+            return this;
+        }
+
         public Simulation withoutPackages(String... packages) {
             builder.removePackages(Tuple.of(String.class, packages));
             return this;

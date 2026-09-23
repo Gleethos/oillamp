@@ -38,6 +38,7 @@ has no outbound network at all, which is the safe direction to be incomplete in.
 | `oillamp stop <dir>` | **Works.** Asks the running session to shut down; cleans up after a crashed one if there is nobody to ask. |
 | `oillamp status <dir>` | **Works.** State, uptime, container, desktop and attached shells, from the supervisor itself. |
 | `oillamp list` | **Works.** Every oillamp sandbox running on this host, asked of podman. |
+| `oillamp remove <dir> --yes` | **Works.** Deletes the lamp, including the files owned by the sandbox's own users that `rm -rf` cannot touch. Without `--yes` it prints what would go and exits 2; it refuses while a sandbox is running. |
 | the egress proxy | **Works.** Started with every session. `npm`, `pip`, `git` over HTTPS and `curl` all reach the internet from inside the sandbox; the host's loopback and private ranges are refused by rule and the refusal is printed where the user can see it. |
 | `recordings` `image` | **Parse, then refuse**, because each needs the milestone that gives it meaning (M6, M7). |
 
@@ -77,7 +78,7 @@ user's involvement.
 It also produced the first finding that only real hardware could produce — see
 *Known gaps on Ubuntu 24.04* below.
 
-Plus **91 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
+Plus **95 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
 `build/spock-reports/*.md` after `./gradlew test`.
 
 ### Findings from that run
@@ -293,6 +294,57 @@ configured Eden AI does not have to do it again inside a sandbox. oillamp logs w
 found and never the values. Since M5, api.edenai.run is reachable through the egress proxy, so
 `pi install` works inside a session too.
 
+### The agent's shell, and getting rid of a lamp
+
+Two findings from using M5.1, both fixed.
+
+**`ssh <lamp> 'some command'` had no environment at all.** `/etc/profile` is read by *login*
+shells only. The terminal `oillamp at` opens gets one, so everything worked there — but a scripted
+one-shot command, which is how an agent would drive a sandbox, got a shell with no proxy
+variables, no `DISPLAY` and no `sdk`. Bash reads `~/.bashrc` in exactly that case, and the agent's
+home had none. It does now, written once and then left alone.
+
+The obvious guard against the profile then being read twice — *if already done, return* — turned
+out to be wrong, and measuring rather than reasoning is what caught it: Debian's `/etc/profile`
+**resets** `PATH` before the profile.d script runs, so skipping the second read left a nested
+login shell with neither `~/.local/bin` nor any SDKMAN candidate on its path. Nothing is skipped
+now; `PATH` and `LD_LIBRARY_PATH` check themselves, and SDKMAN is sourced only where `sdk` is not
+already defined. Verified in all three shapes:
+
+| Shell | Result |
+|---|---|
+| `ssh <lamp> 'echo $HTTP_PROXY; type -t sdk'` | proxy set, `sdk` is a function |
+| `ssh <lamp> 'curl https://registry.npmjs.org/'` | **200** — the environment works, not just exists |
+| `ssh <lamp> 'bash -l -c "echo \$PATH"'` | `~/.local/bin` survives `/etc/profile`'s reset |
+| sourcing the profile twice in one shell | no duplicated `PATH` entries |
+
+`~/AGENTS.md` was missing too. The banner has told every agent to read it since M3, and nothing
+ever wrote it. It is there now, rewritten each session.
+
+**A lamp could not be deleted.** `rm -rf <lamp>` removes most of it and then stops:
+
+```
+rm: cannot remove '…/.oillamp/sockets/infra/vnc.sock': Permission denied
+rm: cannot remove '…/.oillamp/sockets/infra/ready.json': Permission denied
+```
+
+Those files are owned by uid **166536** on the host — the subordinate id that container uid 1001,
+the sandbox's infra user, maps onto. That user is what stops the agent tampering with the
+recording of its own screen, so the ownership is the feature; not being able to delete your own
+directory is the accident.
+
+`oillamp remove <dir> --yes` deletes it through `podman unshare`, which can reach those files.
+Without `--yes` it prints exactly what would go — including the contents of the agent's home,
+because one of those names is usually a repository — and exits 2. It refuses while a sandbox for
+the lamp is still running, and it works on a lamp somebody already tried to delete by hand, which
+is the commonest way to end up needing it. The lamp directory itself survives unless removal
+leaves it empty.
+
+That last case exposed a real hole during testing: with `lamp.json` already gone, the running-check
+had no container name to ask about, and removal went ahead while a container was still up. It now
+asks podman for a container carrying this lamp's *path* as a label — which works whether or not the
+lamp can still say who it is.
+
 ### The verification spikes that are left
 
 S5 and S14; S10 closed with M5. Neither of the two blocks anything:
@@ -344,7 +396,7 @@ Two ideas carry most of the design:
 ## Running it
 
 ```bash
-./gradlew build                 # compile, run all 91 fast scenarios
+./gradlew build                 # compile, run all 95 fast scenarios
 ./gradlew installDist           # build/install/oillamp/bin/oillamp
 ./gradlew test                  # then read build/spock-reports/*.md
 ./gradlew spikes                # §33 assumptions against real podman; needs podman

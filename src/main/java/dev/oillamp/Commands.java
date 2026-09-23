@@ -193,6 +193,180 @@ final class Commands {
         return cleanUpAfterACrashedSession(lampPath, reply.problems());
     }
 
+    /**
+     * {@code oillamp remove <dir>} — delete a lamp and everything in it.
+     *
+     * <p>This exists because a lamp cannot be deleted with {@code rm -rf}. Part of one belongs to
+     * the sandbox's second user — the infra sockets and the recordings, so that the agent cannot
+     * tamper with the recording of its own screen (§9.2, NFR-06) — and those map onto subordinate
+     * ids that the human who owns the directory has no permission over. They find out when
+     * {@code rm -rf} stops halfway with "Permission denied" on a path they have never heard of.
+     *
+     * <p>It deletes what oillamp created and nothing else. The lamp directory is the user's —
+     * they named it, and may keep files of their own beside {@code oillamp.toml} — so the root
+     * itself survives unless removal leaves it empty.
+     *
+     * <p>Requires {@code --yes}, because there is no prompt to answer here and this deletes the
+     * agent's home — repositories, installed toolchains, everything it did. Without the flag it
+     * prints exactly what would go and stops, which is the closest thing to asking.
+     */
+    public ExitStatus remove(Path lampPath, boolean confirmed) {
+        Path root = lampPath.toAbsolutePath().normalize();
+        DirListing listing = Filesystem.list(root);
+        Tuple<Path> agentDirs = Tuple.of(Path.class);
+        for (String entry : listing.entries())
+            if (entry.startsWith(LampLayout.AGENT_DIR_PREFIX)) agentDirs = agentDirs.add(root.resolve(entry));
+
+        boolean anythingOfOurs = !agentDirs.isEmpty()
+                || Filesystem.exists(LampLayout.stateDirOf(root))
+                || Filesystem.exists(LampLayout.configOf(root));
+        if (!anythingOfOurs) {
+            context.report(Tuple.of(Problem.class, Problems.lampNotWritable(root,
+                    "this is not an oillamp lamp — there is nothing of oillamp's in " + root)));
+            return ExitStatus.USAGE;
+        }
+
+        // The identity is what names the container and the runtime directory, and a lamp that was
+        // half-deleted by hand no longer has one. Everything else is still addressable, so a
+        // missing identity costs only those two checks — not the command.
+        Optional<LampLayout> layout = layoutOf(lampPath) instanceof Result.Ok<LampLayout> ok
+                ? Optional.of(ok.value())
+                : Optional.empty();
+
+        Optional<String> inUse = whatIsStillRunning(root, layout);
+        if (inUse.isPresent()) {
+            context.report(Tuple.of(Problem.class, Problems.lampStillRunning(root, inUse.get())));
+            return ExitStatus.LAMP_BUSY;
+        }
+
+        LampPlanner.Removal found = new LampPlanner.Removal(root, agentDirs,
+                layout.map(LampLayout::runtimeDir));
+        context.emit(new LampEvent.Answer(describeWhatWouldGo(found)));
+        if (!confirmed && !context.options().dryRun()) {
+            context.emit(new LampEvent.Answer("Nothing has been removed. To go ahead:\n\n"
+                    + "  oillamp remove " + root + " --yes"));
+            return ExitStatus.USAGE;
+        }
+
+        Result<Plan> done = new StepRunner(machine, context).run(LampPlanner.planRemoval(found));
+        if (done instanceof Result.Err<Plan> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        context.report(done.warnings());
+        if (context.options().dryRun()) return ExitStatus.SUCCESS;
+
+        context.ok("remove", "the lamp is gone" + removeTheRootIfEmpty(root));
+        return ExitStatus.SUCCESS;
+    }
+
+    /**
+     * Whether anything would be pulled out from under a running session.
+     *
+     * <p>Two questions, because they fail differently. A supervisor that answers is a session the
+     * user is probably still looking at. A container with no supervisor is the wreck of one that
+     * died — which {@code oillamp stop} already knows how to clear up, so the answer in both
+     * cases is the same and says so.
+     */
+    private Optional<String> whatIsStillRunning(Path root, Optional<LampLayout> layout) {
+        Optional<String> container = runningSandboxFor(root);
+        if (container.isPresent())
+            return Optional.of("the sandbox container " + container.get()
+                    + " is still running for this lamp");
+        if (layout.isPresent() && Control.ask(layout.get().controlSocket(), root,
+                Control.Request.of("status"), "remove") instanceof Result.Ok<Control.Reply>)
+            return Optional.of("a session is running: its supervisor is answering on "
+                    + layout.get().controlSocket());
+        if (layout.isPresent() && machine.run(Machine.Command.of("podman", "container", "exists",
+                layout.get().containerName().value()).labelled("podman container exists")).succeeded())
+            return Optional.of("the sandbox container " + layout.get().containerName().value()
+                    + " is still there, left behind by a session that did not finish");
+        return Optional.empty();
+    }
+
+    /**
+     * Any sandbox podman is running for this lamp, found by the label rather than by the name.
+     *
+     * <p>The name is derived from the lamp's identity, and the case that most needs this check is
+     * the one where that identity is gone: a lamp somebody started deleting by hand. The
+     * container still carries the lamp's path as a label, so podman can answer even when the
+     * directory no longer can — which is what stops {@code remove} deleting a lamp out from under
+     * a sandbox that is still up.
+     */
+    private Optional<String> runningSandboxFor(Path root) {
+        Machine.Outcome outcome = machine.run(Machine.Command
+                .of("podman", "ps", "--filter", "label=oillamp.agent-id", "--format", "json")
+                .withTimeout(java.time.Duration.ofSeconds(20)).labelled("podman ps"));
+        if (!outcome.succeeded()) return Optional.empty();
+        try {
+            com.fasterxml.jackson.databind.JsonNode listing =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(outcome.output());
+            if (!listing.isArray()) return Optional.empty();
+            for (com.fasterxml.jackson.databind.JsonNode container : listing) {
+                com.fasterxml.jackson.databind.JsonNode labels = container.get("Labels");
+                if (labels == null || !text(labels, "oillamp.lamp").equals(root.toString())) continue;
+                com.fasterxml.jackson.databind.JsonNode names = container.get("Names");
+                return Optional.of(names != null && names.isArray() && !names.isEmpty()
+                        ? names.get(0).asText()
+                        : text(container, "Names"));
+            }
+        } catch (com.fasterxml.jackson.core.JacksonException unreadable) {
+            // A podman that answers with something else is a reason to fall back to the checks
+            // below, not a reason to decide the lamp is free.
+            return Optional.empty();
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * The list a user reads before typing {@code --yes}.
+     *
+     * <p>The agent's home is listed entry by entry rather than as a total in megabytes, because
+     * the question being asked is not "how much" but "what": one of those names is usually a
+     * repository with work in it, and a number would not show that.
+     */
+    private static String describeWhatWouldGo(LampPlanner.Removal found) {
+        StringBuilder out = new StringBuilder("`oillamp remove` permanently deletes:\n\n");
+        for (Path agentDir : found.agentDirs()) {
+            out.append("  ").append(agentDir.getFileName()).append("/\n      the agent's home");
+            DirListing home = Filesystem.list(agentDir);
+            if (!home.readable())    out.append(" (cannot be read from here)");
+            else if (home.isEmpty()) out.append(" (empty)");
+            else                     out.append(" — ").append(String.join(", ", home.entries()));
+            out.append('\n');
+        }
+        if (Filesystem.exists(LampLayout.stateDirOf(found.root())))
+            out.append("  .oillamp/\n      this lamp's identity, keys, logs, recordings and sockets\n");
+        if (Filesystem.exists(LampLayout.configOf(found.root())))
+            out.append("  oillamp.toml\n      your configuration for this lamp\n");
+        if (Filesystem.exists(LampLayout.readmeOf(found.root())))
+            out.append("  README.txt\n");
+        found.runtimeDir().ifPresent(runtime -> out.append("  ").append(runtime)
+                .append("\n      the sockets this lamp uses while it runs\n"));
+        out.append("\nThe directory itself, ").append(found.root())
+           .append(", stays — unless this empties it.\n");
+        return out.toString();
+    }
+
+    /**
+     * Takes the lamp directory too, but only if oillamp was all that was in it.
+     *
+     * <p>A lamp created by {@code oillamp at <new dir>} should not leave an empty directory
+     * behind; one the user has kept their own files in must not take those with it. Nothing
+     * records which of the two this was — but by this point the directory itself answers.
+     */
+    private String removeTheRootIfEmpty(Path root) {
+        DirListing left = Filesystem.list(root);
+        if (!left.readable() || !left.isEmpty())
+            return " — " + root + " itself is untouched";
+        try {
+            Filesystem.deleteIfPresent(root);
+            return ", and " + root + " with it: oillamp was all that was in it";
+        } catch (java.io.IOException e) {
+            return " — " + root + " is empty now, but could not be removed: " + Problems.reason(e);
+        }
+    }
+
     /** {@code oillamp status <dir>} — what the running session is doing. */
     public ExitStatus status(Path lampPath) {
         Result<Control.Reply> reply = askTheSession(lampPath, "status", Control.Request.of("status"));

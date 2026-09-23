@@ -101,6 +101,16 @@ sealed interface Step {
 
     record RemovePath(Path path, String reason) implements Step {}
 
+    /**
+     * Deletes a whole tree, including anything in it owned by a container uid.
+     *
+     * <p>Separate from {@link RemovePath} because it goes through {@code podman unshare}: part of
+     * a lamp belongs to the sandbox's infra user and cannot be deleted by the human who owns the
+     * directory it sits in. Symlinks are removed, never followed — the runtime directory contains
+     * one pointing back into the lamp (D-25).
+     */
+    record RemoveTree(Path path, String reason) implements Step {}
+
     record WriteLampMeta(Path path, LampMeta meta) implements Step {}
 
     /** Stable type name, safe for tests and logs to match on. */
@@ -131,6 +141,7 @@ sealed interface Step {
             case DeleteContainerOwnedFiles s -> "delete " + s.files().size() + " file(s) owned by the sandbox ("
                                       + s.reason() + ")";
             case RemovePath s      -> "remove " + s.path() + " (" + s.reason() + ")";
+            case RemoveTree s      -> "delete " + s.path() + " and everything in it (" + s.reason() + ")";
             case WriteLampMeta s   -> "write lamp identity " + s.path()
                                       + " (agent " + s.meta().agentId() + ")";
         };
@@ -192,6 +203,10 @@ sealed interface Step {
             case ExtractImageContext ignored-> describe();
             case RemoveContainer ignored    -> describe();
             case RemovePath ignored         -> describe();
+            case RemoveTree s               -> "podman unshare rm -rf " + s.path()
+                               + "\n  " + s.reason()
+                               + "\n  through podman's user namespace, because part of a lamp belongs to the"
+                               + "\n  sandbox's own users and this user cannot delete it directly";
             case WriteLampMeta ignored      -> describe();
         };
     }

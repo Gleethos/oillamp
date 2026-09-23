@@ -452,11 +452,18 @@ final class Egress implements AutoCloseable {
             default  -> "Error";
         };
         byte[] bytes = (body + "\n").getBytes(StandardCharsets.UTF_8);
-        out.write(("HTTP/1.1 " + status + " " + reason + "\r\n"
-                 + "Content-Type: text/plain; charset=utf-8\r\n"
-                 + "Content-Length: " + bytes.length + "\r\n"
-                 + "Connection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
-        out.write(bytes);
+        byte[] head = ("HTTP/1.1 " + status + " " + reason + "\r\n"
+                     + "Content-Type: text/plain; charset=utf-8\r\n"
+                     + "Content-Length: " + bytes.length + "\r\n"
+                     + "Connection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
+        // One write, not two. The body of a 403 is the sentence naming the rule that refused —
+        // the whole reason the agent gets a message instead of a dropped connection — and sending
+        // it separately from the head lets a client that reads once, as plenty do, see the status
+        // and none of the reason. Cost: one array copy on a path that is about to close anyway.
+        byte[] whole = new byte[head.length + bytes.length];
+        System.arraycopy(head, 0, whole, 0, head.length);
+        System.arraycopy(bytes, 0, whole, head.length, bytes.length);
+        out.write(whole);
         out.flush();
     }
 

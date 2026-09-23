@@ -123,6 +123,28 @@ final class Templates {
             """;
     }
 
+    /**
+     * The agent's {@code ~/.bashrc} — one line of work and six of explanation.
+     *
+     * <p>Written {@code IF_ABSENT}, because from the moment it exists it is the agent's file. The
+     * reason it exists at all is that {@code /etc/profile} is read by login shells only: the
+     * terminal oillamp opens gets one, and {@code ssh <lamp> 'some command'} does not. Without
+     * this, the same command behaves differently depending on how the shell was started, which is
+     * the kind of difference an agent cannot diagnose and will report as "the network is broken".
+     */
+    public static String agentBashrc() {
+        return """
+            # Written by oillamp when this lamp was created, and never again: from here on it is
+            # yours. Add what you like.
+            #
+            # /etc/profile — where the proxy variables, the desktop and `sdk` come from — is read
+            # by *login* shells only. `ssh <lamp> 'some command'` does not get one. Bash does read
+            # this file in that case, which is what makes a scripted command see the same
+            # environment as the terminal oillamp opens for you. Sourcing it twice is harmless.
+            [ -r /etc/profile.d/oillamp.sh ] && . /etc/profile.d/oillamp.sh
+            """;
+    }
+
     /** A short note so that someone finding this directory in six months knows what it is. */
     public static String readme(LampLayout layout) {
         return """
@@ -144,6 +166,22 @@ final class Templates {
                                       recordings and sockets. Not visible to the agent.
 
             Everything outside agent-lamp-%s/ is invisible to the agent, including this file.
-            """.formatted(layout.root(), layout.agentId().value(), layout.agentId().value());
+
+            Deleting this lamp
+              Use `oillamp remove %s`, not `rm -rf`.
+
+              Some of .oillamp/ is deliberately not yours. The sandbox runs a second user that
+              owns the compositor, the screen recorder and their sockets, and that user is what
+              stops the agent tampering with the recording of its own screen. Inside the container
+              it is uid 1001; out here it is a subordinate id you have no permission over, so
+              `rm -rf` deletes most of the lamp and then stops with "Permission denied" on a
+              socket you have never heard of.
+
+              `oillamp remove` deletes it from inside podman's user namespace, where those files
+              can be reached. It takes the agent's home with it, so it asks first: without --yes
+              it only prints what would go. It works on a lamp you already tried to delete by
+              hand, and it refuses while a sandbox is still running.
+            """.formatted(layout.root(), layout.agentId().value(), layout.agentId().value(),
+                          layout.root());
     }
 }

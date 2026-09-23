@@ -4,6 +4,25 @@
 # so any tool that does not honour the proxy variables will fail, and the ones that do must find
 # them already set. Getting this file wrong looks like "the network is broken" to the agent.
 
+# Read more than once, on purpose, and it has to survive that.
+#
+# /etc/profile reads this in a login shell; ~/.bashrc reads it in every other kind, which is what
+# gives `ssh <lamp> 'some command'` the same environment as the terminal. Those nest — `ssh <lamp>
+# 'bash -l'` reads it twice, in two processes — and the obvious guard, "if already done, return",
+# is wrong: Debian's /etc/profile *resets* PATH before this file runs, so skipping the second read
+# leaves a login shell with neither ~/.local/bin nor any SDKMAN candidate on it. That was measured
+# here, not reasoned about.
+#
+# So nothing is skipped. Instead the two variables that accumulate — PATH and LD_LIBRARY_PATH —
+# check themselves first, and SDKMAN is sourced only where `sdk` is not already defined.
+oillamp_prepend() {   # $1 = the variable's current value, $2 = the entry to put in front of it
+    case ":$1:" in
+        *":$2:"*) printf '%s' "$1" ;;
+        ::)       printf '%s' "$2" ;;
+        *)        printf '%s:%s' "$2" "$1" ;;
+    esac
+}
+
 [ -r /oillamp/session/runtime.env ] && set -a && . /oillamp/session/runtime.env && set +a
 
 # sshd deliberately does not forward the client's locale and the image's ENV does not reach a
@@ -26,9 +45,9 @@ export NODE_USE_ENV_PROXY=1
 
 # ~/libs is on both paths so that System.loadLibrary finds what the agent put there, with no
 # extra flags — the agent guide promises this.
-export LD_LIBRARY_PATH="$HOME/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="$(oillamp_prepend "${LD_LIBRARY_PATH:-}" "$HOME/libs")"
 export JAVA_TOOL_OPTIONS="-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Djava.library.path=$HOME/libs"
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$(oillamp_prepend "$PATH" "$HOME/.local/bin")"
 
 # Debian marks its Python installation externally-managed (PEP 668), so a plain `pip install`
 # refuses to do anything — and the container's root filesystem is read-only, so the escape hatch
@@ -44,9 +63,11 @@ export PIP_USER=1 PIP_BREAK_SYSTEM_PACKAGES=1
 #
 # Sourcing the init script is what defines the `sdk` function and puts installed candidates on
 # PATH. It makes no network calls of its own, so this costs a login nothing when the agent has
-# installed nothing. It is bash-only, hence the guard.
+# installed nothing. Bash-only, and not done twice in one shell: `sdk` already being defined means
+# the candidates are already on PATH, and sourcing again would only duplicate them.
 export SDKMAN_DIR="$HOME/.sdkman"
-if [ -n "${BASH_VERSION:-}" ] && [ -r "$SDKMAN_DIR/bin/sdkman-init.sh" ]; then
+if [ -n "${BASH_VERSION:-}" ] && [ -r "$SDKMAN_DIR/bin/sdkman-init.sh" ] \
+   && ! command -v sdk >/dev/null 2>&1; then
     . "$SDKMAN_DIR/bin/sdkman-init.sh"
 fi
 
@@ -61,6 +82,12 @@ oillamp_network_state() {
         echo "NO network (nothing is listening on the proxy port)"
     fi
 }
+
+# A prompt that says which machine this is, in every screenshot and every pasted transcript. Only
+# interactive shells have one, which is what `case $- in *i*` asks.
+case $- in
+    *i*) PS1="\[\e[33m\]🪔 ${OILLAMP_LAMP_NAME:-lamp}\[\e[0m\]:\w\$ " ;;
+esac
 
 if [ -t 1 ] && [ -z "${OILLAMP_BANNER_SHOWN:-}" ]; then
     export OILLAMP_BANNER_SHOWN=1

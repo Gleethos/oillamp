@@ -113,6 +113,7 @@ final class StepRunner {
                     Filesystem.deleteIfPresent(s.path());
                     yield Result.ok(step);
                 }
+                case Step.RemoveTree s -> removeTree(s);
                 case Step.GenerateSshKey s -> generateKey(s);
                 case Step.InstallPackages s -> installPackages(s);
                 case Step.AddSubIds s -> addSubIds(s);
@@ -327,6 +328,32 @@ final class StepRunner {
         return Result.ok(step, Tuple.of(Problem.class,
                 Problems.internal("cleanup", "could not delete files " + step.reason() + ": "
                         + outcome.errorOutput().trim())));
+    }
+
+    /**
+     * Deletes a tree that this user only partly owns.
+     *
+     * <p>{@code podman unshare} first, because it is the only thing that works: the infra sockets
+     * and the recordings belong to the sandbox's second user (§9.2), so a plain {@code rm -rf}
+     * stops on them with "Permission denied". That is the gotcha this whole command exists to
+     * spare the user, and doing it by hand is what they would otherwise have to discover.
+     *
+     * <p>Then a plain delete for whatever is left, which covers the machine where podman is not
+     * installed at all — a lamp that never ran has nothing in it but this user's own files.
+     */
+    private Result<Step> removeTree(Step.RemoveTree step) {
+        if (!Filesystem.exists(step.path())) return Result.ok(step);
+        Machine.Outcome outcome = run("podman", Duration.ofMinutes(2), Tuple.of(String.class,
+                "podman", "unshare", "rm", "-rf", step.path().toString()));
+        if (outcome.succeeded() && !Filesystem.exists(step.path())) return Result.ok(step);
+
+        Tuple<Path> survivors = Filesystem.deleteTree(step.path());
+        if (survivors.isEmpty()) return Result.ok(step);
+        return Result.err(Problems.lampNotRemoved(survivors.first(), outcome instanceof Machine.Outcome.NotFound
+                ? "podman is not installed, so the files owned by the sandbox's own users are out of reach"
+                : outcome.errorOutput().strip().isBlank()
+                    ? "it is owned by another user"
+                    : outcome.errorOutput().strip()));
     }
 
     private Result<Step> podman(Step step, String... arguments) {

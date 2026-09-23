@@ -43,6 +43,8 @@ final class Problems {
     public static final Code LAMP_NEWER_SCHEMA     = new Code("OIL-LAMP-004");
     public static final Code LAMP_BAD_FILESYSTEM   = new Code("OIL-LAMP-005");
     public static final Code LAMP_NOT_WRITABLE     = new Code("OIL-LAMP-006");
+    public static final Code LAMP_STILL_RUNNING    = new Code("OIL-LAMP-007");
+    public static final Code LAMP_NOT_REMOVED      = new Code("OIL-LAMP-008");
     public static final Code LOCK_BUSY             = new Code("OIL-LOCK-001");
     public static final Code LOCK_RECOVERED        = new Code("OIL-LOCK-002");
     public static final Code CONFIG_UNPARSEABLE    = new Code("OIL-CONFIG-001");
@@ -288,6 +290,43 @@ final class Problems {
                         Fix.run("open another shell in it", "oillamp shell " + root),
                         Fix.run("shut it down", "oillamp stop " + root)),
                 Optional.empty());
+    }
+
+    /**
+     * {@code oillamp remove} asked to delete a lamp that is in use.
+     *
+     * <p>Deleting the agent's home out from under a running container would leave the session
+     * holding paths that no longer exist, and the container itself would survive the deletion of
+     * everything that describes it — a sandbox with no lamp to stop it with.
+     */
+    public static Problem lampStillRunning(Path root, String what) {
+        return new Problem(LAMP_STILL_RUNNING, Severity.ERROR, "That lamp is in use",
+                what,
+                "removing a lamp deletes the agent's home, and doing that under a running "
+              + "container would leave the session working in directories that no longer exist",
+                Tuple.of(Evidence.class, new Evidence.File(root, "the lamp being removed")),
+                Tuple.of(Fix.class,
+                        Fix.run("shut the session down first", "oillamp stop " + root),
+                        Fix.run("then remove it", "oillamp remove " + root + " --yes")),
+                Optional.empty());
+    }
+
+    /**
+     * Part of a lamp survived {@code oillamp remove}.
+     *
+     * <p>Almost always the same cause: some of a lamp belongs to a <em>container</em> uid — the
+     * infra sockets and the recordings are owned by the sandbox's second user (§9.2) — and this
+     * user cannot delete those without entering podman's user namespace. That is exactly what the
+     * command does, so reaching this means podman itself was unavailable or refused.
+     */
+    public static Problem lampNotRemoved(Path path, String why) {
+        return error(LAMP_NOT_REMOVED, "Part of the lamp could not be removed",
+                path + " is still there: " + why,
+                "some of a lamp is owned by the sandbox's own users, which is what stops the "
+              + "agent tampering with its recording — and what stops a plain `rm -rf` here")
+            .withEvidence(new Evidence.File(path, "could not be deleted"))
+            .withFix(Fix.run("delete it from inside podman's user namespace",
+                    "podman unshare rm -rf " + path));
     }
 
     public static Problem lockRecovered(Path root, String what) {

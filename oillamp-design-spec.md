@@ -796,7 +796,10 @@ One JSON object per line:
 ├── workspace/     the terminal opens here; put repos here
 ├── libs/          native libraries; on LD_LIBRARY_PATH; also passed to Java via JAVA_TOOL_OPTIONS -Djava.library.path
 ├── screenshots/   default output dir of `lamp screenshot`
-└── AGENTS.md      symlink to /oillamp/session/agent-guide.md (created only if absent)
+├── AGENTS.md      the generated guide, rewritten each session (a real file, not a symlink:
+│                  /oillamp/session is a container path and would dangle on the host)
+└── .bashrc        written once, then the agent's own; sources /etc/profile.d/oillamp.sh so that
+                   `ssh <lamp> 'some command'` gets the same environment as a login shell
 ```
 
 `LD_LIBRARY_PATH=/home/agent/libs${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}` and `-Djava.library.path=/home/agent/libs` are appended in `/etc/profile.d/oillamp.sh`. The workflow for native libraries: the user builds them on the host and copies them into `<lamp>/agent-lamp-<agentId>/libs/` — they are instantly visible in the sandbox.
@@ -1509,6 +1512,12 @@ oillamp [--verbose] [--debug] [--no-color] <command>
         Print session state, uptime, container, renderer, network stats.
   list
         List running oillamp sessions on this host (podman ps by label oillamp.agent-id).
+  remove <dir> [--yes] [--dry-run]
+        Delete the lamp: the agent's home, .oillamp, oillamp.toml, README.txt and the runtime
+        directory. Needed because parts of a lamp belong to container uid 1001 (§9.2) and cannot
+        be removed with `rm -rf`; this deletes them through `podman unshare`. Without --yes it
+        prints what would go and exits 2. Refuses while a sandbox for this lamp is running.
+        The lamp directory itself survives unless removal leaves it empty.
   recordings <dir> [--open <session>] [--prune]
         List recordings; open one; apply retention now.
   image (rebuild [<dir>] | prune | show [<dir>])
@@ -1747,6 +1756,38 @@ changed for convenience alone.
   installed in one session is then still there in the next. `sdkman_auto_answer=true` is the only
   upstream default changed — an agent reaching the sandbox over ssh cannot answer a prompt, so
   each one would be a hung command. Like the harnesses, it may not fail the build.
+- **A lamp cannot be deleted with `rm -rf`, so there is `oillamp remove` (§28).** The spec gives
+  commands for making a lamp and none for unmaking one, and §9.2's ownership model means the user
+  cannot do it themselves: `.oillamp/sockets/infra/` and the recordings belong to container uid
+  1001, which is a subordinate id on the host. `rm -rf` therefore deletes most of a lamp and stops
+  with "Permission denied" on a socket — reproduced here, the survivors owned by uid 166536. The
+  command deletes through `podman unshare`, takes `--yes` because it removes the agent's home and
+  there is no prompt to answer in a tool a script may drive, and refuses while a sandbox is still
+  running. It works on a lamp somebody already tried to delete by hand, which is the commonest way
+  to arrive at it: that is why the running check asks podman for a container carrying this lamp's
+  path as a label, rather than for the container name, which a lamp with no `lamp.json` can no
+  longer say. Two new codes, `OIL-LAMP-007` and `OIL-LAMP-008`.
+- **`~/.bashrc` is written into the agent's home, and the login script is re-entrant (§19.1,
+  Appendix E).** `/etc/profile` is read by login shells only. The terminal oillamp opens gets one;
+  `ssh <lamp> 'some command'` — how an agent drives a sandbox from a script — does not, and was
+  starting with no proxy variables, no `DISPLAY` and no `sdk`. Bash reads `~/.bashrc` in exactly
+  that case, so oillamp writes one, `IF_ABSENT`. The obvious guard against the file then being
+  read twice — "if already done, return" — is wrong and was measured to be wrong: Debian's
+  `/etc/profile` *resets* `PATH` before the profile.d script runs, so skipping the second read
+  left a nested login shell without `~/.local/bin` or any SDKMAN candidate. Nothing is skipped;
+  `PATH` and `LD_LIBRARY_PATH` check themselves instead, and SDKMAN is sourced only where `sdk` is
+  not already defined.
+- **`~/AGENTS.md` was specified and never written (§19.1).** The in-sandbox banner has told every
+  agent to read it since M3, `LampLayout.agentsMd()` existed, and nothing ever put a file there.
+  §19.1 called for a symlink to `/oillamp/session/agent-guide.md`, which is a container path and
+  would dangle on the host, where the user reads the directory. It is now a real file, written
+  into the agent's home each session because it describes that session's configuration.
+- **A 403 from the egress proxy went out as two writes (§18.2).** The head and the body were
+  written separately, so a client that reads once — which is common — could see the status and
+  not the sentence naming the rule that refused it. That sentence is the entire reason a denial is
+  a message rather than a dropped connection. One write now. Found by a scenario that failed
+  roughly one run in three, and which had the same bug itself.
+
 - **The agent guide announced a recording that is usually not running.** `~/AGENTS.md` opened by
   telling every agent that "everything on screen is being recorded", which stopped being true the
   moment `recording.enabled` defaulted to `false`. It now says which of the two is the case. The

@@ -31,6 +31,9 @@ final class Invocation {
         // Only `view` reads this, so it stays a local rather than joining Options, where every
         // command would carry a switch that means nothing to it.
         boolean viewOnly = false;
+        // Likewise --yes, which only `remove` reads. It is not a general "assume yes": it is the
+        // answer to one question, asked by one command, that deletes the agent's home.
+        boolean confirmed = false;
         List<String> positional = new ArrayList<>();
         for (String argument : arguments) {
             switch (argument) {
@@ -42,6 +45,7 @@ final class Invocation {
                 case "--init"          -> options = options.withInit(true);
                 case "--no-viewer"     -> options = options.withViewer(false);
                 case "--view-only"     -> viewOnly = true;
+                case "--yes", "-y"     -> confirmed = true;
                 default -> {
                     if (argument.startsWith("-")) {
                         console.banner(version, "");
@@ -130,6 +134,13 @@ final class Invocation {
             }
             case "list" -> commands.list();
 
+            // Not one of the four above: it talks to no session, and refuses if one answers.
+            case "remove" -> {
+                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "remove");
+                console.banner(version, rest.get(0));
+                yield commands.remove(Path.of(rest.get(0)), confirmed);
+            }
+
             // These arrive with the milestones that make them meaningful; saying so beats a
             // bare "unknown command" for something the help text lists.
             case "recordings", "image" -> {
@@ -172,6 +183,10 @@ final class Invocation {
                     What a running session is doing.
               list
                     Every oillamp sandbox running on this host.
+              remove <dir> --yes
+                    Delete a lamp: the agent's home, the state, the config. Without --yes it
+                    only says what would go. Needed because parts of a lamp belong to the
+                    sandbox's own users and `rm -rf` cannot remove them.
               doctor [<dir>]
                     Check the host, and the lamp if one is given. Changes nothing.
               config <dir> (check | show-effective | path)

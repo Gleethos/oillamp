@@ -328,7 +328,11 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
         try (var channel = SocketChannel.open(address)) {
             write(channel, "CONNECT localhost:${port} HTTP/1.1\r\nHost: localhost:${port}\r\n\r\n")
             var opening = readSome(channel)
-            if (!opening.contains('200')) return opening
+            // A refusal is a whole response and then a close, so it has to be read to the end:
+            // a single read can return the head with the body still in flight, and the body is
+            // the part naming the rule. Only the 200 case stops reading, because there the
+            // channel stays open for the tunnel.
+            if (!opening.contains('200')) return opening + readAll(channel)
             write(channel, throughTheTunnel)
             opening + readAll(channel)
         }
