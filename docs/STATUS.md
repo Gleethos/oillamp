@@ -123,6 +123,10 @@ From inside a real sandbox, through the real proxy:
   on every run: it clicks an X11 program and types into it using only `lamp`. A click can arrive
   one pixel short, because the compositor converts the position to a fraction of the screen and
   back.
+- Windows float by default (`display.windows`). The desktop spike opens an X11 window, checks it
+  opens at the size it asked for, moves it by its title bar and widens it by its right edge, all
+  with `lamp drag` (checked on 2026-09-23). Before, the desktop tiled, and a single window filled
+  the screen and could be neither moved nor resized. The `tiling` choice has no real-desktop check.
 - GPU: after adding the user to the `render` group, sway held ten file descriptors on
   `/dev/dri/renderD128` with the AMD driver loaded and no software renderer. (The log line
   `amdgpu_cs_ctx_create2 failed (-13)` appears during start-up and is harmless: it is a probe of a

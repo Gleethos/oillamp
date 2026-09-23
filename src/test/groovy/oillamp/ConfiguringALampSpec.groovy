@@ -323,6 +323,52 @@ class ConfiguringALampSpec extends Specification {
             withTheImage.steps().any { it.contains('ready (up to 90s)') }
     }
 
+    def 'Windows float by default, and a lamp can have them tiled instead'() {
+        reportInfo """
+            `display.windows` decides how the sandbox desktop arranges windows. "floating", the
+            default, works like most desktops: a window opens at its own size, moves by its title
+            bar and resizes by its edges. "tiling" splits the screen between the windows, so none
+            covers another. The setting reaches the sandbox in `runtime.env`, and the sandbox
+            accepts only these two words, because it turns them into compositor configuration.
+        """
+        given: 'a lamp that asks for tiling'
+            var lamp = sandbox.lampPath()
+            sandbox.givenConfig(lamp, '''
+                schema_version = 1
+
+                [display]
+                windows = "tiling"
+            '''.stripIndent())
+
+        when:
+            sandbox.oillamp.run('at', lamp.toString())
+            var runtimeEnv = java.nio.file.Files.readString(lamp.resolve('.oillamp/session/runtime.env'))
+
+        then: 'the sandbox is told to tile'
+            runtimeEnv.contains("OILLAMP_WINDOWS='tiling'")
+
+        when: 'the lamp says nothing about windows'
+            sandbox.givenConfig(lamp, 'schema_version = 1\n')
+            var effective = sandbox.oillamp.run('config', lamp.toString(), 'show-effective')
+
+        then: 'they float'
+            effective.console().contains('floating windows')
+
+        when: 'the lamp asks for something else'
+            sandbox.givenConfig(lamp, '''
+                schema_version = 1
+
+                [display]
+                windows = "stacking"
+            '''.stripIndent())
+            var checked = sandbox.oillamp.run('config', lamp.toString(), 'check')
+
+        then: 'it is refused, with the two values that work'
+            checked.status() == ExitStatus.USAGE
+            checked.reported('OIL-CONFIG-004')
+            checked.console().contains('"floating" or "tiling"')
+    }
+
     def 'Checking a configuration judges the same settings a session would use'() {
         reportInfo """
             A session merges the company-wide file `~/.config/oillamp/config.toml` with the lamp's

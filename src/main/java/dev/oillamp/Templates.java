@@ -27,6 +27,8 @@ final class Templates {
             height = 1080
             scale  = 1.0              # 1.0, 1.25, 1.5, 2.0 …
             gpu    = "auto"           # "auto" | "on" | "off"
+            windows = "floating"      # "floating": move by the title bar, resize by the edges
+                                      # "tiling": windows share the screen and never overlap
 
             [viewer]
             open_on_start = true

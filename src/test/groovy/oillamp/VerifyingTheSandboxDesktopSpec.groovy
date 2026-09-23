@@ -56,6 +56,7 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             OILLAMP_DISPLAY_WIDTH='1280'
             OILLAMP_DISPLAY_HEIGHT='720'
             OILLAMP_DISPLAY_SCALE='1.0'
+            OILLAMP_WINDOWS='floating'
             OILLAMP_RENDERER='pixman'
             OILLAMP_RECORDING_ENABLED='true'
             OILLAMP_RECORDING_CODEC='libx264'
@@ -264,9 +265,9 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             applications. The first letter of the text is therefore part of what is checked.
         """
         when: 'an X11 application is started, clicked once and typed into'
-            // Other windows may be open (the scenario before this one leaves a terminal), and sway
-            // tiles them side by side. So the position to click is taken from the application's
-            // own window, the way an agent would find it on a screenshot.
+            // Other windows may be open (the scenario before this one leaves a terminal). So the
+            // position to click is taken from the application's own window, the way an agent
+            // would find it on a screenshot.
             var result = inSandbox('''
                 rm -f /tmp/events.log
                 nohup stdbuf -oL xev -event button -event keyboard > /tmp/events.log 2>&1 &
@@ -300,6 +301,60 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
 
         cleanup:
             inSandbox('pkill -x xev || true')
+    }
+
+    def 'A window moves by its title bar and resizes by its edge, as on most desktops'() {
+        reportInfo """
+            Windows float (`display.windows = "floating"`, the default). A window opens at the
+            size its application asks for, and the human in the viewer, or the agent with
+            `lamp drag`, moves it by its title bar and resizes it by its edge. The desktop used to
+            tile: one window filled the whole screen and could be neither moved nor resized.
+
+            X11 applications, such as Java Swing, get their title bar and border from the
+            compositor, so this checks one: `xev` at 400x300. The title bar is just above the
+            window's content, and the border, 4 pixels wide, just to the right of it.
+        """
+        when: 'the window is dragged by its title bar, then by its right edge'
+            var result = inSandbox('''
+                nohup xev -geometry 400x300 > /dev/null 2>&1 &
+                sleep 2
+                where() { xwininfo -name 'Event Tester' | awk '/Absolute upper-left X/ {x=$4}
+                    /Absolute upper-left Y/ {y=$4} /Width:/ {w=$2} /Height:/ {h=$2}
+                    END {print x, y, w, h}'; }
+                read -r x y w h < <(where); echo "opened $x $y $w $h"
+                lamp drag $((x + w / 2)) $((y - 8)) $((x + w / 2 - 200)) $((y - 8 - 100))
+                sleep 1
+                read -r x y w h < <(where); echo "moved $x $y $w $h"
+                lamp drag $((x + w + 2)) $((y + h / 2)) $((x + w + 152)) $((y + h / 2))
+                sleep 1
+                read -r x y w h < <(where); echo "resized $x $y $w $h"
+            '''.stripIndent())
+            var opened  = geometry(result.out, 'opened')
+            var moved   = geometry(result.out, 'moved')
+            var resized = geometry(result.out, 'resized')
+
+        then: 'it opened at the size it asked for, not filling the screen'
+            opened[2] == 400 && opened[3] == 300
+
+        and: 'dragging the title bar moved it by the distance dragged, at the same size'
+            Math.abs(moved[0] - (opened[0] - 200)) <= 2
+            Math.abs(moved[1] - (opened[1] - 100)) <= 2
+            moved[2] == 400 && moved[3] == 300
+
+        and: 'dragging the right edge made it wider, and left it where it was'
+            Math.abs(resized[2] - 550) <= 4
+            resized[3] == 300
+            resized[0] == moved[0]
+
+        cleanup:
+            inSandbox('pkill -x xev || true')
+    }
+
+    /** The four numbers after a label, such as "moved 240 110 400 300": x, y, width, height. */
+    private static List<Integer> geometry(String output, String label) {
+        var line = output.readLines().find { it.startsWith(label + ' ') }
+        assert line, "no '$label' line in:\n$output"
+        line.split(' ')[1..4].collect { it as int }
     }
 
     /** The first "X,Y" in a line, such as "clicking at 960,371" or xev's "root:(960,370)". */

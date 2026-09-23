@@ -21,6 +21,7 @@ set -a; . /oillamp/session/runtime.env; set +a
 : "${OILLAMP_DISPLAY_WIDTH:?runtime.env is missing OILLAMP_DISPLAY_WIDTH}"
 : "${OILLAMP_DISPLAY_HEIGHT:?runtime.env is missing OILLAMP_DISPLAY_HEIGHT}"
 : "${OILLAMP_DISPLAY_SCALE:=1}"
+: "${OILLAMP_WINDOWS:=floating}"
 : "${OILLAMP_RENDERER:=pixman}"
 : "${OILLAMP_SESSION:?runtime.env is missing OILLAMP_SESSION}"
 : "${OILLAMP_PROXY_PORT:=3128}"
@@ -127,6 +128,14 @@ printf 'output HEADLESS-1 mode --custom %sx%s scale %s\n' \
     "$OILLAMP_DISPLAY_WIDTH" "$OILLAMP_DISPLAY_HEIGHT" "$OILLAMP_DISPLAY_SCALE" \
     > /run/lamp/output.conf
 chown lamp:lamp /run/lamp/output.conf
+# How windows are arranged (`display.windows`). Only the two known values are accepted: whatever
+# lands in this file is sway configuration, which runs as `lamp`.
+case "$OILLAMP_WINDOWS" in
+    floating) echo 'for_window [all] floating enable' > /run/lamp/windows.conf ;;
+    tiling)   : > /run/lamp/windows.conf ;;
+    *)        fail "OILLAMP_WINDOWS is '$OILLAMP_WINDOWS'; expected floating or tiling" ;;
+esac
+chown lamp:lamp /run/lamp/windows.conf
 
 # ── the agent's pi installation ──────────────────────────────────────────────────────────────
 # pi keeps its packages and its settings.json in its agent directory, which lives in the agent's

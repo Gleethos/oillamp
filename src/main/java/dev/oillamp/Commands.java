@@ -652,7 +652,8 @@ final class Commands {
 
     private static String describe(LampConfig config) {
         return "display      " + config.display().size() + " scale " + config.display().scale()
-                + " gpu " + config.display().gpu().configName() + "\n"
+                + " gpu " + config.display().gpu().configName()
+                + ", " + config.display().windows().configName() + " windows\n"
              + "viewer       clipboard " + config.viewer().clipboard().configName()
                 + ", " + config.viewer().maxFps() + " fps"
                 + (config.viewer().viewOnly() ? ", view only" : "") + "\n"

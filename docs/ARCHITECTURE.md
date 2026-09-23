@@ -794,8 +794,17 @@ sway runs headless with one virtual screen, `HEADLESS-1`, at `display.width` × 
 and `display.scale`. sway starts Xwayland, the X11 server, at once and keeps it running
 (`xwayland force`), so X11 applications, including Java Swing, work. It must keep running: by
 default sway stops Xwayland 10 seconds after the last X11 client exits, and a new Xwayland would
-forget that the agent is allowed to connect. Dialogs
-float. No key binding exits sway or runs a command, because the agent can type into the desktop
+forget that the agent is allowed to connect.
+
+Windows float by default (`display.windows = "floating"`), as on most desktops: each opens at the
+size its application asks for, moves by its title bar and resizes by its 4-pixel border.
+`display.windows = "tiling"` makes sway split the screen between windows instead, so none covers
+another, but a single window then fills the screen and cannot be moved or resized. The entrypoint
+writes the choice to `/run/lamp/windows.conf`, which the sway config includes; it accepts only
+those two words, because that file is compositor configuration. Dialogs float either way. The
+agent's guide describes whichever is in effect.
+
+No key binding exits sway or runs a command, because the agent can type into the desktop
 and sway runs as the infra user. `TheSandboxImageSpec` checks the sway config for this.
 
 The agent's environment points at the display with `WAYLAND_DISPLAY=/run/lamp/wayland-1` and
@@ -907,6 +916,7 @@ STATUS.md.
 | `display.width`, `display.height` | 1920, 1080 | desktop size (640–7680 × 480–4320) | yes |
 | `display.scale` | 1.0 | output scale (0.5–4.0) | yes |
 | `display.gpu` | `"auto"` | `auto`, `on`, `off` | yes |
+| `display.windows` | `"floating"` | `floating` (move and resize by dragging) or `tiling` (windows share the screen) | yes |
 | `viewer.open_on_start` | true | open the viewer when the session starts | yes |
 | `viewer.clipboard` | `"to-agent"` | `to-agent`, `both`, `none` | yes |
 | `viewer.view_only` | false | viewer shows but does not send input | yes |

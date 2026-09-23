@@ -55,6 +55,14 @@ final class AgentGuide {
            .append(", running a Wayland compositor with Xwayland available, so Swing and other\n")
            .append("X11 applications work. Launch GUI applications from your shell as you would\n")
            .append("anywhere else; they appear on that desktop and the human sees them.\n\n");
+        // How windows behave decides how the agent gets at a window that is covered or too small.
+        out.append(config.display().windows() == WindowLayout.FLOATING
+                ? "Windows float, as on most desktops: each opens at the size its application asks\n"
+                + "for and may cover others. Move one by dragging its title bar, and resize it by\n"
+                + "dragging its edge, with `lamp drag` (below). Take a screenshot first to find them.\n\n"
+                : "Windows are tiled: they share the screen side by side and never cover each\n"
+                + "other, and a single window fills the whole screen. They cannot be moved or\n"
+                + "resized by dragging.\n\n");
         out.append("""
             Both kinds of application are already set up, with nothing to configure:
 

@@ -16,7 +16,7 @@ final class ConfigDefaults {
 
     public static LampConfig lampConfig() {
         return new LampConfig(
-            new LampConfig.Display(1920, 1080, 1.0, GpuMode.AUTO),
+            new LampConfig.Display(1920, 1080, 1.0, GpuMode.AUTO, WindowLayout.FLOATING),
             new LampConfig.Viewer(true, ClipboardMode.TO_AGENT, false, 30),
             new LampConfig.Terminal.Auto(),
             new LampConfig.Recording(false, "libx264", 30, 10, 14, 20),

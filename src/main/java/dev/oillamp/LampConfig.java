@@ -31,7 +31,7 @@ record LampConfig(
     /// The version of the config schema this build writes and understands.
     public static final int SCHEMA_VERSION = 1;
 
-    public record Display(int width, int height, double scale, GpuMode gpu) {
+    public record Display(int width, int height, double scale, GpuMode gpu, WindowLayout windows) {
         public Display {
             if (width  < 640 || width  > 7680) throw new IllegalArgumentException("display.width out of range: " + width);
             if (height < 480 || height > 4320) throw new IllegalArgumentException("display.height out of range: " + height);

@@ -104,7 +104,7 @@ final class ConfigLoader {
     }
 
     private static LampConfig.Display readDisplay(ConfigSection s, LampConfig.Display fallback) {
-        s.allowOnly("width", "height", "scale", "gpu");
+        s.allowOnly("width", "height", "scale", "gpu", "windows");
         int width   = bounded(s, "width",  fallback.width(),  640, 7680, "a width between 640 and 7680");
         int height  = bounded(s, "height", fallback.height(), 480, 4320, "a height between 480 and 4320");
         double scale = s.number("scale", fallback.scale());
@@ -113,7 +113,9 @@ final class ConfigLoader {
             scale = fallback.scale();
         }
         GpuMode gpu = s.oneOf("gpu", fallback.gpu(), ConfigLoader::parseGpuMode, "\"auto\", \"on\" or \"off\"");
-        return new LampConfig.Display(width, height, scale, gpu);
+        WindowLayout windows = s.oneOf("windows", fallback.windows(), ConfigLoader::parseWindowLayout,
+                                       "\"floating\" or \"tiling\"");
+        return new LampConfig.Display(width, height, scale, gpu, windows);
     }
 
     private static LampConfig.Viewer readViewer(ConfigSection s, LampConfig.Viewer fallback) {
@@ -348,6 +350,12 @@ final class ConfigLoader {
     private static Optional<GpuMode> parseGpuMode(String text) {
         for (GpuMode mode : GpuMode.values())
             if (mode.configName().equals(text.toLowerCase(Locale.ROOT))) return Optional.of(mode);
+        return Optional.empty();
+    }
+
+    private static Optional<WindowLayout> parseWindowLayout(String text) {
+        for (WindowLayout layout : WindowLayout.values())
+            if (layout.configName().equals(text.toLowerCase(Locale.ROOT))) return Optional.of(layout);
         return Optional.empty();
     }
 

@@ -6,6 +6,10 @@
 # the agent and the compositor are different users.
 
 include /run/lamp/output.conf
+# `display.windows`: with "floating" this makes every window float, so it opens at the size the
+# application asks for, moves by its title bar and resizes by its edges. With "tiling" it is empty
+# and windows share the screen.
+include /run/lamp/windows.conf
 # The lamp itself, centred on the same colour the rest of the desktop uses. `center` rather than
 # `stretch` so it looks right at any resolution the user configures, and the fill colour matches
 # the image's own background so there is no visible seam around it.
@@ -15,8 +19,11 @@ output * bg /usr/share/oillamp/wallpaper.png center #1f2430
 # running. With "enable", sway starts it on first use and stops it 10 seconds after the last X11
 # client closes, and each new instance forgets the access the entrypoint grants the agent user.
 xwayland force
-default_border normal
-default_floating_border normal
+# A border wide enough to grab with the mouse: a floating window resizes by dragging it.
+default_border normal 4
+default_floating_border normal 4
+# Super+drag moves any floating window, Super+right-drag resizes it. A mouse binding, not a command.
+floating_modifier Mod4 normal
 focus_follows_mouse no
 input * accel_profile flat
 
