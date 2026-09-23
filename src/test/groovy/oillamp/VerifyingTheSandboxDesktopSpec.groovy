@@ -230,6 +230,27 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             inSandbox('echo "$LANG"').mentions('UTF-8')
     }
 
+    def 'An X11 application started by the agent reaches the display'() {
+        reportInfo """
+            Java Swing, and every other X11 application, draws through Xwayland, the X11 server
+            that sway starts. Xwayland runs as the infra user `lamp` and at first accepts only
+            `lamp`, so an agent's Swing application failed with "Authorization required". Nothing
+            caught this for a long time, because every earlier check here used native Wayland
+            applications.
+
+            The entrypoint now keeps Xwayland running and allows the agent user on it. This asks
+            the display a question as the agent, the way any X11 application would.
+        """
+        when: 'the agent opens X11 display :0'
+            var result = inSandbox('echo "DISPLAY=$DISPLAY"; xdpyinfo | head -2')
+
+        then: 'it is the default display, and it answers'
+            result.ok
+            result.mentions('DISPLAY=:0')
+            result.mentions('name of display')
+            !result.mentions('Authorization required')
+    }
+
     def 'The viewer connects straight to the wayvnc Unix socket'() {
         reportInfo """
             It was not certain that TigerVNC's vncviewer accepts a Unix socket path as its server

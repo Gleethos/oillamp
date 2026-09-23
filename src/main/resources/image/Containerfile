@@ -55,7 +55,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # wlrctl is installed separately so that, if it is ever missing from Debian, the build still
 # succeeds and only `lamp click`/`move`/`scroll` stop working. (It is in trixie today.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      sway xwayland wayvnc wf-recorder grim slurp wtype \
+      sway xwayland x11-xserver-utils x11-utils wayvnc wf-recorder grim slurp wtype \
       foot dbus dbus-x11 at-spi2-core xdg-utils \
       mesa-utils libgl1-mesa-dri libegl1 libgles2 \
       fonts-dejavu fonts-liberation2 adwaita-icon-theme \

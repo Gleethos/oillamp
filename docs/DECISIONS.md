@@ -138,10 +138,13 @@ boundary, and it allows several viewers and recording. *(D-02)*
 `vncviewer` connects to a socket path directly (verified). A built-in Swing viewer is a possible
 later replacement. *(D-04, D-05)*
 
-### Xwayland is included
+### Xwayland is included, and the agent is allowed on it
 
 *Why:* Java Swing applications still draw through X11. Testing Swing applications is a primary use.
-*(D-07)*
+sway starts Xwayland as the infra user, so the entrypoint explicitly allows the agent user to
+connect (`xhost +si:localuser:agent`). An X11 client can see and send input to other X11 windows
+on the same display, but those are all the agent's own windows; it cannot use this to control sway
+or reach the infrastructure's processes. *(D-07, extended during implementation)*
 
 ### The desktop helper `lamp` is a shell script
 

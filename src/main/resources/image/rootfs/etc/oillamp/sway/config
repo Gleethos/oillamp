@@ -11,7 +11,10 @@ include /run/lamp/output.conf
 # the image's own background so there is no visible seam around it.
 output * bg /usr/share/oillamp/wallpaper.png center #1f2430
 
-xwayland enable
+# Start Xwayland (the X11 server for Swing and other X11 applications) with sway and keep it
+# running. With "enable", sway starts it on first use and stops it 10 seconds after the last X11
+# client closes, and each new instance forgets the access the entrypoint grants the agent user.
+xwayland force
 default_border normal
 default_floating_border normal
 focus_follows_mouse no

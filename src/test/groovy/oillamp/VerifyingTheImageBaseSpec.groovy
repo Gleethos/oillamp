@@ -21,6 +21,8 @@ class VerifyingTheImageBaseSpec extends Specification {
     static final Map<String, String> REQUIRED = [
             'sway'        : 'the Wayland compositor the whole desktop is',
             'xwayland'    : 'X11 applications, which is how Swing apps run at all',
+            'x11-xserver-utils': 'xhost, which gives the agent access to the X11 display',
+            'x11-utils'   : 'xdpyinfo, for checking the X11 display',
             'wayvnc'      : 'the VNC server the human watches through',
             'wf-recorder' : 'the screen recording',
             'grim'        : 'lamp screenshot',

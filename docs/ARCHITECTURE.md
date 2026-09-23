@@ -95,6 +95,7 @@ HOST (your desktop session)
       pid 1: /usr/local/lib/oillamp/entrypoint  (bash, starts as container root)
         as `lamp` (infra user):
             sway            the Wayland compositor, one virtual screen HEADLESS-1
+            Xwayland        X11 display :0 for Swing and other X11 apps; the agent is allowed on it
             wayvnc          serves the screen on /oillamp/sockets/infra/vnc.sock
             wf-recorder     only if recording is enabled
             socat 127.0.0.1:3128  → /oillamp/sockets/host/proxy.sock
@@ -480,7 +481,9 @@ Things to know about these flags:
    directory is a bind mount, so it outlives the container, and wayvnc cannot bind a path that
    already exists.
 3. Creates `/run/lamp` (infra user, 0711), `/run/lamp/private` (0700) and `/run/agent` (agent,
-   0700), plus cache directories, and writes sway's screen size into `/run/lamp/output.conf`.
+   0700), plus cache directories, and writes sway's screen size into `/run/lamp/output.conf`. It
+   also creates the X11 socket directory `/tmp/.X11-unix` as root with mode 1777, as on any Linux
+   system; otherwise sway would create it as the infra user with mode 0700.
 4. Copies pi's configuration and SDKMAN from `/usr/local/share/oillamp/` into the agent's home,
    as the agent user, never overwriting anything already there. This is needed because
    `/home/agent` is a bind mount: anything the image put there at build time is hidden at run
@@ -490,6 +493,11 @@ Things to know about these flags:
    rendering (`pixman`) and records `gpu_fallback: true`.
 6. Makes `/run/lamp/wayland-1` world-connectable (0666) so the agent's applications can draw.
    sway's control socket stays private (0700), so the agent cannot send it commands.
+   Then it opens the X11 display to the agent: sway has started Xwayland (the X11 server) as the
+   infra user on display `:0`, and Xwayland only accepts its own user. The entrypoint makes the
+   socket `/tmp/.X11-unix/X0` connectable and runs `xhost +si:localuser:agent` as the infra user.
+   Without this, every X11 application the agent starts, including Java Swing, fails with
+   "Authorization required". A failure here is logged but does not stop the sandbox.
 7. Starts **wayvnc** as the infra user on `/oillamp/sockets/infra/vnc.sock`. Its own control
    socket is in `/run/lamp/private`, out of the agent's reach.
 8. If recording is enabled, starts **wf-recorder** as the infra user, writing
@@ -756,7 +764,10 @@ default).
 ### Desktop
 
 sway runs headless with one virtual screen, `HEADLESS-1`, at `display.width` × `display.height`
-and `display.scale`. Xwayland is enabled, so X11 applications (including Java Swing) work. Dialogs
+and `display.scale`. sway starts Xwayland, the X11 server, at once and keeps it running
+(`xwayland force`), so X11 applications, including Java Swing, work. It must keep running: by
+default sway stops Xwayland 10 seconds after the last X11 client exits, and a new Xwayland would
+forget that the agent is allowed to connect. Dialogs
 float. No key binding exits sway or runs a command, because the agent can type into the desktop
 and sway runs as the infra user. `TheSandboxImageSpec` checks the sway config for this.
 

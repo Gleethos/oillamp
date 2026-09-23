@@ -114,6 +114,32 @@ class TheSandboxImageSpec extends Specification {
             }
     }
 
+    def 'the agent is allowed on the X11 display, so Swing applications can open windows'() {
+        reportInfo """
+            X11 applications such as Java Swing draw through Xwayland, which sway starts as the
+            infra user `lamp`. Xwayland only accepts its own user, so the agent was refused with
+            "Authorization required" until the entrypoint started granting it access.
+
+            Three things have to hold together. sway must start Xwayland at once and keep it
+            running, because a new Xwayland forgets the grant. The entrypoint must grant it. And
+            the image must contain `xhost`, the program that grants it.
+        """
+        when:
+            var sway = Files.readString(IMAGE.resolve('rootfs/etc/oillamp/sway/config'))
+            var entrypoint = Files.readString(IMAGE.resolve('rootfs/usr/local/lib/oillamp/entrypoint'))
+            var containerfile = Files.readString(IMAGE.resolve('Containerfile'))
+
+        then: 'Xwayland starts with sway and stays running'
+            sway.readLines().any { it.trim() == 'xwayland force' }
+
+        and: 'the entrypoint lets the agent user connect'
+            entrypoint.contains('xhost +si:localuser:agent')
+            entrypoint.contains('install -d -o root -g root -m 1777 /tmp/.X11-unix')
+
+        and: 'the image contains xhost'
+            containerfile.contains('x11-xserver-utils')
+    }
+
     def 'sshd is configured so that a shell cannot become a tunnel out'() {
         reportInfo """
             Every outbound connection from the sandbox goes through the egress proxy. SSH into the sandbox is a hole

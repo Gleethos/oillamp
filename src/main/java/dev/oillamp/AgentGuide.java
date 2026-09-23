@@ -58,6 +58,20 @@ final class AgentGuide {
            .append("X11 applications work. Launch GUI applications from your shell as you would\n")
            .append("anywhere else; they appear on that desktop and the human sees them.\n\n");
         out.append("""
+            Both kinds of application are already set up, with nothing to configure:
+
+            - Wayland applications use `WAYLAND_DISPLAY=/run/lamp/wayland-1`.
+            - X11 applications, including Java Swing and AWT, use `DISPLAY=:0`, served by
+              Xwayland. Run them normally, without `-Djava.awt.headless=true`.
+
+            `xdpyinfo | head -2` checks the X11 display. If it fails, or an application reports
+            "Can't connect to X11 window server" or "Authorization required", the sandbox is at
+            fault, not your program. Do not start your own X server (`Xwayland`, `Xvfb`): it
+            would not appear on the human's desktop in a usable way. Report the exact error to
+            the human instead; restarting the session with `oillamp at` usually fixes it.
+
+            """);
+        out.append("""
             The `lamp` command drives it:
 
             ```

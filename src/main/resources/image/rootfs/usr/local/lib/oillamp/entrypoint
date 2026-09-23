@@ -119,6 +119,10 @@ install -d -o lamp  -g lamp  -m 0700 /run/lamp/cache/config
 install -d -o agent -g agent -m 0700 /run/agent
 install -d -o agent -g agent -m 0700 /run/agent/cache
 install -d -o agent -g agent -m 0700 /run/agent/cache/config
+# The X11 socket directory, created the way a normal Linux system has it: owned by root, sticky and
+# writable by everyone. If sway created it, it would belong to `lamp` with mode 0700 (sway runs
+# with umask 077), and the agent could not reach the X11 display.
+install -d -o root -g root -m 1777 /tmp/.X11-unix
 printf 'output HEADLESS-1 mode --custom %sx%s scale %s\n' \
     "$OILLAMP_DISPLAY_WIDTH" "$OILLAMP_DISPLAY_HEIGHT" "$OILLAMP_DISPLAY_SCALE" \
     > /run/lamp/output.conf
@@ -199,6 +203,31 @@ fi
 # The agent must reach the Wayland socket; sway's IPC socket deliberately stays 0700, so that
 # keyboard input can never be turned into commands running as `lamp`.
 chmod 0666 /run/lamp/wayland-1
+# ── the X11 display for the agent ────────────────────────────────────────────────────────────
+# sway starts Xwayland as `lamp` on display :0. Xwayland only accepts clients running as its own
+# user, so X11 applications started by the agent (Java Swing, for example) are refused with
+# "Authorization required" until `lamp` allows the agent user. The socket file is also created
+# with sway's umask 077 and needs opening up, like the Wayland socket above.
+#
+# A failure here is logged and does not stop the sandbox: native Wayland applications still work.
+allow_agent_on_x11() {
+    local waited=0
+    while [ ! -S /tmp/.X11-unix/X0 ]; do
+        sleep 0.25; waited=$((waited + 1))
+        [ "$waited" -ge 80 ] && { log "no X11 display :0 after 20s - X11 applications will not work"; return 1; }
+    done
+    chmod 0777 /tmp/.X11-unix/X0
+    # xhost connects to the X server, so this also waits until Xwayland is really answering.
+    waited=0
+    until setpriv --reuid=lamp --regid=lamp --init-groups -- \
+            env HOME=/var/lib/lamp DISPLAY=:0 xhost +si:localuser:agent >/dev/null 2>&1; do
+        sleep 0.25; waited=$((waited + 1))
+        [ "$waited" -ge 80 ] && { log "could not give the agent access to X11 display :0 - X11 applications will not work"; return 1; }
+    done
+    log "X11 display :0 is open to the agent"
+}
+allow_agent_on_x11 || true
+
 if [ "$gpu_fallback" = true ]; then
     log "compositor up (${renderer}, fell back from the GPU renderer)"
 else

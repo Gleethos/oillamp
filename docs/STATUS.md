@@ -214,7 +214,7 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 ### Not yet tested
 
 - Ubuntu 26.04, and any distribution other than Ubuntu 24.04.
-- A Java Swing application with a modal dialog on the sandbox desktop.
+- A Java Swing modal dialog on the sandbox desktop. (A Swing window works; see the lessons table.)
 - Loading a native library from `~/libs` with `System.loadLibrary`.
 - Firefox loading a website through the proxy.
 - A forward to a real LLM service, and opencode or pi using it.
@@ -247,6 +247,7 @@ the code that would otherwise look unnecessary.
 | `~/AGENTS.md` did not exist, although the banner said to read it. | Nothing wrote it. | Written each session. |
 | The agent guide said the screen was recorded when it was not. | Written before recording became opt-in. | It says which is the case. |
 | `recording.crf` and `recording.max_fps` were ignored; recordings ran at 60 fps. | The entrypoint never passed them to wf-recorder. | Passed as `--framerate` and `-p crf=`/`-p qp=`. |
+| Java Swing applications could not open a window: "Authorization required" / "Can't connect to X11 window server". | sway starts Xwayland as the infra user, and Xwayland only accepts its own user. The X11 socket directory was also `lamp`-only (sway runs with umask 077). No test had ever started an X11 application. | sway keeps Xwayland running (`xwayland force`), and the entrypoint creates `/tmp/.X11-unix` with mode 1777, opens the socket and runs `xhost +si:localuser:agent`. A spike and a static scenario check it; the agent guide says what to do if it ever fails again. |
 | A 403 sometimes arrived without the sentence naming the rule. | Head and body were written separately; some clients read once. | One write. |
 | A lamp could not be deleted. | Infra-owned files are a subordinate id on the host. | `oillamp remove`. |
 | `oillamp remove` deleted a lamp whose container was still running, when `lamp.json` was already gone. | It looked for the container by a name derived from `lamp.json`. | It asks podman for a container labelled with the lamp's path. |
