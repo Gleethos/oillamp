@@ -45,6 +45,16 @@ final class ConsoleRenderer {
     private static final java.util.Set<String> STEPS_THAT_PROMPT = java.util.Set.of("InstallPackages", "AddSubIds");
     private static final String[] SPINNER = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
     private static final String CLEAR_LINE = "\r\u001B[2K";
+    /**
+     * Turns the terminal's automatic line wrapping off while the activity line is drawn, and on
+     * again afterwards. If the line wrapped onto a second row, the carriage return would only go
+     * back to the start of that second row, and every redraw would leave a row of text behind.
+     * With wrapping off, a line that is too long is cut off at the right edge instead.
+     */
+    private static final String WRAP_OFF = "\u001B[?7l", WRAP_ON = "\u001B[?7h";
+    /** Colour codes and other terminal escape sequences, and control characters such as tabs. */
+    private static final java.util.regex.Pattern NOT_PRINTABLE =
+            java.util.regex.Pattern.compile("\u001B\\[[0-9;?]*[ -/]*[@-~]|\u001B.|\\p{Cntrl}");
 
     /** What is happening right now, if anything. */
     private record Activity(String text, long startedNanos, String latestOutput) {
@@ -53,7 +63,7 @@ final class ConsoleRenderer {
 
     /** Whether the activity line may be drawn at all: only when standard output is a terminal. */
     private final boolean live;
-    /** The terminal's width, so that the activity line never wraps. A wrapped line cannot be redrawn. */
+    /** The terminal's width, so that a long activity line ends with "…" instead of being cut off. */
     private final int width;
     /** Everything written to the terminal goes through this lock. */
     private final Object terminal = new Object();
@@ -76,8 +86,21 @@ final class ConsoleRenderer {
         boolean colour = machine.isInteractive() && machine.environmentVariable("NO_COLOR").isEmpty();
         boolean live = machine.isInteractive()
                 && Optional.ofNullable(System.console()).filter(java.io.Console::isTerminal).isPresent();
-        int width = machine.environmentVariable("COLUMNS").flatMap(ConsoleRenderer::number).orElse(100);
+        int width = machine.environmentVariable("COLUMNS").flatMap(ConsoleRenderer::number)
+                           .or(() -> live ? terminalWidth(machine) : Optional.empty())
+                           .orElse(80);
         return new ConsoleRenderer(colour, false, live, width);
+    }
+
+    /**
+     * Asks the terminal how wide it is. Shells set {@code COLUMNS} for themselves but usually do not
+     * pass it on to programs, so it is rarely available. {@code stty size} prints "rows columns".
+     */
+    private static Optional<Integer> terminalWidth(Machine machine) {
+        Machine.Outcome outcome = machine.run(Machine.Command.of("sh", "-c", "stty size < /dev/tty")
+                                                             .withTimeout(java.time.Duration.ofSeconds(2)));
+        java.util.regex.Matcher size = java.util.regex.Pattern.compile("\\d+\\s+(\\d+)").matcher(outcome.output().trim());
+        return outcome.succeeded() && size.matches() ? number(size.group(1)).filter(n -> n > 0) : Optional.empty();
     }
 
     private static Optional<Integer> number(String text) {
@@ -275,10 +298,10 @@ final class ConsoleRenderer {
     /** What the user is told a step is doing. Plainer than the step's own description. */
     private static String activityText(LampEvent.StepInfo step) {
         return switch (step.kind()) {
-            case "BuildImage"          -> "building the sandbox image (the first build takes several minutes)";
+            case "BuildImage"          -> "building the sandbox image, the first build takes minutes";
             case "ExtractImageContext" -> "preparing the image build";
             case "RunContainer"        -> "starting the sandbox container";
-            case "AwaitReady"          -> "waiting for the desktop and the shell inside the sandbox to start";
+            case "AwaitReady"          -> "waiting for the desktop and the shell to start";
             case "CheckEndpoints"      -> "checking that the desktop and the shell answer";
             default                    -> step.describe();
         };
@@ -308,14 +331,19 @@ final class ConsoleRenderer {
     private void drawActivityLine(Activity now, int frame) {
         long seconds = (System.nanoTime() - now.startedNanos()) / 1_000_000_000L;
         String elapsed = seconds < 60 ? seconds + "s" : seconds / 60 + "m " + String.format("%02ds", seconds % 60);
-        String text = SPINNER[frame % SPINNER.length] + " " + now.text() + " · " + elapsed
-                    + (now.latestOutput().isBlank() || verbose ? "" : " · " + now.latestOutput().strip());
+        String text = SPINNER[frame % SPINNER.length] + " " + elapsed + " · " + now.text()
+                    + (now.latestOutput().isBlank() || verbose ? "" : " · " + printable(now.latestOutput()));
         int room = Math.max(20, width - 1);
         if (text.codePointCount(0, text.length()) > room)
             text = text.substring(0, text.offsetByCodePoints(0, room - 1)) + "…";
-        System.out.print(CLEAR_LINE + dim(text));
+        System.out.print(WRAP_OFF + CLEAR_LINE + dim(text) + WRAP_ON);
         System.out.flush();
         activityShown = true;
+    }
+
+    /** A line of a program's output, without anything that would move the cursor or change colours. */
+    private static String printable(String line) {
+        return NOT_PRINTABLE.matcher(line).replaceAll(" ").strip();
     }
 
     /** Removes the activity line, if one is on the screen. Call with the terminal lock held. */

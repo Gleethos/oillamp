@@ -278,14 +278,22 @@ to `ConsoleRenderer` (which prints it), to any listener registered with `observe
 `Context` carries the event sink and the command-line options through one run.
 
 **The activity line.** While a step runs, `ConsoleRenderer` shows what is happening on the last
-line of the terminal: a spinner, a plain description of the step, the elapsed time and the latest
+line of the terminal: a spinner, the elapsed time, a plain description of the step and the latest
 line of the step's own output (for the image build, `podman build`'s output, which
 `Machine.run(command, eachLine)` passes on line by line). A daemon thread redraws it in place every
 120 ms, and it is cleared before any ordinary line is printed, so it never mixes with the output
 above it. It is only drawn when standard output is a terminal, never into `Outcome.console()`, and
 never during steps that may run `sudo` (`InstallPackages`, `AddSubIds`), because redrawing would
-overwrite the password prompt. The terminal width is taken from `$COLUMNS` (100 if unset), so the
-line does not wrap.
+overwrite the password prompt.
+
+The line must never wrap onto a second row. A carriage return only goes back to the start of the
+current row, so a wrapped line leaves one row behind on every redraw and floods the terminal. Two
+things prevent that. The width comes from `$COLUMNS` if it is exported, and otherwise from
+`stty size` (shells usually do not export `$COLUMNS`); a longer line is shortened and ends in "…".
+And while drawing, the renderer turns the terminal's automatic wrapping off (`ESC[?7l`, back on
+with `ESC[?7h`), so that a line that is still too long, for example after the window was made
+narrower, is cut off at the right edge. Escape sequences and control characters in the program's
+output are removed before it is shown.
 
 ### Class map
 
