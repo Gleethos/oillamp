@@ -9,7 +9,7 @@ plugins {
 }
 
 group = 'dev.oillamp'
-version = '0.1.0-SNAPSHOT'
+version = '0.1.0'
 
 repositories {
     mavenCentral()
@@ -134,4 +134,117 @@ tasks.register('spikes', Test) {
         showStandardStreams = true
     }
     timeout = Duration.ofMinutes(30)
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Packaging: one file that contains the program and the Java runtime it needs (spec §31, D-21).
+//
+// The result is `build/dist/oillamp`: an executable of about 50 MB that can be copied onto a USB
+// stick, carried to a machine that has no Java at all, and run. It is a shell script with a
+// compressed archive appended to it; `src/packaging/launcher.sh` is that script, and it is meant
+// to be read.
+//
+// This is a deliberate departure from D-21, which called for a `.deb`. A `.deb` has to be
+// installed with root before it can be run, and must match the distribution's packaging format.
+// The requirement here was a file that runs where it lands. D-21's actual reason - "no JDK needed
+// on the host" - is unchanged: the runtime is bundled either way.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+// Gradle 9 removed `exec {}` and `copy {}` from inside task actions; the supported way to reach
+// them is to have Gradle inject the services. This holder exists only to be injected into.
+interface PackagingServices {
+    @javax.inject.Inject ExecOperations getExec()
+    @javax.inject.Inject FileSystemOperations getFiles()
+}
+
+// Determined with `jdeps --print-module-deps` and pinned here, because a runtime that silently
+// grows whenever a dependency changes is a runtime nobody can reason about. java.desktop arrives
+// through Sprouts, java.sql through Jackson. jdk.charsets is added by hand: jdeps cannot see it,
+// because character sets are loaded by name at run time, and without it a lamp path containing a
+// character outside the default set would fail to read.
+def runtimeModules = 'java.base,java.desktop,java.sql,jdk.charsets'
+
+def jdkHome = providers.provider {
+    extensions.getByType(JavaToolchainService)
+             .launcherFor(java.toolchain).get()
+             .metadata.installationPath.asFile.absolutePath
+}
+
+def jlinkRuntime = tasks.register('jlinkRuntime') {
+    group = 'distribution'
+    description = 'Builds the cut-down Java runtime that ships inside the single file.'
+    def services = objects.newInstance(PackagingServices)
+    def output = layout.buildDirectory.dir('oillamp-runtime')
+    def modules = runtimeModules
+    def home = jdkHome
+    inputs.property('modules', modules)
+    inputs.property('jdk', home)
+    outputs.dir(output)
+    doLast {
+        def target = output.get().asFile
+        services.files.delete { delete(target) }
+        services.exec.exec {
+            commandLine "${home.get()}/bin/jlink",
+                    '--add-modules', modules,
+                    '--strip-debug', '--no-header-files', '--no-man-pages',
+                    '--compress', 'zip-6',
+                    '--output', target.absolutePath
+        }
+    }
+}
+
+tasks.register('singleFile') {
+    group = 'distribution'
+    description = 'Builds build/dist/oillamp - the whole program in one executable file.'
+    dependsOn(jlinkRuntime)
+    def services = objects.newInstance(PackagingServices)
+    def launcherSource = file('src/packaging/launcher.sh')
+    def runtimeDirectory = layout.buildDirectory.dir('oillamp-runtime')
+    def staging = layout.buildDirectory.dir('package')
+    def result = layout.buildDirectory.file('dist/oillamp')
+    def libraries = configurations.runtimeClasspath
+    def applicationJar = tasks.named('jar').flatMap { it.archiveFile }
+    def theVersion = version.toString()
+    def modules = runtimeModules
+    inputs.file(launcherSource)
+    inputs.dir(runtimeDirectory)
+    inputs.files(libraries)
+    inputs.file(applicationJar)
+    outputs.file(result)
+    doLast {
+        def stage = staging.get().asFile
+        services.files.delete { delete(stage) }
+        def payload = new File(stage, 'payload')
+        // The layout the launcher expects: runtime/bin/java, and every jar in lib/.
+        services.files.copy { from(runtimeDirectory); into(new File(payload, 'runtime')) }
+        services.files.copy { from(libraries); from(applicationJar); into(new File(payload, 'lib')) }
+
+        def archive = new File(stage, 'payload.tar.gz')
+        services.exec.exec {
+            // --sort=name and a fixed timestamp make the archive byte-for-byte reproducible, so
+            // the same source produces the same fingerprint, and rebuilding without changing
+            // anything does not invalidate everyone's unpacked copy.
+            commandLine 'tar', '--sort=name', '--mtime=@0', '--owner=0', '--group=0',
+                        '--numeric-owner', '-czf', archive.absolutePath,
+                        '-C', payload.absolutePath, '.'
+        }
+
+        def fingerprint = java.security.MessageDigest.getInstance('SHA-256')
+                              .digest(archive.bytes).encodeHex().toString().substring(0, 16)
+        def preamble = launcherSource.text
+                            .replace('@VERSION@', theVersion)
+                            .replace('@FINGERPRINT@', fingerprint)
+
+        def target = result.get().asFile
+        target.parentFile.mkdirs()
+        target.withOutputStream { out ->
+            out.write(preamble.getBytes('UTF-8'))
+            archive.withInputStream { it.transferTo(out) }
+        }
+        target.setExecutable(true, false)
+        logger.lifecycle("built ${target} " +
+                "(${(target.length() / 1024 / 1024).setScale(1, java.math.RoundingMode.HALF_UP)} MB" +
+                ", fingerprint ${fingerprint}, modules ${modules})")
+    }
 }

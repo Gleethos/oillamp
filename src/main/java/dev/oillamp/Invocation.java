@@ -160,6 +160,21 @@ final class Invocation {
                 yield commands.recordings(Path.of(rest.get(0)), open, prune);
             }
 
+            case "completion" -> {
+                String shell = rest.isEmpty() ? "bash" : rest.get(0);
+                if (!shell.equals("bash")) {
+                    console.banner(version, "");
+                    sink.accept(new LampEvent.Failure(Problems.usage(
+                            "oillamp only ships a completion script for bash, not '" + shell + "'",
+                            "oillamp completion bash")));
+                    yield ExitStatus.USAGE;
+                }
+                // Straight to stdout, with no banner: the output is meant to be evaluated by a
+                // shell, and anything else printed would be evaluated along with it.
+                console.plain(Templates.bashCompletion());
+                yield ExitStatus.SUCCESS;
+            }
+
             // Arrives with the milestone that makes it meaningful; saying so beats a bare
             // "unknown command" for something the help text lists.
             case "image" -> {
@@ -209,6 +224,9 @@ final class Invocation {
               recordings <dir> [--open <session>] [--prune]
                     List this lamp's screen recordings. --open plays one, --prune
                     applies the configured retention now instead of at the next start.
+              completion bash
+                    Print a bash completion script. Use it with:
+                        eval "$(oillamp completion bash)"
               doctor [<dir>]
                     Check the host, and the lamp if one is given. Changes nothing.
               config <dir> (check | show-effective | path)

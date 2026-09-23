@@ -76,7 +76,7 @@ class UsingTheCommandLineSpec extends Specification {
 
     def 'A bug inside oillamp still reaches the user as something they can report'() {
         reportInfo """
-            NFR-03: no bare stack traces on the console. That has to hold even for a genuine bug,
+            No bare stack traces on the console, ever. That has to hold even for a genuine bug,
             because the moment a user sees a stack trace is the moment they stop being able to
             tell "I did something wrong" from "this tool is broken".
 

@@ -30,7 +30,7 @@ class VerifyingTerminalProfilesSpec extends Specification {
             'xterm'         : '-T',
     ]
 
-    def 'S9: the terminals installed here accept the arguments §17.4 says they do'() {
+    def 'S9: the terminals installed here accept the arguments oillamp gives them'() {
         reportInfo """
             The profile table is nine argument templates, each one a guess until something runs it.
             A wrong template is not a subtle bug: the terminal window simply never opens, and the
@@ -72,19 +72,21 @@ class VerifyingTerminalProfilesSpec extends Specification {
     }
 
     @Requires({ Spike.run('command', '-v', 'gnome-terminal').ok || Spike.run('which', 'gnome-terminal').ok })
-    def 'S9: a terminal emulator returns long before its child exits, which is why D-09 exists'() {
+    def 'S9: a terminal emulator returns long before its child exits, so its process id proves nothing'() {
         reportInfo """
-            D-09 says session end is detected by relaying the SSH connection, *not* by watching the
-            terminal process, "because many terminal emulators hand the window to a server process
-            and exit immediately, so their PID is meaningless".
+            oillamp decides that a session has ended by watching the SSH connection it relays to
+            the terminal window, and deliberately *not* by watching the terminal program it
+            started. The stated reason is that many terminal emulators do not stay running: they
+            hand the new window to a separate, already-running server process and exit at once, so
+            the process id oillamp holds means nothing a moment later.
 
             That is the load-bearing sentence behind the entire supervision loop, and until now it
             was a belief. This measures it: gnome-terminal is asked to run a child that sleeps, and
             the launch returns in a fraction of that time.
 
-            If this scenario ever *fails* - if a terminal did block until its child exited - D-09
-            would still be right for the other emulators, but the simpler design it rejected would
-            deserve a second look. That is worth knowing, so the check stays.
+            If this scenario ever *fails* - if a terminal really did stay running until its child
+            exited - watching the connection would still be right for the other emulators, but the
+            simpler design that was rejected would deserve a second look. That is worth knowing, so the check stays.
 
             Note `--wait` exists and would make gnome-terminal block. oillamp deliberately does not
             use it: relying on it would make the design correct for gnome-terminal and wrong for

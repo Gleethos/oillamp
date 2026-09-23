@@ -80,8 +80,10 @@ class TheSessionCommandsSpec extends Specification {
         reportInfo """
             The difference matters. Removing the container directly would leave the supervisor
             holding a lock over a sandbox that no longer exists, with its relays still bound and
-            its recording unfinished. Asking it instead means the whole sequence of §10.7 runs -
-            the same one that a closed terminal window triggers.
+            its recording unfinished. Asking it instead runs the full, ordered shutdown - stop the
+            recorder so the video file is properly closed, take down the relays, stop and remove
+            the container, release the lock - which is the same sequence a closed terminal window
+            sets off.
         """
         given:
             var lamp = sandbox.lampPath()
@@ -102,9 +104,15 @@ class TheSessionCommandsSpec extends Specification {
 
     def 'an extra shell attaches to the session, and closing it ends nothing'() {
         reportInfo """
-            D-09 in practice. Exactly one connection decides when the session ends - the terminal
-            window oillamp opened itself, through a socket the agent cannot reach. Everything
-            else is an extra shell: useful, unlimited, and powerless to end anything.
+            Exactly one connection decides when the session ends: the terminal window oillamp
+            opened itself, which reaches the sandbox through a socket the agent cannot get at.
+            Every other shell is an extra - useful, unlimited in number, and powerless to end
+            anything.
+
+            The session end is detected by watching that one relayed connection rather than by
+            watching the terminal program, because a terminal emulator very often returns straight
+            away and leaves its window running as somebody else's child process. Watching the
+            program would report the session over within milliseconds of starting it.
 
             That is what makes `oillamp shell` safe to close, and it is why the two relays are
             separate sockets rather than one socket with a counter.
@@ -170,7 +178,8 @@ class TheSessionCommandsSpec extends Specification {
 
     def 'stop cleans up after a supervisor that was killed without tidying up'() {
         reportInfo """
-            FR-08: `kill -9` on the supervisor must not need manual cleanup. The lock goes with
+            Killing the supervising process outright - a crash, a `kill -9`, a power cut - must
+            never leave a mess that the user has to clear up by hand. The lock goes with
             the process, so the lamp is free - but the container is not, and the next `oillamp at`
             would meet a name clash that says nothing about what happened.
 

@@ -32,9 +32,11 @@ class SettingUpALampSpec extends Specification {
 
     def 'A dry run shows the user everything that would happen, and changes nothing'() {
         reportInfo """
-            oillamp installs packages, changes /etc/subuid, writes SSH keys and creates
-            directories in the user's home. That is a lot of trust to ask for, so FR-12 requires
-            a mode that shows the complete plan first.
+            oillamp installs system packages, edits /etc/subuid - the file that grants a user the
+            block of spare user-id numbers rootless containers need - writes SSH keys, and creates
+            directories in the user's home. That is a great deal of trust to ask of somebody
+            running a tool for the first time, so there is a mode that shows the complete plan
+            before any of it happens.
 
             What makes this trustworthy is that --dry-run is not a separate code path: setup is
             modelled as a list of described changes, and the dry run simply announces them
@@ -75,8 +77,8 @@ class SettingUpALampSpec extends Specification {
 
             That is answering a different question. The user asked what oillamp *would* do, and a
             dry run changes nothing, so whether sudo happens to work right now is irrelevant to
-            it. Being able to inspect the plan from a script, or before deciding to grant sudo at
-            all, is a large part of why FR-12 exists.
+            it. Being able to inspect the plan from a script, or before deciding whether to give
+            the tool your password at all, is a large part of why the dry run exists.
         """
         given: 'a machine that needs packages installed, where sudo cannot currently be used'
             sandbox.machine { it.withoutPodman().sudoNeedsPassword().interactive(false) }
@@ -103,8 +105,8 @@ class SettingUpALampSpec extends Specification {
 
     def 'Setting up a new lamp gives the agent a home and keeps everything else out of it'() {
         reportInfo """
-            This is the design's central idea (D-10), and the one thing that must never be got
-            wrong: the lamp is two layers. The agent gets `agent-lamp-<id>/`, mounted as its home.
+            This is the design's central idea, and the one thing that must never be got wrong:
+            the lamp is two layers. The agent gets `agent-lamp-<id>/`, mounted as its home.
             Everything that *governs or observes* the agent - the network policy, the SSH keys,
             the logs, the screen recordings - sits beside it, never inside it.
 
@@ -316,8 +318,8 @@ class SettingUpALampSpec extends Specification {
     def 'Running oillamp again on the same lamp keeps the agent\'s world and the user\'s settings'() {
         reportInfo """
             The point of a lamp is that the agent comes back to the work it left: its repositories,
-            its tool configuration, its shell history (FR-21). And the user's edited policy must
-            survive too - a tool that silently reset `oillamp.toml` on every run would be useless.
+            its tool configuration, its shell history. And the user's edited policy must survive
+            too - a tool that silently reset `oillamp.toml` on every run would be useless.
 
             So the second run must be almost entirely a no-op, and must say so.
         """
@@ -363,8 +365,9 @@ class SettingUpALampSpec extends Specification {
             ownership of its directory, doing that to a directory the user is already using would
             scatter state through it and, worse, expose part of it to the agent.
 
-            So a non-empty directory that is not already a lamp is refused (FR-02) - but the
-            refusal tells the user what is in the way and how to override it deliberately.
+            So a directory that already has something in it, and is not already a lamp, is
+            refused - but the refusal tells the user what is in the way and how to go ahead
+            deliberately if that is what they meant.
         """
         given: 'a directory with the user\'s own files in it'
             var directory = Files.createDirectories(tmp.resolve('home/dev/my-project'))
@@ -400,9 +403,10 @@ class SettingUpALampSpec extends Specification {
 
     def 'The home directory itself and system directories are refused outright'() {
         reportInfo """
-            FR-03. A lamp mounts part of its directory into the sandbox as the agent's home, so
-            making the user's whole home directory a lamp would hand the agent everything the
-            sandbox exists to protect. Making /etc a lamp is worse.
+            A lamp attaches part of its own directory to the sandbox as the agent's home. Making
+            the user's entire home directory into a lamp would therefore hand the agent every
+            single thing the sandbox exists to keep away from it. Making /etc into a lamp would be
+            worse still.
 
             There is deliberately no flag to override this. A flag to override it would be used
             exactly once, by someone in a hurry, on the wrong directory.
@@ -425,9 +429,11 @@ class SettingUpALampSpec extends Specification {
 
     def 'A lamp on a filesystem that cannot hold Unix sockets is refused before anything is created'() {
         reportInfo """
-            Every channel between the host and the sandbox - the shell, the desktop stream, the
-            network proxy - is a Unix domain socket inside the lamp directory (D-04, D-08, D-12).
-            Network filesystems and FAT-style filesystems cannot host those.
+            Every channel between this machine and the sandbox - the shell, the desktop picture,
+            the network proxy - is carried by a Unix domain socket living inside the lamp
+            directory. A Unix domain socket is a special file that two processes on one machine use
+            to talk to each other, and not every filesystem can hold one: network filesystems such
+            as NFS cannot, and neither can the FAT filesystems used on most USB sticks.
 
             Discovering that halfway through starting a container would be a baffling failure, so
             it is checked up front, where the message can name the filesystem and suggest a fix.

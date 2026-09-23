@@ -35,7 +35,7 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
         Spike.removeTree(scratch.toString())
     }
 
-    def 'S8: rootless podman runs on this host despite the AppArmor userns restriction'() {
+    def 'S8: rootless podman runs here despite the Ubuntu restriction on unprivileged user namespaces'() {
         reportInfo """
             Ubuntu 23.10 and newer refuse unprivileged user namespaces to programs without a
             matching AppArmor profile, and rootless podman needs them. The spec assumes Ubuntu
@@ -56,21 +56,38 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
             Spike.run('podman', 'info', '--format', '{{.Host.Security.Rootless}}').mentions('true')
     }
 
-    def 'S13: keep-id maps the host user onto the container user, and the infra uid onto 1001'() {
+    def 'S13: the container sees the human as its own user, and the infrastructure as a different one'() {
         reportInfo """
-            This is the single most load-bearing assumption in the design (§9.2, §15.3). Two
-            separate claims, both required:
+            This is the single most load-bearing assumption in the whole design, so it is worth
+            setting out from the beginning.
 
-            1. `--userns=keep-id:uid=1000,gid=1000` makes files owned by the *host* user appear
-               inside the container as uid 1000 — so the agent owns its own workspace and can
-               write to it without anything being chmod 777.
-            2. `podman unshare chown 1001:1001` on a host directory produces something the
-               container sees as uid 1001 — the infra user, which owns the recording and the
-               control sockets the agent must not touch (§19.5, "what you cannot do").
+            On Linux every file is owned by a *number*, and every running process has one. Names
+            like "dnepp" or "root" are a convenience layered on top; the kernel only ever compares
+            numbers. A container can be given its own, private set of those numbers, together with
+            a translation table saying which private number corresponds to which real one. That
+            table is what decides, in the end, which files the programs inside a container may
+            touch.
 
-            If the second were false, the boundary that lets a human trust the sandbox would not
-            exist, and the honest response would be to drop the infra user from the design rather
-            than pretend. Hence a spike, before the code that depends on it.
+            oillamp arranges that table so it holds two properties at once. Both are needed, and
+            neither is obvious enough to take on trust:
+
+            1. Files that really belong to the person running oillamp must appear, inside the
+               container, to belong to the container's own user number 1000 - the account the AI
+               agent works as. That is what lets the agent write freely in its own home directory
+               while those files remain ordinary, editable files belonging to the human outside.
+               Without it the only alternatives are making everything world-writable, or leaving
+               the human unable to open what the agent produced.
+
+            2. It must also be possible to hand a directory to container user number 1001 - the
+               account that runs the compositor, the screen recorder and the network bridges -
+               such that the agent cannot write to it. That is what makes a screen recording
+               trustworthy: the agent can see that it is being recorded and cannot do anything
+               about it.
+
+            If the second property did not hold, the boundary that lets a human trust the sandbox
+            would simply not exist, and the honest response would have been to remove the second
+            user from the design rather than pretend. That is why this is checked against real
+            podman, before any of the code that depends on it was written.
 
             Note the scenario reads the host uid rather than assuming 1000: the machine this was
             first run on had the user at 1001, which would have made a hardcoded assertion pass or
@@ -108,7 +125,7 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
 
     def 'S12: a read-only container can still write to its bind-mounted home'() {
         reportInfo """
-            §15.3 runs the container with `--read-only`, so that everything outside the agent's
+            The container is run with `--read-only`, so that everything outside the agent's
             home is discarded and cannot be quietly modified. That is only useful if bind mounts
             onto pre-created mount points stay writable — otherwise the agent cannot work at all.
         """
@@ -170,7 +187,7 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
 
     def 'S12: a Unix socket the host creates is connectable from the container'() {
         reportInfo """
-            The other direction, and the one the whole network design depends on (§14): the agent
+            The other direction, and the one the whole network design depends on: the agent
             has no route and no DNS, and reaches the egress proxy only through a socket the host
             supervisor is listening on. If this did not work, `--network=none` would have to go,
             and with it the guarantee that nothing leaves the sandbox unseen.

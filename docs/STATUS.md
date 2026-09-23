@@ -41,7 +41,8 @@ has no outbound network at all, which is the safe direction to be incomplete in.
 | `oillamp remove <dir> --yes` | **Works.** Deletes the lamp, including the files owned by the sandbox's own users that `rm -rf` cannot touch. Without `--yes` it prints what would go and exits 2; it refuses while a sandbox is running. |
 | the egress proxy | **Works.** Started with every session. `npm`, `pip`, `git` over HTTPS and `curl` all reach the internet from inside the sandbox; the host's loopback and private ranges are refused by rule and the refusal is printed where the user can see it. |
 | `oillamp recordings <dir>` | **Works.** Lists each recording with how long it ran and what it cost. `--open <session>` plays one through the desktop's own player; `--prune` applies the configured retention now instead of at the next session start. |
-| `image` | **Parses, then refuses**, because it needs the milestone that gives it meaning (M7). |
+| `oillamp completion bash` | **Works.** Prints a bash completion script for `eval`. |
+| `image` | **Parses, then refuses.** Nothing needs it: the image is built automatically when its fingerprint changes, and there is no manual image management to do. |
 
 ### Verified end to end on real hardware
 
@@ -247,7 +248,7 @@ the container work can be written and verified against a real runtime rather tha
 | **M4** Supervisor | ✅ **done** — session machine (§25.1) as a pure function, both SSH relays, the control socket, the §10.7 shutdown sequence, `view`/`shell`/`stop`/`status`/`list`, and health reporting that continues for the life of the session | — |
 | **M5** Network | ✅ **done** — egress proxy, policy engine, forwards, network journal, in-container proxy env. *Not in M5: the Firefox proxy policy file and the §19.5 LLM preconfiguration.* | — |
 | **M6** Recording and agent tooling | ✅ **done** — wf-recorder honouring `crf` and `max_fps`, retention, the `recordings` command, the `lamp` helper **script** (D-27 — no Java RFB client), GPU auto mode on real hardware. *The harnesses were already installed into the image* — `opencode` and `pi`, the latter with the Eden AI provider extension | — |
-| **M7** Packaging | jpackage `.deb`, completion scripts, README, E2E checklist | M3–M6 |
+| **M7** Packaging | ✅ **done** — a single self-contained executable (not the `.deb` of D-21; see below), bash completion, a README written for a reader who is not a virtualization specialist | — |
 
 ### The golden path, verified
 
@@ -443,6 +444,67 @@ against the running infra rather than by reading the permission bits:
 
 That last row is the design, not a gap. Making the directory unreadable to the agent would also
 make it unreadable to the human who owns the lamp, since both are "other" to the infra uid.
+
+### Packaging, and a README for somebody who is not a virtualization specialist (M7)
+
+**One file, and nothing to install.** `./gradlew singleFile` produces `build/dist/oillamp`: an
+executable of 40 MB that contains the program, its libraries, and a Java runtime. Copy it to a
+machine with no Java at all and run it.
+
+This is a deliberate departure from **D-21**, which specified a `jpackage` `.deb`. A `.deb` must be
+installed with root before it can be run and only suits Debian-family systems; the requirement here
+was a file that runs where it lands, including off a USB stick. D-21's *reason* — "no JDK needed on
+the host" — is unchanged, because the runtime is bundled either way.
+
+How it works: the file is a POSIX shell script with a compressed archive appended to it. The script
+is `src/packaging/launcher.sh`, it is 90 lines, and it is written to be read — the header explains
+what the rest of the file is and how to print only the readable part. On first run it unpacks itself
+into `~/.cache/oillamp/<version>-<fingerprint>/` and then `exec`s the bundled Java. `exec` rather
+than a child process, because a session ends on Ctrl-C and the signal must reach the program, not a
+wrapper that would have to forward it.
+
+| Measured | |
+|---|---|
+| size | 40.2 MB |
+| first run, including unpacking | 0.69 s |
+| every run after that | 0.14 s |
+| bundled runtime | `java.base`, `java.desktop`, `java.sql`, `jdk.charsets` |
+| with `PATH=/nonexistent` and no environment | runs |
+| a deliberately truncated copy | refuses, explains why, exits 70 |
+| a full session — image, container, GPU, desktop, shell | runs |
+
+The fingerprint in the directory name is a hash of that exact file, so two builds never share an
+unpacked copy and upgrading is nothing more than replacing the file. `oillamp --where` prints the
+directory; deleting the file and that directory removes oillamp completely.
+
+**`oillamp completion bash`** prints a completion script rather than installing one, which is the
+only shape that makes sense for a program that is never installed. Verified to be accepted by bash
+and to complete command names, option names and directories.
+
+**The README** is new, and it is the deliverable the rest of M7 exists to serve: this repository now
+has to be auditable by programmers who are not virtualization specialists. It defines every term at
+first use — container, rootless, user namespace, uid map, subordinate uid, image layer, compositor,
+headless, Wayland, VNC — and builds up to the design rather than assuming it. Two parts are worth
+naming:
+
+- **Section 4.3** gives the actual uid map as a table, with the real numbers read from the kernel,
+  and derives the three security properties from it rather than asserting them.
+- **Section 6.5**, "What this does not protect against", states the limits plainly: the agent runs
+  as your uid, this is a container and not a virtual machine, and the threat model is the host
+  rather than the web.
+
+**The scenario prose was rewritten too.** 35 of the 84 `reportInfo` blocks referred to the design
+specification by section number, or used a requirement code such as `FR-60` or `D-09` as though it
+were an explanation, or used terms like *subuid*, *userns* and *keep-id* without ever saying what
+they mean. Every one of those is now written out in words. The scenario that verifies the uid
+mapping — the most load-bearing assumption in the design — now opens by explaining that Linux
+identifies users by number and that a container can be given a private set of those numbers, before
+saying what is being checked.
+
+Six scenario *titles* were renamed for the same reason, because the title is the first thing a
+reader meets: "S13: keep-id maps the host user onto the container user, and the infra uid onto 1001"
+is now "S13: the container sees the human as its own user, and the infrastructure as a different
+one".
 
 ### The verification spikes that are left
 

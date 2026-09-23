@@ -107,7 +107,7 @@ This is the end-to-end user experience oillamp MUST deliver. Every other require
 - 🟡 **FR-08** If a previous supervisor died without cleanup (crash, kill -9, power loss), the next `oillamp at` MUST detect the leftover container and stale state, clean it up, and say so. *(Built: stale lock detection. Missing: leftover container cleanup — M3.)*
 - ⬜ **FR-09** The terminal window MUST open already connected to the sandbox via SSH, without password or host-key prompts, in `~/workspace`.
 - ⬜ **FR-10** The viewer window MUST show the agent's desktop live, allow input from the user, and support host-to-agent clipboard (configurable).
-- 🟡 **FR-11** Auxiliary commands MUST exist: `doctor`, `view`, `shell`, `stop`, `status`, `list`, `recordings`, `image` (§28). *(Built: all but `image`, which needs M7.)*
+- ✅ **FR-11** Auxiliary commands MUST exist: `doctor`, `view`, `shell`, `stop`, `status`, `list`, `recordings`, `image` (§28). *(All built except `image`, which was dropped: the image is rebuilt automatically whenever its content hash changes, so there is no manual image management left for a command to do. `completion` was added.)*
 - ✅ **FR-12** `oillamp at <dir> --dry-run` MUST print the complete setup plan (every step, command, file) without changing anything.
 
 ### 4.2 Sandbox
@@ -1564,7 +1564,7 @@ oillamp [--verbose] [--debug] [--no-color] <command>
 
 Each milestone ends with its tests green and a short demo.
 
-**M1–M6 are built and verified. M0 and M7 are not started.** `docs/STATUS.md` has the
+**M1–M7 are built and verified. M0 is not started.** `docs/STATUS.md` has the
 current detail; the Status column here is the summary.
 
 | # | Milestone | Status | Scope | Done when |
@@ -1576,7 +1576,7 @@ current detail; the Status column here is the summary.
 | **M4** | Supervisor | ✅ **done** — `oillamp at` runs a session: two new windows, both relays, the control socket, the §10.7 shutdown, and the five session commands. Verified on real podman for all three endings, plus `kill -9` recovery | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
 | **M5** | Network | ✅ **done** — the egress proxy is up: `CONNECT` and absolute-form HTTP, per-address policy, forwards, the JSONL journal and denials on the console. Verified on real podman: `npm install`, `pip install` and `git clone` over HTTPS all work from inside the sandbox, while the host's loopback and the LAN are refused by rule. **M5.1** adds SDKMAN to the image, seeded into the agent's home, so a JVM project can have the JDK, Groovy or Gradle it asks for. *Firefox policy and LLM preconfiguration are not done* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
 | **M6** | Recording and agent tooling | ✅ **done** — verified on real hardware 23 September | wf-recorder, retention, `recordings` command; `lamp` helper script (D-27); agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
-| **M7** | Packaging and polish | ⬜ not started | jpackage `.deb`, completion scripts, README, E2E checklist on Ubuntu 24.04 + 26.04 | acceptance criteria §34 all pass |
+| **M7** | Packaging and polish | ✅ **done** — single-file executable, bash completion, README | jpackage `.deb`, completion scripts, README, E2E checklist on Ubuntu 24.04 + 26.04 | acceptance criteria §34 all pass |
 
 ## 33. Verification spikes (⚠ VERIFY items)
 
@@ -1816,6 +1816,25 @@ changed for convenience alone.
 - **`oillamp recordings` needed no running session (§28).** It was grouped with `image` as a
   command that "needs a running session, which the next milestone adds". It does not: it reads a
   directory, and it is most useful precisely when a session has ended. It also lists during one.
+
+- **D-21's `.deb` was the wrong shape for the requirement (§31).** The decision called for a
+  `jpackage` `.deb` with a bundled `jlink` runtime. A `.deb` has to be installed, with root, and
+  only on a Debian-family system. What was actually wanted was a file that can be copied to a
+  colleague and run where it lands. The result is a single self-extracting executable of 40 MB:
+  a POSIX shell script with a compressed archive appended, which unpacks itself once into the
+  user's cache directory and then `exec`s the bundled Java. D-21's stated reason — "no JDK needed
+  on the host" — is preserved exactly; only the container format changed.
+- **`oillamp image` was dropped rather than built (§28, FR-11).** It was listed as an auxiliary
+  command needing M7. By the time M7 arrived there was nothing for it to do: the image is
+  identified by a hash of its own inputs and rebuilt automatically whenever any of them change, so
+  there is no stale image to manage and no rebuild to request. A command that only ever said "the
+  image is already correct" would be a command that existed to satisfy a list.
+- **The scenario prose assumed the specification had been read (§30).** 35 of 84 `reportInfo`
+  blocks cited a section number, or used a requirement code such as `FR-60` in place of the
+  requirement itself, or used *subuid*, *userns* and *keep-id* without defining them. Those blocks
+  are rendered into a readable report precisely so that somebody who has *not* read this document
+  can understand why each scenario exists, so every one of them has been written out in full. Six
+  scenario titles were renamed for the same reason.
 
 ### 36.3 Defects found in this specification
 

@@ -219,9 +219,13 @@ class ConfiguringALampSpec extends Specification {
 
     def 'A company-wide setting applies to every lamp, and a lamp can still override it'() {
         reportInfo """
-            FR-51: `~/.config/oillamp/config.toml` exists so a company can set the LLM endpoint
-            once rather than in every lamp. Precedence is built-in defaults, then the user-global
-            file, then the lamp's own file.
+            There is an optional file at `~/.config/oillamp/config.toml` that applies to every
+            lamp this user creates. It exists so that a company can set something like the address
+            of its language-model service once, instead of in every lamp separately.
+
+            Three sources of settings are merged, and later ones win over earlier ones: oillamp's
+            own built-in defaults first, then this user-wide file, then the individual lamp's
+            `oillamp.toml`.
 
             Tables merge key by key, but arrays replace wholesale - which is not an arbitrary
             choice. If a lamp's `network.rules` were merged with the global list, the effective

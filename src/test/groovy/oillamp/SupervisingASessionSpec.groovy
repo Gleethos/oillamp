@@ -59,7 +59,7 @@ class SupervisingASessionSpec extends Specification {
             terminal.first() == 'ptyxis'
             terminal.contains('--new-window')
 
-        and: 'and it reaches the sandbox through the primary socket, which only it may use (D-09)'
+        and: 'and it reaches the sandbox through the one socket whose closing ends the session'
             terminal.any { it.contains('UNIX-CONNECT:') && it.contains('ssh-primary.sock') }
             terminal.any { it.contains('cd ~/workspace') }
 
@@ -71,8 +71,8 @@ class SupervisingASessionSpec extends Specification {
 
     def 'Closing that terminal window ends the session and takes the sandbox with it'() {
         reportInfo """
-            FR-06 in one scenario. The window oillamp opened is the session: when the user closes
-            it, everything the session created has to go — the container, the sockets, the
+            The window oillamp opened *is* the session. When the user closes it, everything the
+            session created has to go — the container, the sockets, the
             session file — or the next `oillamp at` on this lamp meets a name clash and a lock it
             cannot explain.
 
@@ -129,7 +129,7 @@ class SupervisingASessionSpec extends Specification {
 
     def 'A viewer that will not open is a warning; the session carries on without it'() {
         reportInfo """
-            §10.6 makes the viewer's lifetime independent of the session's, and this is why. A
+            The viewer's lifetime is deliberately independent of the session's, and this is why. A
             session with no view of the desktop is degraded, not broken — the shell still works,
             the agent is still running, the recording is still being made. Ending it would throw
             away working state over a window the user can reopen with `oillamp view`.
@@ -187,7 +187,7 @@ class SupervisingASessionSpec extends Specification {
             the sandbox, nothing is wrong with oillamp, and the session would wait for a shell
             that is never coming - holding the lamp's lock while it waits.
 
-            §10.6 answers this with a timeout, which is the one rule in the session machine that
+            The answer is a timeout, which is the one rule in the session machine that
             needs time to actually pass. This is the scenario that asks for a clock that moves.
         """
         given: 'a terminal that opens and never reaches the sandbox, and a short patience'

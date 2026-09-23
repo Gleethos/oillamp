@@ -193,9 +193,15 @@ class StartingTheSandboxSpec extends Specification {
 
     def 'The stale files are removed in the one way that works on a lamp'() {
         reportInfo """
-            These files belong to a container uid, inside the subuid range the host user does not
-            own. `rm` gets EPERM on them - which is the same reason §9.2 exists at all, and the
-            reason the agent cannot tamper with its own recording.
+            These files belong to one of the sandbox's own users. Inside the container that user
+            is number 1001; on this machine the kernel translates it to a number out of the block
+            of spare ids reserved for the person running oillamp - a number that belongs to no real
+            account at all. Plain `rm` is therefore refused with "operation not permitted", even
+            though the files sit in a directory the user owns.
+
+            That refusal is not an obstacle to work around. It is the same mechanism that stops the
+            agent deleting the recording of its own screen, seen from the one angle where it is
+            inconvenient rather than useful.
 
             They have to be removed through `podman unshare`, and a plan that showed an ordinary
             delete here would be a plan that fails on every machine.

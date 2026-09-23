@@ -79,9 +79,9 @@ class VerifyingTheImageBaseSpec extends Specification {
                             "\n\nFull output:\n${result.describe()}") }()
     }
 
-    def 'S7: the doubted packages are present, or the fallback in §33 applies'() {
+    def 'S7: the packages the desktop needs are all in Debian trixie, or the planned fallback applies'() {
         reportInfo """
-            §33 already flags `wlrctl` as uncertain in trixie and names the fallback: `wtype`
+            The design already flagged `wlrctl` as uncertain in trixie and named the fallback: `wtype`
             covers the keyboard and `grim` plus `slurp` cover capture, so only pointer control is
             lost. This scenario decides which world we are in rather than leaving it open, and
             deliberately does *not* fail when a package is absent - the fallback is a legitimate

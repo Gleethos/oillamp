@@ -108,7 +108,7 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
 
     def 'the sandbox starts and reports itself ready'() {
         reportInfo """
-            M3's acceptance criterion, and the first time the whole of §16 runs: the entrypoint
+            The acceptance criterion for the container milestone, and the first time the entrypoint runs in full: it
             starts sway, wayvnc, the recorder and the socket bridges as the right users, waits for
             each to prove itself, and only then writes ready.json.
 
@@ -156,7 +156,7 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
     def 'S2: a shell over the Unix socket lands as the agent user'() {
         reportInfo """
             D-08: the user's shell is SSH over a Unix socket, so that `--network=none` survives.
-            §33 doubted that non-root `sshd -i` still works with trixie's OpenSSH, which split out
+            It was not certain that a non-root `sshd -i` still works with trixie's OpenSSH, which split out
             a separate `sshd-session` binary — the fallback was to replace it with dropbear.
 
             It works. No fallback needed.
@@ -175,8 +175,8 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
     def 'S3: clients accept an absolute path in WAYLAND_DISPLAY'() {
         reportInfo """
             The compositor runs as `lamp` with its socket at /run/lamp/wayland-1, and the agent has
-            its own XDG_RUNTIME_DIR, so the two cannot agree on a relative socket name. §14.2
-            resolves this with an absolute path in WAYLAND_DISPLAY, and §33 doubted libwayland
+            its own XDG_RUNTIME_DIR, so the two cannot agree on a relative socket name. The design
+            resolves this with an absolute path in WAYLAND_DISPLAY, and it was not certain that libwayland
             would accept one — the fallback was a symlink and a relative name.
 
             grim connecting is the proof: it is a Wayland client and it captured the screen.
@@ -234,7 +234,7 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
 
     def 'S1: the viewer connects straight to the wayvnc Unix socket'() {
         reportInfo """
-            §33 doubted that TigerVNC's vncviewer accepts a Unix socket path as its server
+            It was not certain that TigerVNC's vncviewer accepts a Unix socket path as its server
             argument. The fallback was an extra socat bridge onto a random loopback TCP port with
             a VNC password — more moving parts, and a listening TCP socket that did not need to
             exist.
@@ -254,9 +254,9 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
 
     def 'S6: the recording is finalised and playable after the sandbox stops'() {
         reportInfo """
-            §20 promises the human a recording of everything the agent did. A file that exists but
+            oillamp promises the human a recording of everything the agent did. A file that exists but
             cannot be played is the worst possible outcome — it is discovered when someone needs to
-            watch it. §33's fallback was to segment recordings every few minutes if a killed
+            watch it. The fallback, had this failed, was to split recordings into segments every few minutes if a killed
             recorder left an unplayable file.
 
             It is not needed here: the .mkv is a complete, playable h264 stream with a duration.

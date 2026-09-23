@@ -58,6 +58,16 @@ final class ConsoleRenderer {
 
     public String text() { return captured.toString(); }
 
+    /**
+     * Writes text with no decoration of any kind — no banner, no tag, no colour.
+     *
+     * <p>For output that is not addressed to a human reading a terminal. The completion script is
+     * the only such output: a shell evaluates it, and a decorated line would be evaluated too.
+     */
+    public void plain(String text) {
+        line(text.stripTrailing());
+    }
+
     public void banner(String version, String lamp) {
         line("🪔 oillamp " + version + (lamp.isEmpty() ? "" : " — " + lamp));
     }

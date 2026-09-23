@@ -132,6 +132,57 @@ final class Templates {
      * this, the same command behaves differently depending on how the shell was started, which is
      * the kind of difference an agent cannot diagnose and will report as "the network is broken".
      */
+    /**
+     * The bash completion script, printed by {@code oillamp completion bash}.
+     *
+     * <p>Printed rather than installed. oillamp ships as one file that is never installed
+     * anywhere, so there is no package step that could drop a script into the directory bash
+     * reads at startup. Printing it lets the user decide: evaluate it for this shell only, or
+     * add one line to their own startup file.
+     *
+     * <p>It completes directories for the commands that take one, because every one of those
+     * takes a lamp directory and nothing else.
+     */
+    public static String bashCompletion() {
+        return """
+            # oillamp bash completion.
+            #
+            # For this shell only:      eval "$(oillamp completion bash)"
+            # For every future shell:   echo 'eval "$(oillamp completion bash)"' >> ~/.bashrc
+            _oillamp() {
+                local commands='at view shell stop status list remove recordings doctor config version help'
+                local previous="${COMP_WORDS[COMP_CWORD-1]}"
+                local current="${COMP_WORDS[COMP_CWORD]}"
+
+                # The word right after `config` is what to do with it, not a path.
+                if [ "$previous" = config ]; then
+                    COMPREPLY=($(compgen -W 'check show-effective path' -- "$current"))
+                    return
+                fi
+
+                case "$current" in
+                    -*)
+                        COMPREPLY=($(compgen -W '--verbose --debug --no-color --dry-run \
+                            --no-install --init --no-viewer --view-only --yes --open --prune' \
+                            -- "$current"))
+                        return ;;
+                esac
+
+                # The first word is the command; everything after it is a lamp directory.
+                local seen=0 word
+                for word in "${COMP_WORDS[@]:1:COMP_CWORD-1}"; do
+                    case " $commands " in *" $word "*) seen=1; break ;; esac
+                done
+                if [ "$seen" = 0 ]; then
+                    COMPREPLY=($(compgen -W "$commands" -- "$current"))
+                else
+                    COMPREPLY=($(compgen -d -- "$current"))
+                fi
+            }
+            complete -F _oillamp oillamp
+            """;
+    }
+
     public static String agentBashrc() {
         return """
             # Written by oillamp when this lamp was created, and never again: from here on it is

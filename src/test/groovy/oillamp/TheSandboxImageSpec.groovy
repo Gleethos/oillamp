@@ -63,7 +63,7 @@ class TheSandboxImageSpec extends Specification {
             Files.exists(IMAGE.resolve('rootfs/usr/local/bin/lamp'))
     }
 
-    def 'the image carries no trace of the Java desktop helper that D-27 removed'() {
+    def 'the image carries no trace of the Java desktop helper that was replaced by a shell script'() {
         given: """
             D-27 dropped oillamp-rfb and the lamp-helper jar: an agent can drive the desktop with
             the ordinary Wayland tools, and a helper it cannot read is worse than a script it can.

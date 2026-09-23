@@ -62,7 +62,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             the other side receives it and replies.
 
             The lamp here adds one allow rule *above* the shipped deny rule, which is exactly what
-            §18.4 tells a user to do for an internal service — and is the only way to point this
+            a user is told to do for an internal service — and is the only way to point this
             scenario at a server it can actually run, since anything a test can start is on
             loopback, which the shipped default denies on purpose. The default-allow half of the
             policy is what lets a public host through; the rule below is the only thing standing
@@ -86,7 +86,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
 
     def 'The host and its own network stay out of reach — decided by address, not by name'() {
         reportInfo """
-            This is the half of the default that makes the other half safe, and it is why §18.3
+            This is the half of the default that makes the other half safe, and it is why the policy
             decides per *resolved address* rather than per host name.
 
             A name is a claim its owner controls. `totally-normal.example.com` can be pointed at
@@ -135,7 +135,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
 
     def 'Every connection is written to the session network log'() {
         reportInfo """
-            §18.7. Host, port, resolved address, decision, deciding rule and byte counts — and
+            the session's network journal. Host, port, resolved address, decision, deciding rule and byte counts — and
             never content, because a CONNECT tunnel is copied without being read. What the log is
             for is answering "what did this agent talk to" afterwards, without having had to watch.
         """

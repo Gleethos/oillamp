@@ -48,16 +48,17 @@ class CheckingTheMachineSpec extends Specification {
 
     def 'A machine without podman is told exactly what to install'() {
         reportInfo """
-            FR-60 lets oillamp install prerequisites itself, but `doctor` never changes anything.
-            So on a machine that is missing packages, the only useful thing doctor can do is name
-            them and hand over a command that can be pasted.
+            oillamp is allowed to install the host packages it needs - podman and a few others -
+            but `doctor` is the one command that never changes anything at all. So on a machine
+            that is missing packages, the only useful thing doctor can do is name them and hand
+            over a command that can be pasted.
 
             The *second* remedy is the one this scenario guards. Doctor suppresses installing
             internally, and when that was a plain boolean it was indistinguishable from the user
             passing --no-install - so doctor told people to "drop --no-install", naming a flag they
             had never passed and implying oillamp could not install packages at all. That is the
-            opposite of what FR-60 promises, and it misled a real reader. Doctor must instead point
-            at `oillamp at`, which does install.
+            opposite of the truth, and it misled a real reader. Doctor must instead point at
+            `oillamp at`, which is the command that does install things.
 
             The exit code matters as much as the text: 3 means "prerequisites missing", distinct
             from a generic failure, so a script wrapping oillamp can tell the two apart.
@@ -122,10 +123,14 @@ class CheckingTheMachineSpec extends Specification {
 
     def 'With installing allowed, missing prerequisites become a plan instead of a complaint'() {
         reportInfo """
-            The counterpart to the scenario above, and the actual promise of FR-01: on a stock
-            machine the user types one command and oillamp fixes what it can. It still has to say
-            what it is about to change and why, which is what --dry-run shows here without
-            touching anything (FR-12, NFR-04).
+            The counterpart to the scenario above, and the central promise of the whole tool: on a
+            machine straight out of the box, the user types one command and oillamp fixes whatever
+            it can fix by itself.
+
+            That promise comes with an obligation. A program that installs system packages without
+            saying so is a program nobody should run. So everything oillamp would change to the
+            machine can be printed in advance, and `--dry-run` is how: it produces the complete
+            list - every package, every command - and carries none of it out.
         """
         given: 'a machine with no podman and no subordinate id range, but a terminal and sudo'
             sandbox.machine { it.withoutPodman().withoutSubordinateIds() }
@@ -186,9 +191,10 @@ class CheckingTheMachineSpec extends Specification {
             - but nothing in oillamp would have predicted it, because the simulation only knows
             what we already believed, and we believed podman brought its own networking.
 
-            The subtlety is *where* it bites. The sandbox runs with `--network=none` (FR-40) and
-            genuinely needs no networking backend, so every scenario about running the container
-            would have passed. Building the image is the step that needs a network, because that
+            The subtlety is *where* it bites. The sandbox is started with no network interfaces at
+            all, and so genuinely needs no networking support from podman; every scenario about
+            running the container would have passed. Building the image is the step that needs a
+            network, because that
             is where apt-get runs. So this would have surfaced as "M3 works on my machine" and
             then failed on the first user who had never built the image before.
         """
@@ -267,18 +273,23 @@ class CheckingTheMachineSpec extends Specification {
 
     def 'A GPU the user is merely not in the group for is told how to fix that'() {
         reportInfo """
-            The desktop falls back to software rendering and says why, which is right - the GPU
-            must never block a session (D-24). But "you are not in the 'render' group" is a fact,
+            A graphics card makes the sandbox's desktop faster, and nothing else. It is therefore
+            never allowed to stop a session: when oillamp cannot use the card, it draws the desktop
+            with the processor instead and says why.
+
+            Saying why turned out not to be enough. "You are not in the 'render' group" is a fact,
             not an answer, and the first person to read that line asked what exactly they were
-            supposed to do about it and where.
+            supposed to do about it, and on which machine.
 
             So the line carries the command, with the real group and the real user name filled in
             from the probe, and says the part that is easy to miss: a new group only reaches
             processes started after a fresh login, so the session running now will not see it.
 
-            oillamp does not run this itself, even though it runs `sudo usermod` for subuid ranges.
-            That one is a prerequisite and this one is not: everything works without it, just more
-            slowly. And since the change cannot take effect until the user logs in again, doing it
+            oillamp does not run this itself, even though it does run `sudo usermod` elsewhere, to
+            give the user the block of spare user-id numbers that rootless containers need. The
+            difference is that the id numbers are a prerequisite and this is not: everything works
+            without the graphics card, just more slowly. And since the change cannot take effect
+            until the user logs in again, doing it
             silently would leave them on software rendering anyway, now with an altered account.
         """
         given: 'a machine with a render node the user has no access to'
@@ -320,8 +331,8 @@ class CheckingTheMachineSpec extends Specification {
 
     def 'A Linux without apt is told what to install by hand rather than being abandoned'() {
         reportInfo """
-            oillamp only knows how to install packages with apt (D-17), but nothing else about it
-            is Debian-specific. On Fedora or Arch the right answer is therefore not "unsupported"
+            oillamp knows how to install packages with one tool only, `apt`, which is Debian's and
+            Ubuntu's. Nothing else about oillamp On Fedora or Arch the right answer is therefore not "unsupported"
             - it is "here is the list, install it yourself and I will work". The problem text
             carries the package list for exactly that reason.
         """
