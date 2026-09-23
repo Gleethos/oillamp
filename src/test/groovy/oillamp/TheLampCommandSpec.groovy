@@ -31,7 +31,7 @@ class TheLampCommandSpec extends Specification {
         lamp = Path.of('src/main/resources/image/rootfs/usr/local/bin/lamp').toAbsolutePath()
         stubs = Files.createDirectories(temporary.resolve('bin'))
         calls = temporary.resolve('calls.txt')
-        ['grim', 'wtype', 'wlrctl', 'slurp', 'swaymsg'].each { stub(it) }
+        ['grim', 'wtype', 'wlrctl', 'slurp', 'swaymsg', 'lamp-pointer'].each { stub(it) }
     }
 
     /**
@@ -50,6 +50,8 @@ class TheLampCommandSpec extends Specification {
             "printf '\\n' >> '$calls'",
             // grim is asked to produce a file; make one so the caller's checks are meaningful.
             name == 'grim' ? ': > "${@: -1}"' : 'true',
+            // The pointer helper answers "where" with the last position it moved to.
+            name == 'lamp-pointer' ? '[ "$1" = where ] && echo "700 400"' : 'true',
             'exit 0',
         ]
         Files.writeString(script, lines.join('\n') + '\n')
@@ -63,6 +65,7 @@ class TheLampCommandSpec extends Specification {
         process.redirectErrorStream(true)
         Map<String, String> environment = process.environment()
         environment.put('PATH', stubs.toString() + ':' + System.getenv('PATH'))
+        environment.put('LAMP_POINTER', stubs.resolve('lamp-pointer').toString())
         environment.put('HOME', home.toString())
         environment.put('OILLAMP_DISPLAY_WIDTH', '1920')
         environment.put('OILLAMP_DISPLAY_HEIGHT', '1080')
@@ -92,10 +95,10 @@ class TheLampCommandSpec extends Specification {
 
         where:
             combination        || expected
-            't'                || 'wtype [-k] [t]'
-            'ctrl+t'           || 'wtype [-M] [ctrl] [-k] [t]'
-            'ctrl+shift+t'     || 'wtype [-M] [ctrl] [-M] [shift] [-k] [t]'
-            'ctrl+alt+shift+f' || 'wtype [-M] [ctrl] [-M] [alt] [-M] [shift] [-k] [f]'
+            't'                || 'wtype [-s] [150] [-k] [t]'
+            'ctrl+t'           || 'wtype [-s] [150] [-M] [ctrl] [-k] [t]'
+            'ctrl+shift+t'     || 'wtype [-s] [150] [-M] [ctrl] [-M] [shift] [-k] [t]'
+            'ctrl+alt+shift+f' || 'wtype [-s] [150] [-M] [ctrl] [-M] [alt] [-M] [shift] [-k] [f]'
     }
 
     def 'lamp screenshot --region converts the documented X,Y,W,H into grim geometry'() {
@@ -127,23 +130,38 @@ class TheLampCommandSpec extends Specification {
             result.output.trim().endsWith('.png')
     }
 
-    def 'lamp click moves the pointer before clicking, because wlrctl clicks where it is'() {
+    def 'lamp click clicks at the position it was given, not relative to the pointer'() {
+        reportInfo """
+            `lamp click X Y` used to pass X and Y to `wlrctl pointer move`, which moves the pointer
+            *by* that amount. So every click landed somewhere unrelated to what was asked, and
+            nothing reported it. The click now goes to the pointer helper as a position on the
+            screen; the desktop spike checks that an application really receives it there.
+        """
         when:
             var result = runLamp('click', '100', '200')
 
-        then:
-            result.calls == ['wlrctl [pointer] [move] [100] [200]', 'wlrctl [pointer] [click] [left]']
+        then: 'the pointer helper is asked for exactly one click, at that position'
+            result.status == 0
+            result.calls == ['lamp-pointer [click] [100] [200]']
+
+        and: 'wlrctl is not involved'
+            result.calls.every { !it.startsWith('wlrctl') }
     }
 
-    def 'lamp drag presses, moves, then releases'() {
+    def 'lamp scroll without a position scrolls where the pointer was last put'() {
+        when:
+            var result = runLamp('scroll', '3')
+
+        then:
+            result.calls == ['lamp-pointer [where]', 'lamp-pointer [scroll] [700] [400] [3]']
+    }
+
+    def 'lamp drag goes from one position to the other'() {
         when:
             var result = runLamp('drag', '10', '20', '30', '40')
 
         then:
-            result.calls == ['wlrctl [pointer] [move] [10] [20]',
-                             'wlrctl [pointer] [click] [left] [state:press]',
-                             'wlrctl [pointer] [move] [30] [40]',
-                             'wlrctl [pointer] [click] [left] [state:release]']
+            result.calls == ['lamp-pointer [drag] [10] [20] [30] [40]']
     }
 
     def 'lamp type passes the text through as a single argument, spaces and all'() {
@@ -151,22 +169,22 @@ class TheLampCommandSpec extends Specification {
             var result = runLamp('type', 'hello world  with   spaces')
 
         then:
-            result.calls == ['wtype [--] [hello world  with   spaces]']
+            result.calls == ['wtype [-s] [150] [--] [hello world  with   spaces]']
     }
 
     def 'a missing tool is reported as a missing tool, not as a broken lamp'() {
         reportInfo """
-            If a tool such as `wlrctl` is ever missing from the image, the agent must be told which
+            If a tool such as `wtype` is ever missing from the image, the agent must be told which
             tool is absent and that everything else still works, not left with a generic failure
             it will read as "the desktop is broken".
         """
-        when: 'wlrctl is not on the PATH'
-            Files.delete(stubs.resolve('wlrctl'))
-            var result = runLamp('click', '1', '2')
+        when: 'wtype is not on the PATH'
+            Files.delete(stubs.resolve('wtype'))
+            var result = runLamp('type', 'hello')
 
         then: 'lamp names the tool and stays out of the way'
             result.status != 0
-            result.output.contains('wlrctl')
+            result.output.contains('wtype')
             result.output.contains('thin wrapper')
     }
 
@@ -181,7 +199,7 @@ class TheLampCommandSpec extends Specification {
 
         then:
             result.status == 0
-            ['grim', 'slurp', 'wtype', 'wlrctl'].every { result.output.contains(it) }
+            ['grim', 'slurp', 'wtype', 'lamp-pointer'].every { result.output.contains(it) }
 
         and: 'and points at the script itself, which is readable and one file'
             result.output.contains('cat $(command -v lamp)')

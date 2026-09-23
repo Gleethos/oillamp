@@ -58,6 +58,10 @@ final class RealMachine implements Machine {
     }
 
     @Override public Outcome run(Command command) {
+        return run(command, line -> { });
+    }
+
+    @Override public Outcome run(Command command, java.util.function.Consumer<String> eachLine) {
         ProcessBuilder builder = new ProcessBuilder(shield(command));
         for (Pair<String, String> variable : command.environment())
             builder.environment().put(variable.first(), variable.second());
@@ -75,8 +79,8 @@ final class RealMachine implements Machine {
         // while we wait on stdout would deadlock.
         StringBuilder out = new StringBuilder();
         StringBuilder err = new StringBuilder();
-        Thread outReader = drain(process.getInputStream(), out);
-        Thread errReader = drain(process.getErrorStream(), err);
+        Thread outReader = drain(process.getInputStream(), out, eachLine);
+        Thread errReader = drain(process.getErrorStream(), err, eachLine);
 
         try {
             boolean finished = process.waitFor(command.timeout().toMillis(), TimeUnit.MILLISECONDS);
@@ -237,14 +241,36 @@ final class RealMachine implements Machine {
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
 
     private static Thread drain(InputStream stream, StringBuilder sink) {
+        return drain(stream, sink, line -> { });
+    }
+
+    /**
+     * Reads a process's output into {@code sink}, and passes each complete line to
+     * {@code eachLine} as it arrives. A carriage return also ends a line, because progress output
+     * often rewrites one line with {@code \r}.
+     */
+    private static Thread drain(InputStream stream, StringBuilder sink,
+                                java.util.function.Consumer<String> eachLine) {
         return Thread.ofVirtual().start(() -> {
-            try (stream) {
-                byte[] buffer = new byte[8192];
+            StringBuilder line = new StringBuilder();
+            try (java.io.Reader reader = new java.io.InputStreamReader(stream, StandardCharsets.UTF_8)) {
+                char[] buffer = new char[8192];
                 int read;
-                while ((read = stream.read(buffer)) >= 0) {
-                    if (sink.length() < MAX_CAPTURED_BYTES)
-                        sink.append(new String(buffer, 0, read, StandardCharsets.UTF_8));
+                while ((read = reader.read(buffer)) >= 0) {
+                    synchronized (sink) {
+                        if (sink.length() < MAX_CAPTURED_BYTES) sink.append(buffer, 0, read);
+                    }
+                    for (int i = 0; i < read; i++) {
+                        char c = buffer[i];
+                        if (c == '\n' || c == '\r') {
+                            if (!line.toString().isBlank()) eachLine.accept(line.toString());
+                            line.setLength(0);
+                        } else {
+                            line.append(c);
+                        }
+                    }
                 }
+                if (!line.toString().isBlank()) eachLine.accept(line.toString());
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }

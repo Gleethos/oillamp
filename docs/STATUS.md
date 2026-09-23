@@ -114,9 +114,11 @@ From inside a real sandbox, through the real proxy:
 
 ### Desktop, recording, GPU
 
-- `lamp info`, `screenshot`, `type`, `key`, `click`, `move`, `scroll` and `wait-stable` all work
-  against the real desktop. `lamp type` followed by `lamp key Return` typed a command into a
-  terminal on the desktop and ran it.
+- `lamp info`, `screenshot`, `type`, `key` and `wait-stable` work against the real desktop.
+  `lamp click`, `move`, `drag` and `scroll` work since pointer input goes through VNC (see the
+  lessons table): a Swing button receives the click and fires its action, and an X11 program
+  reports each press, release and scroll step at the requested position. `lamp type` delivers
+  every character to a Swing text field, the first one included.
 - GPU: after adding the user to the `render` group, sway held ten file descriptors on
   `/dev/dri/renderD128` with the AMD driver loaded and no software renderer. (The log line
   `amdgpu_cs_ctx_create2 failed (-13)` appears during start-up and is harmless: it is a probe of a
@@ -192,6 +194,17 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 - `catatonit` is a required host package, described as "the init process inside the container",
   but `podman run` is not given `--init`, so it is not used. The entrypoint is process 1.
 
+### Disk space
+
+- oillamp never removes old sandbox images. Every change to anything that goes into the image (a
+  new oillamp build, `image.extra_apt_packages`, `agent_tools.install`) creates a new image of
+  about 3.5 GB, and the old one stays. On the development machine this reached about 25 GB in two
+  days and filled the disk, so a build failed. Until this is fixed, remove old images by hand:
+  `podman images localhost/oillamp/sandbox`, then `podman rmi <image>` for the ones no running
+  sandbox uses, and `podman image prune` for untagged leftovers.
+- The output of a failed image build is only shown in the error (its last 40 lines). It is not
+  saved to `.oillamp/logs/`.
+
 ### Inconsistencies
 
 - `oillamp config check` and `config show-effective` read only `<lamp>/oillamp.toml`, while
@@ -248,6 +261,7 @@ the code that would otherwise look unnecessary.
 | The agent guide said the screen was recorded when it was not. | Written before recording became opt-in. | It says which is the case. |
 | `recording.crf` and `recording.max_fps` were ignored; recordings ran at 60 fps. | The entrypoint never passed them to wf-recorder. | Passed as `--framerate` and `-p crf=`/`-p qp=`. |
 | Java Swing applications could not open a window: "Authorization required" / "Can't connect to X11 window server". | sway starts Xwayland as the infra user, and Xwayland only accepts its own user. The X11 socket directory was also `lamp`-only (sway runs with umask 077). No test had ever started an X11 application. | sway keeps Xwayland running (`xwayland force`), and the entrypoint creates `/tmp/.X11-unix` with mode 1777, opens the socket and runs `xhost +si:localuser:agent`. A spike and a static scenario check it; the agent guide says what to do if it ever fails again. |
+| `lamp click` never clicked where it was told, and its clicks reached no window, in Swing or anywhere else. `lamp type` lost the first key in X11 applications. | `wlrctl pointer move` is relative, and each `wlrctl` call's virtual mouse disappears when it exits, taking pointer focus with it. Each `wtype` call sends a new keyboard layout, and Xwayland drops the key that comes with it. The earlier check only confirmed that `wlrctl` accepted the commands. | Pointer input goes through the desktop's VNC server (`lamp-pointer`), keyboard input waits 150 ms before the first key. A spike clicks and types into a real X11 application and checks what it received. |
 | A 403 sometimes arrived without the sentence naming the rule. | Head and body were written separately; some clients read once. | One write. |
 | A lamp could not be deleted. | Infra-owned files are a subordinate id on the host. | `oillamp remove`. |
 | `oillamp remove` deleted a lamp whose container was still running, when `lamp.json` was already gone. | It looked for the container by a name derived from `lamp.json`. | It asks podman for a container labelled with the lamp's path. |

@@ -1,5 +1,7 @@
 package dev.oillamp;
 
+import java.util.Optional;
+
 
 /**
  * Prints events as text for a person to read.
@@ -31,15 +33,59 @@ final class ConsoleRenderer {
     private boolean verbose;
     private boolean echoToTerminal = true;
 
-    private ConsoleRenderer(boolean colour, boolean verbose) {
-        this.colour = colour;
-        this.verbose = verbose;
+    // ─── the live activity line ─────────────────────────────────────────────────────────────
+    //
+    // While a step runs (building the image, starting the container, waiting for the desktop),
+    // the last line of the terminal shows a spinner, what is happening, for how long, and the
+    // latest line of the step's own output. It is redrawn in place every 120 ms by a daemon
+    // thread and cleared before any ordinary line is printed, so it never ends up in the text
+    // above it. It is never part of text(): it is only drawn on a real terminal.
+
+    /** Steps that may run sudo, which asks for a password. A redrawn line would overwrite the prompt. */
+    private static final java.util.Set<String> STEPS_THAT_PROMPT = java.util.Set.of("InstallPackages", "AddSubIds");
+    private static final String[] SPINNER = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
+    private static final String CLEAR_LINE = "\r\u001B[2K";
+
+    /** What is happening right now, if anything. */
+    private record Activity(String text, long startedNanos, String latestOutput) {
+        Activity withOutput(String line) { return new Activity(text, startedNanos, line); }
     }
 
-    /** Colour when output goes to a terminal and {@code NO_COLOR} is unset. */
+    /** Whether the activity line may be drawn at all: only when standard output is a terminal. */
+    private final boolean live;
+    /** The terminal's width, so that the activity line never wraps. A wrapped line cannot be redrawn. */
+    private final int width;
+    /** Everything written to the terminal goes through this lock. */
+    private final Object terminal = new Object();
+    private volatile Optional<Activity> activity = Optional.empty();
+    private boolean activityShown;
+    private boolean tickerStarted;
+
+    private ConsoleRenderer(boolean colour, boolean verbose, boolean live, int width) {
+        this.colour = colour;
+        this.verbose = verbose;
+        this.live = live;
+        this.width = width;
+    }
+
+    /**
+     * Colour when output goes to a terminal and {@code NO_COLOR} is unset. The activity line only
+     * when standard output really is a terminal, never when it is redirected or piped.
+     */
     public static ConsoleRenderer forMachine(Machine machine) {
         boolean colour = machine.isInteractive() && machine.environmentVariable("NO_COLOR").isEmpty();
-        return new ConsoleRenderer(colour, false);
+        boolean live = machine.isInteractive()
+                && Optional.ofNullable(System.console()).filter(java.io.Console::isTerminal).isPresent();
+        int width = machine.environmentVariable("COLUMNS").flatMap(ConsoleRenderer::number).orElse(100);
+        return new ConsoleRenderer(colour, false, live, width);
+    }
+
+    private static Optional<Integer> number(String text) {
+        try {
+            return Optional.of(Integer.parseInt(text.trim()));
+        } catch (NumberFormatException e) {
+            return Optional.empty();
+        }
     }
 
     /** Told once, as soon as the options are parsed. Returns this renderer, not a copy. */
@@ -69,6 +115,11 @@ final class ConsoleRenderer {
     }
 
     public void render(LampEvent event) {
+        switch (event) {
+            case LampEvent.StepStarted started -> startActivity(started.step());
+            case LampEvent.Output output -> activity = activity.map(a -> a.withOutput(output.line()));
+            default -> stopActivity();
+        }
         switch (event) {
             case LampEvent.PhaseStarted started ->
                     { if (verbose) line(area(started.phase().name().toLowerCase(java.util.Locale.ROOT))
@@ -198,7 +249,80 @@ final class ConsoleRenderer {
     private String colour(String code, String text) { return colour ? code + text + RESET : text; }
 
     private void line(String text) {
-        captured.append(text).append('\n');
-        if (echoToTerminal) System.out.println(text);
+        synchronized (terminal) {
+            captured.append(text).append('\n');
+            if (!echoToTerminal) return;
+            clearActivityLine();
+            System.out.println(text);
+        }
+    }
+
+    // ─── the live activity line ─────────────────────────────────────────────────────────────
+
+    private void startActivity(LampEvent.StepInfo step) {
+        if (!live || !echoToTerminal || STEPS_THAT_PROMPT.contains(step.kind())) {
+            stopActivity();
+            return;
+        }
+        activity = Optional.of(new Activity(activityText(step), System.nanoTime(), ""));
+        synchronized (terminal) {
+            if (tickerStarted) return;
+            tickerStarted = true;
+        }
+        Thread.ofPlatform().daemon().name("oillamp-activity").start(this::tick);
+    }
+
+    /** What the user is told a step is doing. Plainer than the step's own description. */
+    private static String activityText(LampEvent.StepInfo step) {
+        return switch (step.kind()) {
+            case "BuildImage"          -> "building the sandbox image (the first build takes several minutes)";
+            case "ExtractImageContext" -> "preparing the image build";
+            case "RunContainer"        -> "starting the sandbox container";
+            case "AwaitReady"          -> "waiting for the desktop and the shell inside the sandbox to start";
+            case "CheckEndpoints"      -> "checking that the desktop and the shell answer";
+            default                    -> step.describe();
+        };
+    }
+
+    private void stopActivity() {
+        activity = Optional.empty();
+        synchronized (terminal) { clearActivityLine(); }
+    }
+
+    /** Redraws the activity line until the process ends. Runs on a daemon thread. */
+    private void tick() {
+        for (int frame = 0; ; frame++) {
+            synchronized (terminal) {
+                Optional<Activity> now = activity;
+                if (now.isPresent()) drawActivityLine(now.get(), frame);
+                else clearActivityLine();
+            }
+            try {
+                Thread.sleep(120);
+            } catch (InterruptedException e) {
+                return;
+            }
+        }
+    }
+
+    private void drawActivityLine(Activity now, int frame) {
+        long seconds = (System.nanoTime() - now.startedNanos()) / 1_000_000_000L;
+        String elapsed = seconds < 60 ? seconds + "s" : seconds / 60 + "m " + String.format("%02ds", seconds % 60);
+        String text = SPINNER[frame % SPINNER.length] + " " + now.text() + " · " + elapsed
+                    + (now.latestOutput().isBlank() || verbose ? "" : " · " + now.latestOutput().strip());
+        int room = Math.max(20, width - 1);
+        if (text.codePointCount(0, text.length()) > room)
+            text = text.substring(0, text.offsetByCodePoints(0, room - 1)) + "…";
+        System.out.print(CLEAR_LINE + dim(text));
+        System.out.flush();
+        activityShown = true;
+    }
+
+    /** Removes the activity line, if one is on the screen. Call with the terminal lock held. */
+    private void clearActivityLine() {
+        if (!activityShown) return;
+        System.out.print(CLEAR_LINE);
+        System.out.flush();
+        activityShown = false;
     }
 }

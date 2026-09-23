@@ -77,30 +77,40 @@ final class AgentGuide {
             ```
             lamp screenshot                 # PNG of the whole screen; prints the path
             lamp screenshot --region X,Y,W,H
-            lamp click X Y                  # absolute coordinates
-            lamp move X Y                   # and: drag, scroll
+            lamp click X Y                  # click at screen pixels X,Y (as in a screenshot)
+            lamp click X Y right double     # other buttons, double click
+            lamp move X Y                   # move the pointer to X,Y
+            lamp drag X1 Y1 X2 Y2
+            lamp scroll X Y 3               # scroll down 3 steps at X,Y; negative scrolls up
             lamp type "some text"
             lamp key ctrl+shift+t
             lamp wait-stable                # block until the screen stops changing
             lamp info                       # size, renderer, output name
             ```
 
-            After launching an application, `lamp wait-stable` then `lamp screenshot` is the
-            reliable way to see what actually appeared.
+            This works the same for Wayland and X11 applications, including Java Swing. Click a
+            text field before typing into it, so it has the keyboard focus.
+
+            `lamp click` and `lamp type` report no result. After any action, `lamp wait-stable`
+            then `lamp screenshot` is the reliable way to see what actually happened. After
+            launching an application, the same shows whether it appeared.
 
             `lamp` is a shell script and a convenience, not a gate. It is a thin wrapper over
-            ordinary Wayland tools that are installed here and that you may call directly
-            whenever it does not do what you need:
+            tools that are installed here and that you may call directly whenever it does not
+            do what you need:
 
             | Tool | For |
             |---|---|
             | `grim` | capture the screen or a region to PNG |
             | `slurp` | pick a region interactively |
-            | `wtype` | type text, press key combinations |
-            | `wlrctl` | move the pointer, click, scroll |
+            | `wtype -s 150` | type text, press key combinations (keep the `-s 150` pause: without it X11 applications lose the first key) |
+            | `/usr/local/lib/oillamp/lamp-pointer` | move, click, drag and scroll at screen positions |
+
+            Do not use `wlrctl pointer` to click: it moves the pointer by an offset, not to a
+            position, and its clicks do not reach any window.
 
             Read the script with `cat $(command -v lamp)` if you want to see exactly what it
-            runs. If you find something it should do and does not, say so — it is one file.
+            runs. If you find something it should do and does not, say so; it is one file.
 
             ## Network
 

@@ -277,6 +277,16 @@ to `ConsoleRenderer` (which prints it), to any listener registered with `observe
 
 `Context` carries the event sink and the command-line options through one run.
 
+**The activity line.** While a step runs, `ConsoleRenderer` shows what is happening on the last
+line of the terminal: a spinner, a plain description of the step, the elapsed time and the latest
+line of the step's own output (for the image build, `podman build`'s output, which
+`Machine.run(command, eachLine)` passes on line by line). A daemon thread redraws it in place every
+120 ms, and it is cleared before any ordinary line is printed, so it never mixes with the output
+above it. It is only drawn when standard output is a terminal, never into `Outcome.console()`, and
+never during steps that may run `sudo` (`InstallPackages`, `AddSubIds`), because redrawing would
+overwrite the password prompt. The terminal width is taken from `$COLUMNS` (100 if unset), so the
+line does not wrap.
+
 ### Class map
 
 | Area | Classes |
@@ -777,21 +787,39 @@ tiling compositor.
 
 ### The `lamp` helper
 
-A bash script at `/usr/local/bin/lamp`. Each subcommand wraps one standard tool:
+A bash script at `/usr/local/bin/lamp`. Each subcommand wraps one tool:
 
 | Command | Runs |
 |---|---|
 | `lamp screenshot [--region X,Y,W,H] [--out FILE]` | `grim`; default output `~/screenshots/screenshot-<time>.png`; prints the path |
-| `lamp click X Y [left\|right\|middle]` | `wlrctl pointer move`, then `wlrctl pointer click` |
-| `lamp move X Y`, `lamp drag X1 Y1 X2 Y2`, `lamp scroll DY [DX]` | `wlrctl pointer …` |
-| `lamp type "text"` | `wtype -- "text"` |
-| `lamp key ctrl+shift+t` | `wtype -M ctrl -M shift -k t` |
+| `lamp click X Y [left\|right\|middle] [double]` | `lamp-pointer click`: move to X,Y, press, release |
+| `lamp move X Y`, `lamp drag X1 Y1 X2 Y2`, `lamp scroll [X Y] AMOUNT [HORIZONTAL]` | `lamp-pointer …` |
+| `lamp type "text"` | `wtype -s 150 -- "text"` |
+| `lamp key ctrl+shift+t` | `wtype -s 150 -M ctrl -M shift -k t` |
 | `lamp wait-stable [SECONDS]` | takes a screenshot every 0.5 s until two are identical (default limit 10 s) |
 | `lamp info` | size, renderer, output name and screenshot directory |
 
 It is a script so that the agent can read it and call the tools directly when it needs something
 the script does not do. There is no window list: that would need sway's control socket, which the
 agent must not reach.
+
+**Pointer input goes through VNC.** `/usr/local/lib/oillamp/lamp-pointer` is a small Python
+program (standard library only) that connects to the desktop's VNC socket and sends pointer events:
+absolute positions and button presses, the same way your viewer does. Coordinates are screen
+pixels, as in a screenshot. It remembers the last position in `$XDG_RUNTIME_DIR`, so
+`lamp scroll AMOUNT` scrolls where the pointer last went. The agent can reach the VNC socket, which
+gives it nothing new: it can already see the screen and send input.
+
+`wlrctl` was used before and did not work, for two reasons. `wlrctl pointer move DX DY` moves the
+pointer *by* an offset, not *to* a position. And every `wlrctl` call creates a virtual mouse of its
+own and removes it when it exits; when it disappears, the window under the pointer loses pointer
+focus, so the next call's click reaches no window at all. Both apply to Wayland and X11
+applications. The spike "The agent can click and type in an X11 application, using only lamp"
+checks the result.
+
+**Keyboard input waits 150 ms before the first key** (`wtype -s 150`). Each `wtype` call sends the
+desktop a new keyboard layout, and X11 applications drop the key that arrives together with it, so
+without the pause the first key of every `lamp type` was lost.
 
 ### Viewer
 

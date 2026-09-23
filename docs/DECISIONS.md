@@ -148,12 +148,20 @@ or reach the infrastructure's processes. *(D-07, extended during implementation)
 
 ### The desktop helper `lamp` is a shell script
 
-`lamp screenshot`, `click`, `type` and so on wrap `grim`, `wtype` and `wlrctl`.
+`lamp screenshot`, `click`, `type` and so on wrap `grim`, `wtype` and a small Python helper,
+`lamp-pointer`, that sends mouse input through the desktop's VNC server.
 
 *Why:* the original plan was a Java VNC client. It would have needed a protocol implementation,
 PNG encoding and a build step that puts a jar into the image, for nothing the standard tools do not
 already do. A script can be read and fixed by the agent itself, and the agent can call the tools
 directly when the script does not do what it needs. *(D-27)*
+
+The mouse was first driven with `wlrctl`, which turned out not to work: its moves are relative, and
+each call's virtual mouse disappears when the call ends, taking the window's pointer focus with it,
+so clicks reached nothing. Sending pointer events over a VNC connection gives absolute positions
+and a device that stays for the whole move-and-click, and it is the same path the human's viewer
+uses. The helper implements only the few messages needed to send pointer events. *(changed during
+implementation)*
 
 ### Recording is off by default
 

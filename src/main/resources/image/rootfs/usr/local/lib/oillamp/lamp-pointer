@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Pointer input for the sandbox desktop, used by `lamp`.
+
+Usage:
+    lamp-pointer move X Y
+    lamp-pointer click X Y [left|middle|right] [double]
+    lamp-pointer drag X1 Y1 X2 Y2
+    lamp-pointer scroll X Y AMOUNT [HORIZONTAL]   (positive AMOUNT scrolls down / right)
+    lamp-pointer where                            (prints the last position lamp moved to)
+
+Why this goes through VNC instead of wlrctl:
+
+`wlrctl pointer move DX DY` moves *by* an offset, not *to* a position, and every wlrctl call
+creates a virtual mouse of its own and removes it when it exits. When that mouse disappears, the
+window under the pointer loses pointer focus, so the button press of the next call (a new mouse
+that has not moved) reaches no window at all. That is true for Wayland and X11 applications alike.
+
+wayvnc, the VNC server of the desktop, already offers exactly what is needed: absolute positions
+and button presses on one connection. It is the same path the human's viewer uses. This script is
+a minimal VNC (RFB 3.8) client that only sends pointer events. It uses nothing but the Python
+standard library.
+
+Coordinates are screen pixels, the same as in `lamp screenshot`. The top-left corner is 0,0.
+"""
+import os
+import socket
+import struct
+import sys
+import time
+
+SOCKET = os.environ.get("LAMP_VNC_SOCKET", "/oillamp/sockets/infra/vnc.sock")
+STATE = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "lamp-pointer-position")
+
+# RFB button mask bits.
+BUTTONS = {"left": 1, "middle": 2, "right": 4}
+WHEEL_UP, WHEEL_DOWN, WHEEL_LEFT, WHEEL_RIGHT = 8, 16, 32, 64
+
+# A short pause between events, so that the application sees them as separate events.
+PAUSE = 0.03
+
+
+def fail(message, code=1):
+    print(f"lamp: {message}", file=sys.stderr)
+    sys.exit(code)
+
+
+class Desktop:
+    """One VNC connection to the desktop, used only to send pointer events."""
+
+    def __init__(self):
+        self.sock = socket.socket(socket.AF_UNIX)
+        try:
+            self.sock.connect(SOCKET)
+        except OSError as e:
+            fail(f"cannot reach the desktop's VNC server at {SOCKET}: {e}", 3)
+        self._read(12)                                   # server protocol version
+        self.sock.sendall(b"RFB 003.008\n")
+        count = self._read(1)[0]
+        if count == 0:
+            fail("the VNC server refused the connection", 3)
+        if 1 not in self._read(count):                   # 1 = no authentication
+            fail("the VNC server requires authentication, which lamp does not support", 3)
+        self.sock.sendall(b"\x01")
+        if struct.unpack(">I", self._read(4))[0] != 0:
+            fail("the VNC server rejected the connection", 3)
+        self.sock.sendall(b"\x01")                       # shared: other viewers stay connected
+        self.width, self.height = struct.unpack(">HH", self._read(4))
+        self._read(16)                                   # pixel format, not needed
+        self._read(struct.unpack(">I", self._read(4))[0])  # desktop name
+
+    def _read(self, n):
+        data = b""
+        while len(data) < n:
+            chunk = self.sock.recv(n - len(data))
+            if not chunk:
+                fail("the VNC server closed the connection", 3)
+            data += chunk
+        return data
+
+    def pointer(self, mask, x, y):
+        if not (0 <= x < self.width and 0 <= y < self.height):
+            fail(f"{x},{y} is outside the screen, which is {self.width}x{self.height}", 2)
+        self.sock.sendall(struct.pack(">BBHH", 5, mask, x, y))
+        time.sleep(PAUSE)
+        remember(x, y)
+
+    def close(self):
+        # Give the server a moment to process the last event before the connection ends.
+        time.sleep(PAUSE)
+        self.sock.close()
+
+
+def remember(x, y):
+    try:
+        with open(STATE, "w") as f:
+            f.write(f"{x} {y}\n")
+    except OSError:
+        pass
+
+
+def last_position():
+    try:
+        with open(STATE) as f:
+            x, y = f.read().split()
+            return int(x), int(y)
+    except (OSError, ValueError):
+        return None
+
+
+def numbers(args, count, usage):
+    if len(args) < count:
+        fail(f"usage: {usage}", 2)
+    try:
+        return [int(a) for a in args[:count]]
+    except ValueError:
+        fail(f"usage: {usage} (whole numbers)", 2)
+
+
+def main(argv):
+    if not argv:
+        fail(__doc__.strip().splitlines()[2].strip(), 2)
+    action, args = argv[0], argv[1:]
+
+    if action == "where":
+        position = last_position()
+        print(f"{position[0]} {position[1]}" if position else "unknown")
+        return
+
+    desktop = Desktop()
+    if action == "move":
+        x, y = numbers(args, 2, "lamp move X Y")
+        desktop.pointer(0, x, y)
+    elif action == "click":
+        x, y = numbers(args, 2, "lamp click X Y [left|middle|right] [double]")
+        rest = args[2:]
+        button = BUTTONS.get(rest[0] if rest else "left")
+        if button is None:
+            fail(f"unknown button '{rest[0]}': use left, middle or right", 2)
+        times = 2 if "double" in rest else 1
+        desktop.pointer(0, x, y)
+        for _ in range(times):
+            desktop.pointer(button, x, y)
+            desktop.pointer(0, x, y)
+    elif action == "drag":
+        x1, y1, x2, y2 = numbers(args, 4, "lamp drag X1 Y1 X2 Y2")
+        desktop.pointer(0, x1, y1)
+        desktop.pointer(1, x1, y1)
+        steps = 10                                       # intermediate positions, like a real drag
+        for i in range(1, steps + 1):
+            desktop.pointer(1, x1 + (x2 - x1) * i // steps, y1 + (y2 - y1) * i // steps)
+        desktop.pointer(0, x2, y2)
+    elif action == "scroll":
+        x, y, amount = numbers(args, 3, "lamp scroll X Y AMOUNT [HORIZONTAL]")
+        horizontal = numbers(args[3:], 1, "lamp scroll X Y AMOUNT [HORIZONTAL]")[0] if len(args) > 3 else 0
+        desktop.pointer(0, x, y)
+        for wheel, count in ((WHEEL_DOWN if amount > 0 else WHEEL_UP, abs(amount)),
+                             (WHEEL_RIGHT if horizontal > 0 else WHEEL_LEFT, abs(horizontal))):
+            for _ in range(count):
+                desktop.pointer(wheel, x, y)
+                desktop.pointer(0, x, y)
+    else:
+        fail(f"unknown pointer action '{action}'", 2)
+    desktop.close()
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -748,16 +748,18 @@ An agent works through a terminal, so it needs a way to use a desktop without a 
 ```sh
 lamp screenshot                    # capture the screen, print the path
 lamp screenshot --region 0,0,800,600
-lamp click 960 540                 # click at absolute coordinates
+lamp click 960 540                 # click at screen coordinates, as in a screenshot
 lamp type "hello"                  # type text
 lamp key ctrl+shift+t              # press a key combination
 lamp wait-stable 10                # wait until the screen stops changing
 lamp info                          # size, renderer, where screenshots go
 ```
 
-It is deliberately a small shell script: each command is one line wrapping a standard Wayland tool
-(`grim`, `wtype`, `wlrctl`). An agent can read it with `cat $(command -v lamp)` and call those tools
-directly when the script does not do what it needs.
+It is deliberately a small shell script: each command is one line wrapping a tool (`grim` for
+screenshots, `wtype` for the keyboard, and a small helper that sends mouse input through the
+desktop's VNC server, the same way your viewer does). An agent can read it with
+`cat $(command -v lamp)` and call those tools directly when the script does not do what it needs.
+It works the same for Wayland and X11 applications, including Java Swing.
 
 `wait-stable` is the command that makes automation reliable. It takes two screenshots half a second
 apart and returns when they are identical. That is a much better way to know an application has

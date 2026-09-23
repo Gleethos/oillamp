@@ -524,7 +524,7 @@ final class Problems {
                 what.contains("build")
                     ? "the sandbox runs from an image oillamp builds; without it there is nothing to start"
                     : "the sandbox is the container; if it will not start there is no session")
-            .withEvidence(new Evidence.Value("output", output))
+            .withEvidence(new Evidence.Value("last lines of its output", output))
             .withFix(Fix.of("the output above is podman's own — it usually names the cause exactly"))
             .withFix(Fix.run("check the machine is still able to run containers", "oillamp doctor"));
     }

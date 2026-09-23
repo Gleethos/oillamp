@@ -2,9 +2,18 @@
 # lamp: drive the sandbox desktop from a shell.
 #
 # This is deliberately a shell script and deliberately thin. An agent that needs something this
-# does not do should call grim/wtype/wlrctl directly rather than wait for us to add a subcommand,
-# so every command below is one obvious line and the script says so in its own help. Reading it
-# with `cat $(command -v lamp)` is a supported way to find out what it does.
+# does not do can call the underlying tools directly (grim, wtype, and the pointer helper
+# /usr/local/lib/oillamp/lamp-pointer), and the script says so in its own help. Reading it with
+# `cat $(command -v lamp)` is a supported way to find out what it does.
+#
+# Pointer input (move, click, drag, scroll) goes through lamp-pointer, which talks to the desktop's
+# VNC server, the same way the human's viewer does. wlrctl is not used for it: `wlrctl pointer
+# move` moves by an offset rather than to a position, and a click from a separate wlrctl call does
+# not reach any window. lamp-pointer explains why.
+#
+# Keyboard input uses wtype with a 150 ms pause before the first key (`-s 150`). Each wtype call
+# sends the desktop a new keyboard layout, and X11 applications (Java Swing, for example) drop the
+# key that arrives together with it. Without the pause, the first key of every call was lost.
 #
 # It is also why there is no Java here: a binary the agent cannot read is a worse tool than a
 # script it can.
@@ -12,6 +21,9 @@
 set -Eeuo pipefail
 
 SCREENSHOT_DIR="${HOME}/screenshots"
+POINTER="${LAMP_POINTER:-/usr/local/lib/oillamp/lamp-pointer}"
+# Milliseconds wtype waits before the first key; see the comment at the top.
+KEY_SETTLE_MS=150
 
 die() { printf 'lamp: %s\n' "$*" >&2; exit 1; }
 
@@ -50,25 +62,30 @@ cmd_screenshot() {
 }
 
 cmd_click() {
-    need wlrctl
     [ $# -ge 2 ] || die "click takes X and Y"
-    wlrctl pointer move "$1" "$2"
-    wlrctl pointer click "${3:-left}"
+    "$POINTER" click "$@"
 }
 
-cmd_move()   { need wlrctl; [ $# -ge 2 ] || die "move takes X and Y"; wlrctl pointer move "$1" "$2"; }
-cmd_scroll() { need wlrctl; [ $# -ge 1 ] || die "scroll takes an amount"; wlrctl pointer scroll "${1}" "${2:-0}"; }
+cmd_move() { [ $# -ge 2 ] || die "move takes X and Y"; "$POINTER" move "$1" "$2"; }
 
-cmd_drag() {
-    need wlrctl
-    [ $# -ge 4 ] || die "drag takes X1 Y1 X2 Y2"
-    wlrctl pointer move "$1" "$2"
-    wlrctl pointer click left state:press
-    wlrctl pointer move "$3" "$4"
-    wlrctl pointer click left state:release
+cmd_drag() { [ $# -ge 4 ] || die "drag takes X1 Y1 X2 Y2"; "$POINTER" drag "$1" "$2" "$3" "$4"; }
+
+# lamp scroll X Y AMOUNT [HORIZONTAL], or lamp scroll AMOUNT [HORIZONTAL] at the last position
+# lamp moved the pointer to (the middle of the screen if it never has).
+cmd_scroll() {
+    [ $# -ge 1 ] || die "scroll takes an amount: lamp scroll [X Y] AMOUNT [HORIZONTAL]"
+    if [ $# -ge 3 ]; then
+        "$POINTER" scroll "$@"
+    else
+        local position
+        position=$("$POINTER" where)
+        [ "$position" = unknown ] && position="$(( ${OILLAMP_DISPLAY_WIDTH:-1920} / 2 )) $(( ${OILLAMP_DISPLAY_HEIGHT:-1080} / 2 ))"
+        # shellcheck disable=SC2086
+        "$POINTER" scroll $position "$@"
+    fi
 }
 
-cmd_type() { need wtype; [ $# -ge 1 ] || die "type takes the text to type"; wtype -- "$*"; }
+cmd_type() { need wtype; [ $# -ge 1 ] || die "type takes the text to type"; wtype -s "$KEY_SETTLE_MS" -- "$*"; }
 
 cmd_key() {
     need wtype
@@ -82,7 +99,7 @@ cmd_key() {
         if [ "$i" -eq "$last" ]; then args+=(-k "$part"); else args+=(-M "$part"); fi
         i=$((i + 1))
     done
-    wtype "${args[@]}"
+    wtype -s "$KEY_SETTLE_MS" "${args[@]}"
 }
 
 cmd_wait_stable() {
@@ -122,22 +139,29 @@ usage() {
 lamp — drive this sandbox's desktop.
 
   lamp screenshot [--region X,Y,W,H] [--out FILE]   capture the screen; prints the path
-  lamp click X Y [left|right|middle]                click at absolute coordinates
-  lamp move X Y                                     move the pointer
+  lamp click X Y [left|right|middle] [double]       click at screen coordinates
+  lamp move X Y                                     move the pointer to X Y
   lamp drag X1 Y1 X2 Y2                             press, move, release
-  lamp scroll AMOUNT [HORIZONTAL]                   scroll
+  lamp scroll [X Y] AMOUNT [HORIZONTAL]             scroll; positive is down / right
   lamp type "some text"                             type text
   lamp key ctrl+shift+t                             press a key combination
   lamp wait-stable [SECONDS]                        block until the screen stops changing
   lamp info                                         size, renderer, screenshot directory
 
-This is a thin wrapper, not a gate. It runs grim, slurp, wtype and wlrctl, all of which are
-installed here and which you may call directly whenever lamp does not do what you need:
+Coordinates are screen pixels, as in a screenshot; 0,0 is the top-left corner. This works for
+Wayland and X11 applications (including Java Swing) alike. A click reports no result: take a
+screenshot afterwards to see what it did.
 
-  grim -g "0,0 800x600" out.png     capture a region
-  slurp                             pick a region interactively
-  wtype -M ctrl -M shift -k t       press a combination
-  wlrctl pointer move 100 200       move the pointer
+This is a thin wrapper, not a gate. The tools it runs are installed here and you may call them
+directly whenever lamp does not do what you need:
+
+  grim -g "0,0 800x600" out.png                       capture a region
+  slurp                                               pick a region interactively
+  wtype -s 150 -M ctrl -M shift -k t                  press a combination
+  /usr/local/lib/oillamp/lamp-pointer click 100 200   pointer input, through the desktop's VNC server
+
+Do not use `wlrctl pointer` for clicking: it moves by an offset rather than to a position, and a
+click from a separate wlrctl call does not reach the window.
 
 Read this script with `cat $(command -v lamp)` to see exactly what it runs. If it should do
 something it does not, say so — it is one file.

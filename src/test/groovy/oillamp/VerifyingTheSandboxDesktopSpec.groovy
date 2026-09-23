@@ -251,6 +251,55 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             !result.mentions('Authorization required')
     }
 
+    def 'The agent can click and type in an X11 application, using only lamp'() {
+        reportInfo """
+            This is what an agent does to test a Java Swing application: start it, click on it,
+            type into it, and look at the result. Swing draws through X11, so it is checked here
+            with `xev`, a standard X11 program that prints every mouse and keyboard event it
+            receives. The scenario uses only `lamp` and then asks the program what arrived.
+
+            Two bugs made this fail while every command reported success: `lamp click` moved the
+            pointer by the given amount instead of to the given position, and its click reached
+            no window at all; and the first key of every `lamp type` was dropped by X11
+            applications. The first letter of the text is therefore part of what is checked.
+        """
+        when: 'an X11 application is started, clicked once and typed into'
+            var result = inSandbox('''
+                rm -f /tmp/events.log
+                nohup xev -event button -event keyboard > /tmp/events.log 2>&1 &
+                sleep 2
+                lamp click 300 200
+                lamp type "Hello, oillamp"
+                sleep 1
+                cat /tmp/events.log
+            '''.stripIndent())
+            var lines = result.out.readLines()
+
+        then: 'it received exactly one button press, where lamp clicked'
+            var presses = lines.findIndexValues { it.startsWith('ButtonPress') }
+            presses.size() == 1
+            lines[(int) presses.first() + 1..(int) presses.first() + 3].any { it.contains('root:(300,200)') }
+
+        and: 'and every character that was typed, in order, the first one included'
+            typed(lines) == 'Hello, oillamp'
+
+        cleanup:
+            inSandbox('pkill -x xev || true')
+    }
+
+    /** The characters an X11 program received, as xev reports them for each key press. */
+    private static String typed(List<String> xevLines) {
+        var out = new StringBuilder()
+        for (int i = 0; i < xevLines.size(); i++) {
+            if (!xevLines[i].startsWith('KeyPress')) continue
+            var lookup = xevLines.subList(i + 1, Math.min(i + 6, xevLines.size()))
+                    .find { it.contains('XLookupString gives') }
+            var matcher = lookup =~ /gives 1 bytes: \([0-9a-f]+\) "(.)"/
+            if (matcher.find()) out.append(matcher.group(1))
+        }
+        out.toString()
+    }
+
     def 'The viewer connects straight to the wayvnc Unix socket'() {
         reportInfo """
             It was not certain that TigerVNC's vncviewer accepts a Unix socket path as its server

@@ -154,9 +154,11 @@ final class StepRunner {
             argv.add(argument.first() + "=" + argument.second());
         }
         argv.add(step.context().toString());
-        // Generous, because a first build downloads a desktop and a JDK.
-        Machine.Outcome outcome = run("podman build", Duration.ofMinutes(45),
-                                      argv.toArray(String[]::new));
+        // Generous, because a first build downloads a desktop and a JDK. The build's output is
+        // passed on line by line as it arrives, so the console can show what the build is doing
+        // during the minutes it takes.
+        Machine.Outcome outcome = runStreaming("podman build", Duration.ofMinutes(45),
+                Tuple.of(String.class, argv.toArray(String[]::new)));
         return outcomeToResult(step, outcome, "podman build");
     }
 
@@ -250,7 +252,9 @@ final class StepRunner {
             case Machine.Outcome.Finished finished when finished.exitCode() == 0 -> Result.ok(step);
             case Machine.Outcome.Finished finished -> Result.err(Problems.podmanFailed(
                     what, finished.exitCode(),
-                    (finished.standardError() + finished.standardOutput()).strip()));
+                    // Only the end, with the error output last: podman prints the reason for a
+                    // failure there, and a whole image build's output is hundreds of kilobytes.
+                    tail((finished.standardOutput() + "\n" + finished.standardError()).strip(), 40)));
             case Machine.Outcome.NotFound notFound ->
                     Result.err(Problems.commandNotFound(notFound.executable()));
             case Machine.Outcome.TimedOut timedOut ->
@@ -356,6 +360,19 @@ final class StepRunner {
 
     private Machine.Outcome run(String tag, Duration timeout, String... argv) {
         return run(tag, timeout, Tuple.of(String.class, argv));
+    }
+
+    /** Like {@link #run(String, Duration, Tuple)}, but reports each output line as it is printed. */
+    private Machine.Outcome runStreaming(String tag, Duration timeout, Tuple<String> argv) {
+        Machine.Command command = new Machine.Command(argv,
+                sprouts.Association.between(String.class, String.class),
+                Optional.empty(), timeout, tag, false);
+        context.emit(new LampEvent.Output(tag, "$ " + redacted(command)));
+        // Standard output and standard error arrive on two threads; report one line at a time.
+        Object oneAtATime = new Object();
+        return machine.run(command, line -> {
+            synchronized (oneAtATime) { context.emit(new LampEvent.Output(tag, line)); }
+        });
     }
 
     private Machine.Outcome run(String tag, Duration timeout, Tuple<String> argv) {

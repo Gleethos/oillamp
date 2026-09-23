@@ -64,6 +64,21 @@ public interface Machine {
     Outcome run(Command command);
 
     /**
+     * Runs a command like {@link #run(Command)}, and also passes each line of its output (standard
+     * output and standard error) to {@code eachLine} as soon as it is printed.
+     *
+     * <p>Used for long commands, such as building the image, so that the user can see progress
+     * while they run. The default implementation passes the lines on only once the command has
+     * finished, which is enough for a simulated machine.
+     */
+    default Outcome run(Command command, java.util.function.Consumer<String> eachLine) {
+        Outcome outcome = run(command);
+        outcome.output().lines().forEach(eachLine);
+        outcome.errorOutput().lines().forEach(eachLine);
+        return outcome;
+    }
+
+    /**
      * Starts a process and does not wait for it: a terminal window, a viewer, or an interactive
      * shell.
      *
