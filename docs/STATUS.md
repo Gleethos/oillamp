@@ -78,7 +78,7 @@ user's involvement.
 It also produced the first finding that only real hardware could produce — see
 *Known gaps on Ubuntu 24.04* below.
 
-Plus **95 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
+Plus **96 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
 `build/spock-reports/*.md` after `./gradlew test`.
 
 ### Findings from that run
@@ -351,7 +351,7 @@ S5 and S14; S10 closed with M5. Neither of the two blocks anything:
 
 | # | Assumption | Why it is still open |
 |---|---|---|
-| **S5** | GPU passthrough via `--device` + `--keep-groups` | Needs a host whose user is in the `render` group. This one is not — oillamp detects that and says so, and the desktop runs on software rendering meanwhile. |
+| **S5** | GPU passthrough via `--device` + `--keep-groups` | Needs a host whose user is in the `render` group that owns `/dev/dri/renderD128`. This one is not, so the desktop runs on software rendering. oillamp now prints the exact command — `sudo usermod -aG render <you>`, on the host, in your own terminal — and the part people miss: a new group only reaches processes started after a fresh login, so the running session will not pick it up. |
 | **S10** | Whether their HTTP stacks honour the proxy variables | **Resolved.** Package names, binaries and install were confirmed against a real toolchain image (see below); M5 settled the proxy half, with `npm`, `pip`, `git` and `pi install` all working through it from inside a container. |
 | **S14** | wayvnc can set the desktop name shown in the viewer's title bar | Cosmetic; §33's fallback is "ignore". |
 
@@ -396,7 +396,7 @@ Two ideas carry most of the design:
 ## Running it
 
 ```bash
-./gradlew build                 # compile, run all 95 fast scenarios
+./gradlew build                 # compile, run all 96 fast scenarios
 ./gradlew installDist           # build/install/oillamp/bin/oillamp
 ./gradlew test                  # then read build/spock-reports/*.md
 ./gradlew spikes                # §33 assumptions against real podman; needs podman

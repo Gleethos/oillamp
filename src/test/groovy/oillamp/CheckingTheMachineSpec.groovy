@@ -265,6 +265,39 @@ class CheckingTheMachineSpec extends Specification {
             session.reported('OIL-HOST-003')
     }
 
+    def 'A GPU the user is merely not in the group for is told how to fix that'() {
+        reportInfo """
+            The desktop falls back to software rendering and says why, which is right - the GPU
+            must never block a session (D-24). But "you are not in the 'render' group" is a fact,
+            not an answer, and the first person to read that line asked what exactly they were
+            supposed to do about it and where.
+
+            So the line carries the command, with the real group and the real user name filled in
+            from the probe, and says the part that is easy to miss: a new group only reaches
+            processes started after a fresh login, so the session running now will not see it.
+
+            oillamp does not run this itself, even though it runs `sudo usermod` for subuid ranges.
+            That one is a prerequisite and this one is not: everything works without it, just more
+            slowly. And since the change cannot take effect until the user logs in again, doing it
+            silently would leave them on software rendering anyway, now with an altered account.
+        """
+        given: 'a machine with a render node the user has no access to'
+            var lamp = sandbox.lampPath()
+            sandbox.machine { it.renderNode('/dev/dri/renderD128', 'render', 'i915') }
+
+        when:
+            var outcome = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+
+        then: 'the reason is stated'
+            outcome.console().contains("not in the 'render' group")
+
+        and: 'and so is the command, for this machine and this user'
+            outcome.console().contains('sudo usermod -aG render dev')
+
+        and: 'including the part that catches people out'
+            outcome.console().contains('log out and back in')
+    }
+
     def 'An operating system that is not Linux is refused immediately'() {
         reportInfo """
             The sandbox is a rootless podman container built on Linux user namespaces. There is

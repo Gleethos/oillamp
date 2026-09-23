@@ -75,7 +75,7 @@ final class LampPhase {
                 + (config.display().scale() == 1.0 ? "" : " at scale " + config.display().scale())
                 + ", renderer " + gpu.renderer()
                 + (gpu instanceof Gpu.Decision.Hardware ? " (hardware)" : " (software)"));
-        Gpu.noteFor(gpu).ifPresent(note -> context.emit(new LampEvent.Info("lamp", note.whatHappened())));
+        Gpu.noteLine(gpu).ifPresent(note -> context.emit(new LampEvent.Info("lamp", note)));
 
         SessionId session = SessionId.at(machine.now());
 

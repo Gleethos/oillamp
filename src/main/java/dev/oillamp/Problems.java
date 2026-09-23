@@ -614,12 +614,12 @@ final class Problems {
             .withFix(Fix.of("re-run with --debug and attach the session log to a bug report"));
     }
 
-    public static Problem gpuSoftware(String reason) {
+    public static Problem gpuSoftware(String reason, Tuple<Fix> remedy) {
         return new Problem(GPU_SOFTWARE, Severity.INFO, "GPU not used",
                 reason,
                 "the desktop falls back to software rendering, which is slower but always works (D-24)",
                 Tuple.of(Evidence.class),
-                Tuple.of(Fix.class, Fix.of("set display.gpu = \"off\" in oillamp.toml to silence this")),
+                remedy.add(Fix.of("or set display.gpu = \"off\" in oillamp.toml to silence this")),
                 Optional.empty());
     }
 

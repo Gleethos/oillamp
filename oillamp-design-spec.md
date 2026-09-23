@@ -1782,6 +1782,13 @@ changed for convenience alone.
   §19.1 called for a symlink to `/oillamp/session/agent-guide.md`, which is a container path and
   would dangle on the host, where the user reads the directory. It is now a real file, written
   into the agent's home each session because it describes that session's configuration.
+- **The GPU fallback stated a fact and withheld the answer (§14.3).** `OIL-GPU-001` reported "you
+  are not in the 'render' group that owns /dev/dri/renderD128" and stopped there, which prompted
+  the obvious question. The note now carries the command, with the group and user name filled in
+  from the probe, and says that a new group only reaches processes started after a fresh login.
+  oillamp does not run it itself: unlike the subuid ranges it does fix, this is not a
+  prerequisite, and a change that cannot take effect until the next login would leave the session
+  on software rendering anyway.
 - **A 403 from the egress proxy went out as two writes (§18.2).** The head and the body were
   written separately, so a client that reads once — which is common — could see the status and
   not the sentence naming the rule that refused it. That sentence is the entire reason a denial is
