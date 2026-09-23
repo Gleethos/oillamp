@@ -86,8 +86,7 @@ class TheSessionCommandsSpec extends Specification {
             holding a lock over a sandbox that no longer exists, with its relays still bound and
             its recording unfinished. Asking it instead runs the full, ordered shutdown - stop the
             recorder so the video file is properly closed, take down the relays, stop and remove
-            the container, release the lock - which is the same sequence a closed terminal window
-            sets off.
+            the container, release the lock - which is the same sequence Ctrl-C sets off.
         """
         given:
             var lamp = sandbox.lampPath()
@@ -108,18 +107,8 @@ class TheSessionCommandsSpec extends Specification {
 
     def 'an extra shell attaches to the session, and closing it ends nothing'() {
         reportInfo """
-            Exactly one connection decides when the session ends: the terminal window oillamp
-            opened itself, which reaches the sandbox through a socket the agent cannot get at.
-            Every other shell is an extra - useful, unlimited in number, and powerless to end
-            anything.
-
-            The session end is detected by watching that one relayed connection rather than by
-            watching the terminal program, because a terminal emulator very often returns straight
-            away and leaves its window running as somebody else's child process. Watching the
-            program would report the session over within milliseconds of starting it.
-
-            That is what makes `oillamp shell` safe to close, and it is why the two relays are
-            separate sockets rather than one socket with a counter.
+            No shell decides when the session ends. Extra shells are useful, unlimited in number,
+            and powerless to end anything, and so is the window oillamp opened itself.
         """
         given:
             var lamp = sandbox.lampPath()
@@ -137,6 +126,40 @@ class TheSessionCommandsSpec extends Specification {
                                        it.text().contains('extra shell') } }
 
         and: 'and is still running now that it has gone'
+            session.alive
+            reported.every { !(it instanceof LampEvent.Summary && it.title().startsWith('session ')) }
+    }
+
+    def 'after the shell window closes, the session keeps running and another shell can attach'() {
+        reportInfo """
+            The user closed the shell window oillamp opened, perhaps because a program in it hung.
+            That is not the user saying they are finished. The sandbox, the agent's programs and
+            the desktop carry on, and `oillamp shell` opens a new way in.
+        """
+        given: 'a session whose shell window the user closes after a second'
+            var lamp = sandbox.lampPath()
+            sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(1))
+                                .userStopsTheSessionAfter(Duration.ofSeconds(60)) }
+            var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
+            session = Thread.start { sessionOutcome = oillamp.run('at', lamp.toString()) }
+            waitUntil { reported.any { it instanceof LampEvent.Info &&
+                                       it.text().contains('the shell window closed') } }
+
+        when:
+            var status = sandbox.oillamp.run('status', lamp.toString())
+            var shell = sandbox.oillamp.run('shell', lamp.toString())
+
+        then: 'the session still answers, and says the window is closed'
+            status.status() == ExitStatus.SUCCESS
+            status.console().contains('running')
+            status.console().contains('shell window oillamp opened is closed')
+
+        and: 'a new shell attached to it'
+            shell.status() == ExitStatus.SUCCESS
+            waitUntil { reported.any { it instanceof LampEvent.Info &&
+                                       it.text().contains('extra shell attached') } }
+
+        and: 'and nothing has ended'
             session.alive
             reported.every { !(it instanceof LampEvent.Summary && it.title().startsWith('session ')) }
     }

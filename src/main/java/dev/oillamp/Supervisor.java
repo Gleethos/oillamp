@@ -14,7 +14,7 @@ import sprouts.Tuple;
 /// Runs a session: opens the two windows, holds the SSH relays, the control socket and the egress
 /// proxy, watches the container, and shuts everything down when the session ends.
 ///
-/// Without it, closing the terminal would leave a container, a recording and a lock behind.
+/// Without it, ending the session would leave a container, a recording and a lock behind.
 ///
 /// One thread, the event loop in [#loop()], owns the session state. Everything that can
 /// happen (a shell connecting, the container dying, Ctrl-C, `oillamp stop`, a second passing)
@@ -38,6 +38,10 @@ final class Supervisor {
     /// How often a health line is printed in the terminal oillamp was started from. Changes, such as
     /// a socket that stops answering, are reported immediately, not at the next health line.
     private static final Duration HEARTBEAT = Duration.ofSeconds(30);
+
+    /// How a signal is described in the closing summary. The JVM runs the same shutdown hook for all
+    /// three, so it cannot say which one it was.
+    private static final String SIGNALLED = "Ctrl-C, this terminal closing, or a kill";
 
     private final Machine machine;
     private final Context context;
@@ -85,7 +89,8 @@ final class Supervisor {
         this.rules = new SessionMachine(new SessionMachine.Settings(
                 prepared.config().timeouts().terminalConnect(),
                 prepared.config().viewer().openOnStart() && context.options().openViewer(),
-                prepared.config().viewer().viewOnly()));
+                prepared.config().viewer().viewOnly(),
+                prepared.layout().root().toString()));
         this.sessionStarted = machine.now();
         this.state = new SessionState.Starting(sessionStarted);
     }
@@ -174,7 +179,9 @@ final class Supervisor {
         return switch (state) {
             case SessionState.Starting ignored -> "the sandbox is coming up";
             case SessionState.AwaitingTerminal ignored -> "waiting for your terminal window";
-            case SessionState.Running ignored -> "your shell is connected";
+            case SessionState.Running running -> running.shellWindowOpen()
+                    ? "your shell is connected"
+                    : "running; the shell window oillamp opened is closed";
             case SessionState.ShuttingDown shutting -> shutting.reason().describe();
             case SessionState.Stopped stopped -> stopped.reason().describe();
         };
@@ -550,7 +557,7 @@ final class Supervisor {
                 (viewers.isEmpty()
                         ? "viewer         none — open one with `oillamp view " + layout.root() + "`"
                         : "viewer         open now — another with `oillamp view " + layout.root() + "`"),
-                "shell          open now — extra shells with `oillamp shell " + layout.root() + "`",
+                "shell          open now — more, at any time, with `oillamp shell " + layout.root() + "`",
                 "the agent sees " + layout.agentDir() + " and nothing else of this lamp",
                 // Described by what the agent can reach, not by how the policy is written.
                 "network        " + (config.network().defaultDecision() == Decision.ALLOW
@@ -567,8 +574,9 @@ final class Supervisor {
                 : lines.add("recording      off — set `recording.enabled = true` in "
                           + layout.config() + " to record this desktop");
         lines = lines.add("this terminal  keeps reporting the sandbox's health until the session ends");
-        lines = lines.add("to finish      close the shell window, press Ctrl-C here, "
+        lines = lines.add("to finish      press Ctrl-C here, close this terminal, "
                         + "or run `oillamp stop " + layout.root() + "`");
+        lines = lines.add("               closing the shell or viewer windows leaves the session running");
         context.emit(new LampEvent.Summary("your session is up", lines));
     }
 
@@ -611,7 +619,8 @@ final class Supervisor {
         }
     }
 
-    /// The terminal window oillamp opened. When its connection closes, the session ends.
+    /// The shell window oillamp opened. Its connecting is what makes the session count as up;
+    /// its closing is reported and ends nothing.
     private final class PrimaryListener implements Relay.Listener {
         @Override public void connected()    { post(new SessionEvent.PrimaryConnected()); }
         @Override public void disconnected() { post(new SessionEvent.PrimaryDisconnected()); }
@@ -637,13 +646,16 @@ final class Supervisor {
     }
 
     /// Runs on Ctrl-C, SIGTERM or SIGHUP: asks for a clean shutdown and waits up to 30 seconds for it.
+    ///
+    /// SIGHUP is what the terminal oillamp was started from sends when it is closed. That terminal
+    /// is where the session reports what it is doing, so closing it ends the session.
     private void onSignal() {
-        post(new SessionEvent.Interrupted("SIGINT/SIGTERM"));
+        post(new SessionEvent.Interrupted(SIGNALLED));
         Instant deadline = Instant.now().plusSeconds(30);
         while (!state.isFinal() && Instant.now().isBefore(deadline)) sleep(Duration.ofMillis(100));
         // Last resort: the loop did not get there, so run the sequence directly. It is idempotent.
         if (!state.isFinal())
-            shutDown(new SessionState.ShutdownReason.UserInterrupt("SIGINT/SIGTERM", false));
+            shutDown(new SessionState.ShutdownReason.UserInterrupt(SIGNALLED, false));
     }
 
     // ─── the control socket ────────────────────────────────────────────────────────────────

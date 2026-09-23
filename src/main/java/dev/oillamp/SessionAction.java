@@ -10,7 +10,8 @@ sealed interface SessionAction {
     /// Open a desktop viewer window. Closing it does not end the session.
     record LaunchViewer(boolean viewOnly) implements SessionAction {}
 
-    /// Open the terminal window whose SSH connection is the session.
+    /// Open the terminal window with the user's shell. The session is up once its SSH connection
+    /// arrives.
     ///
     /// Always a new window. The terminal oillamp was started from keeps printing what the
     /// session is doing.

@@ -154,8 +154,7 @@ final class Commands {
     /// `oillamp shell <dir>`: an extra shell in this terminal.
     ///
     /// The supervisor returns the ssh command and this process runs it, because the shell belongs
-    /// in the terminal the user typed this into. Closing it does not end the session; only closing
-    /// the terminal window oillamp opened does.
+    /// in the terminal the user typed this into. Closing it does not end the session.
     public ExitStatus shell(Path lampPath) {
         Result<Control.Reply> reply = askTheSession(lampPath, "shell", Control.Request.of("shell"));
         if (reply instanceof Result.Err<Control.Reply> failure) {

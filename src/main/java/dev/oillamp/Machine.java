@@ -328,15 +328,25 @@ public interface Machine {
         }
 
         /// A window program that cannot be started at all. A viewer failing this way is a warning;
-        /// a terminal failing this way ends the session.
+        /// a terminal failing this way ends the session, because it did not start as asked.
         public Simulation windowRefusing(String executable) {
             builder.windowRefusing(executable);
             return this;
         }
 
         /// How long the simulated windows stay open before the user "closes" them.
+        ///
+        /// Closing the shell window does not end a session, so the simulated user then runs
+        /// `oillamp stop`, 200 ms later unless [#userStopsTheSessionAfter] says otherwise.
         public Simulation windowsStayOpenFor(java.time.Duration duration) {
             builder.terminalStaysOpen(duration);
+            return this;
+        }
+
+        /// How long the simulated user leaves the session running after closing its shell window,
+        /// before they end it with `oillamp stop`.
+        public Simulation userStopsTheSessionAfter(java.time.Duration duration) {
+            builder.stopsAfterClosingTheShell(duration);
             return this;
         }
 

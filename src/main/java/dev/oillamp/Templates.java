@@ -191,7 +191,9 @@ final class Templates {
               oillamp at %s
 
             starts it, opens a terminal already logged into the sandbox, and opens a window showing
-            the agent's desktop. Closing that terminal shuts the sandbox down again.
+            the agent's desktop. Ctrl-C in the terminal you ran it from shuts the sandbox down
+            again. Closing the shell or desktop window does not; `oillamp shell` and `oillamp view`
+            open new ones.
 
             What is here
               oillamp.toml            Your settings: display size, recording, and the network policy.

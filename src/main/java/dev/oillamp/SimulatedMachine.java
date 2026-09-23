@@ -41,6 +41,7 @@ final class SimulatedMachine implements Machine {
     private final java.util.Set<String> refusedWindows;
     private final Duration terminalStaysOpen;
     private final boolean terminalConnects;
+    private final Duration stopsAfterClosingTheShell;
     private final RealMachine realMachine = new RealMachine();
 
     /// The sockets the simulated container is listening on, and whether it is still up.
@@ -57,6 +58,7 @@ final class SimulatedMachine implements Machine {
         this.refusedWindows = java.util.Set.copyOf(builder.refusedWindows);
         this.terminalStaysOpen = builder.terminalStaysOpen;
         this.terminalConnects = builder.terminalConnects;
+        this.stopsAfterClosingTheShell = builder.stopsAfterClosingTheShell;
         this.operatingSystemName = builder.operatingSystemName;
         this.systemFiles = Map.copyOf(builder.systemFiles);
         this.environment = Map.copyOf(builder.environment);
@@ -357,15 +359,21 @@ final class SimulatedMachine implements Machine {
     /// ssh does to the primary relay, the window really connects to it.
     ///
     /// So a simulated session runs as a real one would: the relay accepts, the supervisor reaches
-    /// `Running`, and when the window closes the session shuts down because the terminal was
-    /// closed.
+    /// `Running`, and the window closes. Closing it does not end a real session, so the simulated
+    /// user then does what a real one does when they are finished: runs `oillamp stop`, which
+    /// goes through the session's real control socket.
     @Override public Window launch(Command command, Window.Stdio stdio) {
         if (refusedWindows.contains(command.executable()))
             return Window.refused(command.executable(), "No such file or directory");
         if (!executables.containsKey(command.executable()))
             return Window.refused(command.executable(), "command not found");
         Optional<Path> socket = unixConnectTarget(command);
-        return new SimulatedWindow(terminalConnects ? socket : Optional.empty(), terminalStaysOpen);
+        Optional<Path> stopThrough = socket
+                .filter(path -> path.getFileName() != null
+                             && path.getFileName().toString().equals("ssh-primary.sock"))
+                .map(path -> path.resolveSibling("control.sock"));
+        return new SimulatedWindow(terminalConnects ? socket : Optional.empty(), terminalStaysOpen,
+                terminalConnects ? stopThrough : Optional.empty(), stopsAfterClosingTheShell);
     }
 
     /// A window that is open for a while, holding a connection if it was given one to hold.
@@ -375,7 +383,10 @@ final class SimulatedMachine implements Machine {
                 new java.util.concurrent.atomic.AtomicBoolean(true);
         private volatile Optional<java.nio.channels.SocketChannel> connection = Optional.empty();
 
-        private SimulatedWindow(Optional<Path> connectTo, Duration staysOpen) {
+        /// @param stopThrough the session's control socket, for the shell window oillamp opens: the
+        ///                    simulated user asks it to stop `stopAfter` once they close the window
+        private SimulatedWindow(Optional<Path> connectTo, Duration staysOpen,
+                                Optional<Path> stopThrough, Duration stopAfter) {
             Thread.ofVirtual().name("simulated-window").start(() -> {
                 if (connectTo.isPresent()) {
                     try {
@@ -388,10 +399,15 @@ final class SimulatedMachine implements Machine {
                 }
                 try {
                     Thread.sleep(staysOpen);
+                    close();
+                    if (stopThrough.isEmpty()) return;
+                    Thread.sleep(stopAfter);
+                    Path control = stopThrough.get();
+                    Control.ask(control, control, Control.Request.of("stop"), "stop");
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
+                    close();
                 }
-                close();
             });
         }
 
@@ -465,6 +481,9 @@ final class SimulatedMachine implements Machine {
         /// simulated one ends when this elapses, and the path through the code is the same.
         private Duration terminalStaysOpen = Duration.ofMillis(250);
         private boolean terminalConnects = true;
+        /// How long the simulated user waits after closing the shell window before running
+        /// `oillamp stop`. Long enough for the session to report the window closing first.
+        private Duration stopsAfterClosingTheShell = Duration.ofMillis(200);
 
         private Instant clock = Instant.parse("2026-09-22T14:15:03Z");
         private boolean clockRuns = false;
@@ -562,6 +581,7 @@ final class SimulatedMachine implements Machine {
         }
         public void terminalStaysOpen(Duration duration) { this.terminalStaysOpen = duration; }
         public void terminalNeverConnects() { this.terminalConnects = false; }
+        public void stopsAfterClosingTheShell(Duration duration) { this.stopsAfterClosingTheShell = duration; }
 
         public void passThrough(Tuple<String> executables) {
             for (String executable : executables) {

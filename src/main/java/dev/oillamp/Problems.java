@@ -440,15 +440,14 @@ final class Problems {
 
     /// The terminal window was started but never connected.
     ///
-    /// Without a timeout, a sandbox would keep running with nobody in it and nothing to end it.
-    /// The cause is usually the terminal's arguments, so the fix suggests running the command by
-    /// hand.
+    /// Without a timeout, the session would wait for a shell that is never coming. The cause is
+    /// usually the terminal's arguments, so the fix suggests running the command by hand.
     public static Problem terminalDidNotConnect(java.time.Duration waited) {
         return error(TERM_NO_CONNECT, "The terminal window did not connect",
                 "the terminal was started but no shell reached the sandbox within "
                         + waited.toSeconds() + "s",
-                "the terminal window is the session: oillamp ends a session nobody is in rather "
-              + "than leave a sandbox running unattended")
+                "the session did not start the way it should, and would not in the next one "
+              + "either; oillamp ends it rather than leave a sandbox running you have no shell in")
             .withFix(Fix.of("run the ssh command above by hand — its output says what ssh could not do"))
             .withFix(Fix.of("or name a terminal you know works with terminal.profile in oillamp.toml"));
     }
@@ -457,8 +456,8 @@ final class Problems {
     public static Problem terminalNotStarted(Tuple<String> argv, String reason, String output) {
         Problem problem = error(TERM_NOT_STARTED, "The terminal window could not be opened",
                 "starting " + argv.first() + " failed: " + reason,
-                "without a terminal there is no shell in the sandbox, so the session has nothing "
-              + "to be for")
+                "the terminal setting is most likely wrong, and would be wrong in every session, "
+              + "so oillamp stops here and says so")
             .withEvidence(new Evidence.Command(argv, 127, output, java.time.Duration.ZERO))
             .withFix(Fix.of("check that " + argv.first() + " starts from this terminal"))
             .withFix(Fix.of("or name another one with terminal.profile in oillamp.toml"));
@@ -482,8 +481,8 @@ final class Problems {
     public static Problem extraPrimaryRejected(Path socket) {
         return warning(SSH_PRIMARY_TAKEN, "A second connection to the session's own socket was refused",
                 socket + " accepts one connection per session, and it is already in use",
-                "closing that one terminal is what ends the session, so the slot cannot be shared; "
-              + "use `oillamp shell <dir>` for extra shells, which do not end anything")
+                "that socket is kept for the shell window oillamp opens; "
+              + "use `oillamp shell <dir>` for more shells")
             .withEvidence(new Evidence.File(socket, "the primary SSH relay"))
             .withFix(Fix.of("open extra shells with `oillamp shell <dir>`"));
     }

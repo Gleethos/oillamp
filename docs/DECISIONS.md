@@ -193,15 +193,22 @@ Each lamp has its own ed25519 key pair and a pinned host key.
 would still work across a future virtual-machine boundary. Your own SSH keys are never offered to
 the sandbox and you are never asked to accept a host key. *(D-08)*
 
-### A session ends when the terminal window's SSH connection closes
+### A session ends in the terminal it was started from, not in the shell window
 
-The supervisor relays the primary SSH connection itself and ends the session when it closes. It
-does not watch the terminal program.
+The session ends on Ctrl-C in the terminal `oillamp at` was started from, on closing that terminal,
+or on `oillamp stop`. Closing the shell window or the viewer ends nothing; the user opens new ones
+with `oillamp shell` and `oillamp view`.
 
-*Why:* many terminal emulators (GNOME Terminal, Ptyxis) hand the new window to a server process and
-exit immediately, so the process id is meaningless. The relayed connection is exactly the thing
-that ends when the user closes the window. Because the relay socket is outside the container, the
-agent cannot take that slot. *(D-09)*
+The supervisor still relays the shell window's SSH connection itself, rather than watching the
+terminal program: the session counts as up once that connection arrives, and `oillamp status`
+reports when it has closed.
+
+*Why:* the first design ended the session when the shell window closed. In use, that was wrong: a
+user whose program hung in the shell closed the window to get a fresh shell, and lost the whole
+sandbox instead. The terminal oillamp was started from is where the session reports what it is
+doing, so it is the natural place to end it. Many terminal emulators (GNOME Terminal, Ptyxis) hand
+the new window to a server process and exit immediately, so watching the terminal program would
+say nothing about the window. *(D-09, changed on 2026-09-23)*
 
 ### Two new windows; the launching terminal is never taken over
 

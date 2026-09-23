@@ -67,8 +67,9 @@ All on Ubuntu 24.04.5, GNOME on Wayland, podman 4.9.3, AMD Phoenix graphics.
 ### Sessions
 
 - A whole session: image, container, both windows, relays, control socket, shutdown.
-- All three ways of ending it (closing the shell window, `oillamp stop`, Ctrl-C) removed the
-  container and left no `session.json`, sockets or lock.
+- All three ways of ending it (Ctrl-C, closing the terminal `oillamp at` runs in, `oillamp stop`)
+  removed the container and left no `session.json`, sockets or lock. Closing the shell window left
+  the session running, and `oillamp shell` then opened a new shell into it (checked on 2026-09-23).
 - `oillamp shell` opened a second shell as `agent` in `~/workspace`; closing it did not end the
   session.
 - After the supervisor was killed with `kill -9`, `oillamp stop` found the orphaned container and

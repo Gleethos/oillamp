@@ -121,9 +121,13 @@ so that a typo cannot turn one of your projects into a sandbox.
 
 Any of these ends the session:
 
-- close the terminal window that opened,
 - press `Ctrl-C` in the terminal you started from,
+- close the terminal you started from,
 - run `oillamp stop ~/lamps/first` from anywhere.
+
+Closing the shell window or the desktop viewer does not end it. Open another shell with
+`oillamp shell ~/lamps/first` and another viewer with `oillamp view ~/lamps/first`, as often as
+you like.
 
 The sandbox shuts down, the container is removed, and the files in `~/lamps/first` stay on disk.
 Running `oillamp at ~/lamps/first` again brings it all back, including whatever the agent

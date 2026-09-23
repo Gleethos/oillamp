@@ -6,7 +6,8 @@ import java.time.Instant;
 ///
 /// The states differ in what an event means. In `AwaitingTerminal` the container is up but
 /// nobody is connected, so a terminal that never connects must end the session. In `Running`,
-/// the terminal closing is the user saying they are finished.
+/// shell windows come and go as the user likes; only Ctrl-C (or closing the terminal oillamp was
+/// started from), `oillamp stop` or the sandbox dying ends it.
 ///
 /// Only the supervisor's event loop changes the state, and only by replacing it with a new value.
 /// [SessionMachine] decides each change. Users see a description of it as
@@ -19,8 +20,13 @@ sealed interface SessionState {
     /// The sandbox answered on both sockets; the terminal window has been asked to open.
     record AwaitingTerminal(Instant since, ReadyInfo ready) implements SessionState {}
 
-    /// The user's shell is connected. `extraShells` counts `oillamp shell` sessions.
-    record Running(Instant since, ReadyInfo ready, int extraShells) implements SessionState {}
+    /// The user's shell connected, so the session is up.
+    ///
+    /// @param shellWindowOpen whether the shell window oillamp opened is still open. Closing it
+    ///                        ends nothing; it is tracked only so that `oillamp status` is right
+    /// @param extraShells     how many `oillamp shell` sessions are attached
+    record Running(Instant since, ReadyInfo ready, boolean shellWindowOpen, int extraShells)
+            implements SessionState {}
 
     /// The shutdown sequence is running; further events are ignored.
     record ShuttingDown(Instant since, ShutdownReason reason) implements SessionState {}
@@ -32,10 +38,8 @@ sealed interface SessionState {
     /// they cannot disagree.
     sealed interface ShutdownReason {
 
-        /// The user closed the terminal window oillamp opened. The ordinary way to finish.
-        record TerminalClosed() implements ShutdownReason {}
-
-        /// Ctrl-C, SIGTERM or SIGHUP.
+        /// Ctrl-C, SIGTERM or SIGHUP. SIGHUP is what the terminal oillamp was started from sends
+        /// when it is closed, so closing that terminal ends the session too.
         ///
         /// `wasRunning` is recorded when the interrupt happens, because it decides the exit
         /// code: interrupting a working session is a normal way to end it (0), interrupting one that
@@ -54,7 +58,6 @@ sealed interface SessionState {
         /// The process exit code for this reason.
         default ExitStatus exitStatus() {
             return switch (this) {
-                case TerminalClosed ignored -> ExitStatus.SUCCESS;
                 case StopCommand ignored    -> ExitStatus.SUCCESS;
                 case UserInterrupt interrupt -> interrupt.wasRunning()
                         ? ExitStatus.SUCCESS : ExitStatus.INTERRUPTED;
@@ -66,7 +69,6 @@ sealed interface SessionState {
         /// One line for the summary, in the terms the user would use.
         default String describe() {
             return switch (this) {
-                case TerminalClosed ignored  -> "you closed the terminal window";
                 case UserInterrupt interrupt -> "interrupted (" + interrupt.signal() + ")";
                 case StopCommand stop        -> "asked to stop by " + stop.source();
                 case ContainerDied died      -> "the sandbox container exited (code "

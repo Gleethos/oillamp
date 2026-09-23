@@ -11,9 +11,10 @@ final class Ssh {
 
     private Ssh() {}
 
-    /// Which host-side socket a shell connects through. This decides whether closing it ends the session.
+    /// Which host-side socket a shell connects through. Closing either ends nothing.
     public enum SocketRole {
-        /// The terminal window oillamp opened. One per session; when it closes, the session ends.
+        /// The terminal window oillamp opened. One per session; its connecting is what makes the
+        /// session count as up.
         PRIMARY,
         /// An extra shell from `oillamp shell`; closing it does not end the session.
         EXTRA

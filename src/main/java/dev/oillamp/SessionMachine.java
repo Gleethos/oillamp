@@ -9,28 +9,26 @@ import sprouts.Tuple;
 /// state and a list of actions. The full table is in `docs/ARCHITECTURE.md`, "The running
 /// session".
 ///
-/// Every way a session can end is decided here and nowhere else: the terminal closing, the
-/// container dying, Ctrl-C, `oillamp stop`, a window that never opened. If each part of the
-/// supervisor decided for itself what a disconnection means, it would be easy to leave a container
-/// running after its terminal closed, or to exit 0 after the sandbox died.
+/// Every way a session can end is decided here and nowhere else: Ctrl-C or the terminal oillamp was
+/// started from closing, `oillamp stop`, the container dying, a window that never opened. Closing
+/// a shell window or a viewer is deliberately not on that list: the user may close and reopen
+/// those as often as they like. If each part of the supervisor decided for itself what a
+/// disconnection means, it would be easy to end a session nobody asked to end, or to exit 0 after
+/// the sandbox died.
 ///
 /// Because there is no I/O here, tests can check awkward combinations quickly: a container
-/// exiting during startup, two extra shells attached when the terminal closes, a stop arriving
-/// while the session is already shutting down.
+/// exiting during startup, the shell window closing while extra shells are attached, a stop
+/// arriving while the session is already shutting down.
 record SessionMachine(Settings settings) {
 
-    /// The three settings the rules need that are not part of the state.
+    /// The settings the rules need that are not part of the state.
     ///
     /// @param terminalTimeout how long the terminal window has to connect before the session is
     ///                        given up (`timeouts.terminal_connect_seconds`, 60 by default)
     /// @param openViewer      `viewer.open_on_start`, unless `--no-viewer` was given
     /// @param viewOnly        `viewer.view_only`: the user watches but cannot type
-    record Settings(Duration terminalTimeout, boolean openViewer, boolean viewOnly) {
-
-        public static Settings defaults() {
-            return new Settings(Duration.ofSeconds(60), true, false);
-        }
-    }
+    /// @param lamp            the lamp directory, for the commands the messages suggest
+    record Settings(Duration terminalTimeout, boolean openViewer, boolean viewOnly, String lamp) {}
 
     /// Where the session goes next, and what should be done on the way.
     record Transition(SessionState next, Tuple<SessionAction> actions) {
@@ -80,12 +78,21 @@ record SessionMachine(Settings settings) {
 
             case SessionEvent.PrimaryConnected ignored
                     when state instanceof SessionState.AwaitingTerminal awaiting ->
-                    Transition.to(new SessionState.Running(now, awaiting.ready(), 0),
+                    Transition.to(new SessionState.Running(now, awaiting.ready(), true, 0),
                             new SessionAction.Announce(new LampEvent.Ok("session",
-                                    "your shell is connected — closing that window ends the session")));
+                                    "your shell is connected — closing its window leaves the "
+                                  + "session running")));
 
-            case SessionEvent.PrimaryDisconnected ignored when state instanceof SessionState.Running ->
-                    shutDown(state, now, new SessionState.ShutdownReason.TerminalClosed());
+            // The user closed the shell window. That is not the user saying they are finished: they
+            // may only want a fresh shell, or none for a while. The session ends when they say so.
+            case SessionEvent.PrimaryDisconnected ignored
+                    when state instanceof SessionState.Running running ->
+                    Transition.to(new SessionState.Running(running.since(), running.ready(), false,
+                                    running.extraShells()),
+                            new SessionAction.Announce(new LampEvent.Info("session",
+                                    "the shell window closed; the session keeps running — "
+                                  + "`oillamp shell " + settings.lamp() + "` opens another, "
+                                  + "Ctrl-C here ends the session")));
 
             case SessionEvent.ShellConnected ignored when state instanceof SessionState.Running running ->
                     shells(running, +1);
@@ -116,7 +123,8 @@ record SessionMachine(Settings settings) {
 
     private Transition shells(SessionState.Running running, int change) {
         int count = Math.max(0, running.extraShells() + change);
-        return Transition.to(new SessionState.Running(running.since(), running.ready(), count),
+        return Transition.to(new SessionState.Running(running.since(), running.ready(),
+                        running.shellWindowOpen(), count),
                 new SessionAction.Announce(new LampEvent.Info("session",
                         count == 0 ? "the extra shell closed"
                                    : count + " extra shell" + (count == 1 ? "" : "s") + " attached")));
@@ -131,8 +139,9 @@ record SessionMachine(Settings settings) {
 
     /// A window could not be opened. A missing viewer only costs the user their view of a session
     /// that otherwise works, and `oillamp view` can open another, so it is a warning. A missing
-    /// terminal means nobody is in the sandbox and nothing would ever end the session, so the session
-    /// is shut down.
+    /// terminal means the session did not start the way the user asked, usually because the
+    /// terminal setting is wrong. The session is shut down and the reason reported, so the user
+    /// fixes the setting now rather than working around it every session.
     private Transition actionFailed(SessionState state, SessionEvent.ActionFailed failed, Instant now) {
         if (failed.action() instanceof SessionAction.LaunchTerminal)
             return shutDown(state, now,

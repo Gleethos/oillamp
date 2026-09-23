@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /// The container listens on `sockets/agent/ssh.sock`. The supervisor listens on
 /// `run/ssh-primary.sock` and `run/ssh.sock`, which are outside anything mounted into the
 /// container, and copies each connection through. Because the agent cannot reach the primary
-/// socket, it cannot take the one connection whose closing ends the session.
+/// socket, it cannot pose as the shell window whose connecting starts the session.
 ///
 /// The primary relay accepts exactly one connection per session: the terminal window. The extra
 /// relay accepts any number, for `oillamp shell`.
@@ -115,7 +115,7 @@ final class Relay implements AutoCloseable {
             }
             if (accepted.incrementAndGet() > maxConnections) {
                 // The primary relay belongs to the terminal window oillamp opened. A second
-                // connection is a mistake or an attempt to take over the session, so it is refused.
+                // connection is a mistake, so it is refused and `oillamp shell` suggested.
                 closeQuietly(client);
                 listener.trouble(Problems.extraPrimaryRejected(socket));
                 continue;

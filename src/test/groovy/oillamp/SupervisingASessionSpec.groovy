@@ -17,7 +17,8 @@ import java.util.concurrent.TimeUnit
  *
  *  <p>These scenarios run a whole session. The container is simulated, but nothing else is: the
  *  relays bind real Unix sockets, the simulated terminal really connects through the primary
- *  relay, and the session really shuts down because that connection closed. That matters here
+ *  relay and then closes, and the simulated user ends the session through its real control
+ *  socket, the way `oillamp stop` does. That matters here
  *  more than anywhere else in this project: the supervisor's entire job is what happens between
  *  processes, and a test that stubbed the sockets out would be testing the stub.
  */
@@ -59,7 +60,7 @@ class SupervisingASessionSpec extends Specification {
             terminal.first() == 'ptyxis'
             terminal.contains('--new-window')
 
-        and: 'and it reaches the sandbox through the one socket whose closing ends the session'
+        and: 'and it reaches the sandbox through the socket kept for that one window'
             terminal.any { it.contains('UNIX-CONNECT:') && it.contains('ssh-primary.sock') }
             terminal.any { it.contains('cd ~/workspace') }
 
@@ -69,15 +70,17 @@ class SupervisingASessionSpec extends Specification {
             viewer.last().endsWith('/sockets/infra/vnc.sock')
     }
 
-    def 'Closing that terminal window ends the session and takes the sandbox with it'() {
+    def 'Closing the shell window leaves the session running; it ends when the user says so'() {
         reportInfo """
-            The window oillamp opened *is* the session. When the user closes it, everything the
-            session created has to go (the container, the sockets, the
-            session file), or the next `oillamp at` on this lamp meets a name clash and a lock it
-            cannot explain.
+            The shell window is one way into the session, not the session itself. A user who closes
+            it may want a fresh shell, or none for a while, and should not lose the sandbox for it.
+            The session ends on Ctrl-C in the terminal oillamp was started from, on closing that
+            terminal, or on `oillamp stop`. When it does, everything the session created has to go
+            (the container, the sockets, the session file), or the next `oillamp at` on this lamp
+            meets a name clash and a lock it cannot explain.
 
-            The simulated terminal here connects through the real relay and then closes, exactly
-            as a user closing the window would. Nothing about the shutdown is simulated.
+            The simulated shell window connects through the real relay and closes; the simulated
+            user then runs `oillamp stop`. Nothing about the shutdown is simulated.
         """
         when:
             var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
@@ -85,10 +88,19 @@ class SupervisingASessionSpec extends Specification {
         then: 'oillamp exits 0, because this is how a session is supposed to end'
             outcome.status() == ExitStatus.SUCCESS
 
-        and: 'and says so in the closing summary rather than just stopping'
-            var summary = outcome.events().find { it instanceof LampEvent.Summary
-                                                  && it.title().startsWith('session ') }
-            summary.lines().toList().any { it.contains('you closed the terminal window') }
+        and: 'the window closing was reported, with how to open another shell, and ended nothing'
+            var events = outcome.events().toList()
+            var closed = events.findIndexOf { it instanceof LampEvent.Info
+                                              && it.text().contains('the shell window closed') }
+            closed >= 0
+            events[closed].text().contains('the session keeps running')
+            events[closed].text().contains('oillamp shell ')
+
+        and: 'the session ended only when it was asked to, and says so in the closing summary'
+            var summaryAt = events.findIndexOf { it instanceof LampEvent.Summary
+                                                 && it.title().startsWith('session ') }
+            summaryAt > closed
+            events[summaryAt].lines().toList().any { it.contains('asked to stop by') }
 
         and: 'the container was asked to stop, with time to finalise the recording, and is gone'
             outcome.console().contains('stopping the sandbox — up to 15s')
@@ -153,13 +165,13 @@ class SupervisingASessionSpec extends Specification {
                    .any { it.what().contains('terminal') }
     }
 
-    def 'A terminal that will not open ends the session, because nobody is in the sandbox'() {
+    def 'A terminal that will not open ends the session, because it did not start as asked'() {
         reportInfo """
-            The other half of the same decision, and it goes the other way. The terminal window
-            IS the session: if it cannot open, there is nobody in the sandbox and nothing that
-            will ever end it. Leaving a container running unattended is the one outcome this tool
-            must not produce, so the session is ended and the failure is reported with the exact
-            command that would not start.
+            The other half of the same decision, and it goes the other way. A terminal that cannot
+            open almost always means the terminal setting is wrong, and it would be wrong in every
+            session. So the session is ended and the failure is reported with the exact command
+            that would not start, and the user fixes the setting now, rather than working around
+            a missing window every time.
         """
         given: 'a machine whose terminal emulator refuses to start'
             sandbox.machine { it.windowRefusing('ptyxis') }

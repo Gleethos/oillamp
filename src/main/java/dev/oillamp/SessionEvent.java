@@ -19,13 +19,15 @@ sealed interface SessionEvent {
     /// The terminal window oillamp opened has connected through the primary SSH relay.
     record PrimaryConnected() implements SessionEvent {}
 
-    /// That terminal closed. In a running session this is the user saying they are finished.
+    /// That terminal closed. The session carries on: the user may open another shell with
+    /// `oillamp shell`, or none at all.
     record PrimaryDisconnected() implements SessionEvent {}
 
     record ShellConnected() implements SessionEvent {}
     record ShellDisconnected() implements SessionEvent {}
 
-    /// A signal reached the process — Ctrl-C, or the session being killed politely.
+    /// A signal reached the process — Ctrl-C, the terminal oillamp was started from closing, or the
+    /// session being killed politely.
     record Interrupted(String signal) implements SessionEvent {}
 
     /// Someone asked for the session to end, over the control socket or from `stop`.
@@ -47,8 +49,8 @@ sealed interface SessionEvent {
             case Tick ignored               -> "tick";
             case ContainerReady ready       -> "the sandbox is ready — " + ready.info().describe();
             case ContainerExited exited     -> "the container exited with code " + exited.exitCode();
-            case PrimaryConnected ignored   -> "the terminal window connected";
-            case PrimaryDisconnected ignored-> "the terminal window closed";
+            case PrimaryConnected ignored   -> "the shell window connected";
+            case PrimaryDisconnected ignored-> "the shell window closed";
             case ShellConnected ignored     -> "an extra shell connected";
             case ShellDisconnected ignored  -> "an extra shell closed";
             case Interrupted interrupted    -> "interrupted by " + interrupted.signal();

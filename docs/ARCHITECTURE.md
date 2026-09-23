@@ -53,7 +53,7 @@ These words are used with one meaning each, everywhere in the code and the docum
 | **infra user** | The container user `lamp`, uid 1001. Mapped to a subordinate id on the host that belongs to nobody. Runs the compositor, the VNC server, the recorder and the network bridges. ("infra" is short for infrastructure.) |
 | **session** | One run of `oillamp at`, from start to shutdown. Its **session id** is the UTC start time, for example `20260923-085055`. |
 | **supervisor** | The `oillamp at` process while a session runs. It stays in the foreground of the terminal you started it from. |
-| **primary shell** | The SSH connection from the terminal window oillamp opens. When it closes, the session ends. |
+| **primary shell** | The SSH connection from the terminal window oillamp opens. When it connects, the session is up. Closing it ends nothing. |
 | **extra shell** | A shell opened with `oillamp shell <dir>`. Closing it ends nothing. |
 | **relay** | A Unix socket on the host that forwards connections into a socket inside the sandbox. Used for SSH. |
 | **control socket** | A Unix socket the supervisor listens on, so that `oillamp stop`, `status`, `view` and `shell` can talk to a running session. |
@@ -581,20 +581,25 @@ Transitions:
 | Starting | `ContainerExited` | ShuttingDown (startup failed) | report, shut down |
 | AwaitingTerminal | `PrimaryConnected` | Running | announce |
 | AwaitingTerminal | `Tick` after the terminal timeout | ShuttingDown (startup failed, `OIL-TERM-002`) | report, shut down |
-| Running | `PrimaryDisconnected` | ShuttingDown (terminal closed) | shut down |
+| Running | `PrimaryDisconnected` | Running (shell window closed) | announce how to open another shell |
 | Running | `ShellConnected` / `ShellDisconnected` | Running (count ±1) | announce |
-| any live state | `Interrupted` (Ctrl-C, SIGTERM) | ShuttingDown | close extra shells, shut down |
+| any live state | `Interrupted` (Ctrl-C, SIGTERM, SIGHUP from closing the launching terminal) | ShuttingDown | close extra shells, shut down |
 | any live state | `StopRequested` (`oillamp stop`) | ShuttingDown | close extra shells, shut down |
 | AwaitingTerminal, Running | `ContainerExited` | ShuttingDown (container died) | close extra shells, shut down |
 | any live state | `ActionFailed` for the terminal | ShuttingDown (startup failed) | report, shut down |
 | any live state | `ActionFailed` for the viewer | unchanged | warning |
 | ShuttingDown | `ShutdownCompleted` | Stopped | report cleanup problems, exit |
 
-Why the terminal and viewer are treated differently: without a terminal, nobody is in the sandbox
-and nothing would ever end the session, so the session stops. Without a viewer you just cannot
-see the desktop, and `oillamp view` can open another, so the session continues.
+Closing a window never ends a session: not the shell window, not a viewer, not an extra shell.
+The session ends where it was started, with Ctrl-C or by closing that terminal, or with
+`oillamp stop`.
 
-Exit codes by shutdown reason (`ShutdownReason.exitStatus`): terminal closed → 0; `oillamp stop`
+Why a terminal that fails to open still ends the session, while a failing viewer does not: a
+terminal that cannot open almost always means the terminal setting is wrong, and it would be wrong
+in every session, so the session stops and says why. Without a viewer you just cannot see the
+desktop, and `oillamp view` can open another, so the session continues.
+
+Exit codes by shutdown reason (`ShutdownReason.exitStatus`): `oillamp stop`
 → 0; interrupted while `Running` → 0; interrupted before `Running` → 130; container died → 5;
 startup failed → 5.
 
@@ -665,9 +670,10 @@ to `shell` while it is shutting down, is alive and has refused (`OIL-SESSION-003
   `vncviewer -Shared=1 -AcceptClipboard=0 -SendClipboard=1 -SendPrimary=0 -RemoteResize=0 -geometry 1920x1080 <socket>`.
   The clipboard flags follow `viewer.clipboard`.
 
-The session ends when the primary *SSH connection* closes, not when the terminal *process* exits.
-Many terminal emulators hand the window to an existing server process and exit immediately, so
-their process id says nothing about the window.
+The session is up when the primary *SSH connection* arrives, and `oillamp status` says when it
+has closed. oillamp watches the connection, not the terminal *process*: many terminal emulators
+hand the window to an existing server process and exit immediately, so their process id says
+nothing about the window.
 
 A window that exits with a non-zero code within 3 seconds is reported: as a warning for the
 viewer (`OIL-VIEW-001`), as a failure that ends the session for the terminal (`OIL-TERM-003`).
