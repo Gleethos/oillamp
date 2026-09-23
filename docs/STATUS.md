@@ -118,7 +118,10 @@ From inside a real sandbox, through the real proxy:
   `lamp click`, `move`, `drag` and `scroll` work since pointer input goes through VNC (see the
   lessons table): a Swing button receives the click and fires its action, and an X11 program
   reports each press, release and scroll step at the requested position. `lamp type` delivers
-  every character to a Swing text field, the first one included.
+  every character to a Swing text field, the first one included. The desktop spike checks this
+  on every run: it clicks an X11 program and types into it using only `lamp`. A click can arrive
+  one pixel short, because the compositor converts the position to a fraction of the screen and
+  back.
 - GPU: after adding the user to the `render` group, sway held ten file descriptors on
   `/dev/dri/renderD128` with the AMD driver loaded and no software renderer. (The log line
   `amdgpu_cs_ctx_create2 failed (-13)` appears during start-up and is harmless: it is a probe of a

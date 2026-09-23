@@ -264,27 +264,49 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             applications. The first letter of the text is therefore part of what is checked.
         """
         when: 'an X11 application is started, clicked once and typed into'
+            // Other windows may be open (the scenario before this one leaves a terminal), and sway
+            // tiles them side by side. So the position to click is taken from the application's
+            // own window, the way an agent would find it on a screenshot.
             var result = inSandbox('''
                 rm -f /tmp/events.log
-                nohup xev -event button -event keyboard > /tmp/events.log 2>&1 &
+                nohup stdbuf -oL xev -event button -event keyboard > /tmp/events.log 2>&1 &
                 sleep 2
-                lamp click 300 200
+                geometry=$(xwininfo -name 'Event Tester')
+                left=$(echo "$geometry" | awk '/Absolute upper-left X/ {print $4}')
+                top=$(echo "$geometry" | awk '/Absolute upper-left Y/ {print $4}')
+                width=$(echo "$geometry" | awk '/Width:/ {print $2}')
+                height=$(echo "$geometry" | awk '/Height:/ {print $2}')
+                x=$((left + width / 2)); y=$((top + height / 2))
+                echo "clicking at $x,$y"
+                lamp click $x $y
                 lamp type "Hello, oillamp"
                 sleep 1
                 cat /tmp/events.log
             '''.stripIndent())
             var lines = result.out.readLines()
+            var target = position(lines.find { it.startsWith('clicking at ') })
 
         then: 'it received exactly one button press, where lamp clicked'
             var presses = lines.findIndexValues { it.startsWith('ButtonPress') }
             presses.size() == 1
-            lines[(int) presses.first() + 1..(int) presses.first() + 3].any { it.contains('root:(300,200)') }
+            var arrived = position(lines[(int) presses.first() + 1])
+            // The compositor turns the position into a fraction of the screen and back, and that
+            // floating-point round trip can land one pixel short: 371 arrives as 370.
+            Math.abs(arrived[0] - target[0]) <= 1
+            Math.abs(arrived[1] - target[1]) <= 1
 
         and: 'and every character that was typed, in order, the first one included'
             typed(lines) == 'Hello, oillamp'
 
         cleanup:
             inSandbox('pkill -x xev || true')
+    }
+
+    /** The first "X,Y" in a line, such as "clicking at 960,371" or xev's "root:(960,370)". */
+    private static List<Integer> position(String line) {
+        var matcher = line =~ /(?:at |root:\()(\d+),(\d+)/
+        assert matcher.find(), "no position in: $line"
+        [matcher.group(1) as int, matcher.group(2) as int]
     }
 
     /** The characters an X11 program received, as xev reports them for each key press. */
