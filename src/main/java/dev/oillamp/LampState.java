@@ -4,24 +4,22 @@ import java.nio.file.Path;
 
 import sprouts.Tuple;
 
-/**
- * What oillamp found at the path given as a lamp. Decided by {@link LampClassifier}.
- */
+/// What oillamp found at the path given as a lamp. Decided by [LampClassifier].
 sealed interface LampState {
 
-    /** Nothing there yet. oillamp will create it, including missing parent directories. */
+    /// Nothing there yet. oillamp will create it, including missing parent directories.
     record Missing(Path root) implements LampState {}
 
-    /** The directory exists and holds nothing that matters. It can become a lamp. */
+    /// The directory exists and holds nothing that matters. It can become a lamp.
     record Empty(Path root) implements LampState {}
 
-    /** Someone else's files. Refused with {@code OIL-LAMP-002} unless {@code --init} is given. */
+    /// Someone else's files. Refused with `OIL-LAMP-002` unless `--init` is given.
     record Foreign(Path root, Tuple<String> sampleEntries) implements LampState {}
 
-    /** A lamp oillamp has seen before. */
+    /// A lamp oillamp has seen before.
     record Existing(Path root, LampMeta meta) implements LampState {}
 
-    /** It looks like a lamp, but its identity file could not be read or understood. */
+    /// It looks like a lamp, but its identity file could not be read or understood.
     record Unreadable(Path root, String reason) implements LampState {}
 
     default Path root() {

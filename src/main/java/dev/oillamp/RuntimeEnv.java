@@ -4,22 +4,18 @@ import sprouts.Association;
 import sprouts.Pair;
 import sprouts.Tuple;
 
-/**
- * Writes {@code .oillamp/session/runtime.env}, the settings file the container reads.
- *
- * <p>The entrypoint (a bash script running as container root) and every login shell of the agent
- * execute this file with {@code source}. A quoting mistake would therefore turn a configuration
- * value into a command, so the rules are strict:
- *
- * <ul>
- *   <li>every value is wrapped in single quotes, inside which the shell expands nothing;</li>
- *   <li>a single quote inside a value is written as {@code '\''} (close, escaped quote, reopen);</li>
- *   <li>a value containing a line break is <b>refused</b>, because {@code source} would read the
- *       rest as a separate command, and no real value needs one.</li>
- * </ul>
- *
- * <p>Keys are written in sorted order, so the file is the same for the same configuration.
- */
+/// Writes `.oillamp/session/runtime.env`, the settings file the container reads.
+///
+/// The entrypoint (a bash script running as container root) and every login shell of the agent
+/// execute this file with `source`. A quoting mistake would therefore turn a configuration
+/// value into a command, so the rules are strict:
+///
+/// - every value is wrapped in single quotes, inside which the shell expands nothing;
+/// - a single quote inside a value is written as `'\''` (close, escaped quote, reopen);
+/// - a value containing a line break is **refused**, because `source` would read the
+///   rest as a separate command, and no real value needs one.
+///
+/// Keys are written in sorted order, so the file is the same for the same configuration.
 final class RuntimeEnv {
 
     private RuntimeEnv() {}
@@ -41,23 +37,19 @@ final class RuntimeEnv {
         return Result.ok(String.join("\n", sorted(lines)) + "\n");
     }
 
-    /**
-     * Environment variables copied from the host into the sandbox when they are set.
-     *
-     * <p>The agent can read everything in {@code runtime.env}; that is the point, since its harness
-     * needs these keys. It is also why this is a short, explicit list rather than the whole host
-     * environment.
-     */
+    /// Environment variables copied from the host into the sandbox when they are set.
+    ///
+    /// The agent can read everything in `runtime.env`; that is the point, since its harness
+    /// needs these keys. It is also why this is a short, explicit list rather than the whole host
+    /// environment.
     public static final Tuple<String> INHERITED_FROM_HOST = Tuple.of(String.class,
             "EDENAI_API_KEY", "EDENAI_BASE_URL", "EDENAI_EU_ONLY", "EDENAI_MAX_TOKENS");
 
-    /**
-     * The variables for this session.
-     *
-     * <p>They are read by the entrypoint, which uses them to set up the display, the recorder and
-     * the network bridges, and by every login shell of the agent through
-     * {@code /etc/profile.d/oillamp.sh}, which turns them into the agent's environment.
-     */
+    /// The variables for this session.
+    ///
+    /// They are read by the entrypoint, which uses them to set up the display, the recorder and
+    /// the network bridges, and by every login shell of the agent through
+    /// `/etc/profile.d/oillamp.sh`, which turns them into the agent's environment.
     public static Association<String, String> variables(LampConfig config,
                                                         LampLayout layout,
                                                         SessionId session,
@@ -92,7 +84,7 @@ final class RuntimeEnv {
         return env;
     }
 
-    /** {@code "name:port name:port"}, which the entrypoint splits to start one bridge per forward. */
+    /// `"name:port name:port"`, which the entrypoint splits to start one bridge per forward.
     private static String forwardList(LampConfig config) {
         Tuple<String> entries = Tuple.of(String.class);
         for (Forward forward : config.forwards())
@@ -100,7 +92,7 @@ final class RuntimeEnv {
         return String.join(" ", entries);
     }
 
-    /** Wraps a value so that a POSIX shell reproduces it byte for byte. */
+    /// Wraps a value so that a POSIX shell reproduces it byte for byte.
     public static String quote(String value) {
         return "'" + value.replace("'", "'\\''") + "'";
     }

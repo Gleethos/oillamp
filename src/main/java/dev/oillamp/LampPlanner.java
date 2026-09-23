@@ -6,37 +6,33 @@ import java.util.Optional;
 
 import sprouts.Tuple;
 
-/**
- * Plans the lamp phase: turning a directory into a working lamp. Also plans {@code oillamp remove}
- * and {@code oillamp recordings --prune}.
- *
- * <p>The lamp is planned in two passes, because the second needs the result of the first: the SSH
- * keys must exist before {@code authorized_keys} and {@code known_hosts} can contain them.
- * {@link LampPhase} runs {@link #planSkeleton}, reads the new public keys, then runs
- * {@link #planSession}. The alternative, a step that computes its content while running, would
- * mean a dry run could not show that content.
- *
- * <p>The ownership of the lamp's directories is decided here. The recordings directory and the
- * infra socket directory are given to container uid 1001, so the agent (uid 1000) can read its
- * recordings but cannot change them.
- */
+/// Plans the lamp phase: turning a directory into a working lamp. Also plans `oillamp remove`
+/// and `oillamp recordings --prune`.
+///
+/// The lamp is planned in two passes, because the second needs the result of the first: the SSH
+/// keys must exist before `authorized_keys` and `known_hosts` can contain them.
+/// [LampPhase] runs [#planSkeleton], reads the new public keys, then runs
+/// [#planSession]. The alternative, a step that computes its content while running, would
+/// mean a dry run could not show that content.
+///
+/// The ownership of the lamp's directories is decided here. The recordings directory and the
+/// infra socket directory are given to container uid 1001, so the agent (uid 1000) can read its
+/// recordings but cannot change them.
 final class LampPlanner {
 
     private LampPlanner() {}
 
-    /** The container's infra user, which owns everything the agent must not be able to change. */
+    /// The container's infra user, which owns everything the agent must not be able to change.
     public static final int INFRA_UID = 1001;
     public static final int INFRA_GID = 1001;
 
-    /**
-     * Everything the lamp phase needs to know, gathered by {@link LampPhase}.
-     *
-     * @param state              what is at the lamp path
-     * @param newAgentId         a freshly generated id, used only if the lamp does not exist yet
-     * @param initRequested      the user passed {@code --init}, accepting a non-empty directory
-     * @param leftoverContainer  a container left by a previous session that crashed
-     * @param sessionMetaExists  a stale {@code session.json} from a crashed session
-     */
+    /// Everything the lamp phase needs to know, gathered by [LampPhase].
+    ///
+    /// @param state              what is at the lamp path
+    /// @param newAgentId         a freshly generated id, used only if the lamp does not exist yet
+    /// @param initRequested      the user passed `--init`, accepting a non-empty directory
+    /// @param leftoverContainer  a container left by a previous session that crashed
+    /// @param sessionMetaExists  a stale `session.json` from a crashed session
     public record Inputs(
         LampState state,
         LampLayout layout,
@@ -51,13 +47,11 @@ final class LampPlanner {
         boolean initRequested
     ) {}
 
-    /**
-     * Creates or repairs the lamp's directories, identity, keys and runtime directory.
-     *
-     * <p>Every file the user or the agent may have edited is written with
-     * {@link Step.WritePolicy#IF_ABSENT}, so running {@code oillamp at} again never overwrites an
-     * edited {@code oillamp.toml} or anything in the agent's home.
-     */
+    /// Creates or repairs the lamp's directories, identity, keys and runtime directory.
+    ///
+    /// Every file the user or the agent may have edited is written with
+    /// [Step.WritePolicy#IF_ABSENT], so running `oillamp at` again never overwrites an
+    /// edited `oillamp.toml` or anything in the agent's home.
     public static Result<Plan> planSkeleton(Inputs inputs) {
         LampLayout layout = inputs.layout();
 
@@ -165,23 +159,19 @@ final class LampPlanner {
         return Result.ok(Plan.of(LampEvent.Phase.LAMP, steps), warnings);
     }
 
-    /**
-     * What {@code oillamp remove} found in a lamp directory.
-     *
-     * <p>This is what is actually on disk, not derived from the lamp's identity, because the most
-     * common reason to run {@code remove} is that {@code rm -rf} already deleted {@code lamp.json}
-     * before failing. {@code agentDirs} is usually one directory, sometimes none, and more than one
-     * if a lamp directory was copied.
-     *
-     * @param runtimeDir empty when the lamp's identity is gone, since the runtime directory is
-     *                   named after it
-     */
+    /// What `oillamp remove` found in a lamp directory.
+    ///
+    /// This is what is actually on disk, not derived from the lamp's identity, because the most
+    /// common reason to run `remove` is that `rm -rf` already deleted `lamp.json`
+    /// before failing. `agentDirs` is usually one directory, sometimes none, and more than one
+    /// if a lamp directory was copied.
+    ///
+    /// @param runtimeDir empty when the lamp's identity is gone, since the runtime directory is
+    ///                   named after it
     record Removal(Path root, Tuple<Path> agentDirs, Optional<Path> runtimeDir) {}
 
-    /**
-     * The plan for {@code oillamp recordings --prune}: delete the recordings {@link Retention}
-     * selected. It is the same decision the next session start would make, done now.
-     */
+    /// The plan for `oillamp recordings --prune`: delete the recordings [Retention]
+    /// selected. It is the same decision the next session start would make, done now.
     public static Plan planPrune(Tuple<RecordingFile> doomed, LampConfig.Recording policy) {
         if (doomed.isEmpty()) return Plan.of(LampEvent.Phase.LAMP, Tuple.of(Step.class));
         Tuple<Path> paths = Tuple.of(Path.class);
@@ -192,16 +182,14 @@ final class LampPlanner {
                       + " days / " + policy.maxTotalGb() + " GB")));
     }
 
-    /**
-     * Everything {@code oillamp remove} deletes, in the order it deletes it.
-     *
-     * <p>Only what oillamp created is removed. The user may keep their own files beside
-     * {@code oillamp.toml}, so the lamp directory itself is only removed if it ends up empty
-     * ({@code Commands.remove} does that).
-     *
-     * <p>The agent's home goes last. If the state directory cannot be fully deleted, for example
-     * because podman is missing, the run stops there, with the agent's work still intact.
-     */
+    /// Everything `oillamp remove` deletes, in the order it deletes it.
+    ///
+    /// Only what oillamp created is removed. The user may keep their own files beside
+    /// `oillamp.toml`, so the lamp directory itself is only removed if it ends up empty
+    /// (`Commands.remove` does that).
+    ///
+    /// The agent's home goes last. If the state directory cannot be fully deleted, for example
+    /// because podman is missing, the run stops there, with the agent's work still intact.
     public static Plan planRemoval(Removal found) {
         Tuple<Step> steps = Tuple.of(Step.class);
         if (found.runtimeDir().isPresent())
@@ -219,15 +207,13 @@ final class LampPlanner {
         return Plan.of(LampEvent.Phase.LAMP, steps);
     }
 
-    /**
-     * Plans the per-session files under {@code .oillamp/session/}, which are mounted read-only
-     * into the container at {@code /oillamp/session}.
-     *
-     * @param clientPublicKey the generated client public key, so sshd will accept our connection
-     * @param hostPublicKey   the generated host public key, pinned so the user is never prompted
-     * @param runtimeEnv      the contents of {@code runtime.env}
-     * @param agentGuide      the guide the agent reads as {@code ~/AGENTS.md}
-     */
+    /// Plans the per-session files under `.oillamp/session/`, which are mounted read-only
+    /// into the container at `/oillamp/session`.
+    ///
+    /// @param clientPublicKey the generated client public key, so sshd will accept our connection
+    /// @param hostPublicKey   the generated host public key, pinned so the user is never prompted
+    /// @param runtimeEnv      the contents of `runtime.env`
+    /// @param agentGuide      the guide the agent reads as `~/AGENTS.md`
     public static Result<Plan> planSession(LampLayout layout,
                                            String clientPublicKey,
                                            String hostPublicKey,

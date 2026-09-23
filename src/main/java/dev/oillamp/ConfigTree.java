@@ -8,30 +8,28 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import sprouts.Association;
 
-/**
- * The configuration files merged into one tree, remembering which file each value came from.
- *
- * <p><b>Tables merge key by key</b>: a later file overrides single values. <b>Arrays are replaced
- * as a whole</b>: a lamp that defines {@code network.rules} gets exactly the rules it lists, never
- * a combination with the global file's rules, which nobody could reason about. The template
- * written into each new lamp says this at the top.
- *
- * <p>The file of origin is kept for every key path, so a problem can name the file the bad value
- * came from.
- */
+/// The configuration files merged into one tree, remembering which file each value came from.
+///
+/// **Tables merge key by key**: a later file overrides single values. **Arrays are replaced
+/// as a whole**: a lamp that defines `network.rules` gets exactly the rules it lists, never
+/// a combination with the global file's rules, which nobody could reason about. The template
+/// written into each new lamp says this at the top.
+///
+/// The file of origin is kept for every key path, so a problem can name the file the bad value
+/// came from.
 record ConfigTree(JsonNode root, Association<String, Path> origins) {
 
     public static ConfigTree of(JsonNode root, Path origin) {
         return new ConfigTree(root, recordOrigins(Association.between(String.class, Path.class), "", root, origin));
     }
 
-    /** Merges {@code later} on top of this tree. */
+    /// Merges `later` on top of this tree.
     public ConfigTree mergedWith(JsonNode later, Path origin) {
         JsonNode merged = merge(root, later);
         return new ConfigTree(merged, recordOrigins(origins, "", later, origin));
     }
 
-    /** Which file last set this key path, if any. */
+    /// Which file last set this key path, if any.
     public Optional<Path> originOf(String keyPath) {
         Optional<Path> exact = origins.get(keyPath);
         if (exact.isPresent()) return exact;

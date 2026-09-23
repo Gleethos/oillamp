@@ -4,14 +4,12 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
 import java.util.Set;
 
-/**
- * File permission bits, written as the familiar octal number such as {@code 0700}.
- *
- * <p>The exact modes matter. The state directory is {@code 0700} so no other host user can reach
- * the sockets inside it, which is what allows the proxy socket inside it to be {@code 0666} so the
- * container's infra user can connect. A wrong mode either breaks the sandbox or opens it up, so
- * modes are a type with named constants rather than bare integers.
- */
+/// File permission bits, written as the familiar octal number such as `0700`.
+///
+/// The exact modes matter. The state directory is `0700` so no other host user can reach
+/// the sockets inside it, which is what allows the proxy socket inside it to be `0666` so the
+/// container's infra user can connect. A wrong mode either breaks the sandbox or opens it up, so
+/// modes are a type with named constants rather than bare integers.
 record PosixMode(int bits) {
 
     public static final PosixMode PRIVATE_DIR   = PosixMode.of(0700);
@@ -27,7 +25,7 @@ record PosixMode(int bits) {
 
     public static PosixMode of(int octalBits) { return new PosixMode(octalBits); }
 
-    /** Parses an octal string such as {@code "0700"} or {@code "755"}. */
+    /// Parses an octal string such as `"0700"` or `"755"`.
     public static PosixMode parse(String octal) {
         return new PosixMode(Integer.parseInt(octal, 8));
     }

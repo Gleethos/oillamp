@@ -8,14 +8,12 @@ import java.time.Duration;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-/**
- * The image and sandbox phases: builds the image if needed, then starts the container and waits
- * until it is ready.
- *
- * <p>Like the other phases, it plans before it acts, so {@code --dry-run} shows the exact
- * {@code podman run} command. Those flags are the sandbox's security settings, and it should be
- * possible to check them without reading the source.
- */
+/// The image and sandbox phases: builds the image if needed, then starts the container and waits
+/// until it is ready.
+///
+/// Like the other phases, it plans before it acts, so `--dry-run` shows the exact
+/// `podman run` command. Those flags are the sandbox's security settings, and it should be
+/// possible to check them without reading the source.
 final class SandboxPhase {
 
     private final Machine machine;
@@ -26,7 +24,7 @@ final class SandboxPhase {
         this.context = context;
     }
 
-    /** What the sandbox turned out to be, once it was running. */
+    /// What the sandbox turned out to be, once it was running.
     public record Running(ContainerName container, ImageTag image, String readyJson) {}
 
     public Result<Running> start(LampPhase.Prepared prepared, HostFacts host) {
@@ -81,24 +79,20 @@ final class SandboxPhase {
         return Result.ok(new Running(container, image, ready), started.warnings());
     }
 
-    /**
-     * The {@code podman run} arguments that make the container a sandbox. The spike tests check
-     * that these flags behave as described.
-     *
-     * <ul>
-     *   <li>{@code --network=none}: no network interface except loopback, no route, no DNS.
-     *       Outbound traffic goes through the proxy socket instead.</li>
-     *   <li>{@code --read-only}: the image cannot be changed, so anything a session installs outside
-     *       the agent's home is gone when it ends.</li>
-     *   <li>{@code --userns=keep-id:uid=1000,gid=1000}: the host user becomes container uid 1000,
-     *       so the agent's files belong to the host user, and the infra user (1001) is a
-     *       subordinate id the agent cannot become.</li>
-     *   <li>{@code --user 0:0}: the entrypoint starts as container root to create each user's
-     *       runtime directories. Container root is a subordinate id on the host with no rights
-     *       there. The entrypoint starts every long-running process without capabilities; no
-     *       podman flag removes them.</li>
-     * </ul>
-     */
+    /// The `podman run` arguments that make the container a sandbox. The spike tests check
+    /// that these flags behave as described.
+    ///
+    /// - `--network=none`: no network interface except loopback, no route, no DNS.
+    ///   Outbound traffic goes through the proxy socket instead.
+    /// - `--read-only`: the image cannot be changed, so anything a session installs outside
+    ///   the agent's home is gone when it ends.
+    /// - `--userns=keep-id:uid=1000,gid=1000`: the host user becomes container uid 1000,
+    ///   so the agent's files belong to the host user, and the infra user (1001) is a
+    ///   subordinate id the agent cannot become.
+    /// - `--user 0:0`: the entrypoint starts as container root to create each user's
+    ///   runtime directories. Container root is a subordinate id on the host with no rights
+    ///   there. The entrypoint starts every long-running process without capabilities; no
+    ///   podman flag removes them.
     private Tuple<String> containerArgv(ContainerName container, ImageTag image,
                                         LampPhase.Prepared prepared, HostFacts host) {
         LampLayout layout = prepared.layout();
@@ -137,26 +131,22 @@ final class SandboxPhase {
         return argv.add(image.value());
     }
 
-    /**
-     * The files the previous session left in the socket directory.
-     *
-     * <p>That directory is on the host, so it outlives the container. wayvnc cannot bind
-     * {@code vnc.sock} if the old file is still there, and the host would read an old
-     * {@code ready.json} as this session's answer.
-     *
-     * <p>They belong to the infra user, so they are deleted with {@code podman unshare} rather than
-     * an ordinary delete, which would be refused.
-     */
+    /// The files the previous session left in the socket directory.
+    ///
+    /// That directory is on the host, so it outlives the container. wayvnc cannot bind
+    /// `vnc.sock` if the old file is still there, and the host would read an old
+    /// `ready.json` as this session's answer.
+    ///
+    /// They belong to the infra user, so they are deleted with `podman unshare` rather than
+    /// an ordinary delete, which would be refused.
     private static Tuple<Path> staleSessionFiles(LampLayout layout) {
         return Tuple.of(layout.readyFile(),
                         layout.infraSocketsDir().resolve("vnc.sock"),
                         layout.agentSocketsDir().resolve("ssh.sock"));
     }
 
-    /**
-     * How long to wait for {@code ready.json}: longer after a fresh build, because nothing is cached
-     * yet. {@code timeouts.container_ready_seconds} is not used here yet.
-     */
+    /// How long to wait for `ready.json`: longer after a fresh build, because nothing is cached
+    /// yet. `timeouts.container_ready_seconds` is not used here yet.
     private static Duration readyTimeout(boolean imageWasAlreadyPresent) {
         return imageWasAlreadyPresent ? Duration.ofSeconds(60) : Duration.ofSeconds(120);
     }

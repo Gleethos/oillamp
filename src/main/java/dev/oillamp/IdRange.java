@@ -1,9 +1,7 @@
 package dev.oillamp;
 
-/**
- * A range of subordinate user or group ids, as written in {@code /etc/subuid}: {@code count} ids
- * starting at {@code start}.
- */
+/// A range of subordinate user or group ids, as written in `/etc/subuid`: `count` ids
+/// starting at `start`.
 record IdRange(int start, int count) implements Comparable<IdRange> {
 
     public IdRange {
@@ -17,7 +15,7 @@ record IdRange(int start, int count) implements Comparable<IdRange> {
         return start < other.endExclusive() && other.start < endExclusive();
     }
 
-    /** The {@code usermod --add-subuids} form. */
+    /// The `usermod --add-subuids` form.
     public String asUsermodArgument() { return start + "-" + (endExclusive() - 1); }
 
     @Override public int compareTo(IdRange other) { return Integer.compare(start, other.start); }

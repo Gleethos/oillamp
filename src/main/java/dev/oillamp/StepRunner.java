@@ -9,15 +9,13 @@ import java.util.Optional;
 import sprouts.Pair;
 import sprouts.Tuple;
 
-/**
- * Carries out a {@link Plan}, step by step, and reports each step as an event.
- *
- * <p>In a dry run it only reports each step as planned and does nothing. Because it is the only
- * place steps are carried out, the dry run and the real run cannot drift apart.
- *
- * <p>The {@code switch} in {@link #perform} has no {@code default} branch, so a new kind of
- * {@link Step} does not compile until this class knows how to carry it out.
- */
+/// Carries out a [Plan], step by step, and reports each step as an event.
+///
+/// In a dry run it only reports each step as planned and does nothing. Because it is the only
+/// place steps are carried out, the dry run and the real run cannot drift apart.
+///
+/// The `switch` in [#perform] has no `default` branch, so a new kind of
+/// [Step] does not compile until this class knows how to carry it out.
 final class StepRunner {
 
     private final Machine machine;
@@ -28,7 +26,7 @@ final class StepRunner {
         this.context = context;
     }
 
-    /** Runs every step, stopping at the first failure. Returns the problems it collected. */
+    /// Runs every step, stopping at the first failure. Returns the problems it collected.
     public Result<Plan> run(Plan plan) {
         context.emit(new LampEvent.PhaseStarted(plan.phase()));
         Instant phaseStarted = machine.now();
@@ -63,10 +61,8 @@ final class StepRunner {
         return Result.ok(plan, warnings);
     }
 
-    /**
-     * Whether this step is already done, and why. Skipped steps are reported, so it is clear why a
-     * run on an existing lamp changes almost nothing.
-     */
+    /// Whether this step is already done, and why. Skipped steps are reported, so it is clear why a
+    /// run on an existing lamp changes almost nothing.
     private Optional<String> reasonToSkip(Step step) {
         return switch (step) {
             case Step.WriteFile write when write.policy() == Step.WritePolicy.IF_ABSENT
@@ -130,10 +126,8 @@ final class StepRunner {
 
     // ─── the image and the container ───────────────────────────────────────────────────────
 
-    /**
-     * Copies the image's files out of the jar onto disk, where {@code podman build} can read them,
-     * with the modes from the manifest. Without its executable bit the entrypoint could not start.
-     */
+    /// Copies the image's files out of the jar onto disk, where `podman build` can read them,
+    /// with the modes from the manifest. Without its executable bit the entrypoint could not start.
     private Result<Step> extractImageContext(Step.ExtractImageContext step) throws IOException {
         Filesystem.createDirectories(step.targetDir(), PosixMode.PUBLIC_DIR);
         for (ImageResources.Entry entry : ImageResources.entries()) {
@@ -170,15 +164,13 @@ final class StepRunner {
         return outcomeToResult(step, outcome, "podman run");
     }
 
-    /**
-     * Waits for {@code ready.json}, checking every 250 ms, and explains a failure with the
-     * container's log.
-     *
-     * <p>A file in the shared socket directory is a simple signal that needs no extra channel from
-     * the container to the host. Each pass also checks that the container is still running, so a
-     * container that dies while starting is reported at once, with its log, instead of after the
-     * full timeout.
-     */
+    /// Waits for `ready.json`, checking every 250 ms, and explains a failure with the
+    /// container's log.
+    ///
+    /// A file in the shared socket directory is a simple signal that needs no extra channel from
+    /// the container to the host. Each pass also checks that the container is still running, so a
+    /// container that dies while starting is reported at once, with its log, instead of after the
+    /// full timeout.
     private Result<Step> awaitReady(Step.AwaitReady step) {
         java.time.Instant deadline = machine.now().plus(step.timeout());
         while (machine.now().isBefore(deadline)) {
@@ -198,25 +190,21 @@ final class StepRunner {
                 lastLinesOfContainerLog(step.name())));
     }
 
-    /**
-     * True once {@code ready.json} exists and carries this session's id.
-     *
-     * <p>The socket directory outlives the container, so the previous session's file may still be
-     * there. Checking only that the file exists would report a new session ready before its
-     * container had started.
-     */
+    /// True once `ready.json` exists and carries this session's id.
+    ///
+    /// The socket directory outlives the container, so the previous session's file may still be
+    /// there. Checking only that the file exists would report a new session ready before its
+    /// container had started.
     private boolean readyForThisSession(Step.AwaitReady step) {
         return Filesystem.readString(step.readyFile())
                 .filter(json -> json.contains("\"session\":\"" + step.session().value() + "\""))
                 .isPresent();
     }
 
-    /**
-     * Connects to every socket the session depends on.
-     *
-     * <p>Connecting is the only test that tells a listening server apart from a leftover file with
-     * the right name. A refusal becomes a problem with the container's log attached.
-     */
+    /// Connects to every socket the session depends on.
+    ///
+    /// Connecting is the only test that tells a listening server apart from a leftover file with
+    /// the right name. A refusal becomes a problem with the container's log attached.
     private Result<Step> checkEndpoints(Step.CheckEndpoints step) {
         for (Step.Endpoint endpoint : step.endpoints()) {
             // Uses socat through Machine rather than a Java socket, so the simulated machine can
@@ -295,11 +283,9 @@ final class StepRunner {
                 .withEvidence(evidenceOf(outcome, argv)));
     }
 
-    /**
-     * Gives a directory to a container user. {@code podman unshare} runs the command inside
-     * podman's user namespace, where uid 1001 means the container's infra user, and podman
-     * translates it to the right subordinate id on the host.
-     */
+    /// Gives a directory to a container user. `podman unshare` runs the command inside
+    /// podman's user namespace, where uid 1001 means the container's infra user, and podman
+    /// translates it to the right subordinate id on the host.
     private Result<Step> chownForContainer(Step.ChownForContainer step) {
         Tuple<String> argv = Tuple.of(String.class, "podman", "unshare", "chown",
                 step.containerUid() + ":" + step.containerGid(), step.path().toString());
@@ -323,16 +309,14 @@ final class StepRunner {
                         + outcome.errorOutput().trim())));
     }
 
-    /**
-     * Deletes a directory tree that this user only partly owns.
-     *
-     * <p>First with {@code podman unshare rm -rf}, which can delete the infra user's files (the
-     * infra sockets and the recordings). A plain {@code rm -rf} fails on those with "Permission
-     * denied".
-     *
-     * <p>Then with a plain delete for whatever is left. That covers a machine without podman, where
-     * a lamp that never ran contains only this user's files.
-     */
+    /// Deletes a directory tree that this user only partly owns.
+    ///
+    /// First with `podman unshare rm -rf`, which can delete the infra user's files (the
+    /// infra sockets and the recordings). A plain `rm -rf` fails on those with "Permission
+    /// denied".
+    ///
+    /// Then with a plain delete for whatever is left. That covers a machine without podman, where
+    /// a lamp that never ran contains only this user's files.
     private Result<Step> removeTree(Step.RemoveTree step) {
         if (!Filesystem.exists(step.path())) return Result.ok(step);
         Machine.Outcome outcome = run("podman", Duration.ofMinutes(2), Tuple.of(String.class,
@@ -362,7 +346,7 @@ final class StepRunner {
         return run(tag, timeout, Tuple.of(String.class, argv));
     }
 
-    /** Like {@link #run(String, Duration, Tuple)}, but reports each output line as it is printed. */
+    /// Like [#run(String,Duration,Tuple)], but reports each output line as it is printed.
     private Machine.Outcome runStreaming(String tag, Duration timeout, Tuple<String> argv) {
         Machine.Command command = new Machine.Command(argv,
                 sprouts.Association.between(String.class, String.class),
@@ -386,7 +370,7 @@ final class StepRunner {
         return outcome;
     }
 
-    /** Masks anything that looks like a credential before a command line is reported. */
+    /// Masks anything that looks like a credential before a command line is reported.
     private static String redacted(Machine.Command command) {
         StringBuilder out = new StringBuilder();
         for (String token : command.argv())

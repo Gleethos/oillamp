@@ -5,12 +5,10 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 
-/**
- * What every command needs: where to send events, and the options from the command line.
- *
- * <p>oillamp never prints directly. Everything it has to say becomes a {@link LampEvent}, which the
- * console renders and tests can inspect.
- */
+/// What every command needs: where to send events, and the options from the command line.
+///
+/// oillamp never prints directly. Everything it has to say becomes a [LampEvent], which the
+/// console renders and tests can inspect.
 final class Context {
 
     private final Consumer<LampEvent> sink;
@@ -24,15 +22,13 @@ final class Context {
         this.version = version;
     }
 
-    /**
-     * The options from the command line.
-     *
-     * @param debug       {@code --debug}; currently has no effect beyond turning on {@code verbose}
-     * @param dryRun      {@code --dry-run}: print the complete plan and change nothing
-     * @param autoInstall whether oillamp may install host packages; {@code --no-install} turns it off
-     * @param init        {@code --init}: accept a non-empty directory as a new lamp
-     * @param openViewer  false with {@code --no-viewer}
-     */
+    /// The options from the command line.
+    ///
+    /// @param debug       `--debug`; currently has no effect beyond turning on `verbose`
+    /// @param dryRun      `--dry-run`: print the complete plan and change nothing
+    /// @param autoInstall whether oillamp may install host packages; `--no-install` turns it off
+    /// @param init        `--init`: accept a non-empty directory as a new lamp
+    /// @param openViewer  false with `--no-viewer`
     public record Options(boolean verbose, boolean debug, boolean dryRun,
                           boolean autoInstall, boolean init, boolean openViewer) {
 
@@ -75,7 +71,7 @@ final class Context {
 
     public void info(String area, String text) { emit(new LampEvent.Info(area, text)); }
 
-    /** Reports problems, routing warnings and errors to the right event. */
+    /// Reports problems, routing warnings and errors to the right event.
     public void report(sprouts.Tuple<Problem> problems) {
         for (Problem problem : problems)
             emit(problem.isError() ? new LampEvent.Failure(problem) : new LampEvent.Warning(problem));

@@ -2,13 +2,11 @@ package dev.oillamp;
 
 import java.util.Locale;
 
-/**
- * A host name pattern in a network rule's {@code hosts} list.
- *
- * <p>There are three forms: an exact name, {@code *.example.com}, and {@code *}. The wildcard form
- * does not match the bare domain: {@code *.example.com} matches {@code docs.example.com} but not
- * {@code example.com}. A rule should not quietly cover more than it says.
- */
+/// A host name pattern in a network rule's `hosts` list.
+///
+/// There are three forms: an exact name, `*.example.com`, and `*`. The wildcard form
+/// does not match the bare domain: `*.example.com` matches `docs.example.com` but not
+/// `example.com`. A rule should not quietly cover more than it says.
 sealed interface HostPattern {
 
     record Exact(String host)            implements HostPattern {}
@@ -22,7 +20,7 @@ sealed interface HostPattern {
         return new Exact(value);
     }
 
-    /** Lower-cases a host name and removes trailing dots, which do not change its meaning. */
+    /// Lower-cases a host name and removes trailing dots, which do not change its meaning.
     static String normalise(String host) {
         String value = host.trim().toLowerCase(Locale.ROOT);
         while (value.endsWith(".")) value = value.substring(0, value.length() - 1);

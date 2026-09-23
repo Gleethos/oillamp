@@ -2,14 +2,12 @@ package dev.oillamp;
 
 import sprouts.Tuple;
 
-/**
- * The host phase: makes sure this machine can run a sandbox. Used by {@code oillamp at} and, without
- * changing anything, by {@code doctor} and {@code config check}.
- *
- * <p>It probes the host, plans the fixes, runs them, and then <b>probes and plans again</b>. The
- * second round is necessary: the first probe may have run before podman was installed, so its
- * answers about podman meant nothing.
- */
+/// The host phase: makes sure this machine can run a sandbox. Used by `oillamp at` and, without
+/// changing anything, by `doctor` and `config check`.
+///
+/// It probes the host, plans the fixes, runs them, and then **probes and plans again**. The
+/// second round is necessary: the first probe may have run before podman was installed, so its
+/// answers about podman meant nothing.
 final class HostPhase {
 
     private final Machine machine;
@@ -20,19 +18,17 @@ final class HostPhase {
         this.context = context;
     }
 
-    /** The facts and the outcome, so the caller can reuse the facts without probing a third time. */
+    /// The facts and the outcome, so the caller can reuse the facts without probing a third time.
     public record Outcome(HostFacts facts, Result<Plan> result) {
         public boolean succeeded() { return result.isOk(); }
     }
 
-    /**
-     * Probes the host, fixes what it is allowed to fix, then probes again and verifies.
-     *
-     * @param installing whether this run may install what is missing. {@code doctor} and
-     *                   {@code config check} pass {@link Installing#NEVER}, which is not the same
-     *                   as a user declining with {@code --no-install}: it changes what the user is
-     *                   told to do about missing packages.
-     */
+    /// Probes the host, fixes what it is allowed to fix, then probes again and verifies.
+    ///
+    /// @param installing whether this run may install what is missing. `doctor` and
+    ///                   `config check` pass [Installing#NEVER], which is not the same
+    ///                   as a user declining with `--no-install`: it changes what the user is
+    ///                   told to do about missing packages.
     public Outcome prepare(java.nio.file.Path lampPathHint, boolean requiresDisplay,
                            Installing installing) {
         // The package names are the same for every family oillamp knows, so one probe suffices;
@@ -81,7 +77,7 @@ final class HostPhase {
                         + ", " + podman.ociRuntime()));
     }
 
-    /** Exit code 3 when the host is not ready (missing packages, podman or subordinate ids), otherwise 1. */
+    /// Exit code 3 when the host is not ready (missing packages, podman or subordinate ids), otherwise 1.
     public static ExitStatus exitStatusFor(Tuple<Problem> problems) {
         for (Problem problem : problems) {
             String code = problem.code().value();
@@ -92,7 +88,7 @@ final class HostPhase {
         return ExitStatus.ERROR;
     }
 
-    /** Announces the phase even when there is nothing to do, so the console reads consistently. */
+    /// Announces the phase even when there is nothing to do, so the console reads consistently.
     public void announce() {
         context.emit(new LampEvent.PhaseStarted(LampEvent.Phase.HOST));
     }

@@ -2,14 +2,12 @@ package dev.oillamp;
 
 import java.util.Optional;
 
-/**
- * An address range in CIDR notation, such as {@code 10.0.0.0/8}, from a network rule's
- * {@code cidrs} list.
- *
- * <p>Address ranges are what keep the agent out of private networks. The default policy denies
- * the private, loopback, link-local and carrier-grade NAT ranges, so a connection is refused by
- * where it goes, whatever host name was used to get there.
- */
+/// An address range in CIDR notation, such as `10.0.0.0/8`, from a network rule's
+/// `cidrs` list.
+///
+/// Address ranges are what keep the agent out of private networks. The default policy denies
+/// the private, loopback, link-local and carrier-grade NAT ranges, so a connection is refused by
+/// where it goes, whatever host name was used to get there.
 record Cidr(IpAddress network, int prefixLength) {
 
     public Cidr {
@@ -31,7 +29,7 @@ record Cidr(IpAddress network, int prefixLength) {
         return Optional.of(new Cidr(masked(address.get(), prefix), prefix));
     }
 
-    /** True when {@code candidate} lies in this network. Mixed address families never match. */
+    /// True when `candidate` lies in this network. Mixed address families never match.
     public boolean contains(IpAddress candidate) {
         if (candidate.ipv6() != network.ipv6()) return false;
         IpAddress reduced = masked(candidate, prefixLength);

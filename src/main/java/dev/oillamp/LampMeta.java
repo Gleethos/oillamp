@@ -3,12 +3,10 @@ package dev.oillamp;
 import java.time.Instant;
 import java.util.Optional;
 
-/**
- * The contents of {@code .oillamp/lamp.json}: the lamp's identity.
- *
- * <p>{@code schemaVersion} lets this oillamp refuse a lamp written by a newer version instead of
- * damaging it, and would let a future version upgrade an older lamp. Only version 1 exists so far.
- */
+/// The contents of `.oillamp/lamp.json`: the lamp's identity.
+///
+/// `schemaVersion` lets this oillamp refuse a lamp written by a newer version instead of
+/// damaging it, and would let a future version upgrade an older lamp. Only version 1 exists so far.
 record LampMeta(
     int schemaVersion,
     AgentId agentId,
@@ -16,7 +14,7 @@ record LampMeta(
     String createdBy,
     Optional<Instant> lastSessionAt
 ) {
-    /** The layout this build writes and fully understands. */
+    /// The layout this build writes and fully understands.
     public static final int CURRENT_SCHEMA_VERSION = 1;
 
     public LampMeta {

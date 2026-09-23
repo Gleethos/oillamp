@@ -2,10 +2,8 @@ package dev.oillamp;
 
 import sprouts.Tuple;
 
-/**
- * The ordered list of changes one phase intends to make. {@link StepRunner} carries it out, or,
- * in a dry run, only prints it.
- */
+/// The ordered list of changes one phase intends to make. [StepRunner] carries it out, or,
+/// in a dry run, only prints it.
 record Plan(LampEvent.Phase phase, Tuple<Step> steps) {
 
     public static Plan of(LampEvent.Phase phase, Tuple<Step> steps) { return new Plan(phase, steps); }
@@ -18,7 +16,7 @@ record Plan(LampEvent.Phase phase, Tuple<Step> steps) {
 
     public Plan thenAll(Tuple<Step> more) { return new Plan(phase, steps.addAll(more)); }
 
-    /** One line per step, in the order they would run. */
+    /// One line per step, in the order they would run.
     public String describe() {
         StringBuilder out = new StringBuilder();
         for (Step step : steps) out.append(out.isEmpty() ? "" : "\n").append(step.describe());

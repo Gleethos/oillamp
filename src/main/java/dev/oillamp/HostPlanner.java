@@ -4,40 +4,34 @@ import sprouts.Association;
 import sprouts.Tuple;
 import sprouts.ValueSet;
 
-/**
- * Decides what has to be fixed on the host before a sandbox can run: packages to install, a
- * subordinate id range to add, or problems to report.
- *
- * <p>It is a pure function, so situations such as "a stock Ubuntu with nothing installed",
- * "Fedora" or "podman blocked by AppArmor" are tested without a virtual machine.
- *
- * <ul>
- *   <li><b>Every problem is collected</b>, not just the first. A user missing three packages and a
- *       subordinate id range learns all of it in one run.</li>
- *   <li><b>Podman is not checked while it is still to be installed.</b> After the fixes,
- *       {@link HostPhase} probes again and plans with {@link Options#afterFixes()}, which plans
- *       nothing and reports anything still wrong.</li>
- * </ul>
- */
+/// Decides what has to be fixed on the host before a sandbox can run: packages to install, a
+/// subordinate id range to add, or problems to report.
+///
+/// It is a pure function, so situations such as "a stock Ubuntu with nothing installed",
+/// "Fedora" or "podman blocked by AppArmor" are tested without a virtual machine.
+///
+/// - **Every problem is collected**, not just the first. A user missing three packages and a
+///   subordinate id range learns all of it in one run.
+/// - **Podman is not checked while it is still to be installed.** After the fixes,
+///   [HostPhase] probes again and plans with [Options#afterFixes()], which plans
+///   nothing and reports anything still wrong.
 final class HostPlanner {
 
     private HostPlanner() {}
 
-    /**
-     * How much oillamp is allowed to do, and how strict this pass is.
-     *
-     * @param installing               may oillamp change this machine, and if not, why not
-     * @param requiresGraphicalSession true for commands that open windows; false for {@code doctor}
-     * @param afterFixes               the second pass after the fixes: plan nothing, report everything still wrong
-     * @param willExecute              false for a dry run, where steps are only described
-     */
+    /// How much oillamp is allowed to do, and how strict this pass is.
+    ///
+    /// @param installing               may oillamp change this machine, and if not, why not
+    /// @param requiresGraphicalSession true for commands that open windows; false for `doctor`
+    /// @param afterFixes               the second pass after the fixes: plan nothing, report everything still wrong
+    /// @param willExecute              false for a dry run, where steps are only described
     public record Options(Installing installing, boolean requiresGraphicalSession,
                           boolean afterFixes, boolean willExecute) {
         public Options verifying() {
             return new Options(installing, requiresGraphicalSession, true, willExecute);
         }
 
-        /** True only when oillamp may actually fix what it finds on this run. */
+        /// True only when oillamp may actually fix what it finds on this run.
         public boolean mayInstall() {
             return installing.allowed();
         }

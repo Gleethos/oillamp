@@ -18,20 +18,16 @@ import java.util.stream.Stream;
 import sprouts.Pair;
 import sprouts.Tuple;
 
-/**
- * The {@link Machine} that really is this computer. Obtained with {@link Machine#real()}.
- *
- * <p>Two rules hold for every command run here:
- * <ul>
- *   <li><b>Never a shell.</b> The argument list goes straight to {@link ProcessBuilder}, so nothing
- *       inside a configuration value can become a second command.</li>
- *   <li><b>Always a timeout.</b> When it expires, the process and all its child processes are
- *       killed, so a hung {@code podman} cannot leave processes behind.</li>
- * </ul>
- */
+/// The [Machine] that really is this computer. Obtained with [Machine#real()].
+///
+/// Two rules hold for every command run here:
+/// - **Never a shell.** The argument list goes straight to [ProcessBuilder], so nothing
+///   inside a configuration value can become a second command.
+/// - **Always a timeout.** When it expires, the process and all its child processes are
+///   killed, so a hung `podman` cannot leave processes behind.
 final class RealMachine implements Machine {
 
-    /** Output beyond this many bytes is dropped (the start is kept), so a very noisy build cannot exhaust memory. */
+    /// Output beyond this many bytes is dropped (the start is kept), so a very noisy build cannot exhaust memory.
     private static final int MAX_CAPTURED_BYTES = 4 * 1024 * 1024;
 
     private final SecureRandom random = new SecureRandom();
@@ -101,15 +97,13 @@ final class RealMachine implements Machine {
         }
     }
 
-    /**
-     * The argv to actually run, with a shielded command wrapped in {@code setsid}.
-     *
-     * <p>{@code --wait} is required: without it, {@code setsid} may fork and return 0 at once, so
-     * every shutdown command would appear to succeed. With it, setsid waits and returns the
-     * command's real exit code.
-     *
-     * <p>If {@code setsid} is missing, the command runs unshielded rather than not at all.
-     */
+    /// The argv to actually run, with a shielded command wrapped in `setsid`.
+    ///
+    /// `--wait` is required: without it, `setsid` may fork and return 0 at once, so
+    /// every shutdown command would appear to succeed. With it, setsid waits and returns the
+    /// command's real exit code.
+    ///
+    /// If `setsid` is missing, the command runs unshielded rather than not at all.
     private List<String> shield(Command command) {
         List<String> argv = asList(command.argv());
         if (!command.shielded()) return argv;
@@ -122,13 +116,11 @@ final class RealMachine implements Machine {
         return shielded;
     }
 
-    /**
-     * Starts a window and leaves it running.
-     *
-     * <p>Unlike {@link #run}, there is no timeout: the user closes the window when they are done.
-     * The window's output is kept in memory, because when a window closes straight after opening,
-     * its output is the only explanation.
-     */
+    /// Starts a window and leaves it running.
+    ///
+    /// Unlike [#run], there is no timeout: the user closes the window when they are done.
+    /// The window's output is kept in memory, because when a window closes straight after opening,
+    /// its output is the only explanation.
     @Override public Window launch(Command command, Window.Stdio stdio) {
         ProcessBuilder builder = new ProcessBuilder(asList(command.argv()));
         for (Pair<String, String> variable : command.environment())
@@ -155,7 +147,7 @@ final class RealMachine implements Machine {
         return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
     }
 
-    /** A started process, as a {@link Machine.Window}. */
+    /// A started process, as a [Machine.Window].
     private static final class ProcessWindow implements Window {
 
         private final Process process;
@@ -191,10 +183,8 @@ final class RealMachine implements Machine {
             }
         }
 
-        /**
-         * Sends SIGTERM, then kills the process if it is still there after two seconds, so a
-         * window does not stay open after its session ended.
-         */
+        /// Sends SIGTERM, then kills the process if it is still there after two seconds, so a
+        /// window does not stay open after its session ended.
         @Override public void close() {
             if (!process.isAlive()) return;
             process.destroy();
@@ -244,11 +234,9 @@ final class RealMachine implements Machine {
         return drain(stream, sink, line -> { });
     }
 
-    /**
-     * Reads a process's output into {@code sink}, and passes each complete line to
-     * {@code eachLine} as it arrives. A carriage return also ends a line, because progress output
-     * often rewrites one line with {@code \r}.
-     */
+    /// Reads a process's output into `sink`, and passes each complete line to
+    /// `eachLine` as it arrives. A carriage return also ends a line, because progress output
+    /// often rewrites one line with `\r`.
     private static Thread drain(InputStream stream, StringBuilder sink,
                                 java.util.function.Consumer<String> eachLine) {
         return Thread.ofVirtual().start(() -> {
@@ -277,7 +265,7 @@ final class RealMachine implements Machine {
         });
     }
 
-    /** Kills the child processes first, so none can survive by being re-parented. */
+    /// Kills the child processes first, so none can survive by being re-parented.
     private static void destroyTree(Process process) {
         process.descendants().forEach(ProcessHandle::destroyForcibly);
         process.destroyForcibly();

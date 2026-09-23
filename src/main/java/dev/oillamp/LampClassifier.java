@@ -10,31 +10,25 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import sprouts.Tuple;
 
-/**
- * Decides what is at a lamp path: nothing, an empty directory, an existing lamp, someone else's
- * files, or a damaged lamp. The caller reads the directory listing and {@code lamp.json}; this class
- * only interprets them.
- */
+/// Decides what is at a lamp path: nothing, an empty directory, an existing lamp, someone else's
+/// files, or a damaged lamp. The caller reads the directory listing and `lamp.json`; this class
+/// only interprets them.
 final class LampClassifier {
 
     private LampClassifier() {}
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /**
-     * Entries that do not make a directory count as someone else's: files that editors and file
-     * managers leave behind, and the lamp's own {@code oillamp.toml} and {@code README.txt}. Writing
-     * {@code oillamp.toml} before the first run is a normal way to configure a new lamp.
-     */
+    /// Entries that do not make a directory count as someone else's: files that editors and file
+    /// managers leave behind, and the lamp's own `oillamp.toml` and `README.txt`. Writing
+    /// `oillamp.toml` before the first run is a normal way to configure a new lamp.
     private static final Tuple<String> IGNORED_ENTRIES = Tuple.of(String.class,
             ".DS_Store", ".directory", "Thumbs.db", ".keep", ".gitkeep",
             "oillamp.toml", "README.txt");
 
-    /**
-     * Classifies what is at the lamp path.
-     *
-     * @param lampJson the contents of {@code .oillamp/lamp.json}, if the shell found and read it
-     */
+    /// Classifies what is at the lamp path.
+    ///
+    /// @param lampJson the contents of `.oillamp/lamp.json`, if the shell found and read it
     public static LampState classify(Path root, DirListing listing, Optional<String> lampJson) {
         if (!listing.exists())  return new LampState.Missing(root);
         if (!listing.readable()) return new LampState.Unreadable(root, "the directory cannot be read");
@@ -78,7 +72,7 @@ final class LampClassifier {
                         : Optional.of(Instant.parse(lastSession.asText())));
     }
 
-    /** Writes {@code lamp.json} as text; the reverse of {@link #parse}. */
+    /// Writes `lamp.json` as text; the reverse of [#parse].
     public static String render(LampMeta meta) {
         StringBuilder out = new StringBuilder("{\n");
         out.append("  \"schemaVersion\": ").append(meta.schemaVersion()).append(",\n");

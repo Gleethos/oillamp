@@ -1,17 +1,15 @@
 package dev.oillamp;
 
 
-/**
- * One {@code [[network.forwards]]} entry: a fixed tunnel from {@code 127.0.0.1:<port>} inside the
- * sandbox to one address the host can reach, such as a company LLM service.
- *
- * <p>Forwards bypass the network policy on purpose. Agent tools expect a plain base URL, and the
- * target is one the user chose. Because they bypass the policy, they are named in the
- * configuration, listed in the agent guide and logged like proxy connections.
- */
+/// One `[[network.forwards]]` entry: a fixed tunnel from `127.0.0.1:<port>` inside the
+/// sandbox to one address the host can reach, such as a company LLM service.
+///
+/// Forwards bypass the network policy on purpose. Agent tools expect a plain base URL, and the
+/// target is one the user chose. Because they bypass the policy, they are named in the
+/// configuration, listed in the agent guide and logged like proxy connections.
 record Forward(String name, int port, HostAndPort target) {
 
-    /** The port the egress proxy listens on inside the sandbox. A forward may not use it. */
+    /// The port the egress proxy listens on inside the sandbox. A forward may not use it.
     public static final int PROXY_PORT = 3128;
 
     public Forward {
@@ -23,9 +21,9 @@ record Forward(String name, int port, HostAndPort target) {
             throw new IllegalArgumentException("Port " + PROXY_PORT + " is the egress proxy's");
     }
 
-    /** {@code fwd-<name>.sock} in the lamp's host socket directory. */
+    /// `fwd-<name>.sock` in the lamp's host socket directory.
     public String socketFileName() { return "fwd-" + name + ".sock"; }
 
-    /** What the agent's tools put in a base URL. */
+    /// What the agent's tools put in a base URL.
     public String inContainerUrl(String path) { return "http://127.0.0.1:" + port + path; }
 }

@@ -5,38 +5,34 @@ import sprouts.Tuple;
 import java.util.Optional;
 
 
-/**
- * Decides whether the sandbox desktop is drawn by the host's graphics card ({@code gles2}) or by
- * the processor ({@code pixman}).
- *
- * <p>A GPU must never stop a session. With {@code display.gpu = "auto"}, every unmet condition
- * means software rendering, with the reason printed. Only {@code "on"} turns an unmet condition
- * into an error, because the user asked for the GPU explicitly.
- *
- * <p>The conditions: a render node exists, the user is in the group that owns it, its driver is
- * one of the open-source Mesa drivers known to work without a monitor, and podman uses crun,
- * because passing the host's render group into the container needs
- * {@code --group-add keep-groups}, which only crun supports.
- */
+/// Decides whether the sandbox desktop is drawn by the host's graphics card (`gles2`) or by
+/// the processor (`pixman`).
+///
+/// A GPU must never stop a session. With `display.gpu = "auto"`, every unmet condition
+/// means software rendering, with the reason printed. Only `"on"` turns an unmet condition
+/// into an error, because the user asked for the GPU explicitly.
+///
+/// The conditions: a render node exists, the user is in the group that owns it, its driver is
+/// one of the open-source Mesa drivers known to work without a monitor, and podman uses crun,
+/// because passing the host's render group into the container needs
+/// `--group-add keep-groups`, which only crun supports.
 final class Gpu {
 
     private Gpu() {}
 
-    /** The decision, including the reason, which is printed at startup. */
+    /// The decision, including the reason, which is printed at startup.
     public sealed interface Decision {
         record Hardware(GpuFacts.RenderNode node) implements Decision {}
-        /**
-         * Software rendering, and why.
-         *
-         * @param remedy what the user can do about it, if anything, such as the {@code usermod}
-         *               command that adds them to the render group
-         */
+        /// Software rendering, and why.
+        ///
+        /// @param remedy what the user can do about it, if anything, such as the `usermod`
+        ///               command that adds them to the render group
         record Software(String reason, Tuple<Problem.Fix> remedy) implements Decision {
             Software(String reason) { this(reason, Tuple.of(Problem.Fix.class)); }
         }
         record Refused(Problem problem) implements Decision {}
 
-        /** The renderer name sway is started with: {@code gles2} for the GPU, {@code pixman} for software. */
+        /// The renderer name sway is started with: `gles2` for the GPU, `pixman` for software.
         default String renderer() {
             return this instanceof Hardware ? "gles2" : "pixman";
         }
@@ -73,7 +69,7 @@ final class Gpu {
                 obstacle.map(Obstacle::remedy).orElse(Tuple.of(Problem.Fix.class)));
     }
 
-    /** Why the GPU is not being used, and what to do about it, if anything. */
+    /// Why the GPU is not being used, and what to do about it, if anything.
     private record Obstacle(String reason, Tuple<Problem.Fix> remedy) {
         static Obstacle of(String reason) { return new Obstacle(reason, Tuple.of(Problem.Fix.class)); }
         static Obstacle of(String reason, Problem.Fix... fixes) {
@@ -107,10 +103,8 @@ final class Gpu {
         return Optional.empty();
     }
 
-    /**
-     * The line printed at startup when the GPU is not used: the reason, followed by the command
-     * that fixes it when there is one. The reason alone would leave the user to work out the fix.
-     */
+    /// The line printed at startup when the GPU is not used: the reason, followed by the command
+    /// that fixes it when there is one. The reason alone would leave the user to work out the fix.
     public static Optional<String> noteLine(Decision decision) {
         return noteFor(decision).map(note -> note.whatHappened()
                 + note.fixes().stream()
@@ -121,7 +115,7 @@ final class Gpu {
                       .orElse(""));
     }
 
-    /** The informational note shown when the session falls back to software rendering. */
+    /// The informational note shown when the session falls back to software rendering.
     public static Optional<Problem> noteFor(Decision decision) {
         return switch (decision) {
             case Decision.Hardware ignored -> Optional.empty();

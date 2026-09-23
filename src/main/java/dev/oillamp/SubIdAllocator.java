@@ -2,25 +2,21 @@ package dev.oillamp;
 
 import sprouts.Tuple;
 
-/**
- * Picks a subordinate id range for the user that overlaps nobody else's.
- *
- * <p>An overlap would give two users the same host ids, so one user's containers could write files
- * as the other, and nobody would notice for a long time. That is why this is a pure function with
- * its own tests for the awkward cases: ranges that touch, ranges out of order, a range that ends
- * exactly where the new one would start.
- */
+/// Picks a subordinate id range for the user that overlaps nobody else's.
+///
+/// An overlap would give two users the same host ids, so one user's containers could write files
+/// as the other, and nobody would notice for a long time. That is why this is a pure function with
+/// its own tests for the awkward cases: ranges that touch, ranges out of order, a range that ends
+/// exactly where the new one would start.
 final class SubIdAllocator {
 
     private SubIdAllocator() {}
 
-    /** Below this, ranges would collide with real system and login users. */
+    /// Below this, ranges would collide with real system and login users.
     public static final int FLOOR = 100_000;
 
-    /**
-     * The first free block of {@code size} ids at or above {@link #FLOOR}, aligned to {@code size}
-     * so that allocations stay tidy and human-readable in {@code /etc/subuid}.
-     */
+    /// The first free block of `size` ids at or above [#FLOOR], aligned to `size`
+    /// so that allocations stay tidy and human-readable in `/etc/subuid`.
     public static IdRange allocate(Tuple<IdRange> existing, int size) {
         if (size <= 0) throw new IllegalArgumentException("Range size must be positive: " + size);
         java.util.List<IdRange> sorted = new java.util.ArrayList<>();

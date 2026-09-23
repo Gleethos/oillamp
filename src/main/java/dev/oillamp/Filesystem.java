@@ -14,16 +14,14 @@ import java.util.stream.Stream;
 
 import sprouts.Tuple;
 
-/**
- * File operations on the lamp directory.
- *
- * <p>These use the real filesystem even in tests, unlike the rest of oillamp's effects, which go
- * through {@link Machine}. The lamp's isolation depends on real permission bits, ownership and
- * symlinks, and a simulated filesystem could hide bugs in exactly those.
- *
- * <p>Files are written atomically: to a temporary file in the same directory, then renamed. An
- * interrupted run cannot leave a half-written {@code lamp.json} or {@code runtime.env} behind.
- */
+/// File operations on the lamp directory.
+///
+/// These use the real filesystem even in tests, unlike the rest of oillamp's effects, which go
+/// through [Machine]. The lamp's isolation depends on real permission bits, ownership and
+/// symlinks, and a simulated filesystem could hide bugs in exactly those.
+///
+/// Files are written atomically: to a temporary file in the same directory, then renamed. An
+/// interrupted run cannot leave a half-written `lamp.json` or `runtime.env` behind.
 final class Filesystem {
 
     private Filesystem() {}
@@ -38,15 +36,13 @@ final class Filesystem {
         Files.createDirectory(path, PosixFilePermissions.asFileAttribute(mode.permissions()));
     }
 
-    /** Writes atomically, then applies the mode — never leaves a partially written file. */
+    /// Writes atomically, then applies the mode — never leaves a partially written file.
     public static void writeFile(Path path, String content, PosixMode mode) throws IOException {
         writeBytes(path, content.getBytes(StandardCharsets.UTF_8), mode);
     }
 
-    /**
-     * The same for binary content, such as the wallpaper PNG in the image files. Writing it as text
-     * would corrupt it.
-     */
+    /// The same for binary content, such as the wallpaper PNG in the image files. Writing it as text
+    /// would corrupt it.
     public static void writeBytes(Path path, byte[] content, PosixMode mode) throws IOException {
         Path parent = path.getParent();
         if (parent != null) Files.createDirectories(parent);
@@ -60,7 +56,7 @@ final class Filesystem {
         }
     }
 
-    /** Creates a directory and every missing parent, applying the mode to those it creates. */
+    /// Creates a directory and every missing parent, applying the mode to those it creates.
     public static void createDirectories(Path path, PosixMode mode) throws IOException {
         if (Files.isDirectory(path)) return;
         Path parent = path.getParent();
@@ -76,10 +72,8 @@ final class Filesystem {
         setMode(to, mode);
     }
 
-    /**
-     * Points {@code link} at {@code target}, replacing anything else at that path, such as a link
-     * left by a crashed session that points somewhere else.
-     */
+    /// Points `link` at `target`, replacing anything else at that path, such as a link
+    /// left by a crashed session that points somewhere else.
     public static void createSymlink(Path link, Path target) throws IOException {
         if (Files.isSymbolicLink(link)) {
             if (Files.readSymbolicLink(link).equals(target)) return;
@@ -110,15 +104,13 @@ final class Filesystem {
         Files.deleteIfExists(path);
     }
 
-    /**
-     * Deletes a tree as far as this user is allowed to, and reports what survived.
-     *
-     * <p>It does not stop at the first refusal, so the caller can tell the user which paths could
-     * not be deleted (usually files owned by the infra user).
-     *
-     * <p>Symlinks are deleted, never followed. The runtime directory holds a link into the lamp, and
-     * following it would delete the lamp's contents.
-     */
+    /// Deletes a tree as far as this user is allowed to, and reports what survived.
+    ///
+    /// It does not stop at the first refusal, so the caller can tell the user which paths could
+    /// not be deleted (usually files owned by the infra user).
+    ///
+    /// Symlinks are deleted, never followed. The runtime directory holds a link into the lamp, and
+    /// following it would delete the lamp's contents.
     public static Tuple<Path> deleteTree(Path root) {
         Tuple<Path> survivors = Tuple.of(Path.class);
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return survivors;
@@ -137,14 +129,12 @@ final class Filesystem {
         return survivors;
     }
 
-    /**
-     * Every {@code .mkv} file in a recordings directory, sorted by name (which is by time).
-     *
-     * <p>The file is created when recording starts and written until it stops, so its creation and
-     * modification times give its duration without opening it or needing {@code ffprobe}.
-     *
-     * @return the recordings; empty when the directory does not exist or cannot be read
-     */
+    /// Every `.mkv` file in a recordings directory, sorted by name (which is by time).
+    ///
+    /// The file is created when recording starts and written until it stops, so its creation and
+    /// modification times give its duration without opening it or needing `ffprobe`.
+    ///
+    /// @return the recordings; empty when the directory does not exist or cannot be read
     public static Tuple<RecordingFile> listRecordings(Path directory) {
         Tuple<RecordingFile> found = Tuple.of(RecordingFile.class);
         if (!Files.isDirectory(directory)) return found;
@@ -162,12 +152,10 @@ final class Filesystem {
         return found;
     }
 
-    /**
-     * When the recording began: the file's creation time where the filesystem keeps one. Where it
-     * does not, Java returns the modification time instead, which would make every recording zero
-     * seconds long, so the session start in the file name is used. That is a few seconds early,
-     * because the sandbox starts before the recorder.
-     */
+    /// When the recording began: the file's creation time where the filesystem keeps one. Where it
+    /// does not, Java returns the modification time instead, which would make every recording zero
+    /// seconds long, so the session start in the file name is used. That is a few seconds early,
+    /// because the sandbox starts before the recorder.
     private static Instant startOf(Path file, BasicFileAttributes attributes) {
         Instant created = attributes.creationTime().toInstant();
         if (created.isBefore(attributes.lastModifiedTime().toInstant())) return created;
@@ -178,7 +166,7 @@ final class Filesystem {
                            .orElse(created);
     }
 
-    /** Lists a directory for {@link LampClassifier}. */
+    /// Lists a directory for [LampClassifier].
     public static DirListing list(Path path) {
         if (!Files.exists(path)) return DirListing.missing();
         if (!Files.isDirectory(path) || !Files.isReadable(path))

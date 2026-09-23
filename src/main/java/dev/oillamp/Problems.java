@@ -9,15 +9,13 @@ import java.util.Optional;
 
 import sprouts.Tuple;
 
-/**
- * Every problem oillamp can report, with its code and wording.
- *
- * <p>Each method builds one kind of problem with a fixed title and "why it matters", plus the
- * evidence and fixes for the case at hand. Keeping the wording here keeps the messages consistent
- * and easy to review. The codes must never change meaning, because users and scripts match on
- * them; the wording can be improved freely. The codes are also listed in
- * {@code docs/ARCHITECTURE.md}.
- */
+/// Every problem oillamp can report, with its code and wording.
+///
+/// Each method builds one kind of problem with a fixed title and "why it matters", plus the
+/// evidence and fixes for the case at hand. Keeping the wording here keeps the messages consistent
+/// and easy to review. The codes must never change meaning, because users and scripts match on
+/// them; the wording can be improved freely. The codes are also listed in
+/// `docs/ARCHITECTURE.md`.
 final class Problems {
 
     private Problems() {}
@@ -75,11 +73,9 @@ final class Problems {
 
     // ─── network ───────────────────────────────────────────────────────────────────────────
 
-    /**
-     * A forward's target could not be reached. A warning, not an error: the service being down is
-     * no reason to stop the session, but inside the sandbox it only looks like a closed connection,
-     * so the user is told here.
-     */
+    /// A forward's target could not be reached. A warning, not an error: the service being down is
+    /// no reason to stop the session, but inside the sandbox it only looks like a closed connection,
+    /// so the user is told here.
     public static Problem forwardUnreachable(Forward forward, String why) {
         return warning(NET_FORWARD_UNREACHABLE, "A forward target cannot be reached",
                 "the forward '" + forward.name() + "' could not connect to " + forward.target(),
@@ -174,7 +170,7 @@ final class Problems {
 
     // ─── podman ────────────────────────────────────────────────────────────────────────────
 
-    /** The package is installed but the program did not answer — a broken or shadowed install. */
+    /// The package is installed but the program did not answer — a broken or shadowed install.
     static Problem podmanUnusable(String detail) {
         return error(PODMAN_TOO_OLD, "Podman is installed but did not respond",
                 detail,
@@ -289,12 +285,10 @@ final class Problems {
                 Optional.empty());
     }
 
-    /**
-     * {@code oillamp remove} asked to delete a lamp that is in use.
-     *
-     * <p>Deleting the agent's home under a running container would leave the session using
-     * directories that no longer exist, and a container with no lamp left to stop it with.
-     */
+    /// `oillamp remove` asked to delete a lamp that is in use.
+    ///
+    /// Deleting the agent's home under a running container would leave the session using
+    /// directories that no longer exist, and a container with no lamp left to stop it with.
     public static Problem lampStillRunning(Path root, String what) {
         return new Problem(LAMP_STILL_RUNNING, Severity.ERROR, "That lamp is in use",
                 what,
@@ -307,13 +301,11 @@ final class Problems {
                 Optional.empty());
     }
 
-    /**
-     * Part of a lamp survived {@code oillamp remove}.
-     *
-     * <p>The infra sockets and recordings belong to the infra user, which this user can only delete
-     * through podman's user namespace. {@code remove} does that, so reaching this means podman was
-     * missing or refused.
-     */
+    /// Part of a lamp survived `oillamp remove`.
+    ///
+    /// The infra sockets and recordings belong to the infra user, which this user can only delete
+    /// through podman's user namespace. `remove` does that, so reaching this means podman was
+    /// missing or refused.
     public static Problem lampNotRemoved(Path path, String why) {
         return error(LAMP_NOT_REMOVED, "Part of the lamp could not be removed",
                 path + " is still there: " + why,
@@ -324,11 +316,9 @@ final class Problems {
                     "podman unshare rm -rf " + path));
     }
 
-    /**
-     * {@code oillamp recordings --open} named a session with no recording.
-     *
-     * <p>Lists the sessions that do have recordings, since the usual cause is a mistyped id.
-     */
+    /// `oillamp recordings --open` named a session with no recording.
+    ///
+    /// Lists the sessions that do have recordings, since the usual cause is a mistyped id.
     public static Problem noSuchRecording(String session, Path lamp, Path directory,
                                           Tuple<RecordingFile> existing) {
         Tuple<String> ids = Tuple.of(String.class);
@@ -343,12 +333,10 @@ final class Problems {
             .withFix(Fix.run("see the ones that are there", "oillamp recordings " + lamp));
     }
 
-    /**
-     * The desktop would not open a recording.
-     *
-     * <p>oillamp hands the file to {@code xdg-open}, so this usually means no program is set up to
-     * open {@code .mkv} files, or there is no desktop.
-     */
+    /// The desktop would not open a recording.
+    ///
+    /// oillamp hands the file to `xdg-open`, so this usually means no program is set up to
+    /// open `.mkv` files, or there is no desktop.
     public static Problem recordingNotOpened(Path file, String why) {
         return error(RECORDING_NOT_OPENED, "That recording could not be opened",
                 why,
@@ -435,13 +423,11 @@ final class Problems {
 
     // ─── the windows of a session ──────────────────────────────────────────────────────────
 
-    /**
-     * The terminal window was started but never connected.
-     *
-     * <p>Without a timeout, a sandbox would keep running with nobody in it and nothing to end it.
-     * The cause is usually the terminal's arguments, so the fix suggests running the command by
-     * hand.
-     */
+    /// The terminal window was started but never connected.
+    ///
+    /// Without a timeout, a sandbox would keep running with nobody in it and nothing to end it.
+    /// The cause is usually the terminal's arguments, so the fix suggests running the command by
+    /// hand.
     public static Problem terminalDidNotConnect(java.time.Duration waited) {
         return error(TERM_NO_CONNECT, "The terminal window did not connect",
                 "the terminal was started but no shell reached the sandbox within "
@@ -452,7 +438,7 @@ final class Problems {
             .withFix(Fix.of("or name a terminal you know works with terminal.profile in oillamp.toml"));
     }
 
-    /** The terminal emulator itself would not start, as opposed to starting and never connecting. */
+    /// The terminal emulator itself would not start, as opposed to starting and never connecting.
     public static Problem terminalNotStarted(Tuple<String> argv, String reason, String output) {
         Problem problem = error(TERM_NOT_STARTED, "The terminal window could not be opened",
                 "starting " + argv.first() + " failed: " + reason,
@@ -465,10 +451,8 @@ final class Problems {
                 new Evidence.Excerpt("what it printed", output));
     }
 
-    /**
-     * The viewer window closed straight after opening. A warning, not an error: the session still
-     * works, and the user can open another viewer with {@code oillamp view}.
-     */
+    /// The viewer window closed straight after opening. A warning, not an error: the session still
+    /// works, and the user can open another viewer with `oillamp view`.
     public static Problem viewerDiedImmediately(Tuple<String> argv, int exitCode, String output) {
         return warning(VIEWER_DIED, "The viewer window closed immediately",
                 argv.first() + " exited with code " + exitCode + " a moment after it was started",
@@ -479,7 +463,7 @@ final class Problems {
             .withFix(Fix.of("open another one with `oillamp view <dir>` once it is fixed"));
     }
 
-    /** A second connection to the primary SSH socket, which belongs to the terminal window only. */
+    /// A second connection to the primary SSH socket, which belongs to the terminal window only.
     public static Problem extraPrimaryRejected(Path socket) {
         return warning(SSH_PRIMARY_TAKEN, "A second connection to the session's own socket was refused",
                 socket + " accepts one connection per session, and it is already in use",
@@ -529,12 +513,10 @@ final class Problems {
             .withFix(Fix.run("check the machine is still able to run containers", "oillamp doctor"));
     }
 
-    /**
-     * The container exited while oillamp was waiting for it to become ready.
-     *
-     * <p>Includes the last lines of the container's log, the only place the entrypoint explains
-     * why it stopped.
-     */
+    /// The container exited while oillamp was waiting for it to become ready.
+    ///
+    /// Includes the last lines of the container's log, the only place the entrypoint explains
+    /// why it stopped.
     public static Problem sandboxDied(String container, String log) {
         return error(SANDBOX_DIED, "The sandbox stopped while starting up",
                 "container " + container + " exited before it reported itself ready",
@@ -544,10 +526,8 @@ final class Problems {
             .withFix(Fix.of("the log above is from inside the sandbox and names which part failed"));
     }
 
-    /**
-     * Neither {@code podman stop} nor {@code podman rm -f} worked, so the container is still there.
-     * Not an internal error: it is a problem with podman or the machine, and the fix is a command.
-     */
+    /// Neither `podman stop` nor `podman rm -f` worked, so the container is still there.
+    /// Not an internal error: it is a problem with podman or the machine, and the fix is a command.
     public static Problem containerNotRemoved(String container, String stopError, String removeError) {
         return error(SANDBOX_NOT_REMOVED, "The sandbox container is still there",
                 "neither stopping nor removing container " + container + " worked",
@@ -573,13 +553,11 @@ final class Problems {
             .withFix(Fix.run("stop the container that is still running", "podman rm -f " + container));
     }
 
-    /**
-     * The sandbox said it was ready, but one of its sockets refuses connections.
-     *
-     * <p>A server can die after {@code ready.json} is written, or fail to start and leave the
-     * previous session's socket file in place. Either way the sandbox looks healthy until
-     * something connects, which is why oillamp connects before saying the session is ready.
-     */
+    /// The sandbox said it was ready, but one of its sockets refuses connections.
+    ///
+    /// A server can die after `ready.json` is written, or fail to start and leave the
+    /// previous session's socket file in place. Either way the sandbox looks healthy until
+    /// something connects, which is why oillamp connects before saying the session is ready.
     public static Problem sandboxEndpointDead(String what, java.nio.file.Path socket,
                                               String container, String log) {
         return error(SANDBOX_ENDPOINT_DEAD, "The sandbox is not answering on " + what,
@@ -597,7 +575,7 @@ final class Problems {
             .withFix(Fix.run("stop the container that is still running", "podman rm -f " + container));
     }
 
-    /** Whether a captured log holds anything a reader could act on. */
+    /// Whether a captured log holds anything a reader could act on.
     private static boolean hasContent(String log) {
         return !log.isBlank() && !log.startsWith("(");
     }
@@ -616,7 +594,7 @@ final class Problems {
             .withEvidence(command);
     }
 
-    /** The user typed something oillamp does not understand. Exit code 2. */
+    /// The user typed something oillamp does not understand. Exit code 2.
     static Problem usage(String whatHappened, String usage) {
         return error(new Code("OIL-USAGE-001"), "Invalid command line",
                 whatHappened,
@@ -643,7 +621,7 @@ final class Problems {
 
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
 
-    /** An unexpected failure, rendered as a problem rather than dumped as a stack trace. */
+    /// An unexpected failure, rendered as a problem rather than dumped as a stack trace.
     static Problem crash(Throwable failure) {
         StringBuilder trace = new StringBuilder(failure.toString());
         StackTraceElement[] frames = failure.getStackTrace();
@@ -658,7 +636,7 @@ final class Problems {
         return frames.length == 0 ? "unknown" : frames[0].getClassName() + "." + frames[0].getMethodName();
     }
 
-    /** A readable reason from an exception: its message, or its class name if it has none. */
+    /// A readable reason from an exception: its message, or its class name if it has none.
     public static String reason(Throwable failure) {
         String message = failure.getMessage();
         return message == null || message.isBlank()

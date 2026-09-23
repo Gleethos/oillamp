@@ -9,17 +9,15 @@ import java.util.Optional;
 import sprouts.Association;
 import sprouts.Tuple;
 
-/**
- * The lamp phase: turns a directory into a lamp that is ready to run.
- *
- * <p>It does the reading the pure planners cannot: resolves the path, looks at what is there,
- * reads the configuration files and checks the filesystem can hold Unix sockets. The decisions are
- * made by {@link LampPaths}, {@link LampClassifier}, {@link ConfigLoader}, {@link Gpu} and
- * {@link LampPlanner}. The lock is taken afterwards, by {@code Commands.at}.
- */
+/// The lamp phase: turns a directory into a lamp that is ready to run.
+///
+/// It does the reading the pure planners cannot: resolves the path, looks at what is there,
+/// reads the configuration files and checks the filesystem can hold Unix sockets. The decisions are
+/// made by [LampPaths], [LampClassifier], [ConfigLoader], [Gpu] and
+/// [LampPlanner]. The lock is taken afterwards, by `Commands.at`.
 final class LampPhase {
 
-    /** Filesystems that cannot hold Unix domain sockets, which every connection to the sandbox uses. */
+    /// Filesystems that cannot hold Unix domain sockets, which every connection to the sandbox uses.
     private static final Tuple<String> UNUSABLE_FILESYSTEMS =
             Tuple.of(String.class, "nfs", "nfs4", "cifs", "smb3", "vfat", "exfat", "fuse.sshfs", "msdos");
 
@@ -31,7 +29,7 @@ final class LampPhase {
         this.context = context;
     }
 
-    /** Everything the later phases need from a prepared lamp. */
+    /// Everything the later phases need from a prepared lamp.
     public record Prepared(LampLayout layout, LampConfig config, SessionId session,
                            Gpu.Decision gpu, LampState state) {}
 
@@ -97,12 +95,10 @@ final class LampPhase {
                          executed.warnings().addAll(written.warnings()));
     }
 
-    /**
-     * The host environment variables passed to the agent's tools: only the names in
-     * {@link RuntimeEnv#INHERITED_FROM_HOST}. A user who set {@code EDENAI_API_KEY} on the host
-     * does not have to set it again in the sandbox. The console says which were found, never their
-     * values.
-     */
+    /// The host environment variables passed to the agent's tools: only the names in
+    /// [RuntimeEnv#INHERITED_FROM_HOST]. A user who set `EDENAI_API_KEY` on the host
+    /// does not have to set it again in the sandbox. The console says which were found, never their
+    /// values.
     private Association<String, String> inheritedFromHost() {
         Association<String, String> found = Association.between(String.class, String.class);
         Tuple<String> names = Tuple.of(String.class);
@@ -118,10 +114,8 @@ final class LampPhase {
         return found;
     }
 
-    /**
-     * Renders the per-session files. Separate from the skeleton because it needs the keys that
-     * the skeleton generated; see {@link LampPlanner#planSession}.
-     */
+    /// Renders the per-session files. Separate from the skeleton because it needs the keys that
+    /// the skeleton generated; see [LampPlanner#planSession].
     private Result<Plan> planSessionFiles(LampLayout layout, LampConfig config,
                                           SessionId session, Gpu.Decision gpu) {
         if (context.options().dryRun())
@@ -146,13 +140,11 @@ final class LampPhase {
 
     // ─── configuration ─────────────────────────────────────────────────────────────────────
 
-    /**
-     * Reads the configuration files that apply to this lamp: the global file, then the lamp's.
-     *
-     * <p>A lamp whose {@code oillamp.toml} does not exist yet is not an error: it is about to be
-     * created from the shipped template, and the built-in defaults describe exactly what that
-     * template says.
-     */
+    /// Reads the configuration files that apply to this lamp: the global file, then the lamp's.
+    ///
+    /// A lamp whose `oillamp.toml` does not exist yet is not an error: it is about to be
+    /// created from the shipped template, and the built-in defaults describe exactly what that
+    /// template says.
     private Result<LampConfig> loadConfiguration(LampLayout layout, HostFacts host) {
         Tuple<ConfigSource> sources = Tuple.of(ConfigSource.class);
         Path global = host.user().home().resolve(".config").resolve("oillamp").resolve("config.toml");
@@ -187,10 +179,8 @@ final class LampPhase {
 
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Makes the path absolute and resolves symlinks <em>before</em> validation, so a link
-     * pointing into a system directory cannot get past the refusal in {@link LampPaths}.
-     */
+    /// Makes the path absolute and resolves symlinks _before_ validation, so a link
+    /// pointing into a system directory cannot get past the refusal in [LampPaths].
     private Path resolve(Path requested) {
         Path absolute = requested.isAbsolute()
                 ? requested

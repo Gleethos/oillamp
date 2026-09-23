@@ -6,32 +6,28 @@ import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-/**
- * The contents of {@code ready.json}, which the container's entrypoint writes once the desktop and
- * the SSH listener accept connections.
- *
- * <p>The session id tells this session's file apart from one the previous session left behind in
- * the same directory. The renderer and the fallback flag are shown to the user when the desktop
- * opens.
- *
- * <p>The desktop size in the file is deliberately ignored. The host wrote it into
- * {@code runtime.env} itself, and trusts its own value over what the container reports.
- */
+/// The contents of `ready.json`, which the container's entrypoint writes once the desktop and
+/// the SSH listener accept connections.
+///
+/// The session id tells this session's file apart from one the previous session left behind in
+/// the same directory. The renderer and the fallback flag are shown to the user when the desktop
+/// opens.
+///
+/// The desktop size in the file is deliberately ignored. The host wrote it into
+/// `runtime.env` itself, and trusts its own value over what the container reports.
 record ReadyInfo(String renderer, boolean gpuFallback, Optional<SessionId> session) {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** Used when the file cannot be read. The session may still be working perfectly. */
+    /// Used when the file cannot be read. The session may still be working perfectly.
     public static ReadyInfo unknown() {
         return new ReadyInfo("unknown", false, Optional.empty());
     }
 
-    /**
-     * Reads the file, falling back to {@link #unknown()} instead of failing.
-     *
-     * <p>By the time this runs, oillamp has already connected to both of the sandbox's sockets, so
-     * the session is known to work. An unreadable field is no reason to stop it.
-     */
+    /// Reads the file, falling back to [#unknown()] instead of failing.
+    ///
+    /// By the time this runs, oillamp has already connected to both of the sandbox's sockets, so
+    /// the session is known to work. An unreadable field is no reason to stop it.
     public static ReadyInfo parse(String json) {
         try {
             JsonNode node = JSON.readTree(json);
@@ -55,7 +51,7 @@ record ReadyInfo(String renderer, boolean gpuFallback, Optional<SessionId> sessi
         }
     }
 
-    /** The one line the console shows when the desktop is up. */
+    /// The one line the console shows when the desktop is up.
     public String describe() {
         return "renderer " + renderer + (gpuFallback ? " (fell back from the GPU)" : "");
     }

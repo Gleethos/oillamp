@@ -1,6 +1,6 @@
 package dev.oillamp;
 
-/** What {@code podman version} and {@code podman info} reported. */
+/// What `podman version` and `podman info` reported.
 record PodmanFacts(
     String version,
     boolean rootless,
@@ -8,15 +8,15 @@ record PodmanFacts(
     String storageDriver,
     int cgroupVersion
 ) {
-    /** The oldest podman with the rootless keep-id mapping oillamp needs. Ubuntu 24.04 ships 4.9.x. */
+    /// The oldest podman with the rootless keep-id mapping oillamp needs. Ubuntu 24.04 ships 4.9.x.
     public static final String MINIMUM_VERSION = "4.9";
 
-    /** Passing the GPU into the container needs {@code --group-add keep-groups}, which only crun supports. */
+    /// Passing the GPU into the container needs `--group-add keep-groups`, which only crun supports.
     public boolean supportsKeepGroups() { return ociRuntime.equals("crun"); }
 
     public boolean isAtLeastMinimum() { return compareVersions(version, MINIMUM_VERSION) >= 0; }
 
-    /** Compares dotted numeric versions, ignoring any trailing suffix such as {@code -rc1}. */
+    /// Compares dotted numeric versions, ignoring any trailing suffix such as `-rc1`.
     public static int compareVersions(String left, String right) {
         String[] a = left.split("[.-]");
         String[] b = right.split("[.-]");

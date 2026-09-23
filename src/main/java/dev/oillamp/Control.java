@@ -19,25 +19,23 @@ import sprouts.Association;
 import sprouts.Pair;
 import sprouts.Tuple;
 
-/**
- * The control socket, through which another oillamp process talks to a running session.
- *
- * <p>{@code view}, {@code shell}, {@code stop} and {@code status} send requests to the supervisor
- * rather than acting on the lamp themselves, because the supervisor holds the lock, the relays and
- * the session state. A {@code stop} that removed the container directly would leave the supervisor
- * believing its session was still running.
- *
- * <p>The protocol is one JSON object per line and one request per connection, simple enough for a
- * future front end to use as well. It is only spoken between processes of the same oillamp
- * version, so it has no versioning.
- */
+/// The control socket, through which another oillamp process talks to a running session.
+///
+/// `view`, `shell`, `stop` and `status` send requests to the supervisor
+/// rather than acting on the lamp themselves, because the supervisor holds the lock, the relays and
+/// the session state. A `stop` that removed the container directly would leave the supervisor
+/// believing its session was still running.
+///
+/// The protocol is one JSON object per line and one request per connection, simple enough for a
+/// future front end to use as well. It is only spoken between processes of the same oillamp
+/// version, so it has no versioning.
 final class Control {
 
     private Control() {}
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** What a second oillamp is asking for. */
+    /// What a second oillamp is asking for.
     record Request(String op, Association<String, String> arguments) {
 
         public static Request of(String op) {
@@ -74,12 +72,10 @@ final class Control {
         }
     }
 
-    /**
-     * What the supervisor answers.
-     *
-     * @param values named facts, for {@code status} and for whatever a front end wants to show
-     * @param argv   a command the asking process should run itself; used by {@code shell}
-     */
+    /// What the supervisor answers.
+    ///
+    /// @param values named facts, for `status` and for whatever a front end wants to show
+    /// @param argv   a command the asking process should run itself; used by `shell`
     record Reply(boolean succeeded, Association<String, String> values, Tuple<String> argv) {
 
         public static Reply ok() {
@@ -130,12 +126,12 @@ final class Control {
         }
     }
 
-    /** Answers control requests. Called on a control-socket thread, never on the event loop. */
+    /// Answers control requests. Called on a control-socket thread, never on the event loop.
     interface Handler {
         Reply handle(Request request);
     }
 
-    /** The listening half, owned by the supervisor for the length of the session. */
+    /// The listening half, owned by the supervisor for the length of the session.
     static final class Server implements AutoCloseable {
 
         private final Path socket;
@@ -185,13 +181,11 @@ final class Control {
         }
     }
 
-    /**
-     * Asks a running session something.
-     *
-     * <p>No socket file means no session is running ({@code OIL-SESSION-001}). A socket that does
-     * not answer means a supervisor died without cleaning up ({@code OIL-SESSION-002}), which
-     * {@code oillamp stop} can fix.
-     */
+    /// Asks a running session something.
+    ///
+    /// No socket file means no session is running (`OIL-SESSION-001`). A socket that does
+    /// not answer means a supervisor died without cleaning up (`OIL-SESSION-002`), which
+    /// `oillamp stop` can fix.
     static Result<Reply> ask(Path socket, Path lamp, Request request, String command) {
         if (!Files.exists(socket)) return Result.err(Problems.noSessionRunning(lamp, command));
         try (SocketChannel channel = SocketChannel.open(UnixDomainSocketAddress.of(socket))) {

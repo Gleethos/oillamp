@@ -5,13 +5,11 @@ import java.util.Optional;
 import sprouts.Association;
 import sprouts.Tuple;
 
-/**
- * oillamp's built-in configuration: the values a lamp gets for every setting its files do not
- * mention.
- *
- * <p>The commented {@code oillamp.toml} written into a new lamp ({@link Templates#defaultConfig})
- * must describe exactly these values. A scenario in {@code ConfiguringALampSpec} checks that.
- */
+/// oillamp's built-in configuration: the values a lamp gets for every setting its files do not
+/// mention.
+///
+/// The commented `oillamp.toml` written into a new lamp ([Templates#defaultConfig])
+/// must describe exactly these values. A scenario in `ConfiguringALampSpec` checks that.
 final class ConfigDefaults {
 
     private ConfigDefaults() {}

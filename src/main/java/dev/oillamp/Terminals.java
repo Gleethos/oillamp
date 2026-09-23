@@ -5,24 +5,22 @@ import java.util.Optional;
 
 import sprouts.Tuple;
 
-/**
- * Chooses a terminal emulator and builds the command line that opens the sandbox shell in it.
- *
- * <p>Terminal emulators differ in how they set a window title and how they are given a command
- * ({@code --} or {@code -e}). The differences are kept in a table, so supporting another terminal
- * means adding a row. {@code VerifyingTerminalProfilesSpec} checks the rows against the terminals
- * installed on the machine it runs on.
- */
+/// Chooses a terminal emulator and builds the command line that opens the sandbox shell in it.
+///
+/// Terminal emulators differ in how they set a window title and how they are given a command
+/// (`--` or `-e`). The differences are kept in a table, so supporting another terminal
+/// means adding a row. `VerifyingTerminalProfilesSpec` checks the rows against the terminals
+/// installed on the machine it runs on.
 final class Terminals {
 
     private Terminals() {}
 
-    /** Expands to the full ssh argv; must stand alone as a template token. */
+    /// Expands to the full ssh argv; must stand alone as a template token.
     public static final String COMMAND_PLACEHOLDER = "{cmd}";
-    /** Expands to the window title; may sit inside a larger token, as in {@code --title={title}}. */
+    /// Expands to the window title; may sit inside a larger token, as in `--title={title}`.
     public static final String TITLE_PLACEHOLDER = "{title}";
 
-    /** One terminal's argument template, with {@code {cmd}} and {@code {title}} placeholders. */
+    /// One terminal's argument template, with `{cmd}` and `{title}` placeholders.
     public record Profile(TerminalProfileId id, Tuple<String> template) {}
 
     private static final Tuple<Profile> TABLE = Tuple.of(Profile.class,
@@ -47,20 +45,18 @@ final class Terminals {
         return Optional.empty();
     }
 
-    /** The names {@code terminal.profile} accepts, in the order doctor lists them. */
+    /// The names `terminal.profile` accepts, in the order doctor lists them.
     public static Tuple<String> supportedNames() {
         Tuple<String> names = Tuple.of(String.class);
         for (Profile p : TABLE) names = names.add(p.id().configName());
         return names;
     }
 
-    /**
-     * Picks the terminal to open the sandbox shell in.
-     *
-     * <p>Preference order: {@code terminal.profile} if set, then the detected desktop's own
-     * terminal (GNOME or KDE), then the table order. Preferring the desktop's own terminal means
-     * the window looks like the ones the user opens themselves.
-     */
+    /// Picks the terminal to open the sandbox shell in.
+    ///
+    /// Preference order: `terminal.profile` if set, then the detected desktop's own
+    /// terminal (GNOME or KDE), then the table order. Preferring the desktop's own terminal means
+    /// the window looks like the ones the user opens themselves.
     public static Result<Profile> choose(Optional<TerminalProfileId> requested,
                                          Tuple<TerminalCandidate> available,
                                          GraphicalSession session) {
@@ -96,11 +92,9 @@ final class Terminals {
         return Tuple.of(TerminalProfileId.class);
     }
 
-    /**
-     * Renders the argv that opens {@code command} in a titled window of this terminal.
-     *
-     * @param template the profile's template, or a user-supplied {@code terminal.command}
-     */
+    /// Renders the argv that opens `command` in a titled window of this terminal.
+    ///
+    /// @param template the profile's template, or a user-supplied `terminal.command`
     public static Tuple<String> render(Tuple<String> template, String title, Tuple<String> command) {
         Tuple<String> argv = Tuple.of(String.class);
         for (String token : template) {
@@ -112,6 +106,6 @@ final class Terminals {
         return argv;
     }
 
-    /** The window title oillamp gives the sandbox terminal. */
+    /// The window title oillamp gives the sandbox terminal.
     public static String titleFor(String lampName) { return "oillamp · " + lampName; }
 }

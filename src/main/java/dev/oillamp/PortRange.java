@@ -2,7 +2,7 @@ package dev.oillamp;
 
 import java.util.Optional;
 
-/** A port, or an inclusive range of ports, in a network rule's {@code ports} list. */
+/// A port, or an inclusive range of ports, in a network rule's `ports` list.
 record PortRange(int from, int to) {
 
     public PortRange {
@@ -12,7 +12,7 @@ record PortRange(int from, int to) {
 
     public static PortRange single(int port) { return new PortRange(port, port); }
 
-    /** Parses {@code 443} or {@code "8000-8100"}. In TOML the first is a number and the second a string. */
+    /// Parses `443` or `"8000-8100"`. In TOML the first is a number and the second a string.
     public static Optional<PortRange> parse(String text) {
         String value = text.trim();
         try {

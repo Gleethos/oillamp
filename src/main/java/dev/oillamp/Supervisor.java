@@ -11,36 +11,32 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import sprouts.Tuple;
 
-/**
- * Runs a session: opens the two windows, holds the SSH relays, the control socket and the egress
- * proxy, watches the container, and shuts everything down when the session ends.
- *
- * <p>Without it, closing the terminal would leave a container, a recording and a lock behind.
- *
- * <p>One thread, the event loop in {@link #loop()}, owns the session state. Everything that can
- * happen (a shell connecting, the container dying, Ctrl-C, {@code oillamp stop}, a second passing)
- * becomes a {@link SessionEvent} on one queue, and {@link SessionMachine}, a pure function, decides
- * what each means. This class does the parts that cannot be pure: starting processes, moving
- * bytes, stopping the container.
- *
- * <p>The closing summary is printed here rather than decided by {@link SessionMachine}, because it
- * needs facts only this class has: how long the session ran and what the shutdown cleaned up.
- *
- * <p>{@code docs/ARCHITECTURE.md}, "The running session", describes the states, threads and
- * shutdown sequence.
- */
+/// Runs a session: opens the two windows, holds the SSH relays, the control socket and the egress
+/// proxy, watches the container, and shuts everything down when the session ends.
+///
+/// Without it, closing the terminal would leave a container, a recording and a lock behind.
+///
+/// One thread, the event loop in [#loop()], owns the session state. Everything that can
+/// happen (a shell connecting, the container dying, Ctrl-C, `oillamp stop`, a second passing)
+/// becomes a [SessionEvent] on one queue, and [SessionMachine], a pure function, decides
+/// what each means. This class does the parts that cannot be pure: starting processes, moving
+/// bytes, stopping the container.
+///
+/// The closing summary is printed here rather than decided by [SessionMachine], because it
+/// needs facts only this class has: how long the session ran and what the shutdown cleaned up.
+///
+/// `docs/ARCHITECTURE.md`, "The running session", describes the states, threads and
+/// shutdown sequence.
 final class Supervisor {
 
-    /** How long a window must stay open to count as opened. A window that exits sooner with an error is reported. */
+    /// How long a window must stay open to count as opened. A window that exits sooner with an error is reported.
     private static final Duration VIEWER_GRACE = Duration.ofSeconds(3);
 
-    /** How often the container is checked. A dead sandbox should be noticed in seconds, not minutes. */
+    /// How often the container is checked. A dead sandbox should be noticed in seconds, not minutes.
     private static final Duration CONTAINER_POLL = Duration.ofSeconds(2);
 
-    /**
-     * How often a health line is printed in the terminal oillamp was started from. Changes, such as
-     * a socket that stops answering, are reported immediately, not at the next health line.
-     */
+    /// How often a health line is printed in the terminal oillamp was started from. Changes, such as
+    /// a socket that stops answering, are reported immediately, not at the next health line.
     private static final Duration HEARTBEAT = Duration.ofSeconds(30);
 
     private final Machine machine;
@@ -50,18 +46,16 @@ final class Supervisor {
     private final SandboxPhase.Running sandbox;
     private final SessionMachine rules;
 
-    /** Every thread may add events here; only the event loop takes them. */
+    /// Every thread may add events here; only the event loop takes them.
     private final BlockingQueue<Timed> events = new LinkedBlockingQueue<>();
     private final AtomicBoolean shuttingDown = new AtomicBoolean();
 
-    /**
-     * The session's state. Written only by the event loop, but read by four other threads: the
-     * container watcher, the control socket, the shutdown sequence and the JVM's shutdown hook.
-     *
-     * <p>It is {@code volatile} so that those threads see the latest value. Without it, the shutdown
-     * hook could keep seeing an old state and wait its full 30 seconds after the session had
-     * already ended.
-     */
+    /// The session's state. Written only by the event loop, but read by four other threads: the
+    /// container watcher, the control socket, the shutdown sequence and the JVM's shutdown hook.
+    ///
+    /// It is `volatile` so that those threads see the latest value. Without it, the shutdown
+    /// hook could keep seeing an old state and wait its full 30 seconds after the session had
+    /// already ended.
     private volatile SessionState state;
     private volatile Instant sessionStarted;
     private volatile Optional<Relay> primary = Optional.empty();
@@ -69,13 +63,13 @@ final class Supervisor {
     private volatile Optional<Control.Server> control = Optional.empty();
     private volatile Optional<Egress> egress = Optional.empty();
     private volatile Optional<Machine.Window> terminal = Optional.empty();
-    /** What the last health check found, so that only a <em>change</em> is reported. */
+    /// What the last health check found, so that only a _change_ is reported.
     private boolean desktopAnswering = true;
     private boolean shellAnswering = true;
     private boolean briefed;
     private final java.util.List<Machine.Window> viewers = new java.util.concurrent.CopyOnWriteArrayList<>();
 
-    /** An event and when it happened. {@link SessionMachine} gets the time from here rather than asking the clock. */
+    /// An event and when it happened. [SessionMachine] gets the time from here rather than asking the clock.
     private record Timed(SessionEvent event, Instant at) {}
 
     Supervisor(Machine machine, Context context, HostFacts host,
@@ -93,12 +87,10 @@ final class Supervisor {
         this.state = new SessionState.Starting(sessionStarted);
     }
 
-    /**
-     * Runs the session to its end and reports how it ended.
-     *
-     * <p>Returns only once the container is stopped and everything the session created is gone,
-     * however it ended.
-     */
+    /// Runs the session to its end and reports how it ended.
+    ///
+    /// Returns only once the container is stopped and everything the session created is gone,
+    /// however it ended.
     public ExitStatus run() {
         sessionStarted = machine.now();
         state = new SessionState.Starting(sessionStarted);
@@ -130,12 +122,10 @@ final class Supervisor {
 
     // ─── the event loop ────────────────────────────────────────────────────────────────────
 
-    /**
-     * Takes one event at a time, asks the rules what it means, and carries out the answer.
-     *
-     * <p>When no event arrives within a second, a {@code Tick} is processed instead. That is how
-     * timeouts are noticed, without a separate timer thread.
-     */
+    /// Takes one event at a time, asks the rules what it means, and carries out the answer.
+    ///
+    /// When no event arrives within a second, a `Tick` is processed instead. That is how
+    /// timeouts are noticed, without a separate timer thread.
     private ExitStatus loop() {
         ExitStatus exit = ExitStatus.SUCCESS;
         while (!state.isFinal()) {
@@ -167,7 +157,7 @@ final class Supervisor {
         return exit;
     }
 
-    /** Puts an event on the queue, stamped with the time it happened. Safe from any thread. */
+    /// Puts an event on the queue, stamped with the time it happened. Safe from any thread.
     private void post(SessionEvent event) {
         events.add(new Timed(event, machine.now()));
     }
@@ -204,12 +194,10 @@ final class Supervisor {
         }
     }
 
-    /**
-     * Opens the desktop viewer in a window of its own.
-     *
-     * <p>Closing the viewer does not end the session: the user only stopped watching. A viewer that
-     * closes immediately with an error is reported as a warning ({@code OIL-VIEW-001}).
-     */
+    /// Opens the desktop viewer in a window of its own.
+    ///
+    /// Closing the viewer does not end the session: the user only stopped watching. A viewer that
+    /// closes immediately with an error is reported as a warning (`OIL-VIEW-001`).
     private void openViewer(boolean viewOnly) {
         Tuple<String> argv = Viewers.argv(prepared.layout(), prepared.config(), viewOnly);
         if (host.vncViewer().isEmpty()) {
@@ -232,12 +220,10 @@ final class Supervisor {
                 Problems.viewerDiedImmediately(argv, exitCode, window.output())));
     }
 
-    /**
-     * Opens the sandbox shell in a <em>new</em> terminal window.
-     *
-     * <p>Never the terminal oillamp was started from, which keeps printing what the session is
-     * doing.
-     */
+    /// Opens the sandbox shell in a _new_ terminal window.
+    ///
+    /// Never the terminal oillamp was started from, which keeps printing what the session is
+    /// doing.
     private void openTerminal() {
         Result<Tuple<String>> command = terminalCommand();
         if (command instanceof Result.Err<Tuple<String>> failure) {
@@ -260,7 +246,7 @@ final class Supervisor {
                 Problems.terminalNotStarted(argv, "it exited with code " + exitCode, window.output())));
     }
 
-    /** The terminal emulator's command line, with the ssh command inside it. */
+    /// The terminal emulator's command line, with the ssh command inside it.
     private Result<Tuple<String>> terminalCommand() {
         Tuple<String> shell = Ssh.clientArgv(prepared.layout(), Ssh.SocketRole.PRIMARY);
         String title = Terminals.titleFor(prepared.layout().name());
@@ -276,13 +262,11 @@ final class Supervisor {
         };
     }
 
-    /**
-     * Watches a window for the first few seconds only.
-     *
-     * <p>A window still running after three seconds counts as opened. One that exits sooner with a
-     * non-zero code is reported, with its own output, so "the window flashed and disappeared" comes
-     * with an explanation.
-     */
+    /// Watches a window for the first few seconds only.
+    ///
+    /// A window still running after three seconds counts as opened. One that exits sooner with a
+    /// non-zero code is reported, with its own output, so "the window flashed and disappeared" comes
+    /// with an explanation.
     private void watchBriefly(Machine.Window window, Tuple<String> argv,
                               java.util.function.IntFunction<SessionEvent> onEarlyExit) {
         Thread.ofVirtual().name("oillamp-window-" + argv.first()).start(() -> {
@@ -300,12 +284,10 @@ final class Supervisor {
 
     // ─── opening and closing the session ───────────────────────────────────────────────────
 
-    /**
-     * Binds everything a session needs before anything is allowed to connect.
-     *
-     * <p>The sockets are bound before {@code session.json} is written, so that whenever
-     * {@code session.json} exists, the control socket is already answering.
-     */
+    /// Binds everything a session needs before anything is allowed to connect.
+    ///
+    /// The sockets are bound before `session.json` is written, so that whenever
+    /// `session.json` exists, the control socket is already answering.
     private Result<Tuple<Problem>> openTheSession() {
         LampLayout layout = prepared.layout();
         Result<Relay> primaryRelay = Relay.open(layout.primarySshSocket(), layout.agentSshSocket(),
@@ -339,7 +321,7 @@ final class Supervisor {
         return Result.ok(warnings);
     }
 
-    /** The session's own record, read by {@code oillamp at} on a busy lamp and by {@code status}. */
+    /// The session's own record, read by `oillamp at` on a busy lamp and by `status`.
     private String sessionJson() {
         return "{\n"
              + "  \"session\": \"" + prepared.session() + "\",\n"
@@ -361,11 +343,9 @@ final class Supervisor {
         });
     }
 
-    /**
-     * The shutdown sequence. Every step runs even if an earlier one failed, because they are
-     * independent cleanups: stopping at the first failure would leave the sockets and
-     * {@code session.json} behind as well.
-     */
+    /// The shutdown sequence. Every step runs even if an earlier one failed, because they are
+    /// independent cleanups: stopping at the first failure would leave the sockets and
+    /// `session.json` behind as well.
     private Tuple<Problem> shutDown(SessionState.ShutdownReason reason) {
         Tuple<Problem> problems = Tuple.of(Problem.class);
         context.info("session", "shutting down — " + reason.describe());
@@ -418,12 +398,10 @@ final class Supervisor {
         return problems;
     }
 
-    /**
-     * Why a cleanup command did not succeed, in a few words.
-     *
-     * <p>A command killed by a signal prints nothing, so an empty error output is common and needs
-     * its own wording.
-     */
+    /// Why a cleanup command did not succeed, in a few words.
+    ///
+    /// A command killed by a signal prints nothing, so an empty error output is common and needs
+    /// its own wording.
     private static String describeFailure(Machine.Outcome outcome) {
         return switch (outcome) {
             case Machine.Outcome.NotFound missing -> missing.executable() + " is not installed";
@@ -436,7 +414,7 @@ final class Supervisor {
         };
     }
 
-    /** Updates {@code lastSessionAt} in {@code lamp.json}. */
+    /// Updates `lastSessionAt` in `lamp.json`.
     private Tuple<Problem> recordLastSession() {
         Path metaFile = prepared.layout().lampMeta();
         Optional<String> json = Filesystem.readString(metaFile);
@@ -454,7 +432,7 @@ final class Supervisor {
         }
     }
 
-    /** Prints the closing summary: why the session ended, how long it ran, and where the recording is. */
+    /// Prints the closing summary: why the session ended, how long it ran, and where the recording is.
     private void summarise(SessionState.ShutdownReason reason) {
         Tuple<String> lines = Tuple.of(String.class,
                 "ended because   " + reason.describe(),
@@ -476,13 +454,11 @@ final class Supervisor {
 
     // ─── the producers ─────────────────────────────────────────────────────────────────────
 
-    /**
-     * Checks every two seconds that the container is still running and that its sockets answer,
-     * and prints a health line every 30 seconds.
-     *
-     * <p>Without this, a container that died during a session would leave the user typing into a
-     * terminal connected to nothing, with no explanation.
-     */
+    /// Checks every two seconds that the container is still running and that its sockets answer,
+    /// and prints a health line every 30 seconds.
+    ///
+    /// Without this, a container that died during a session would leave the user typing into a
+    /// terminal connected to nothing, with no explanation.
     private void watchTheSandbox() {
         Thread.ofVirtual().name("oillamp-sandbox-watch").start(() -> {
             // The first health line comes straight away, then one every 30 seconds.
@@ -504,14 +480,12 @@ final class Supervisor {
         });
     }
 
-    /**
-     * Connects to the desktop, shell and proxy sockets, and reports when one stops or starts
-     * answering.
-     *
-     * <p>A desktop that dies during a session looks fine from the container's point of view, so
-     * the sockets themselves are checked. A failure does not end the session, because a session
-     * with a working shell is still usable, but the user is told.
-     */
+    /// Connects to the desktop, shell and proxy sockets, and reports when one stops or starts
+    /// answering.
+    ///
+    /// A desktop that dies during a session looks fine from the container's point of view, so
+    /// the sockets themselves are checked. A failure does not end the session, because a session
+    /// with a working shell is still usable, but the user is told.
     private void checkTheEndpoints(boolean reportEvenIfUnchanged) {
         boolean desktop = Relay.answers(prepared.layout().vncSocket());
         boolean shell = Relay.answers(prepared.layout().agentSshSocket());
@@ -538,7 +512,7 @@ final class Supervisor {
                     : "desktop and shell answering — the egress proxy is NOT");
     }
 
-    /** The health line printed every 30 seconds in the terminal oillamp was started from. */
+    /// The health line printed every 30 seconds in the terminal oillamp was started from.
     private void heartbeat() {
         if (!state.isLive()) return;
         context.info("session", "up " + describe(uptime())
@@ -557,11 +531,9 @@ final class Supervisor {
         return text.isEmpty() ? "(the container logged nothing)" : text;
     }
 
-    /**
-     * The briefing printed once the shell is connected: the desktop, how to open more windows,
-     * the one directory the agent can see, the network policy, the recording, and the three ways
-     * to end the session.
-     */
+    /// The briefing printed once the shell is connected: the desktop, how to open more windows,
+    /// the one directory the agent can see, the network policy, the recording, and the three ways
+    /// to end the session.
     private void brief() {
         if (briefed) return;
         briefed = true;
@@ -616,25 +588,23 @@ final class Supervisor {
         }
     }
 
-    /** The terminal window oillamp opened. When its connection closes, the session ends. */
+    /// The terminal window oillamp opened. When its connection closes, the session ends.
     private final class PrimaryListener implements Relay.Listener {
         @Override public void connected()    { post(new SessionEvent.PrimaryConnected()); }
         @Override public void disconnected() { post(new SessionEvent.PrimaryDisconnected()); }
         @Override public void trouble(Problem problem) { context.emit(new LampEvent.Warning(problem)); }
     }
 
-    /** {@code oillamp shell}. Closing one of these ends nothing. */
+    /// `oillamp shell`. Closing one of these ends nothing.
     private final class ExtraListener implements Relay.Listener {
         @Override public void connected()    { post(new SessionEvent.ShellConnected()); }
         @Override public void disconnected() { post(new SessionEvent.ShellDisconnected()); }
         @Override public void trouble(Problem problem) { context.emit(new LampEvent.Warning(problem)); }
     }
 
-    /**
-     * Reports what the egress proxy has to say. With {@code network.console_denied} on (the
-     * default), every denied connection is printed with the rule that denied it, so the user knows
-     * which rule to change.
-     */
+    /// Reports what the egress proxy has to say. With `network.console_denied` on (the
+    /// default), every denied connection is printed with the rule that denied it, so the user knows
+    /// which rule to change.
     private final class EgressListener implements Egress.Listener {
         @Override public void denied(Egress.Journey journey) {
             if (prepared.config().network().consoleDenied())
@@ -643,7 +613,7 @@ final class Supervisor {
         @Override public void trouble(Problem problem) { context.emit(new LampEvent.Warning(problem)); }
     }
 
-    /** Runs on Ctrl-C, SIGTERM or SIGHUP: asks for a clean shutdown and waits up to 30 seconds for it. */
+    /// Runs on Ctrl-C, SIGTERM or SIGHUP: asks for a clean shutdown and waits up to 30 seconds for it.
     private void onSignal() {
         post(new SessionEvent.Interrupted("SIGINT/SIGTERM"));
         Instant deadline = Instant.now().plusSeconds(30);

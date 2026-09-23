@@ -5,12 +5,10 @@ import java.util.Optional;
 
 import sprouts.Tuple;
 
-/**
- * One method per oillamp command. {@link Invocation} parses the command line and calls these.
- *
- * <p>These methods run the phases in order, turn their results into exit codes, and report
- * through {@link Context}. The decisions are made by the pure planners they call.
- */
+/// One method per oillamp command. [Invocation] parses the command line and calls these.
+///
+/// These methods run the phases in order, turn their results into exit codes, and report
+/// through [Context]. The decisions are made by the pure planners they call.
 final class Commands {
 
     private final Machine machine;
@@ -21,12 +19,10 @@ final class Commands {
         this.context = context;
     }
 
-    /**
-     * {@code oillamp doctor [<dir>]}: check the host (and the lamp's configuration), change nothing.
-     *
-     * <p>Does not require a graphical session, because finding out that you are on a plain SSH
-     * login is one of the reasons to run it.
-     */
+    /// `oillamp doctor [<dir>]`: check the host (and the lamp's configuration), change nothing.
+    ///
+    /// Does not require a graphical session, because finding out that you are on a plain SSH
+    /// login is one of the reasons to run it.
     public ExitStatus doctor(Optional<Path> lampPath) {
         Context.Options original = context.options();
         HostPhase host = new HostPhase(machine, new Context(context::emit,
@@ -46,13 +42,11 @@ final class Commands {
         return checkConfiguration(lampPath.get(), false);
     }
 
-    /**
-     * {@code oillamp at <dir>}: prepare the host and the lamp, then run a session.
-     *
-     * <p>Runs the phases in order: host, lamp, image and sandbox, then the {@link Supervisor}. It
-     * does not return when the sandbox is up, but when the session is over, so that one Ctrl-C,
-     * one closed window or one {@code oillamp stop} takes down everything it created.
-     */
+    /// `oillamp at <dir>`: prepare the host and the lamp, then run a session.
+    ///
+    /// Runs the phases in order: host, lamp, image and sandbox, then the [Supervisor]. It
+    /// does not return when the sandbox is up, but when the session is over, so that one Ctrl-C,
+    /// one closed window or one `oillamp stop` takes down everything it created.
     public ExitStatus at(Path lampPath) {
         HostPhase.Outcome host = new HostPhase(machine, context).prepare(lampPath, true,
                 context.options().autoInstall() ? Installing.ALLOWED : Installing.DECLINED);
@@ -133,20 +127,18 @@ final class Commands {
 
     // ─── commands that talk to a running session through its control socket ─────────────
 
-    /** {@code oillamp view <dir> [--view-only]}: open another viewer onto the same desktop. */
+    /// `oillamp view <dir> [--view-only]`: open another viewer onto the same desktop.
     public ExitStatus view(Path lampPath, boolean viewOnly) {
         return askTheSession(lampPath, "view",
                 Control.Request.of("view").with("view_only", String.valueOf(viewOnly)),
                 reply -> context.ok("view", "another viewer window is opening"));
     }
 
-    /**
-     * {@code oillamp shell <dir>}: an extra shell in this terminal.
-     *
-     * <p>The supervisor returns the ssh command and this process runs it, because the shell belongs
-     * in the terminal the user typed this into. Closing it does not end the session; only closing
-     * the terminal window oillamp opened does.
-     */
+    /// `oillamp shell <dir>`: an extra shell in this terminal.
+    ///
+    /// The supervisor returns the ssh command and this process runs it, because the shell belongs
+    /// in the terminal the user typed this into. Closing it does not end the session; only closing
+    /// the terminal window oillamp opened does.
     public ExitStatus shell(Path lampPath) {
         Result<Control.Reply> reply = askTheSession(lampPath, "shell", Control.Request.of("shell"));
         if (reply instanceof Result.Err<Control.Reply> failure) {
@@ -165,13 +157,11 @@ final class Commands {
         return code == 0 ? ExitStatus.SUCCESS : ExitStatus.ERROR;
     }
 
-    /**
-     * {@code oillamp stop <dir>}: ask the running session to end.
-     *
-     * <p>It asks the supervisor rather than removing the container, because the supervisor holds
-     * the lock, the relays and the recording and must run its own shutdown. If no supervisor
-     * answers, it removes a container left behind by one that died.
-     */
+    /// `oillamp stop <dir>`: ask the running session to end.
+    ///
+    /// It asks the supervisor rather than removing the container, because the supervisor holds
+    /// the lock, the relays and the recording and must run its own shutdown. If no supervisor
+    /// answers, it removes a container left behind by one that died.
     public ExitStatus stop(Path lampPath) {
         Result<Control.Reply> reply = askTheSession(lampPath, "stop", Control.Request.of("stop"));
         if (reply instanceof Result.Ok<Control.Reply>) {
@@ -181,19 +171,17 @@ final class Commands {
         return cleanUpAfterACrashedSession(lampPath, reply.problems());
     }
 
-    /**
-     * {@code oillamp remove <dir>}: delete a lamp.
-     *
-     * <p>A lamp cannot be deleted with {@code rm -rf}: the infra sockets and the recordings belong
-     * to the infra user, which is a subordinate id on the host that the lamp's owner cannot delete
-     * files of. This command deletes them through {@code podman unshare}.
-     *
-     * <p>It deletes only what oillamp created. The lamp directory itself is removed only if nothing
-     * else is left in it, because the user may keep their own files there.
-     *
-     * <p>It requires {@code --yes}, because it deletes the agent's home and all its work, and there
-     * is no interactive prompt. Without {@code --yes} it lists what would be deleted and exits 2.
-     */
+    /// `oillamp remove <dir>`: delete a lamp.
+    ///
+    /// A lamp cannot be deleted with `rm -rf`: the infra sockets and the recordings belong
+    /// to the infra user, which is a subordinate id on the host that the lamp's owner cannot delete
+    /// files of. This command deletes them through `podman unshare`.
+    ///
+    /// It deletes only what oillamp created. The lamp directory itself is removed only if nothing
+    /// else is left in it, because the user may keep their own files there.
+    ///
+    /// It requires `--yes`, because it deletes the agent's home and all its work, and there
+    /// is no interactive prompt. Without `--yes` it lists what would be deleted and exits 2.
     public ExitStatus remove(Path lampPath, boolean confirmed) {
         Path root = lampPath.toAbsolutePath().normalize();
         DirListing listing = Filesystem.list(root);
@@ -243,11 +231,9 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
-    /**
-     * What is still running for this lamp, if anything: a container, a supervisor that answers, or
-     * a container left behind by a supervisor that died. In each case the user is told to run
-     * {@code oillamp stop} first.
-     */
+    /// What is still running for this lamp, if anything: a container, a supervisor that answers, or
+    /// a container left behind by a supervisor that died. In each case the user is told to run
+    /// `oillamp stop` first.
     private Optional<String> whatIsStillRunning(Path root, Optional<LampLayout> layout) {
         Optional<String> container = runningSandboxFor(root);
         if (container.isPresent())
@@ -264,12 +250,10 @@ final class Commands {
         return Optional.empty();
     }
 
-    /**
-     * A container podman is running for this lamp, found by its {@code oillamp.lamp} label.
-     *
-     * <p>Found by label rather than by name, because the name comes from {@code lamp.json}, which
-     * may already have been deleted by hand. The label holds the lamp's path.
-     */
+    /// A container podman is running for this lamp, found by its `oillamp.lamp` label.
+    ///
+    /// Found by label rather than by name, because the name comes from `lamp.json`, which
+    /// may already have been deleted by hand. The label holds the lamp's path.
     private Optional<String> runningSandboxFor(Path root) {
         Machine.Outcome outcome = machine.run(Machine.Command
                 .of("podman", "ps", "--filter", "label=oillamp.agent-id", "--format", "json")
@@ -294,10 +278,8 @@ final class Commands {
         return Optional.empty();
     }
 
-    /**
-     * The list of what {@code remove} would delete, shown before the user adds {@code --yes}. The
-     * agent's home is listed entry by entry, so the user can see which repositories would go.
-     */
+    /// The list of what `remove` would delete, shown before the user adds `--yes`. The
+    /// agent's home is listed entry by entry, so the user can see which repositories would go.
     private static String describeWhatWouldGo(LampPlanner.Removal found) {
         StringBuilder out = new StringBuilder("`oillamp remove` permanently deletes:\n\n");
         for (Path agentDir : found.agentDirs()) {
@@ -321,7 +303,7 @@ final class Commands {
         return out.toString();
     }
 
-    /** Removes the lamp directory itself, but only if nothing else is left in it. */
+    /// Removes the lamp directory itself, but only if nothing else is left in it.
     private String removeTheRootIfEmpty(Path root) {
         DirListing left = Filesystem.list(root);
         if (!left.readable() || !left.isEmpty())
@@ -334,7 +316,7 @@ final class Commands {
         }
     }
 
-    /** {@code oillamp status <dir>}: what the running session is doing. */
+    /// `oillamp status <dir>`: what the running session is doing.
     public ExitStatus status(Path lampPath) {
         Result<Control.Reply> reply = askTheSession(lampPath, "status", Control.Request.of("status"));
         if (reply instanceof Result.Err<Control.Reply> failure) {
@@ -351,10 +333,8 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
-    /**
-     * {@code oillamp list}: every oillamp container running on this host, found by its
-     * {@code oillamp.agent-id} label. oillamp keeps no list of its own that could go out of date.
-     */
+    /// `oillamp list`: every oillamp container running on this host, found by its
+    /// `oillamp.agent-id` label. oillamp keeps no list of its own that could go out of date.
     public ExitStatus list() {
         // JSON rather than a --format template: the template field names differ between podman
         // 4 and 5, and this must work with both.
@@ -373,7 +353,7 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
-    /** Turns {@code podman ps --format json} into one line per sandbox, lamp path included. */
+    /// Turns `podman ps --format json` into one line per sandbox, lamp path included.
     private static Tuple<String> describeRunningSandboxes(String json) {
         Tuple<String> rows = Tuple.of(String.class);
         try {
@@ -415,16 +395,14 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
-    /**
-     * {@code oillamp recordings <dir> [--open <session>] [--prune]}: list, play or prune the lamp's
-     * recordings.
-     *
-     * <p>The recordings belong to the infra user, so this user can read them but not delete them
-     * directly; {@code --prune} deletes through {@code podman unshare}.
-     *
-     * <p>Works while a session is running. The file being recorded is listed with its current size
-     * and duration.
-     */
+    /// `oillamp recordings <dir> [--open <session>] [--prune]`: list, play or prune the lamp's
+    /// recordings.
+    ///
+    /// The recordings belong to the infra user, so this user can read them but not delete them
+    /// directly; `--prune` deletes through `podman unshare`.
+    ///
+    /// Works while a session is running. The file being recorded is listed with its current size
+    /// and duration.
     public ExitStatus recordings(Path lampPath, Optional<String> open, boolean prune) {
         Result<LampLayout> found = layoutOf(lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
@@ -506,7 +484,7 @@ final class Commands {
         return text.length() >= width ? text : text + " ".repeat(width - text.length());
     }
 
-    /** "-" for a file whose duration is unknown. */
+    /// "-" for a file whose duration is unknown.
     private static String describeDuration(RecordingFile file) {
         return file.duration()
                 .map(gap -> gap.toHours() > 0
@@ -528,10 +506,8 @@ final class Commands {
         return Control.ask(found.controlSocket(), found.root(), request, command);
     }
 
-    /**
-     * Finds a lamp's paths without creating or changing anything. Used by {@code view},
-     * {@code shell}, {@code stop}, {@code status} and {@code recordings}.
-     */
+    /// Finds a lamp's paths without creating or changing anything. Used by `view`,
+    /// `shell`, `stop`, `status` and `recordings`.
     private Result<LampLayout> layoutOf(Path lampPath) {
         Path root = lampPath.toAbsolutePath().normalize();
         LampState state = LampClassifier.classify(root, Filesystem.list(root),
@@ -549,10 +525,8 @@ final class Commands {
                         .output().strip()));
     }
 
-    /**
-     * No supervisor answered. Either nothing is running, or a supervisor was killed without
-     * cleaning up; in that case remove its container and {@code session.json}.
-     */
+    /// No supervisor answered. Either nothing is running, or a supervisor was killed without
+    /// cleaning up; in that case remove its container and `session.json`.
     private ExitStatus cleanUpAfterACrashedSession(Path lampPath, Tuple<Problem> why) {
         Result<LampLayout> found = layoutOf(lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
@@ -586,10 +560,10 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
-    /** The label column of {@code status}. */
+    /// The label column of `status`.
     private static String pad(String label) { return padTo(label, 12); }
 
-    /** The wider columns of {@code list}, which hold container names and paths. */
+    /// The wider columns of `list`, which hold container names and paths.
     private static String column(String value) { return padTo(value, 22); }
 
     private static String padTo(String text, int width) {
@@ -598,7 +572,7 @@ final class Commands {
         return out.toString();
     }
 
-    /** {@code oillamp config <dir> check}: validate the lamp's configuration without changing anything. */
+    /// `oillamp config <dir> check`: validate the lamp's configuration without changing anything.
     public ExitStatus checkConfig(Path lampPath) {
         HostPhase.Outcome host = new HostPhase(machine, new Context(context::emit,
                 context.options().withDryRun(true).withAutoInstall(false), context.version()))
@@ -607,10 +581,8 @@ final class Commands {
         return checkConfiguration(lampPath, true);
     }
 
-    /**
-     * {@code oillamp config <dir> show-effective}: print a summary of the validated configuration.
-     * Currently reads only the lamp's own file, not the global one.
-     */
+    /// `oillamp config <dir> show-effective`: print a summary of the validated configuration.
+    /// Currently reads only the lamp's own file, not the global one.
     public ExitStatus showEffectiveConfig(Path lampPath) {
         Result<LampConfig> loaded = loadConfig(lampPath);
         if (loaded instanceof Result.Err<LampConfig> failure) {
@@ -700,7 +672,7 @@ final class Commands {
         });
     }
 
-    /** The exit code for a list of problems: 4 for a busy lamp, 2 for configuration errors, otherwise 1. */
+    /// The exit code for a list of problems: 4 for a busy lamp, 2 for configuration errors, otherwise 1.
     public static ExitStatus exitStatusFor(Tuple<Problem> problems) {
         for (Problem problem : problems) {
             String code = problem.code().value();
@@ -712,6 +684,6 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
-    /** Currently unused. */
+    /// Currently unused.
     public static Plan noPlan() { return Plan.nothingToDo(LampEvent.Phase.HOST); }
 }

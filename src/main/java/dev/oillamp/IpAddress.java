@@ -3,17 +3,15 @@ package dev.oillamp;
 import java.util.Locale;
 import java.util.Optional;
 
-/**
- * An IPv4 or IPv6 address, used by the network policy.
- *
- * <p>Stored as two {@code long}s rather than a byte array, because records in this code base hold
- * only immutable values, and arrays are neither immutable nor compared by content. An IPv4 address
- * is in the low 32 bits of {@link #low()}.
- *
- * <p>The policy compares addresses, not just names, so that a public name that resolves into a
- * private network is still refused. That only works if address comparison is exact, which is why
- * this is its own tested type instead of string handling.
- */
+/// An IPv4 or IPv6 address, used by the network policy.
+///
+/// Stored as two `long`s rather than a byte array, because records in this code base hold
+/// only immutable values, and arrays are neither immutable nor compared by content. An IPv4 address
+/// is in the low 32 bits of [#low()].
+///
+/// The policy compares addresses, not just names, so that a public name that resolves into a
+/// private network is still refused. That only works if address comparison is exact, which is why
+/// this is its own tested type instead of string handling.
 record IpAddress(long high, long low, boolean ipv6) implements Comparable<IpAddress> {
 
     public static IpAddress ofV4(int a, int b, int c, int d) {
@@ -29,7 +27,7 @@ record IpAddress(long high, long low, boolean ipv6) implements Comparable<IpAddr
 
     public int bitLength() { return ipv6 ? 128 : 32; }
 
-    /** Parses a literal address. Returns empty for a host name, which the caller must resolve. */
+    /// Parses a literal address. Returns empty for a host name, which the caller must resolve.
     public static Optional<IpAddress> parse(String text) {
         String value = text.trim();
         if (value.startsWith("[") && value.endsWith("]"))
@@ -94,7 +92,7 @@ record IpAddress(long high, long low, boolean ipv6) implements Comparable<IpAddr
         return index - from;
     }
 
-    /** The canonical text form, as it appears in the network log and in denial messages. */
+    /// The canonical text form, as it appears in the network log and in denial messages.
     public String text() {
         if (!ipv6)
             return ((low >> 24) & 0xFF) + "." + ((low >> 16) & 0xFF) + "." + ((low >> 8) & 0xFF) + "." + (low & 0xFF);

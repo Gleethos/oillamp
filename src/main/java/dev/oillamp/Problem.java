@@ -6,17 +6,15 @@ import java.util.Optional;
 
 import sprouts.Tuple;
 
-/**
- * Something that went wrong, described well enough to act on.
- *
- * <p>oillamp never shows the user a bare stack trace. Every failure is one of these: <em>what</em>
- * happened, <em>why it matters</em>, the <em>evidence</em> (commands and their output, files,
- * values, configuration locations) and concrete <em>fixes</em>. The wording for each code lives in
- * {@link Problems}.
- *
- * <p>Public because callers, including tests and a future GUI, need to inspect failures rather than
- * parse text.
- */
+/// Something that went wrong, described well enough to act on.
+///
+/// oillamp never shows the user a bare stack trace. Every failure is one of these: _what_
+/// happened, _why it matters_, the _evidence_ (commands and their output, files,
+/// values, configuration locations) and concrete _fixes_. The wording for each code lives in
+/// [Problems].
+///
+/// Public because callers, including tests and a future GUI, need to inspect failures rather than
+/// parse text.
 public record Problem(
     Code code,
     Severity severity,
@@ -32,14 +30,12 @@ public record Problem(
             throw new IllegalArgumentException("A problem needs a title");
     }
 
-    /** How bad it is. Only {@link #ERROR} aborts what oillamp was doing. */
+    /// How bad it is. Only [#ERROR] aborts what oillamp was doing.
     public enum Severity { INFO, WARNING, ERROR }
 
-    /**
-     * A stable identifier of the form {@code OIL-<AREA>-<NNN>}. Users quote it in bug reports and
-     * tests match on it, so a code must never change meaning. The codes are listed in
-     * {@link Problems} and in {@code docs/ARCHITECTURE.md}.
-     */
+    /// A stable identifier of the form `OIL-<AREA>-<NNN>`. Users quote it in bug reports and
+    /// tests match on it, so a code must never change meaning. The codes are listed in
+    /// [Problems] and in `docs/ARCHITECTURE.md`.
     public record Code(String value) {
         public Code {
             if (!value.matches("OIL-[A-Z]+-\\d{3}"))
@@ -48,21 +44,21 @@ public record Problem(
         @Override public String toString() { return value; }
     }
 
-    /** Concrete proof of what oillamp observed, so the user need not reproduce it. */
+    /// Concrete proof of what oillamp observed, so the user need not reproduce it.
     public sealed interface Evidence {
-        /** A command oillamp ran, and how it went. */
+        /// A command oillamp ran, and how it went.
         record Command(Tuple<String> argv, int exitCode, String stderrTail, Duration took) implements Evidence {}
-        /** A path that is relevant to the failure. */
+        /// A path that is relevant to the failure.
         record File(Path path, String note) implements Evidence {}
-        /** A single named value oillamp read (an environment variable, a version, a sysctl). */
+        /// A single named value oillamp read (an environment variable, a version, a sysctl).
         record Value(String name, String value) implements Evidence {}
-        /** A block of text, e.g. the tail of a container log. */
+        /// A block of text, e.g. the tail of a container log.
         record Excerpt(String title, String text) implements Evidence {}
-        /** A configuration mistake: the file, the key path, the value found and what was expected. */
+        /// A configuration mistake: the file, the key path, the value found and what was expected.
         record Config(Path file, String keyPath, String value, String expected) implements Evidence {}
     }
 
-    /** Something the user can do about it. The command, if present, is copy-pasteable. */
+    /// Something the user can do about it. The command, if present, is copy-pasteable.
     public record Fix(String description, Optional<String> command) {
         public static Fix of(String description) {
             return new Fix(description, Optional.empty());

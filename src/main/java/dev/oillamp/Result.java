@@ -5,13 +5,11 @@ import java.util.function.Supplier;
 
 import sprouts.Tuple;
 
-/**
- * The result of something that can fail: a value with any warnings, or a list of {@link Problem}s.
- * Expected failures are returned this way instead of thrown.
- *
- * <p>{@link #combine} and {@link #all} collect the problems of independent checks, so a user with
- * three mistakes in their {@code oillamp.toml} sees all three in one run.
- */
+/// The result of something that can fail: a value with any warnings, or a list of [Problem]s.
+/// Expected failures are returned this way instead of thrown.
+///
+/// [#combine] and [#all] collect the problems of independent checks, so a user with
+/// three mistakes in their `oillamp.toml` sees all three in one run.
 sealed interface Result<T> {
 
     record Ok<T>(T value, Tuple<Problem> warnings) implements Result<T> {}
@@ -48,7 +46,7 @@ sealed interface Result<T> {
         };
     }
 
-    /** Everything worth telling the user about, whether or not the result succeeded. */
+    /// Everything worth telling the user about, whether or not the result succeeded.
     default Tuple<Problem> problems() {
         return switch (this) {
             case Ok<T> ok   -> ok.warnings();
@@ -63,7 +61,7 @@ sealed interface Result<T> {
         };
     }
 
-    /** Chains a dependent step, carrying accumulated warnings forward. */
+    /// Chains a dependent step, carrying accumulated warnings forward.
     default <U> Result<U> flatMap(Function<T, Result<U>> f) {
         return switch (this) {
             case Err<T> err -> new Err<>(err.problems());
@@ -74,7 +72,7 @@ sealed interface Result<T> {
         };
     }
 
-    /** Adds a warning without changing the outcome. */
+    /// Adds a warning without changing the outcome.
     default Result<T> warn(Problem warning) {
         return switch (this) {
             case Ok<T> ok   -> new Ok<>(ok.value(), ok.warnings().add(warning));
@@ -82,17 +80,15 @@ sealed interface Result<T> {
         };
     }
 
-    /**
-     * Combines two <em>independent</em> results, collecting the problems of both.
-     * This is what makes "all your config errors at once" possible.
-     */
+    /// Combines two _independent_ results, collecting the problems of both.
+    /// This is what makes "all your config errors at once" possible.
     static <A, B, C> Result<C> combine(Result<A> a, Result<B> b, java.util.function.BiFunction<A, B, C> f) {
         if (a instanceof Ok<A> okA && b instanceof Ok<B> okB)
             return new Ok<>(f.apply(okA.value(), okB.value()), okA.warnings().addAll(okB.warnings()));
         return new Err<>(a.problems().addAll(b.problems()).retainIf(Problem::isError));
     }
 
-    /** Turns a tuple of independent results into a result of a tuple, collecting every problem. */
+    /// Turns a tuple of independent results into a result of a tuple, collecting every problem.
     static <T> Result<Tuple<T>> all(Class<T> type, Tuple<Result<T>> results) {
         Tuple<T> values = Tuple.of(type);
         Tuple<Problem> failures = Tuple.of(Problem.class);
@@ -106,7 +102,7 @@ sealed interface Result<T> {
         return failures.isEmpty() ? new Ok<>(values, warnings) : new Err<>(failures.addAll(warnings));
     }
 
-    /** For tests and for the top of the shell, where a failure is a bug. */
+    /// For tests and for the top of the shell, where a failure is a bug.
     default T orElseThrow(Supplier<String> context) {
         return switch (this) {
             case Ok<T> ok   -> ok.value();

@@ -53,6 +53,9 @@ for them.
   words like "load-bearing".
 - **Define a term the first time** in a document if a reader might not know it (user namespace,
   subordinate id, bind mount, compositor).
+- **Doc comments are Markdown** (`///`, supported since Java 23), not HTML Javadoc: `code` in
+  backticks, `[OtherType#method]` for a link, a blank `///` line between paragraphs, `-` for a
+  list. Groovy has no Markdown comments, so the Spock specs keep `/** */`.
 - **Javadoc:** the first sentence says what the type or method is. Explain visibility only for the
   five public types; everything else is package-private by default and needs no comment about it.
 - **Scenarios:** the name says what the user experiences. The `reportInfo` block explains, without

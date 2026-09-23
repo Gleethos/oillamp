@@ -1,16 +1,14 @@
 package dev.oillamp;
 
-/**
- * Whether oillamp can use {@code sudo} to install host packages. This decides whether missing
- * packages can be installed now or only reported ({@code OIL-PKG-002}). A dry run does not need
- * sudo, because it only describes what would be done.
- */
+/// Whether oillamp can use `sudo` to install host packages. This decides whether missing
+/// packages can be installed now or only reported (`OIL-PKG-002`). A dry run does not need
+/// sudo, because it only describes what would be done.
 sealed interface SudoFacts {
-    /** {@code sudo -n true} succeeded: no prompt needed. */
+    /// `sudo -n true` succeeded: no prompt needed.
     record Passwordless() implements SudoFacts {}
-    /** A password is needed; usable only if stdin is a terminal that can ask for it. */
+    /// A password is needed; usable only if stdin is a terminal that can ask for it.
     record NeedsPassword(boolean stdinIsTerminal) implements SudoFacts {}
-    /** No sudo at all. */
+    /// No sudo at all.
     record Unavailable(String reason) implements SudoFacts {}
 
     default boolean canInstall() {

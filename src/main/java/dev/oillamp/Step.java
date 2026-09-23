@@ -6,23 +6,21 @@ import sprouts.Association;
 import sprouts.Tuple;
 import sprouts.ValueSet;
 
-/**
- * One change oillamp intends to make, such as creating a directory or starting the container.
- *
- * <p>Every change oillamp makes during setup is first described as one of these and only then
- * carried out by {@link StepRunner}. A dry run builds the same steps and only prints them, so what
- * {@code --dry-run} shows is exactly what a real run would do.
- *
- * <p>{@link #describe()} is one line, printed for every step. {@link #detail()} is the full
- * description, including the reason where there is one; {@code --verbose} prints it.
- */
+/// One change oillamp intends to make, such as creating a directory or starting the container.
+///
+/// Every change oillamp makes during setup is first described as one of these and only then
+/// carried out by [StepRunner]. A dry run builds the same steps and only prints them, so what
+/// `--dry-run` shows is exactly what a real run would do.
+///
+/// [#describe()] is one line, printed for every step. [#detail()] is the full
+/// description, including the reason where there is one; `--verbose` prints it.
 sealed interface Step {
 
-    /** Whether an existing file may be overwritten. */
+    /// Whether an existing file may be overwritten.
     enum WritePolicy {
-        /** Always rewrite — for files oillamp owns, like the generated ssh_config. */
+        /// Always rewrite — for files oillamp owns, like the generated ssh_config.
         ALWAYS,
-        /** Only create if missing — for anything the user or the agent may have edited. */
+        /// Only create if missing — for anything the user or the agent may have edited.
         IF_ABSENT
     }
 
@@ -31,7 +29,7 @@ sealed interface Step {
 
     record AddSubIds(String user, IdRange range) implements Step {}
 
-    /** Runs {@code podman system migrate} after the id range changed; otherwise podman keeps using the old one. */
+    /// Runs `podman system migrate` after the id range changed; otherwise podman keeps using the old one.
     record PodmanMigrate() implements Step {}
 
     record CreateDirectory(Path path, PosixMode mode) implements Step {}
@@ -42,11 +40,9 @@ sealed interface Step {
 
     record CreateSymlink(Path link, Path target) implements Step {}
 
-    /**
-     * Gives a directory to a container user with {@code podman unshare chown}. This is how the
-     * recordings directory becomes writable only by the infra user, so the agent cannot change its
-     * own recording.
-     */
+    /// Gives a directory to a container user with `podman unshare chown`. This is how the
+    /// recordings directory becomes writable only by the infra user, so the agent cannot change its
+    /// own recording.
     record ChownForContainer(Path path, int containerUid, int containerGid, PosixMode mode) implements Step {}
 
     record GenerateSshKey(Path privateKey, String comment) implements Step {}
@@ -58,54 +54,46 @@ sealed interface Step {
 
     record RemoveContainer(ContainerName name, String reason) implements Step {}
 
-    /**
-     * Start the sandbox container with {@code podman run}.
-     *
-     * <p>The full argument list is part of the step, so {@code --dry-run --verbose} shows it. These
-     * flags are the sandbox's security settings, and a user should be able to check that
-     * {@code --network=none} is passed without reading the source.
-     */
+    /// Start the sandbox container with `podman run`.
+    ///
+    /// The full argument list is part of the step, so `--dry-run --verbose` shows it. These
+    /// flags are the sandbox's security settings, and a user should be able to check that
+    /// `--network=none` is passed without reading the source.
     record RunContainer(ContainerName name, ImageTag image, Tuple<String> argv) implements Step {}
 
-    /**
-     * Wait until the container writes {@code ready.json} for this session.
-     *
-     * <p>If the container exits while starting, the problem reported includes its log.
-     */
+    /// Wait until the container writes `ready.json` for this session.
+    ///
+    /// If the container exits while starting, the problem reported includes its log.
     record AwaitReady(ContainerName name, Path readyFile, SessionId session,
                       java.time.Duration timeout) implements Step {}
 
-    /** One socket the sandbox is expected to be answering on, and what it is for. */
+    /// One socket the sandbox is expected to be answering on, and what it is for.
     record Endpoint(String what, Path socket) {}
 
-    /**
-     * Connect to each of the sandbox's sockets before telling the user the session is ready.
-     *
-     * <p>{@code ready.json} is the container's own report. This step checks it by doing what the
-     * viewer and the terminal are about to do: connect.
-     */
+    /// Connect to each of the sandbox's sockets before telling the user the session is ready.
+    ///
+    /// `ready.json` is the container's own report. This step checks it by doing what the
+    /// viewer and the terminal are about to do: connect.
     record CheckEndpoints(ContainerName name, Tuple<Endpoint> endpoints) implements Step {}
 
-    /** Files owned by a container uid, so they need {@code podman unshare rm} to delete. */
+    /// Files owned by a container uid, so they need `podman unshare rm` to delete.
     record DeleteContainerOwnedFiles(Tuple<Path> files, String reason) implements Step {}
 
     record RemovePath(Path path, String reason) implements Step {}
 
-    /**
-     * Deletes a whole directory tree, including files owned by a container user.
-     *
-     * <p>Unlike {@link RemovePath}, it deletes through {@code podman unshare}, because part of a lamp
-     * belongs to the infra user and the lamp's owner cannot delete it directly. Symlinks are
-     * removed, never followed; the runtime directory contains one that points into the lamp.
-     */
+    /// Deletes a whole directory tree, including files owned by a container user.
+    ///
+    /// Unlike [RemovePath], it deletes through `podman unshare`, because part of a lamp
+    /// belongs to the infra user and the lamp's owner cannot delete it directly. Symlinks are
+    /// removed, never followed; the runtime directory contains one that points into the lamp.
     record RemoveTree(Path path, String reason) implements Step {}
 
     record WriteLampMeta(Path path, LampMeta meta) implements Step {}
 
-    /** Stable type name, safe for tests and logs to match on. */
+    /// Stable type name, safe for tests and logs to match on.
     default String kind() { return getClass().getSimpleName(); }
 
-    /** One line, for the console and {@code --dry-run}. */
+    /// One line, for the console and `--dry-run`.
     default String describe() {
         return switch (this) {
             case InstallPackages s -> "install " + s.packages().size() + " package(s): " + joined(s.packages());
@@ -136,7 +124,7 @@ sealed interface Step {
         };
     }
 
-    /** Everything worth keeping in the log, including the reason this step exists. */
+    /// Everything worth keeping in the log, including the reason this step exists.
     default String detail() {
         return switch (this) {
             case InstallPackages s -> {

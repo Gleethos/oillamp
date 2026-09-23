@@ -4,13 +4,11 @@ import sprouts.Association;
 import sprouts.Tuple;
 import sprouts.ValueSet;
 
-/**
- * The host packages oillamp needs, each with the reason it is needed.
- *
- * <p>The reasons are shown to the user before anything is installed, so they know what is about
- * to change on their machine and why. The list is keyed by {@link DistroFamily}; today every
- * family gets the Debian list, which is also what is printed for manual installation elsewhere.
- */
+/// The host packages oillamp needs, each with the reason it is needed.
+///
+/// The reasons are shown to the user before anything is installed, so they know what is about
+/// to change on their machine and why. The list is keyed by [DistroFamily]; today every
+/// family gets the Debian list, which is also what is printed for manual installation elsewhere.
 record HostRequirements(DistroFamily family, Tuple<String> packages,
                                Association<String, String> reasons) {
 
@@ -37,7 +35,7 @@ record HostRequirements(DistroFamily family, Tuple<String> packages,
         return new HostRequirements(DistroFamily.DEBIAN, packages, why);
     }
 
-    /** The packages from this table that are not installed yet, in table order. */
+    /// The packages from this table that are not installed yet, in table order.
     public Tuple<String> missingFrom(ValueSet<String> installed) {
         Tuple<String> missing = Tuple.of(String.class);
         for (String pkg : packages)
@@ -45,7 +43,7 @@ record HostRequirements(DistroFamily family, Tuple<String> packages,
         return missing;
     }
 
-    /** The command oillamp runs to install the packages, and prints when it is not allowed to. */
+    /// The command oillamp runs to install the packages, and prints when it is not allowed to.
     public String installCommand(Tuple<String> missing) {
         return "sudo apt-get install -y --no-install-recommends " + String.join(" ", missing);
     }

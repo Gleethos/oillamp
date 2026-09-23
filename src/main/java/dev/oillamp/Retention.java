@@ -7,28 +7,24 @@ import java.util.List;
 
 import sprouts.Tuple;
 
-/**
- * Chooses which screen recordings to delete, at every session start and on
- * {@code oillamp recordings --prune}.
- *
- * <p>A lamp with recording enabled and used every day would otherwise fill the disk. Two
- * independent limits apply, and a recording is deleted if either says so: it is older than
- * {@code recording.max_age_days}, or it falls outside the newest {@code recording.max_total_gb}.
- *
- * <p>This only selects; it deletes nothing. The caller turns the selection into a step, which
- * deletes through {@code podman unshare} because the files belong to the infra user.
- */
+/// Chooses which screen recordings to delete, at every session start and on
+/// `oillamp recordings --prune`.
+///
+/// A lamp with recording enabled and used every day would otherwise fill the disk. Two
+/// independent limits apply, and a recording is deleted if either says so: it is older than
+/// `recording.max_age_days`, or it falls outside the newest `recording.max_total_gb`.
+///
+/// This only selects; it deletes nothing. The caller turns the selection into a step, which
+/// deletes through `podman unshare` because the files belong to the infra user.
 final class Retention {
 
     private Retention() {}
 
     private static final long BYTES_PER_GB = 1024L * 1024L * 1024L;
 
-    /**
-     * Returns the recordings to delete, oldest first.
-     *
-     * @return the recordings that fall outside the configured age and size budget
-     */
+    /// Returns the recordings to delete, oldest first.
+    ///
+    /// @return the recordings that fall outside the configured age and size budget
     public static Tuple<RecordingFile> select(Tuple<RecordingFile> existing,
                                               LampConfig.Recording policy,
                                               Instant now) {

@@ -27,40 +27,36 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import sprouts.Tuple;
 
-/**
- * The egress proxy: the sandbox's only way out to the network, plus the configured forwards.
- *
- * <p>The container runs with {@code --network=none}: no route, no DNS, only a loopback interface.
- * Inside it, a socat relay listens on {@code 127.0.0.1:3128} and forwards each connection to a
- * Unix socket. On the host side of that socket, this class speaks HTTP proxy, asks {@link Policy}
- * whether the connection is allowed, resolves the name on the host, and connects on the agent's
- * behalf. A program that ignores the proxy variables has no network at all.
- *
- * <p>TLS is never intercepted. A {@code CONNECT} tunnel is copied byte for byte, so oillamp sees the
- * host name, the port and the resolved address, never the content.
- *
- * <p>How requests are handled and logged is described in {@code docs/ARCHITECTURE.md},
- * "The network".
- */
+/// The egress proxy: the sandbox's only way out to the network, plus the configured forwards.
+///
+/// The container runs with `--network=none`: no route, no DNS, only a loopback interface.
+/// Inside it, a socat relay listens on `127.0.0.1:3128` and forwards each connection to a
+/// Unix socket. On the host side of that socket, this class speaks HTTP proxy, asks [Policy]
+/// whether the connection is allowed, resolves the name on the host, and connects on the agent's
+/// behalf. A program that ignores the proxy variables has no network at all.
+///
+/// TLS is never intercepted. A `CONNECT` tunnel is copied byte for byte, so oillamp sees the
+/// host name, the port and the resolved address, never the content.
+///
+/// How requests are handled and logged is described in `docs/ARCHITECTURE.md`,
+/// "The network".
 final class Egress implements AutoCloseable {
 
-    /** A request head larger than this is not a proxy request. */
+    /// A request head larger than this is not a proxy request.
     private static final int HEADER_LIMIT = 64 * 1024;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration RESOLVE_TIMEOUT = Duration.ofSeconds(5);
     private static final int MAX_CONNECTIONS = 512;
     private static final int BUFFER_BYTES = 64 * 1024;
 
-    /** What the supervisor is told as it happens. Called from connection threads. */
+    /// What the supervisor is told as it happens. Called from connection threads.
     interface Listener {
         void denied(Journey journey);
         void trouble(Problem problem);
     }
 
-    /**
-     * One connection, as written to the network log: host, port, resolved address, decision,
-     * deciding rule, byte counts and duration. Never content.
-     */
+    /// One connection, as written to the network log: host, port, resolved address, decision,
+    /// deciding rule, byte counts and duration. Never content.
     record Journey(Instant at, String channel, String method, String host, int port,
                   Optional<IpAddress> address, Decision decision, String rule,
                   long bytesUp, long bytesDown, Duration took) {
@@ -101,13 +97,11 @@ final class Egress implements AutoCloseable {
         this.journal = journal;
     }
 
-    /**
-     * Starts the proxy and every configured forward.
-     *
-     * <p>The sockets are mode 0666 rather than 0600, because the socat relay inside the container
-     * runs as the infra user, a different uid. They are still private to this user on the host,
-     * because the enclosing {@code .oillamp} directory is 0700.
-     */
+    /// Starts the proxy and every configured forward.
+    ///
+    /// The sockets are mode 0666 rather than 0600, because the socat relay inside the container
+    /// runs as the infra user, a different uid. They are still private to this user on the host,
+    /// because the enclosing `.oillamp` directory is 0700.
     static Result<Egress> open(LampLayout layout, LampConfig config, SessionId session,
                                Listener listener) {
         Journal journal = new Journal(layout.networkLog(session));
@@ -199,11 +193,9 @@ final class Egress implements AutoCloseable {
         }
     }
 
-    /**
-     * {@code CONNECT host:port}, used for HTTPS and therefore most real traffic: resolve, check the
-     * policy, connect, answer {@code 200}, then copy bytes both ways until one side closes. Nothing
-     * in the tunnel is read.
-     */
+    /// `CONNECT host:port`, used for HTTPS and therefore most real traffic: resolve, check the
+    /// policy, connect, answer `200`, then copy bytes both ways until one side closes. Nothing
+    /// in the tunnel is read.
     private void tunnel(InputStream in, OutputStream out,
                         Head head, Instant started) throws IOException {
         Resolution resolution = resolve(head.host());
@@ -246,13 +238,11 @@ final class Egress implements AutoCloseable {
                 Duration.between(started, Instant.now())));
     }
 
-    /**
-     * An absolute-form request ({@code GET http://host/path}), forwarded in origin form.
-     *
-     * <p>Plain HTTP, which in practice means apt and some redirects. One request per connection:
-     * {@code Connection: close} is sent and the response is streamed back, so there is no
-     * keep-alive to manage.
-     */
+    /// An absolute-form request (`GET http://host/path`), forwarded in origin form.
+    ///
+    /// Plain HTTP, which in practice means apt and some redirects. One request per connection:
+    /// `Connection: close` is sent and the response is streamed back, so there is no
+    /// keep-alive to manage.
     private void forwardHttp(InputStream in, OutputStream out, Head head, Instant started)
             throws IOException {
         Resolution resolution = resolve(head.host());
@@ -295,12 +285,10 @@ final class Egress implements AutoCloseable {
 
     // ─── forwards ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * One connection to a forward's fixed target, without a policy check.
-     *
-     * <p>The host resolves the name and connects, so the host's VPN and routing apply. This is how
-     * a user gives the sandbox one internal service without opening the rest of their network.
-     */
+    /// One connection to a forward's fixed target, without a policy check.
+    ///
+    /// The host resolves the name and connects, so the host's VPN and routing apply. This is how
+    /// a user gives the sandbox one internal service without opening the rest of their network.
     private void handleForward(SocketChannel client, Forward forward) {
         Instant started = Instant.now();
         AtomicLong up = new AtomicLong();
@@ -329,22 +317,20 @@ final class Egress implements AutoCloseable {
 
     // ─── plumbing ──────────────────────────────────────────────────────────────────────────
 
-    /** Resolved addresses in resolver order, or a failure. Resolution happens on the host. */
+    /// Resolved addresses in resolver order, or a failure. Resolution happens on the host.
     private record Resolution(Tuple<IpAddress> addresses, boolean failed) {
 
-        /** The address the verdict allowed, or the first address if the verdict has none. */
+        /// The address the verdict allowed, or the first address if the verdict has none.
         InetAddress pick(Policy.Verdict verdict) throws IOException {
             IpAddress chosen = verdict.address().orElseGet(addresses::first);
             return InetAddress.getByName(chosen.text());
         }
     }
 
-    /**
-     * Resolves on the host, with a deadline.
-     *
-     * <p>{@code getAllByName} has no timeout of its own, and a resolver that stops answering would
-     * make the agent's connection hang instead of failing.
-     */
+    /// Resolves on the host, with a deadline.
+    ///
+    /// `getAllByName` has no timeout of its own, and a resolver that stops answering would
+    /// make the agent's connection hang instead of failing.
     private Resolution resolve(String host) {
         Optional<IpAddress> literal = IpAddress.parse(host);
         if (literal.isPresent()) return new Resolution(Tuple.of(IpAddress.class, literal.get()), false);
@@ -373,7 +359,7 @@ final class Egress implements AutoCloseable {
         return socket;
     }
 
-    /** Copies both directions concurrently and returns when both have finished. */
+    /// Copies both directions concurrently and returns when both have finished.
     private static void pipeBothWays(InputStream clientIn, OutputStream clientOut,
                                      Socket upstream, AtomicLong up, AtomicLong down)
             throws IOException {
@@ -454,11 +440,11 @@ final class Egress implements AutoCloseable {
 
     // ─── request parsing ───────────────────────────────────────────────────────────────────
 
-    /** A parsed request head. {@code badRequest} is non-null when it cannot be served. */
+    /// A parsed request head. `badRequest` is non-null when it cannot be served.
     private record Head(String method, String host, int port, String target,
                         List<String> headers, Optional<String> badRequest) {
 
-        /** The request as the origin server wants it: path only, hop-by-hop headers removed. */
+        /// The request as the origin server wants it: path only, hop-by-hop headers removed.
         String originForm() {
             StringBuilder out = new StringBuilder(method).append(' ').append(target)
                     .append(" HTTP/1.1\r\n");
@@ -478,12 +464,10 @@ final class Egress implements AutoCloseable {
     private static final List<String> HOP_BY_HOP = List.of(
             "connection", "keep-alive", "te", "trailer", "upgrade", "proxy-connection");
 
-    /**
-     * Reads the request head, one byte at a time, up to the blank line.
-     *
-     * <p>One byte at a time on purpose. A buffered read could also consume the first bytes of the
-     * tunnelled data, which the tunnel would then never forward, and the TLS handshake would hang.
-     */
+    /// Reads the request head, one byte at a time, up to the blank line.
+    ///
+    /// One byte at a time on purpose. A buffered read could also consume the first bytes of the
+    /// tunnelled data, which the tunnel would then never forward, and the TLS handshake would hang.
     private static Optional<Head> readHead(InputStream in) throws IOException {
         StringBuilder head = new StringBuilder();
         int consecutive = 0;
@@ -555,11 +539,9 @@ final class Egress implements AutoCloseable {
 
     // ─── the network log ───────────────────────────────────────────────────────────────────
 
-    /**
-     * One writer thread behind a queue, so a slow disk never delays a connection.
-     *
-     * <p>If the queue is full, the line is dropped rather than delaying the connection.
-     */
+    /// One writer thread behind a queue, so a slow disk never delays a connection.
+    ///
+    /// If the queue is full, the line is dropped rather than delaying the connection.
     private static final class Journal implements AutoCloseable {
 
         private final Path file;
@@ -613,7 +595,7 @@ final class Egress implements AutoCloseable {
 
     // ─── lifecycle ─────────────────────────────────────────────────────────────────────────
 
-    /** Whether the proxy socket accepts connections. Used by the session's health check. */
+    /// Whether the proxy socket accepts connections. Used by the session's health check.
     static boolean answers(Path socket) { return Relay.answers(socket); }
 
     @Override public void close() {

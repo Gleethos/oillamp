@@ -1,25 +1,23 @@
 package dev.oillamp;
 
-/**
- * The process exit codes. Scripts depend on them, so a code's meaning never changes: {@code 4}
- * always means "that lamp is already running".
- *
- * <p>Public so that a caller can act on how the process ended by name rather than by number.
- */
+/// The process exit codes. Scripts depend on them, so a code's meaning never changes: `4`
+/// always means "that lamp is already running".
+///
+/// Public so that a caller can act on how the process ended by name rather than by number.
 public enum ExitStatus {
-    /** Success, or a session that ended cleanly. */
+    /// Success, or a session that ended cleanly.
     SUCCESS(0),
-    /** Any {@code ERROR} problem not covered by a more specific code below. */
+    /// Any `ERROR` problem not covered by a more specific code below.
     ERROR(1),
-    /** The command line or the configuration was wrong. */
+    /// The command line or the configuration was wrong.
     USAGE(2),
-    /** Host prerequisites are missing and oillamp was not allowed to install them. */
+    /// Host prerequisites are missing and oillamp was not allowed to install them.
     PREREQUISITES_MISSING(3),
-    /** Another session already holds this lamp — {@code OIL-LOCK-001}. */
+    /// Another session already holds this lamp — `OIL-LOCK-001`.
     LAMP_BUSY(4),
-    /** The container or the session itself failed. */
+    /// The container or the session itself failed.
     SESSION_FAILED(5),
-    /** The user interrupted before the session was running. */
+    /// The user interrupted before the session was running.
     INTERRUPTED(130);
 
     private final int code;

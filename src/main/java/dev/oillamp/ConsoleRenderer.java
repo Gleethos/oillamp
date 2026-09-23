@@ -3,18 +3,16 @@ package dev.oillamp;
 import java.util.Optional;
 
 
-/**
- * Prints events as text for a person to read.
- *
- * <p>Progress is one short line per fact, prefixed with its area ({@code [host]}, {@code [lamp]},
- * ...), so a successful run reads like a checklist. A warning or error is a block: what happened,
- * why it matters, the evidence, and what to try.
- *
- * <p>Everything printed is also kept, so tests can check exactly what the user saw.
- *
- * <p>Colour is used when output goes to a terminal and {@code NO_COLOR} is not set. The
- * {@code --no-color} option is accepted but not yet connected to this.
- */
+/// Prints events as text for a person to read.
+///
+/// Progress is one short line per fact, prefixed with its area (`[host]`, `[lamp]`,
+/// ...), so a successful run reads like a checklist. A warning or error is a block: what happened,
+/// why it matters, the evidence, and what to try.
+///
+/// Everything printed is also kept, so tests can check exactly what the user saw.
+///
+/// Colour is used when output goes to a terminal and `NO_COLOR` is not set. The
+/// `--no-color` option is accepted but not yet connected to this.
 final class ConsoleRenderer {
 
     private static final String RESET  = "\u001B[0m";
@@ -25,11 +23,9 @@ final class ConsoleRenderer {
 
     private final StringBuilder captured = new StringBuilder();
     private final boolean colour;
-    /**
-     * Mutable on purpose: the renderer exists before the command line is parsed, so that usage
-     * errors can be printed, and {@code --verbose} is only known afterwards. An earlier version
-     * returned a modified copy, which nobody used, so {@code --verbose} had no effect.
-     */
+    /// Mutable on purpose: the renderer exists before the command line is parsed, so that usage
+    /// errors can be printed, and `--verbose` is only known afterwards. An earlier version
+    /// returned a modified copy, which nobody used, so `--verbose` had no effect.
     private boolean verbose;
     private boolean echoToTerminal = true;
 
@@ -41,31 +37,29 @@ final class ConsoleRenderer {
     // thread and cleared before any ordinary line is printed, so it never ends up in the text
     // above it. It is never part of text(): it is only drawn on a real terminal.
 
-    /** Steps that may run sudo, which asks for a password. A redrawn line would overwrite the prompt. */
+    /// Steps that may run sudo, which asks for a password. A redrawn line would overwrite the prompt.
     private static final java.util.Set<String> STEPS_THAT_PROMPT = java.util.Set.of("InstallPackages", "AddSubIds");
     private static final String[] SPINNER = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
     private static final String CLEAR_LINE = "\r\u001B[2K";
-    /**
-     * Turns the terminal's automatic line wrapping off while the activity line is drawn, and on
-     * again afterwards. If the line wrapped onto a second row, the carriage return would only go
-     * back to the start of that second row, and every redraw would leave a row of text behind.
-     * With wrapping off, a line that is too long is cut off at the right edge instead.
-     */
+    /// Turns the terminal's automatic line wrapping off while the activity line is drawn, and on
+    /// again afterwards. If the line wrapped onto a second row, the carriage return would only go
+    /// back to the start of that second row, and every redraw would leave a row of text behind.
+    /// With wrapping off, a line that is too long is cut off at the right edge instead.
     private static final String WRAP_OFF = "\u001B[?7l", WRAP_ON = "\u001B[?7h";
-    /** Colour codes and other terminal escape sequences, and control characters such as tabs. */
+    /// Colour codes and other terminal escape sequences, and control characters such as tabs.
     private static final java.util.regex.Pattern NOT_PRINTABLE =
             java.util.regex.Pattern.compile("\u001B\\[[0-9;?]*[ -/]*[@-~]|\u001B.|\\p{Cntrl}");
 
-    /** What is happening right now, if anything. */
+    /// What is happening right now, if anything.
     private record Activity(String text, long startedNanos, String latestOutput) {
         Activity withOutput(String line) { return new Activity(text, startedNanos, line); }
     }
 
-    /** Whether the activity line may be drawn at all: only when standard output is a terminal. */
+    /// Whether the activity line may be drawn at all: only when standard output is a terminal.
     private final boolean live;
-    /** The terminal's width, so that a long activity line ends with "…" instead of being cut off. */
+    /// The terminal's width, so that a long activity line ends with "…" instead of being cut off.
     private final int width;
-    /** Everything written to the terminal goes through this lock. */
+    /// Everything written to the terminal goes through this lock.
     private final Object terminal = new Object();
     private volatile Optional<Activity> activity = Optional.empty();
     private boolean activityShown;
@@ -78,10 +72,8 @@ final class ConsoleRenderer {
         this.width = width;
     }
 
-    /**
-     * Colour when output goes to a terminal and {@code NO_COLOR} is unset. The activity line only
-     * when standard output really is a terminal, never when it is redirected or piped.
-     */
+    /// Colour when output goes to a terminal and `NO_COLOR` is unset. The activity line only
+    /// when standard output really is a terminal, never when it is redirected or piped.
     public static ConsoleRenderer forMachine(Machine machine) {
         boolean colour = machine.isInteractive() && machine.environmentVariable("NO_COLOR").isEmpty();
         boolean live = machine.isInteractive()
@@ -92,10 +84,8 @@ final class ConsoleRenderer {
         return new ConsoleRenderer(colour, false, live, width);
     }
 
-    /**
-     * Asks the terminal how wide it is. Shells set {@code COLUMNS} for themselves but usually do not
-     * pass it on to programs, so it is rarely available. {@code stty size} prints "rows columns".
-     */
+    /// Asks the terminal how wide it is. Shells set `COLUMNS` for themselves but usually do not
+    /// pass it on to programs, so it is rarely available. `stty size` prints "rows columns".
     private static Optional<Integer> terminalWidth(Machine machine) {
         Machine.Outcome outcome = machine.run(Machine.Command.of("sh", "-c", "stty size < /dev/tty")
                                                              .withTimeout(java.time.Duration.ofSeconds(2)));
@@ -111,13 +101,13 @@ final class ConsoleRenderer {
         }
     }
 
-    /** Told once, as soon as the options are parsed. Returns this renderer, not a copy. */
+    /// Told once, as soon as the options are parsed. Returns this renderer, not a copy.
     public ConsoleRenderer verbose(boolean verbose) {
         this.verbose = verbose;
         return this;
     }
 
-    /** Used by tests, which read {@link #text()} instead of watching a terminal. */
+    /// Used by tests, which read [#text()] instead of watching a terminal.
     public ConsoleRenderer quiet() {
         echoToTerminal = false;
         return this;
@@ -125,10 +115,8 @@ final class ConsoleRenderer {
 
     public String text() { return captured.toString(); }
 
-    /**
-     * Writes text with no banner, tag or colour. Used only for the completion script, which a
-     * shell evaluates, so any decoration would be evaluated too.
-     */
+    /// Writes text with no banner, tag or colour. Used only for the completion script, which a
+    /// shell evaluates, so any decoration would be evaluated too.
     public void plain(String text) {
         line(text.stripTrailing());
     }
@@ -193,10 +181,8 @@ final class ConsoleRenderer {
         }
     }
 
-    /**
-     * A problem, in full. Errors and warnings share the layout so that a user learns to read it
-     * once; only the marker and colour differ.
-     */
+    /// A problem, in full. Errors and warnings share the layout so that a user learns to read it
+    /// once; only the marker and colour differ.
     private void problem(Problem problem) {
         String marker = switch (problem.severity()) {
             case ERROR   -> colour(RED, "✗");
@@ -243,7 +229,7 @@ final class ConsoleRenderer {
         };
     }
 
-    /** Two columns: a fixed-width label, then wrapped-by-the-author text. */
+    /// Two columns: a fixed-width label, then wrapped-by-the-author text.
     private void field(String label, String text) {
         String[] lines = text.split("\n", -1);
         for (int i = 0; i < lines.length; i++) {
@@ -295,7 +281,7 @@ final class ConsoleRenderer {
         Thread.ofPlatform().daemon().name("oillamp-activity").start(this::tick);
     }
 
-    /** What the user is told a step is doing. Plainer than the step's own description. */
+    /// What the user is told a step is doing. Plainer than the step's own description.
     private static String activityText(LampEvent.StepInfo step) {
         return switch (step.kind()) {
             case "BuildImage"          -> "building the sandbox image, the first build takes minutes";
@@ -312,7 +298,7 @@ final class ConsoleRenderer {
         synchronized (terminal) { clearActivityLine(); }
     }
 
-    /** Redraws the activity line until the process ends. Runs on a daemon thread. */
+    /// Redraws the activity line until the process ends. Runs on a daemon thread.
     private void tick() {
         for (int frame = 0; ; frame++) {
             synchronized (terminal) {
@@ -341,12 +327,12 @@ final class ConsoleRenderer {
         activityShown = true;
     }
 
-    /** A line of a program's output, without anything that would move the cursor or change colours. */
+    /// A line of a program's output, without anything that would move the cursor or change colours.
     private static String printable(String line) {
         return NOT_PRINTABLE.matcher(line).replaceAll(" ").strip();
     }
 
-    /** Removes the activity line, if one is on the screen. Call with the terminal lock held. */
+    /// Removes the activity line, if one is on the screen. Call with the terminal lock held.
     private void clearActivityLine() {
         if (!activityShown) return;
         System.out.print(CLEAR_LINE);

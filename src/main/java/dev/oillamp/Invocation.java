@@ -8,13 +8,11 @@ import java.util.function.Consumer;
 
 import sprouts.Tuple;
 
-/**
- * Parses the command line and calls the matching method on {@link Commands}.
- *
- * <p>Written by hand rather than with a command-line library. There are only a few commands and
- * options, and this makes it simple to give a helpful message for a mistyped command and exit
- * code 2 for every usage error.
- */
+/// Parses the command line and calls the matching method on [Commands].
+///
+/// Written by hand rather than with a command-line library. There are only a few commands and
+/// options, and this makes it simple to give a helpful message for a mistyped command and exit
+/// code 2 for every usage error.
 final class Invocation {
 
     private Invocation() {}

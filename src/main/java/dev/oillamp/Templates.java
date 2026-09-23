@@ -1,24 +1,20 @@
 package dev.oillamp;
 
 
-/**
- * The text of files oillamp generates: the commented {@code oillamp.toml}, the lamp's
- * {@code README.txt}, the agent's {@code .bashrc} and the bash completion script.
- *
- * <p>They are Java text blocks rather than resource files, so no file needs to be read to produce
- * them.
- */
+/// The text of files oillamp generates: the commented `oillamp.toml`, the lamp's
+/// `README.txt`, the agent's `.bashrc` and the bash completion script.
+///
+/// They are Java text blocks rather than resource files, so no file needs to be read to produce
+/// them.
 final class Templates {
 
     private Templates() {}
 
-    /**
-     * The commented configuration written into a new lamp.
-     *
-     * <p>Every value here must match {@link ConfigDefaults#lampConfig()}. A scenario in
-     * {@code ConfiguringALampSpec} checks this, because many users read this file as the
-     * documentation of the settings.
-     */
+    /// The commented configuration written into a new lamp.
+    ///
+    /// Every value here must match [ConfigDefaults#lampConfig()]. A scenario in
+    /// `ConfiguringALampSpec` checks this, because many users read this file as the
+    /// documentation of the settings.
     public static String defaultConfig() {
         return """
             # oillamp lamp configuration. Edited by you, never visible to the agent.
@@ -120,15 +116,13 @@ final class Templates {
             """;
     }
 
-    /**
-     * The bash completion script, printed by {@code oillamp completion bash}.
-     *
-     * <p>Printed rather than installed, because oillamp itself is never installed anywhere. The user
-     * decides whether to evaluate it in one shell or add it to their startup file.
-     *
-     * <p>After the command name it completes directories, because every command that takes an
-     * argument takes a lamp directory.
-     */
+    /// The bash completion script, printed by `oillamp completion bash`.
+    ///
+    /// Printed rather than installed, because oillamp itself is never installed anywhere. The user
+    /// decides whether to evaluate it in one shell or add it to their startup file.
+    ///
+    /// After the command name it completes directories, because every command that takes an
+    /// argument takes a lamp directory.
     public static String bashCompletion() {
         return """
             # oillamp bash completion.
@@ -169,14 +163,12 @@ final class Templates {
             """;
     }
 
-    /**
-     * The agent's {@code ~/.bashrc}.
-     *
-     * <p>{@code /etc/profile} is read only by login shells. The terminal oillamp opens gets one;
-     * {@code ssh <lamp> 'some command'} does not, so without this file a scripted command would run
-     * with no proxy settings, no display and no {@code sdk}. Written only if absent, because after
-     * that it belongs to the agent.
-     */
+    /// The agent's `~/.bashrc`.
+    ///
+    /// `/etc/profile` is read only by login shells. The terminal oillamp opens gets one;
+    /// `ssh <lamp> 'some command'` does not, so without this file a scripted command would run
+    /// with no proxy settings, no display and no `sdk`. Written only if absent, because after
+    /// that it belongs to the agent.
     public static String agentBashrc() {
         return """
             # Written by oillamp when this lamp was created, and never again: from here on it is
@@ -190,7 +182,7 @@ final class Templates {
             """;
     }
 
-    /** The lamp's {@code README.txt}, so that someone who finds the directory later knows what it is. */
+    /// The lamp's `README.txt`, so that someone who finds the directory later knows what it is.
     public static String readme(LampLayout layout) {
         return """
             This directory is an oillamp lamp: one sandboxed Linux machine with its own desktop,

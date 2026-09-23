@@ -1,17 +1,15 @@
 package dev.oillamp;
 
 
-/**
- * Writes {@code ~/AGENTS.md}, the guide that tells the agent what kind of machine it is on.
- *
- * <p>An agent that does not know it is in a sandbox wastes time: it tries {@code sudo apt install},
- * wonders why DNS does not work, and reports "the network is broken" when a policy rule refused one
- * host. The guide is rewritten every session from the current configuration and says what
- * persists, how to use the desktop, how the network works and why a request may be refused.
- *
- * <p>It is open about the sandbox's limits, so the agent can work within them and report
- * accurately when it hits one.
- */
+/// Writes `~/AGENTS.md`, the guide that tells the agent what kind of machine it is on.
+///
+/// An agent that does not know it is in a sandbox wastes time: it tries `sudo apt install`,
+/// wonders why DNS does not work, and reports "the network is broken" when a policy rule refused one
+/// host. The guide is rewritten every session from the current configuration and says what
+/// persists, how to use the desktop, how the network works and why a request may be refused.
+///
+/// It is open about the sandbox's limits, so the agent can work within them and report
+/// accurately when it hits one.
 final class AgentGuide {
 
     private AgentGuide() {}

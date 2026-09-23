@@ -12,18 +12,16 @@ import java.util.TreeMap;
 
 import sprouts.Tuple;
 
-/**
- * A {@link Machine} described by a test, such as "Ubuntu without podman", "Fedora" or "no display".
- * Tests build one with {@link Machine#simulated()}.
- *
- * <p>It answers with realistic command output (real {@code /etc/os-release} text, real
- * {@code podman info} JSON, real {@code dpkg-query} lines), so oillamp's real parsers are tested.
- * It also imitates the container well enough for a whole session to run: see
- * {@link #startSimulatedSandbox}.
- */
+/// A [Machine] described by a test, such as "Ubuntu without podman", "Fedora" or "no display".
+/// Tests build one with [Machine#simulated()].
+///
+/// It answers with realistic command output (real `/etc/os-release` text, real
+/// `podman info` JSON, real `dpkg-query` lines), so oillamp's real parsers are tested.
+/// It also imitates the container well enough for a whole session to run: see
+/// [#startSimulatedSandbox].
 final class SimulatedMachine implements Machine {
 
-    /** How {@code sudo} behaves on the simulated machine. */
+    /// How `sudo` behaves on the simulated machine.
     public enum Sudo { PASSWORDLESS, NEEDS_PASSWORD, UNAVAILABLE }
 
     private final String operatingSystemName;
@@ -34,7 +32,7 @@ final class SimulatedMachine implements Machine {
     private final Map<String, List<Path>> systemDirectories;
     private final Instant clock;
     private final boolean clockRuns;
-    /** Wall-clock reference for a running clock, taken once so that {@code now()} stays monotonic. */
+    /// Wall-clock reference for a running clock, taken once so that `now()` stays monotonic.
     private final Instant built = Instant.now();
     private final String randomToken;
     private final boolean interactive;
@@ -45,12 +43,10 @@ final class SimulatedMachine implements Machine {
     private final boolean terminalConnects;
     private final RealMachine realMachine = new RealMachine();
 
-    /**
-     * The sockets the simulated container is listening on, and whether it is still up.
-     *
-     * <p>These are real sockets, not files, so that session scenarios really test {@link Relay},
-     * which binds sockets and copies bytes and has no pure part that could be tested otherwise.
-     */
+    /// The sockets the simulated container is listening on, and whether it is still up.
+    ///
+    /// These are real sockets, not files, so that session scenarios really test [Relay],
+    /// which binds sockets and copies bytes and has no pure part that could be tested otherwise.
     private final java.util.Map<String, java.nio.channels.ServerSocketChannel> listening =
             new java.util.concurrent.ConcurrentHashMap<>();
     private volatile boolean containerRunning;
@@ -73,14 +69,12 @@ final class SimulatedMachine implements Machine {
         this.interactive = builder.interactive;
     }
 
-    /**
-     * A clock that stands still, unless a scenario asked for one that moves.
-     *
-     * <p>Standing still is what makes session ids, file names and retention decisions repeatable.
-     * But a supervisor is the one part of oillamp whose job includes waiting, and a timeout that
-     * can never be reached cannot be tested at all, so a scenario about waiting can ask for time
-     * to pass, and only those scenarios pay for it.
-     */
+    /// A clock that stands still, unless a scenario asked for one that moves.
+    ///
+    /// Standing still is what makes session ids, file names and retention decisions repeatable.
+    /// But a supervisor is the one part of oillamp whose job includes waiting, and a timeout that
+    /// can never be reached cannot be tested at all, so a scenario about waiting can ask for time
+    /// to pass, and only those scenarios pay for it.
     @Override public Instant now() {
         return clockRuns ? clock.plus(Duration.between(built, Instant.now())) : clock;
     }
@@ -118,16 +112,14 @@ final class SimulatedMachine implements Machine {
         return new Outcome.Finished(0, "", "", Duration.ofMillis(1));
     }
 
-    /**
-     * Imitates what the container's entrypoint does on {@code podman run}: binds the VNC and SSH
-     * sockets and writes {@code ready.json} for the session.
-     *
-     * <p>The socket directory is taken from the {@code --volume} argument oillamp actually passed,
-     * so if oillamp forgot the mount, the simulation fails as the real container would.
-     *
-     * <p>It does not simulate the desktop, the VNC server or the recording. The spike tests check
-     * those against the real tools.
-     */
+    /// Imitates what the container's entrypoint does on `podman run`: binds the VNC and SSH
+    /// sockets and writes `ready.json` for the session.
+    ///
+    /// The socket directory is taken from the `--volume` argument oillamp actually passed,
+    /// so if oillamp forgot the mount, the simulation fails as the real container would.
+    ///
+    /// It does not simulate the desktop, the VNC server or the recording. The spike tests check
+    /// those against the real tools.
     private Outcome startSimulatedSandbox(Command command) {
         Optional<Path> sockets = mountedHostPath(command, "/oillamp/sockets");
         if (sockets.isEmpty())
@@ -163,13 +155,11 @@ final class SimulatedMachine implements Machine {
         return new Outcome.Finished(0, "simulated-container-id\n", "", Duration.ofMillis(120));
     }
 
-    /**
-     * {@code $XDG_RUNTIME_DIR/oillamp/<agentId>/sockets}: the short path the host connects on.
-     *
-     * <p>Taken from the container's own name rather than from a field, so that a simulation can
-     * never bind somewhere the host would not look: if oillamp stopped passing {@code --name},
-     * this would stop finding it, exactly as the host would.
-     */
+    /// `$XDG_RUNTIME_DIR/oillamp/<agentId>/sockets`: the short path the host connects on.
+    ///
+    /// Taken from the container's own name rather than from a field, so that a simulation can
+    /// never bind somewhere the host would not look: if oillamp stopped passing `--name`,
+    /// this would stop finding it, exactly as the host would.
     private Optional<Path> shortSocketsDirectory(Command command) {
         Tuple<String> argv = command.argv();
         for (int i = 0; i < argv.size() - 1; i++) {
@@ -181,14 +171,12 @@ final class SimulatedMachine implements Machine {
         return Optional.empty();
     }
 
-    /**
-     * Starts listening where the container's server would.
-     *
-     * <p>A socket named by {@link Simulation#endpointRefusingConnections} is created as an
-     * ordinary file instead, and nothing binds it, which is precisely the failure that got this
-     * simulation written: wayvnc could not take a path the previous session had left behind, so
-     * the file was there and no server was.
-     */
+    /// Starts listening where the container's server would.
+    ///
+    /// A socket named by [Simulation#endpointRefusingConnections] is created as an
+    /// ordinary file instead, and nothing binds it, which is precisely the failure that got this
+    /// simulation written: wayvnc could not take a path the previous session had left behind, so
+    /// the file was there and no server was.
     private void bind(Path socket) throws java.io.IOException {
         Path fileName = socket.getFileName();
         String name = fileName == null ? "" : fileName.toString();
@@ -204,7 +192,7 @@ final class SimulatedMachine implements Machine {
         Thread.ofVirtual().name("simulated-sandbox-" + name).start(() -> accept(server));
     }
 
-    /** A simulated server: it answers, reads whatever is sent, and goes away when the client does. */
+    /// A simulated server: it answers, reads whatever is sent, and goes away when the client does.
     private static void accept(java.nio.channels.ServerSocketChannel server) {
         while (server.isOpen()) {
             try {
@@ -223,7 +211,7 @@ final class SimulatedMachine implements Machine {
         }
     }
 
-    /** {@code podman stop} and {@code podman rm}: the container and its sockets are gone. */
+    /// `podman stop` and `podman rm`: the container and its sockets are gone.
     private Outcome stopSimulatedSandbox() {
         containerRunning = false;
         for (java.nio.channels.ServerSocketChannel server : listening.values()) {
@@ -237,13 +225,11 @@ final class SimulatedMachine implements Machine {
         return new Outcome.Finished(0, "simulated-container-id\n", "", Duration.ofMillis(40));
     }
 
-    /**
-     * Answers the two questions the supervisor asks about a container it is watching.
-     *
-     * <p>Without this, a simulated {@code podman container inspect} would succeed with no output,
-     * the supervisor would read that as "not running", and every simulated session would report
-     * its sandbox as having died the moment it started.
-     */
+    /// Answers the two questions the supervisor asks about a container it is watching.
+    ///
+    /// Without this, a simulated `podman container inspect` would succeed with no output,
+    /// the supervisor would read that as "not running", and every simulated session would report
+    /// its sandbox as having died the moment it started.
     private Outcome inspectSimulatedSandbox(Command command) {
         String format = "";
         Tuple<String> argv = command.argv();
@@ -256,12 +242,10 @@ final class SimulatedMachine implements Machine {
         return new Outcome.Finished(0, answer + "\n", "", Duration.ofMillis(5));
     }
 
-    /**
-     * Deletes for real, because the scenarios that matter here are about files that outlive a
-     * container: a socket the previous session left behind, and a {@code ready.json} that answers
-     * a question the host has not asked yet. A simulation that only pretended to delete them
-     * would make every one of those scenarios pass while the bug stayed.
-     */
+    /// Deletes for real, because the scenarios that matter here are about files that outlive a
+    /// container: a socket the previous session left behind, and a `ready.json` that answers
+    /// a question the host has not asked yet. A simulation that only pretended to delete them
+    /// would make every one of those scenarios pass while the bug stayed.
     private Outcome simulatedUnshareRemove(Command command) {
         Tuple<String> argv = command.argv();
         // `-r` matters: `oillamp remove` passes whole directories, and a simulation that could
@@ -293,15 +277,13 @@ final class SimulatedMachine implements Machine {
         return new Outcome.Finished(0, "", "", Duration.ofMillis(20));
     }
 
-    /**
-     * Imitates connecting to a Unix socket, the check that tells a listening server apart from a
-     * leftover file with the right name.
-     *
-     * <p>In simulation a socket "answers" when the file is there, which is enough to catch the
-     * host forgetting to create one or clean one up. {@link Simulation#endpointRefusingConnections}
-     * models the other case, where the file exists and nothing is listening, which once let a
-     * session with a dead VNC server report itself healthy.
-     */
+    /// Imitates connecting to a Unix socket, the check that tells a listening server apart from a
+    /// leftover file with the right name.
+    ///
+    /// In simulation a socket "answers" when the file is there, which is enough to catch the
+    /// host forgetting to create one or clean one up. [Simulation#endpointRefusingConnections]
+    /// models the other case, where the file exists and nothing is listening, which once let a
+    /// session with a dead VNC server report itself healthy.
     private Outcome simulatedConnect(Command command) {
         Optional<Path> socket = unixConnectTarget(command);
         if (socket.isEmpty()) return new Outcome.Finished(0, "", "", Duration.ofMillis(5));
@@ -321,14 +303,12 @@ final class SimulatedMachine implements Machine {
         }
     }
 
-    /**
-     * The socket a command line is aimed at, wherever {@code UNIX-CONNECT:} appears in it.
-     *
-     * <p>It appears in two shapes, and both matter. The readiness check passes it as its own
-     * argument ({@code socat -u /dev/null UNIX-CONNECT:/path}), while the terminal's ssh command
-     * carries it inside one ({@code -o ProxyCommand=socat - UNIX-CONNECT:/path}), which is how
-     * a shell reaches the sandbox, and therefore the one a simulated session has to find.
-     */
+    /// The socket a command line is aimed at, wherever `UNIX-CONNECT:` appears in it.
+    ///
+    /// It appears in two shapes, and both matter. The readiness check passes it as its own
+    /// argument (`socat -u /dev/null UNIX-CONNECT:/path`), while the terminal's ssh command
+    /// carries it inside one (`-o ProxyCommand=socat - UNIX-CONNECT:/path`), which is how
+    /// a shell reaches the sandbox, and therefore the one a simulated session has to find.
     private static Optional<Path> unixConnectTarget(Command command) {
         for (String argument : command.argv()) {
             int at = argument.indexOf("UNIX-CONNECT:");
@@ -341,7 +321,7 @@ final class SimulatedMachine implements Machine {
         return Optional.empty();
     }
 
-    /** The session id the host wrote into runtime.env, which the real entrypoint insists on. */
+    /// The session id the host wrote into runtime.env, which the real entrypoint insists on.
     private static Optional<String> simulatedSessionId(Command command) {
         Optional<Path> sessionDir = mountedHostPath(command, "/oillamp/session");
         if (sessionDir.isEmpty()) return Optional.empty();
@@ -358,7 +338,7 @@ final class SimulatedMachine implements Machine {
         }
     }
 
-    /** The host side of {@code --volume <host>:<inContainer>}, if oillamp asked for that mount. */
+    /// The host side of `--volume <host>:<inContainer>`, if oillamp asked for that mount.
     private static Optional<Path> mountedHostPath(Command command, String inContainer) {
         Tuple<String> argv = command.argv();
         for (int i = 0; i < argv.size() - 1; i++) {
@@ -373,14 +353,12 @@ final class SimulatedMachine implements Machine {
         return Optional.empty();
     }
 
-    /**
-     * Opens a simulated window. If its command line connects to a Unix socket, as the terminal's
-     * ssh does to the primary relay, the window really connects to it.
-     *
-     * <p>So a simulated session runs as a real one would: the relay accepts, the supervisor reaches
-     * {@code Running}, and when the window closes the session shuts down because the terminal was
-     * closed.
-     */
+    /// Opens a simulated window. If its command line connects to a Unix socket, as the terminal's
+    /// ssh does to the primary relay, the window really connects to it.
+    ///
+    /// So a simulated session runs as a real one would: the relay accepts, the supervisor reaches
+    /// `Running`, and when the window closes the session shuts down because the terminal was
+    /// closed.
     @Override public Window launch(Command command, Window.Stdio stdio) {
         if (refusedWindows.contains(command.executable()))
             return Window.refused(command.executable(), "No such file or directory");
@@ -390,7 +368,7 @@ final class SimulatedMachine implements Machine {
         return new SimulatedWindow(terminalConnects ? socket : Optional.empty(), terminalStaysOpen);
     }
 
-    /** A window that is open for a while, holding a connection if it was given one to hold. */
+    /// A window that is open for a while, holding a connection if it was given one to hold.
     private static final class SimulatedWindow implements Window {
 
         private final java.util.concurrent.atomic.AtomicBoolean running =
@@ -463,7 +441,7 @@ final class SimulatedMachine implements Machine {
 
     // ───────────────────────────────────────────────────────────────────────────────────────
 
-    /** Assembles the canned answers. Driven by {@code Machine.Simulation}, which is the public face. */
+    /// Assembles the canned answers. Driven by `Machine.Simulation`, which is the public face.
     public static final class Builder {
 
         private String operatingSystemName = "Linux";
@@ -479,14 +457,12 @@ final class SimulatedMachine implements Machine {
         private final List<String> deadEndpoints = new ArrayList<>();
         private final List<String> refusedWindows = new ArrayList<>();
 
-        /**
-         * How long a simulated window stays open.
-         *
-         * <p>Long enough for the relay to accept the connection and the session to reach
-         * {@code Running}, short enough that a scenario running a whole session finishes in the
-         * time a scenario should. A real session ends when the user closes the window; a
-         * simulated one ends when this elapses, and the path through the code is the same.
-         */
+        /// How long a simulated window stays open.
+        ///
+        /// Long enough for the relay to accept the connection and the session to reach
+        /// `Running`, short enough that a scenario running a whole session finishes in the
+        /// time a scenario should. A real session ends when the user closes the window; a
+        /// simulated one ends when this elapses, and the path through the code is the same.
         private Duration terminalStaysOpen = Duration.ofMillis(250);
         private boolean terminalConnects = true;
 
@@ -688,7 +664,7 @@ final class SimulatedMachine implements Machine {
             return out.toString();
         }
 
-        /** Mimics {@code dpkg-query -W -f='${Package} ${Status}\n'}: found lines only, plus a non-zero exit. */
+        /// Mimics `dpkg-query -W -f='${Package} ${Status}\n'`: found lines only, plus a non-zero exit.
         private String dpkgQueryOutput() {
             StringBuilder out = new StringBuilder();
             for (String pkg : installedPackages)

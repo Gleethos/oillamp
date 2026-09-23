@@ -4,30 +4,26 @@ import java.nio.file.Path;
 
 import sprouts.Tuple;
 
-/**
- * Refuses paths that must never become a lamp: {@code /}, the user's home directory itself, and
- * system directories such as {@code /etc} or {@code /usr}.
- *
- * <p>A lamp writes state into its directory and mounts part of it into the container. Doing that
- * to a system directory or to the whole home directory would give the agent exactly the files the
- * sandbox exists to protect.
- *
- * <p>There is deliberately no option to override this. It would only ever be used by mistake.
- */
+/// Refuses paths that must never become a lamp: `/`, the user's home directory itself, and
+/// system directories such as `/etc` or `/usr`.
+///
+/// A lamp writes state into its directory and mounts part of it into the container. Doing that
+/// to a system directory or to the whole home directory would give the agent exactly the files the
+/// sandbox exists to protect.
+///
+/// There is deliberately no option to override this. It would only ever be used by mistake.
 final class LampPaths {
 
     private LampPaths() {}
 
-    /** System directories a lamp may never be in or under. */
+    /// System directories a lamp may never be in or under.
     private static final Tuple<String> FORBIDDEN_PREFIXES = Tuple.of(String.class,
             "/bin", "/boot", "/dev", "/etc", "/lib", "/proc", "/run", "/sbin", "/sys", "/usr", "/var");
 
-    /**
-     * Validates an already-normalised, absolute path.
-     *
-     * <p>Symlink resolution happens in the shell before this is called, so that a symlink into
-     * {@code /etc} cannot slip past the prefix check.
-     */
+    /// Validates an already-normalised, absolute path.
+    ///
+    /// Symlink resolution happens in the shell before this is called, so that a symlink into
+    /// `/etc` cannot slip past the prefix check.
     public static Result<Path> validate(Path requested, UserInfo user) {
         if (!requested.isAbsolute())
             return Result.err(Problems.lampForbiddenPath(requested, "is not an absolute path"));

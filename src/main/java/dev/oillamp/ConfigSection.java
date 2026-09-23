@@ -12,18 +12,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import sprouts.Tuple;
 
-/**
- * Reads one table of the merged configuration, collecting mistakes instead of stopping at the
- * first.
- *
- * <p>When a value has the wrong type, each accessor records a problem and returns the default, so
- * reading continues. {@link #allowOnly} records any key that is not known. Because nothing throws,
- * a user with an unknown key, a bad address range and a duplicate forward sees all three in one
- * run.
- *
- * <p>Every problem names the file, the key path (such as {@code network.rules[0].cidrs}), the value
- * and what was expected.
- */
+/// Reads one table of the merged configuration, collecting mistakes instead of stopping at the
+/// first.
+///
+/// When a value has the wrong type, each accessor records a problem and returns the default, so
+/// reading continues. [#allowOnly] records any key that is not known. Because nothing throws,
+/// a user with an unknown key, a bad address range and a duplicate forward sees all three in one
+/// run.
+///
+/// Every problem names the file, the key path (such as `network.rules[0].cidrs`), the value
+/// and what was expected.
 final class ConfigSection {
 
     private final ConfigTree tree;
@@ -42,14 +40,14 @@ final class ConfigSection {
         return new ConfigSection(tree, "", tree.root(), new ArrayList<>());
     }
 
-    /** Everything that went wrong while reading, in the order it was discovered. */
+    /// Everything that went wrong while reading, in the order it was discovered.
     public Tuple<Problem> problems() { return Tuple.of(Problem.class, problems); }
 
     public String keyPath() { return keyPath; }
 
     // ─── navigation ────────────────────────────────────────────────────────────────────────
 
-    /** A sub-table. A missing table is not an error — it simply means "all defaults". */
+    /// A sub-table. A missing table is not an error — it simply means "all defaults".
     public ConfigSection table(String key) {
         JsonNode child = node.get(key);
         String path = child(key);
@@ -62,7 +60,7 @@ final class ConfigSection {
         return new ConfigSection(tree, path, child, problems);
     }
 
-    /** An array of tables, as written {@code [[network.rules]]}. */
+    /// An array of tables, as written `[[network.rules]]`.
     public Tuple<ConfigSection> tableArray(String key) {
         JsonNode child = node.get(key);
         String path = child(key);
@@ -84,7 +82,7 @@ final class ConfigSection {
         return sections;
     }
 
-    /** True when the table is absent or has no keys — used to distinguish "off" from "default". */
+    /// True when the table is absent or has no keys — used to distinguish "off" from "default".
     public boolean isEmpty() { return node.isEmpty(); }
 
     public boolean has(String key) { return node.hasNonNull(key); }
@@ -136,7 +134,7 @@ final class ConfigSection {
         return out;
     }
 
-    /** Reads an array whose elements may be numbers or strings, as a rule's {@code ports} may be. */
+    /// Reads an array whose elements may be numbers or strings, as a rule's `ports` may be.
     public Tuple<String> scalarsAsText(String key) {
         JsonNode value = node.get(key);
         Tuple<String> out = Tuple.of(String.class);
@@ -154,7 +152,7 @@ final class ConfigSection {
         return out;
     }
 
-    /** A key/value table of strings, as {@code agent_tools.versions} is. */
+    /// A key/value table of strings, as `agent_tools.versions` is.
     public sprouts.Association<String, String> stringTable(String key) {
         sprouts.Association<String, String> out =
                 sprouts.Association.betweenSorted(String.class, String.class);
@@ -172,7 +170,7 @@ final class ConfigSection {
         return out;
     }
 
-    /** Reads a value from a fixed set of spellings, e.g. {@code gpu = "auto" | "on" | "off"}. */
+    /// Reads a value from a fixed set of spellings, e.g. `gpu = "auto" | "on" | "off"`.
     public <E> E oneOf(String key, E fallback, Function<String, Optional<E>> parse, String expected) {
         JsonNode value = node.get(key);
         if (value == null || value.isNull()) return fallback;
@@ -185,11 +183,9 @@ final class ConfigSection {
         return parsed.get();
     }
 
-    /**
-     * Like {@link #oneOf} but for a key with no sensible default: a missing or unusable value
-     * yields an empty result, so the caller can skip the whole entry instead of inventing one.
-     * Silently defaulting a rule's {@code action} would be the worst possible guess.
-     */
+    /// Like [#oneOf] but for a key with no sensible default: a missing or unusable value
+    /// yields an empty result, so the caller can skip the whole entry instead of inventing one.
+    /// Silently defaulting a rule's `action` would be the worst possible guess.
     public <E> Optional<E> requiredOneOf(String key, Function<String, Optional<E>> parse, String expected) {
         JsonNode value = node.get(key);
         if (value == null || value.isNull()) {
@@ -208,13 +204,11 @@ final class ConfigSection {
 
     // ─── schema enforcement ────────────────────────────────────────────────────────────────
 
-    /**
-     * Reports every key in this table that is not one of {@code knownKeys}.
-     *
-     * <p>Unknown keys are errors, not warnings, because a misspelled key would otherwise be ignored,
-     * and an ignored network rule setting is a hole in the sandbox. The message suggests the nearest
-     * known key, because the cause is almost always a typo.
-     */
+    /// Reports every key in this table that is not one of `knownKeys`.
+    ///
+    /// Unknown keys are errors, not warnings, because a misspelled key would otherwise be ignored,
+    /// and an ignored network rule setting is a hole in the sandbox. The message suggests the nearest
+    /// known key, because the cause is almost always a typo.
     public ConfigSection allowOnly(String... knownKeys) {
         for (Map.Entry<String, JsonNode> field : ((ObjectNode) node).properties()) {
             String key = field.getKey();
@@ -229,13 +223,13 @@ final class ConfigSection {
 
     // ─── reporting ─────────────────────────────────────────────────────────────────────────
 
-    /** Reports a value that parsed but cannot work, e.g. a width outside the supported range. */
+    /// Reports a value that parsed but cannot work, e.g. a width outside the supported range.
     public void invalid(String key, String value, String expectation) {
         String path = child(key);
         report(Problems.configInvalidValue(fileOf(path), path, value, expectation));
     }
 
-    /** Reports a problem about this table as a whole, e.g. two forwards sharing a port. */
+    /// Reports a problem about this table as a whole, e.g. two forwards sharing a port.
     public void invalidHere(String value, String expectation) {
         report(Problems.configInvalidValue(fileOf(keyPath), keyPath, value, expectation));
     }
@@ -265,7 +259,7 @@ final class ConfigSection {
         return value.asText();
     }
 
-    /** The nearest known key by edit distance, so "netwrok" gets "did you mean 'network'?". */
+    /// The nearest known key by edit distance, so "netwrok" gets "did you mean 'network'?".
     private static String suggestionFor(String typo, String[] knownKeys) {
         String best = "";
         int bestDistance = Integer.MAX_VALUE;

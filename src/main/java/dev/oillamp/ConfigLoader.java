@@ -9,28 +9,24 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.dataformat.toml.TomlMapper;
 import sprouts.Tuple;
 
-/**
- * Turns configuration files into a validated {@link LampConfig}.
- *
- * <p>Each file is parsed into a tree, the trees are merged ({@link ConfigTree}), and the merged
- * tree is read setting by setting ({@link ConfigSection}). Reading collects problems instead of
- * throwing; only at the end are they judged. It is given the files' text, not their paths, so it
- * can be tested without files.
- *
- * <p>Every setting and its default is listed in {@code docs/ARCHITECTURE.md}, "Configuration
- * reference".
- */
+/// Turns configuration files into a validated [LampConfig].
+///
+/// Each file is parsed into a tree, the trees are merged ([ConfigTree]), and the merged
+/// tree is read setting by setting ([ConfigSection]). Reading collects problems instead of
+/// throwing; only at the end are they judged. It is given the files' text, not their paths, so it
+/// can be tested without files.
+///
+/// Every setting and its default is listed in `docs/ARCHITECTURE.md`, "Configuration
+/// reference".
 final class ConfigLoader {
 
     private ConfigLoader() {}
 
     private static final TomlMapper TOML = TomlMapper.builder().build();
 
-    /**
-     * Reads, merges and validates configuration.
-     *
-     * @param sources the files, global first and the lamp's last; built-in defaults apply beneath both
-     */
+    /// Reads, merges and validates configuration.
+    ///
+    /// @param sources the files, global first and the lamp's last; built-in defaults apply beneath both
     public static Result<LampConfig> load(Tuple<ConfigSource> sources) {
         Tuple<Problem> parseProblems = Tuple.of(Problem.class);
         Optional<ConfigTree> merged = Optional.empty();
@@ -276,7 +272,7 @@ final class ConfigLoader {
         return forwards;
     }
 
-    /** Two forwards sharing a name or a port would make the sandbox's port map ambiguous. */
+    /// Two forwards sharing a name or a port would make the sandbox's port map ambiguous.
     private static String firstClashWith(Tuple<Forward> existing, Forward candidate) {
         for (Forward other : existing) {
             if (other.name().equals(candidate.name()))

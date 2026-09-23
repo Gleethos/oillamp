@@ -5,30 +5,26 @@ import java.time.Instant;
 
 import sprouts.Tuple;
 
-/**
- * The rules a running session follows, as a pure function from (state, event, time) to the next
- * state and a list of actions. The full table is in {@code docs/ARCHITECTURE.md}, "The running
- * session".
- *
- * <p>Every way a session can end is decided here and nowhere else: the terminal closing, the
- * container dying, Ctrl-C, {@code oillamp stop}, a window that never opened. If each part of the
- * supervisor decided for itself what a disconnection means, it would be easy to leave a container
- * running after its terminal closed, or to exit 0 after the sandbox died.
- *
- * <p>Because there is no I/O here, tests can check awkward combinations quickly: a container
- * exiting during startup, two extra shells attached when the terminal closes, a stop arriving
- * while the session is already shutting down.
- */
+/// The rules a running session follows, as a pure function from (state, event, time) to the next
+/// state and a list of actions. The full table is in `docs/ARCHITECTURE.md`, "The running
+/// session".
+///
+/// Every way a session can end is decided here and nowhere else: the terminal closing, the
+/// container dying, Ctrl-C, `oillamp stop`, a window that never opened. If each part of the
+/// supervisor decided for itself what a disconnection means, it would be easy to leave a container
+/// running after its terminal closed, or to exit 0 after the sandbox died.
+///
+/// Because there is no I/O here, tests can check awkward combinations quickly: a container
+/// exiting during startup, two extra shells attached when the terminal closes, a stop arriving
+/// while the session is already shutting down.
 record SessionMachine(Settings settings) {
 
-    /**
-     * The three settings the rules need that are not part of the state.
-     *
-     * @param terminalTimeout how long the terminal window has to connect before the session is
-     *                        given up ({@code timeouts.terminal_connect_seconds}, 60 by default)
-     * @param openViewer      {@code viewer.open_on_start}, unless {@code --no-viewer} was given
-     * @param viewOnly        {@code viewer.view_only}: the user watches but cannot type
-     */
+    /// The three settings the rules need that are not part of the state.
+    ///
+    /// @param terminalTimeout how long the terminal window has to connect before the session is
+    ///                        given up (`timeouts.terminal_connect_seconds`, 60 by default)
+    /// @param openViewer      `viewer.open_on_start`, unless `--no-viewer` was given
+    /// @param viewOnly        `viewer.view_only`: the user watches but cannot type
     record Settings(Duration terminalTimeout, boolean openViewer, boolean viewOnly) {
 
         public static Settings defaults() {
@@ -36,29 +32,27 @@ record SessionMachine(Settings settings) {
         }
     }
 
-    /** Where the session goes next, and what should be done on the way. */
+    /// Where the session goes next, and what should be done on the way.
     record Transition(SessionState next, Tuple<SessionAction> actions) {
 
         static Transition to(SessionState next, SessionAction... actions) {
             return new Transition(next, Tuple.of(SessionAction.class, actions));
         }
 
-        /** Nothing to do. Used for events that arrive after the decision they would have changed. */
+        /// Nothing to do. Used for events that arrive after the decision they would have changed.
         static Transition stay(SessionState state) {
             return new Transition(state, Tuple.of(SessionAction.class));
         }
     }
 
-    /**
-     * Decides what an event means in the current state.
-     *
-     * <p>A container exiting means different things by state: during {@code Starting} the sandbox
-     * never came up (startup failed); later, a working session lost its sandbox (container died).
-     * Both exit with code 5 but are described differently.
-     *
-     * @param now when this event happened. It is the only clock the machine has, so that timeouts can
-     *            be decided without the machine being allowed to ask the time itself
-     */
+    /// Decides what an event means in the current state.
+    ///
+    /// A container exiting means different things by state: during `Starting` the sandbox
+    /// never came up (startup failed); later, a working session lost its sandbox (container died).
+    /// Both exit with code 5 but are described differently.
+    ///
+    /// @param now when this event happened. It is the only clock the machine has, so that timeouts can
+    ///            be decided without the machine being allowed to ask the time itself
     Transition step(SessionState state, SessionEvent event, Instant now) {
         // A stopped session has already exited; there is nothing left to change.
         if (state instanceof SessionState.Stopped) return Transition.stay(state);
@@ -108,10 +102,8 @@ record SessionMachine(Settings settings) {
 
     // ─── the rows ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * The sandbox is ready, so both windows open now. The terminal oillamp was started from is left
-     * alone; it keeps showing what the session is doing.
-     */
+    /// The sandbox is ready, so both windows open now. The terminal oillamp was started from is left
+    /// alone; it keeps showing what the session is doing.
     private Transition started(SessionEvent.ContainerReady ready, Instant now) {
         Tuple<SessionAction> actions = Tuple.of(SessionAction.class,
                 new SessionAction.Announce(new LampEvent.Ok("session",
@@ -137,12 +129,10 @@ record SessionMachine(Settings settings) {
         return shutDown(state, now, new SessionState.ShutdownReason.ContainerDied(exited.exitCode()));
     }
 
-    /**
-     * A window could not be opened. A missing viewer only costs the user their view of a session
-     * that otherwise works, and {@code oillamp view} can open another, so it is a warning. A missing
-     * terminal means nobody is in the sandbox and nothing would ever end the session, so the session
-     * is shut down.
-     */
+    /// A window could not be opened. A missing viewer only costs the user their view of a session
+    /// that otherwise works, and `oillamp view` can open another, so it is a warning. A missing
+    /// terminal means nobody is in the sandbox and nothing would ever end the session, so the session
+    /// is shut down.
     private Transition actionFailed(SessionState state, SessionEvent.ActionFailed failed, Instant now) {
         if (failed.action() instanceof SessionAction.LaunchTerminal)
             return shutDown(state, now,
@@ -158,10 +148,8 @@ record SessionMachine(Settings settings) {
         return Transition.stay(state);
     }
 
-    /**
-     * Every path into shutdown goes through here, so the extra shells are always closed and the
-     * shutdown sequence is always started exactly once.
-     */
+    /// Every path into shutdown goes through here, so the extra shells are always closed and the
+    /// shutdown sequence is always started exactly once.
     private Transition shutDown(SessionState state, Instant now, SessionState.ShutdownReason reason) {
         Tuple<SessionAction> actions = Tuple.of(SessionAction.class);
         // A session that failed to start must say why before shutting down. Without this the

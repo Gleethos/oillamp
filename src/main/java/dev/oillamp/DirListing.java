@@ -2,12 +2,10 @@ package dev.oillamp;
 
 import sprouts.Tuple;
 
-/**
- * What a directory contained when oillamp looked at it. {@link Filesystem#list} produces it and
- * {@link LampClassifier} decides what it means, so the classifier can be tested without a disk.
- *
- * @param entries the names in the directory, sorted
- */
+/// What a directory contained when oillamp looked at it. [Filesystem#list] produces it and
+/// [LampClassifier] decides what it means, so the classifier can be tested without a disk.
+///
+/// @param entries the names in the directory, sorted
 record DirListing(boolean exists, boolean readable, Tuple<String> entries) {
 
     public static DirListing missing() {

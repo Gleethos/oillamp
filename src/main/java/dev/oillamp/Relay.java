@@ -13,29 +13,25 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * A Unix socket on the host that forwards each connection into the sandbox's SSH socket.
- *
- * <p>The container listens on {@code sockets/agent/ssh.sock}. The supervisor listens on
- * {@code run/ssh-primary.sock} and {@code run/ssh.sock}, which are outside anything mounted into the
- * container, and copies each connection through. Because the agent cannot reach the primary
- * socket, it cannot take the one connection whose closing ends the session.
- *
- * <p>The primary relay accepts exactly one connection per session: the terminal window. The extra
- * relay accepts any number, for {@code oillamp shell}.
- */
+/// A Unix socket on the host that forwards each connection into the sandbox's SSH socket.
+///
+/// The container listens on `sockets/agent/ssh.sock`. The supervisor listens on
+/// `run/ssh-primary.sock` and `run/ssh.sock`, which are outside anything mounted into the
+/// container, and copies each connection through. Because the agent cannot reach the primary
+/// socket, it cannot take the one connection whose closing ends the session.
+///
+/// The primary relay accepts exactly one connection per session: the terminal window. The extra
+/// relay accepts any number, for `oillamp shell`.
 final class Relay implements AutoCloseable {
 
-    /**
-     * The kernel's limit on a Unix socket path, in bytes. Sockets are addressed through the short
-     * runtime directory for this reason, but a long user name or a custom runtime directory can
-     * still exceed it, and {@code bind} would then fail with an unhelpful {@code EINVAL}.
-     */
+    /// The kernel's limit on a Unix socket path, in bytes. Sockets are addressed through the short
+    /// runtime directory for this reason, but a long user name or a custom runtime directory can
+    /// still exceed it, and `bind` would then fail with an unhelpful `EINVAL`.
     static final int MAX_SOCKET_PATH = 107;
 
     private static final int BUFFER_BYTES = 64 * 1024;
 
-    /** What the supervisor is told, as it happens. Every method is called from a relay thread. */
+    /// What the supervisor is told, as it happens. Every method is called from a relay thread.
     interface Listener {
         void connected();
         void disconnected();
@@ -60,11 +56,9 @@ final class Relay implements AutoCloseable {
         this.server = server;
     }
 
-    /**
-     * Binds {@code socket} and forwards everything it receives to {@code target}.
-     *
-     * @param maxConnections {@code 1} for the primary relay, {@link Integer#MAX_VALUE} for extra shells
-     */
+    /// Binds `socket` and forwards everything it receives to `target`.
+    ///
+    /// @param maxConnections `1` for the primary relay, [Integer#MAX_VALUE] for extra shells
     static Result<Relay> open(Path socket, Path target, int maxConnections, Listener listener) {
         return bind(socket).map(server -> {
             Relay relay = new Relay(socket, target, maxConnections, listener, server);
@@ -73,14 +67,12 @@ final class Relay implements AutoCloseable {
         });
     }
 
-    /**
-     * Binds a host-only Unix socket at 0600. Used by the relays and by the control socket.
-     *
-     * <p>The path length is checked first, because a path over the kernel's limit fails with an
-     * unhelpful {@code EINVAL}. An existing file is deleted first, because a socket file left by a
-     * crashed session makes {@code bind} fail with "address already in use". The container's
-     * entrypoint does the same for its own sockets.
-     */
+    /// Binds a host-only Unix socket at 0600. Used by the relays and by the control socket.
+    ///
+    /// The path length is checked first, because a path over the kernel's limit fails with an
+    /// unhelpful `EINVAL`. An existing file is deleted first, because a socket file left by a
+    /// crashed session makes `bind` fail with "address already in use". The container's
+    /// entrypoint does the same for its own sockets.
     static Result<ServerSocketChannel> bind(Path socket) {
         int length = socket.toString().getBytes(StandardCharsets.UTF_8).length;
         if (length > MAX_SOCKET_PATH)
@@ -99,12 +91,10 @@ final class Relay implements AutoCloseable {
         }
     }
 
-    /**
-     * Whether something is listening on this socket right now.
-     *
-     * <p>Used by the health check during a session. Connecting is the only check that tells a
-     * listening server apart from a leftover file with the right name.
-     */
+    /// Whether something is listening on this socket right now.
+    ///
+    /// Used by the health check during a session. Connecting is the only check that tells a
+    /// listening server apart from a leftover file with the right name.
     static boolean answers(Path socket) {
         if (!Files.exists(socket)) return false;
         try (SocketChannel channel = SocketChannel.open(UnixDomainSocketAddress.of(socket))) {
@@ -134,7 +124,7 @@ final class Relay implements AutoCloseable {
         }
     }
 
-    /** One connection: open the far side, copy both ways, and report it when it ends. */
+    /// One connection: open the far side, copy both ways, and report it when it ends.
     private void serve(SocketChannel client) {
         SocketChannel sandbox;
         try {
@@ -164,12 +154,10 @@ final class Relay implements AutoCloseable {
         Thread.ofVirtual().start(() -> { copy(sandbox, client); finished.run(); });
     }
 
-    /**
-     * Moves bytes until one end stops talking, then half-closes the other.
-     *
-     * <p>The half-close matters for SSH: the client sends EOF when the user types {@code exit},
-     * and a relay that closed both directions at that moment would cut off the server's goodbye.
-     */
+    /// Moves bytes until one end stops talking, then half-closes the other.
+    ///
+    /// The half-close matters for SSH: the client sends EOF when the user types `exit`,
+    /// and a relay that closed both directions at that moment would cut off the server's goodbye.
     private static void copy(SocketChannel from, SocketChannel to) {
         ByteBuffer buffer = ByteBuffer.allocateDirect(BUFFER_BYTES);
         try {
@@ -184,15 +172,13 @@ final class Relay implements AutoCloseable {
         }
     }
 
-    /** True once all allowed connections have been used; for the primary relay, after the first. */
+    /// True once all allowed connections have been used; for the primary relay, after the first.
     public boolean isTaken() { return accepted.get() >= maxConnections; }
 
-    /**
-     * Stops accepting, drops every connection and removes the socket file.
-     *
-     * <p>The first step of the shutdown sequence. Safe to call more than once, because the terminal
-     * closing, a signal and {@code oillamp stop} can all start a shutdown.
-     */
+    /// Stops accepting, drops every connection and removes the socket file.
+    ///
+    /// The first step of the shutdown sequence. Safe to call more than once, because the terminal
+    /// closing, a signal and `oillamp stop` can all start a shutdown.
     @Override public void close() {
         closing = true;
         try {

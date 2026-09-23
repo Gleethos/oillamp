@@ -1,6 +1,6 @@
 package dev.oillamp;
 
-/** A TCP address as written in a forward's {@code target}, for example {@code llm.corp.example.com:8000}. */
+/// A TCP address as written in a forward's `target`, for example `llm.corp.example.com:8000`.
 record HostAndPort(String host, int port) {
 
     public HostAndPort {
@@ -10,7 +10,7 @@ record HostAndPort(String host, int port) {
             throw new IllegalArgumentException("Not a TCP port: " + port);
     }
 
-    /** Parses {@code host:port}. IPv6 literals are written in brackets, as in URLs. */
+    /// Parses `host:port`. IPv6 literals are written in brackets, as in URLs.
     public static HostAndPort parse(String text) {
         int colon = text.lastIndexOf(':');
         if (colon < 0)

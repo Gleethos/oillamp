@@ -9,17 +9,15 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Optional;
 
-/**
- * The exclusive lock on a lamp, held by the supervisor for the whole session, so that only one
- * session can run on a lamp at a time.
- *
- * <p>It is an operating-system file lock on {@code .oillamp/lock}, not a file containing a process
- * id, because the kernel releases the lock when the process dies, however it dies. After a
- * {@code kill -9} or a power cut, the next {@code oillamp at} simply starts.
- *
- * <p>{@code session.json} beside it is only informational. The lock decides whether a session is
- * running.
- */
+/// The exclusive lock on a lamp, held by the supervisor for the whole session, so that only one
+/// session can run on a lamp at a time.
+///
+/// It is an operating-system file lock on `.oillamp/lock`, not a file containing a process
+/// id, because the kernel releases the lock when the process dies, however it dies. After a
+/// `kill -9` or a power cut, the next `oillamp at` simply starts.
+///
+/// `session.json` beside it is only informational. The lock decides whether a session is
+/// running.
 final class LampLock implements AutoCloseable {
 
     private final FileChannel channel;
@@ -30,11 +28,9 @@ final class LampLock implements AutoCloseable {
         this.lock = lock;
     }
 
-    /**
-     * Tries to claim the lamp.
-     *
-     * @return the held lock, or empty if another session has it
-     */
+    /// Tries to claim the lamp.
+    ///
+    /// @return the held lock, or empty if another session has it
     public static Optional<LampLock> tryAcquire(Path lockFile) throws IOException {
         Path parent = lockFile.getParent();
         if (parent != null) Files.createDirectories(parent);

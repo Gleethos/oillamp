@@ -1,9 +1,7 @@
 package dev.oillamp;
 
-/**
- * The podman container name for a lamp: {@code oillamp-<agent id>}. Get it from
- * {@link LampLayout#containerName()} rather than building it by hand.
- */
+/// The podman container name for a lamp: `oillamp-<agent id>`. Get it from
+/// [LampLayout#containerName()] rather than building it by hand.
 record ContainerName(String value) {
 
     public ContainerName {
