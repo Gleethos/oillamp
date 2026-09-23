@@ -978,16 +978,24 @@ they are intended to be readable on their own, by somebody who has not read the 
 ```groovy
 def 'A lamp whose sandbox is still up is not removed out from under it'() {
     reportInfo """
-        Removing a lamp deletes the agent's home directory. Doing that while a container is
-        still running would leave the session working in directories that no longer exist, and
-        the container would outlive everything that describes it - a sandbox with no lamp to
-        stop it with.
+        Deleting the agent's home while a container has it mounted would leave the session
+        working in directories that no longer exist, and the container would outlive
+        everything that describes it - a sandbox with nothing left to stop it with.
+
+        The answer names `oillamp stop`, which is also what clears up a container left behind
+        by a supervisor that died. Both cases are the same instruction, so they get the same
+        message.
     """
     ...
 }
 ```
 
-98 scenarios run in about 50 seconds. They need no podman, no network and no graphical session,
+Those blocks are written for somebody who has not read the design specification. They do not cite
+section numbers, they do not use a requirement code in place of the requirement, and they define
+terms like *subordinate user id* rather than assuming them. That is a deliberate standard, and it
+was applied retroactively to 35 blocks that did not meet it.
+
+98 scenarios run in well under a minute. They need no podman, no network and no graphical session,
 because they run against `SimulatedMachine`.
 
 ### 12.2 Spikes
