@@ -7,7 +7,11 @@ import spock.lang.TempDir
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.FileTime
 import java.nio.file.attribute.PosixFilePermissions
+
+import java.time.Duration
+import java.time.Instant
 
 /**
  *  A "lamp" is one directory on disk that holds a sandbox: its settings, its state, and the
@@ -465,5 +469,103 @@ class SettingUpALampSpec extends Specification {
         then:
             outcome.reported('OIL-LAMP-004')
             outcome.errors().first().fixes().any { it.description().contains('upgrade') }
+    }
+
+    /**
+     *  Plants a recording: the name says when it started, the modification time when it stopped.
+     */
+    private static Path givenRecording(Path lamp, String session, Duration ran, int kilobytes) {
+        Path file = lamp.resolve('.oillamp/recordings').resolve(session + '.mkv')
+        Files.createDirectories(file.parent)
+        Files.write(file, new byte[kilobytes * 1024])
+        Files.setLastModifiedTime(file, FileTime.from(
+                Instant.parse(session[0..3] + '-' + session[4..5] + '-' + session[6..7]
+                            + 'T' + session[9..10] + ':' + session[11..12] + ':' + session[13..14] + 'Z')
+                        .plus(ran)))
+        file
+    }
+
+    def 'Recordings are listed with what they cost, and only oillamp\'s own are counted'() {
+        reportInfo """
+            A recording is named after the session that made it, and wf-recorder writes to it until
+            it is interrupted. So the file already carries both ends of its own life: the name is
+            when it started, the modification time is when it stopped. The listing reads a duration
+            out of that gap rather than opening the file - oillamp does not require ffmpeg on the
+            host, and a listing that shelled out to ffprobe for every row would be a listing that
+            failed on a machine without it.
+
+            The directory belongs to the sandbox's infra user, not to the person running this. They
+            can read it, which is why the listing works at all; they cannot write it, which is why
+            deleting goes through podman.
+
+            Anything in there that is not a recording is somebody's own file. It is listed as
+            having no duration rather than hidden, deleted, or given a made-up one.
+        """
+        given: 'a lamp with two recordings, and a file nobody can date'
+            var lamp = sandbox.lampPath()
+            sandbox.oillamp.run('at', lamp.toString())
+            givenRecording(lamp, '20260115-100000', Duration.ofMinutes(5), 2048)
+            givenRecording(lamp, '20260115-140000', Duration.ofSeconds(90), 512)
+            Files.write(lamp.resolve('.oillamp/recordings/notes.mkv'), new byte[1024])
+
+        when:
+            var listed = sandbox.oillamp.run('recordings', lamp.toString())
+
+        then: 'each is named with how long it ran and what it cost'
+            listed.status() == ExitStatus.SUCCESS
+            listed.console().contains('20260115-100000.mkv')
+            listed.console().contains('5m00s')
+            listed.console().contains('2.0 MB')
+            listed.console().contains('1m30s')
+
+        and: 'the file that is not a session is there, without an invented duration'
+            listed.console().contains('notes.mkv')
+            listed.console().contains('3 recording(s)')
+
+        when: 'a session that was never recorded is asked for'
+            var missing = sandbox.oillamp.run('recordings', lamp.toString(), '--open', '20200101-000000')
+
+        then: 'it says so, and names the ones that do exist'
+            missing.status() == ExitStatus.USAGE
+            missing.reported('OIL-LAMP-009')
+            missing.errors().first().whyItMatters().contains('20260115-100000')
+    }
+
+    def 'Pruning now applies the same retention the next session would'() {
+        reportInfo """
+            Retention already runs at the start of every session, because a lamp used day after day
+            would otherwise fill a laptop quietly. But a user who wants the disk back today should
+            not have to start a sandbox to get it, so --prune brings the same decision forward.
+
+            The same decision, not a second one: both call the same function on the same
+            configuration. Two implementations of "keep 14 days" would eventually disagree about
+            what it means, and the one the user reads about in oillamp.toml would be the one that
+            was wrong.
+
+            The files belong to the container's infra user, so even this deletion goes through
+            podman's user namespace - the same reason `rm -rf` cannot remove a lamp.
+        """
+        given: 'a lamp that keeps a fortnight, and a recording from well before that'
+            var lamp = sandbox.lampPath()
+            sandbox.machine { it.clockAt(Instant.parse('2026-02-01T12:00:00Z')) }
+            sandbox.oillamp.run('at', lamp.toString())
+            var old = givenRecording(lamp, '20251201-090000', Duration.ofMinutes(20), 64)
+            var recent = givenRecording(lamp, '20260131-090000', Duration.ofMinutes(20), 64)
+
+        when:
+            var pruned = sandbox.oillamp.run('recordings', lamp.toString(), '--prune')
+
+        then: 'the one past its fortnight is gone and the one inside it is not'
+            pruned.status() == ExitStatus.SUCCESS
+            !Files.exists(old)
+            Files.exists(recent)
+
+        when: 'there is nothing left to prune'
+            var again = sandbox.oillamp.run('recordings', lamp.toString(), '--prune')
+
+        then: 'it says so rather than reporting work it did not do'
+            again.status() == ExitStatus.SUCCESS
+            again.console().contains('nothing is beyond')
+            Files.exists(recent)
     }
 }

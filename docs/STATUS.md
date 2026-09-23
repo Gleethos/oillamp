@@ -40,7 +40,8 @@ has no outbound network at all, which is the safe direction to be incomplete in.
 | `oillamp list` | **Works.** Every oillamp sandbox running on this host, asked of podman. |
 | `oillamp remove <dir> --yes` | **Works.** Deletes the lamp, including the files owned by the sandbox's own users that `rm -rf` cannot touch. Without `--yes` it prints what would go and exits 2; it refuses while a sandbox is running. |
 | the egress proxy | **Works.** Started with every session. `npm`, `pip`, `git` over HTTPS and `curl` all reach the internet from inside the sandbox; the host's loopback and private ranges are refused by rule and the refusal is printed where the user can see it. |
-| `recordings` `image` | **Parse, then refuse**, because each needs the milestone that gives it meaning (M6, M7). |
+| `oillamp recordings <dir>` | **Works.** Lists each recording with how long it ran and what it cost. `--open <session>` plays one through the desktop's own player; `--prune` applies the configured retention now instead of at the next session start. |
+| `image` | **Parses, then refuses**, because it needs the milestone that gives it meaning (M7). |
 
 ### Verified end to end on real hardware
 
@@ -78,7 +79,7 @@ user's involvement.
 It also produced the first finding that only real hardware could produce — see
 *Known gaps on Ubuntu 24.04* below.
 
-Plus **96 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
+Plus **98 fast scenarios** and **7 spikes**, all passing, rendered to readable Markdown at
 `build/spock-reports/*.md` after `./gradlew test`.
 
 ### Findings from that run
@@ -244,8 +245,8 @@ the container work can be written and verified against a real runtime rather tha
 |---|---|---|
 | **M3** Image and container | ✅ **done** — content-hash image tag, `podman build` as a step, the container spec, and a readiness protocol that connects to every socket before calling a session ready | — |
 | **M4** Supervisor | ✅ **done** — session machine (§25.1) as a pure function, both SSH relays, the control socket, the §10.7 shutdown sequence, `view`/`shell`/`stop`/`status`/`list`, and health reporting that continues for the life of the session | — |
-| **M5** Network | egress proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, LLM preconfiguration. *The policy model, rules, CIDR and host-pattern matching are already written and tested* — what is missing is the proxy that applies them. | M3 |
-| **M6** Recording and agent tooling | wf-recorder, retention (already written), `recordings` command, the `lamp` helper **script** (D-27 — no Java RFB client), GPU auto mode. *The harnesses are already installed into the image* — `opencode` and `pi`, the latter with the Eden AI provider extension | — |
+| **M5** Network | ✅ **done** — egress proxy, policy engine, forwards, network journal, in-container proxy env. *Not in M5: the Firefox proxy policy file and the §19.5 LLM preconfiguration.* | — |
+| **M6** Recording and agent tooling | ✅ **done** — wf-recorder honouring `crf` and `max_fps`, retention, the `recordings` command, the `lamp` helper **script** (D-27 — no Java RFB client), GPU auto mode on real hardware. *The harnesses were already installed into the image* — `opencode` and `pi`, the latter with the Eden AI provider extension | — |
 | **M7** Packaging | jpackage `.deb`, completion scripts, README, E2E checklist | M3–M6 |
 
 ### The golden path, verified
@@ -345,6 +346,104 @@ had no container name to ask about, and removal went ahead while a container was
 asks podman for a container carrying this lamp's *path* as a label — which works whether or not the
 lamp can still say who it is.
 
+### Recording, the desktop helper and the GPU (M6)
+
+**The GPU works, and this is the first time it ever has.** Every earlier run reported
+`renderer pixman (software)` for one reason: the user was not in the `render` group that owns
+`/dev/dri/renderD128`, so the decision never reached its hardware branch. One `usermod` and a
+fresh login later:
+
+```
+[lamp]    ✓ desktop 1920x1080, renderer gles2 (hardware)
+```
+
+`gles2` on its own would not have proved it — wlroots reports that name for llvmpipe too, which is
+software GLES. What proves it is the compositor itself: the running sway process holds **ten file
+descriptors on `/dev/dri/renderD128`** and has `libdrm_amdgpu.so` mapped, and no llvmpipe. The
+`--device` and `--group-add keep-groups` flags reach podman, and `keep-groups` carries the host's
+render group across the user namespace, which is why crun is a required host package.
+
+One red herring worth recording, because it looks alarming in the container log and is not:
+
+```
+amdgpu: amdgpu_cs_ctx_create2 failed. (-13)
+```
+
+`-13` is `EACCES`, and it arrives right after two `eglQueryDeviceStringEXT` failures — a probe of a
+device that is not the render node. The real context is created immediately afterwards.
+
+**`lamp screenshot`, `click` and `type` all work** — M6's acceptance criterion, and spike **S7**'s
+doubt about `wlrctl` is settled: it is in trixie and installed. Driven over the real socket relay,
+not simulated:
+
+| What | Result |
+|---|---|
+| `lamp info` | `1920x1080`, renderer `gles2`, output `HEADLESS-1` |
+| `lamp screenshot` | a real 1920x1080 PNG of the desktop |
+| `lamp type` + `lamp key Return` | the command appeared in the on-screen terminal **and ran** |
+| `lamp click` / `move` / `scroll` | all accepted by `wlrctl` |
+| `lamp wait-stable` | returns `stable` once the screen settles |
+
+**`recording.crf` and `recording.max_fps` were being silently ignored.** Both were read from
+`oillamp.toml`, both were passed into the container, and the entrypoint used neither — so a
+recording ran at whatever the compositor did, which measured **60 fps**. FR-33 asks for frame rate
+and quality to be configurable, so this was a gap, and spike **S6** had flagged the flag names as
+unverified. They are `--framerate` and `-p <name>=<value>`, and the parameter's *name* depends on
+the encoder: the software encoders call it `crf`, the hardware ones `qp`. Getting that wrong is
+not cosmetic — the recorder is a critical process, so a rejected parameter would take the whole
+session down. Now:
+
+```
+wf-recorder --output=HEADLESS-1 --codec=libx264 --framerate=10 -p crf=30 --file=…
+```
+
+and `ffprobe` reports `10 fps, 10 tbr` on the result.
+
+Fixing it also fixed the listing. wf-recorder's default is variable frame rate with damage
+tracking — no frames at all while the screen is still — so a 62-second session produced a
+50-second video, and any duration taken from the clock overstated it by a quarter. At a constant
+frame rate the two agree to within **1.6 seconds** on a 100-second recording, which is the
+recorder's own startup and finalisation.
+
+**`oillamp recordings <dir>`** lists what is there, with how long each ran and what it cost:
+
+```
+  20260923-085055.mkv  1m40s      402 kB    2026-09-23T08:53:15Z
+
+  1 recording(s), 402 kB in total
+```
+
+The duration costs nothing to produce: the file is created when the recorder opens it and written
+to until it is interrupted, so its own timestamps are the answer, and oillamp never has to require
+`ffmpeg` on the host. Where a filesystem keeps no creation time the session in the name is the
+fallback, a few seconds early. A file whose timestamps contradict each other — a copy or a restore
+— is listed with no duration rather than a made-up one.
+
+`--prune` applies the same `Retention` decision the next session start would, brought forward;
+both call one function, because two implementations of "keep 14 days" would eventually disagree.
+Verified against the real files, which belong to uid 166536 and therefore go out through
+`podman unshare`. `--open <session>` hands the file to `xdg-open` — VLC here — and an unknown
+session id is answered with the ids that do exist.
+
+One cosmetic bug fell out of this: `[recordings]` is the longest area tag oillamp has, and it
+overran the column, printing `[recordings]✓`. The tag now always keeps its separator.
+
+**The agent cannot switch the monitoring off (NFR-06).** Tested as `agent`, in a live sandbox,
+against the running infra rather than by reading the permission bits:
+
+| What the agent tried | What happened |
+|---|---|
+| `pkill -9 sway`, and the same on `swaybg` | `Operation not permitted` |
+| `kill -9 <wf-recorder pid>` | `Operation not permitted` |
+| `ls /run/lamp/` — where sway's IPC socket lives | `Permission denied` |
+| write over a recording | refused |
+| `rm` a recording | `Permission denied` |
+| `touch` a new file in `/oillamp/recordings` | `Permission denied` |
+| **read** its own recording | **works** — 8 bytes, and intended: §9.2 says so |
+
+That last row is the design, not a gap. Making the directory unreadable to the agent would also
+make it unreadable to the human who owns the lamp, since both are "other" to the infra uid.
+
 ### The verification spikes that are left
 
 S5 and S14; S10 closed with M5. Neither of the two blocks anything:
@@ -396,7 +495,7 @@ Two ideas carry most of the design:
 ## Running it
 
 ```bash
-./gradlew build                 # compile, run all 96 fast scenarios
+./gradlew build                 # compile, run all 98 fast scenarios
 ./gradlew installDist           # build/install/oillamp/bin/oillamp
 ./gradlew test                  # then read build/spock-reports/*.md
 ./gradlew spikes                # §33 assumptions against real podman; needs podman

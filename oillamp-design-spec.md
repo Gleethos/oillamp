@@ -107,7 +107,7 @@ This is the end-to-end user experience oillamp MUST deliver. Every other require
 - 🟡 **FR-08** If a previous supervisor died without cleanup (crash, kill -9, power loss), the next `oillamp at` MUST detect the leftover container and stale state, clean it up, and say so. *(Built: stale lock detection. Missing: leftover container cleanup — M3.)*
 - ⬜ **FR-09** The terminal window MUST open already connected to the sandbox via SSH, without password or host-key prompts, in `~/workspace`.
 - ⬜ **FR-10** The viewer window MUST show the agent's desktop live, allow input from the user, and support host-to-agent clipboard (configurable).
-- 🟡 **FR-11** Auxiliary commands MUST exist: `doctor`, `view`, `shell`, `stop`, `status`, `list`, `recordings`, `image` (§28). *(Built: `doctor` and `config`. The rest parse and then report that they need a running session.)*
+- 🟡 **FR-11** Auxiliary commands MUST exist: `doctor`, `view`, `shell`, `stop`, `status`, `list`, `recordings`, `image` (§28). *(Built: all but `image`, which needs M7.)*
 - ✅ **FR-12** `oillamp at <dir> --dry-run` MUST print the complete setup plan (every step, command, file) without changing anything.
 
 ### 4.2 Sandbox
@@ -126,7 +126,7 @@ This is the end-to-end user experience oillamp MUST deliver. Every other require
 - ⬜ **FR-30** The VNC endpoint MUST be a Unix domain socket, never a TCP port on the host.
 - ⬜ **FR-31** The viewer MUST be launched automatically at session start; `oillamp view <dir>` MUST re-open it at any time during the session.
 - ⬜ **FR-32** The agent's screen MUST be **recorded by default** for the whole session to a video file in the state dir, invisible and unmodifiable for the agent.
-- 🟡 **FR-33** Recording MUST be configurable (on/off, frame rate, quality, retention by age and total size). *(Built: the configuration and the retention calculation. Missing: the recorder — M6.)*
+- ✅ **FR-33** Recording MUST be configurable (on/off, frame rate, quality, retention by age and total size). *(All four reach wf-recorder or `Retention`; `--framerate` and `-p crf=`/`-p qp=` verified on real hardware, 23 September.)*
 
 ### 4.4 Network
 
@@ -156,7 +156,7 @@ This is the end-to-end user experience oillamp MUST deliver. Every other require
 - ✅ **NFR-03 Diagnosability.** Every error MUST be reported as a structured *Problem* (§27): what failed, why that matters, the evidence (command line, exit code, stderr excerpt, relevant paths), concrete fix steps, and where the full log is. No bare stack traces on the console (they go to the log file; `--debug` shows them).
 - ✅ **NFR-04 Transparency.** Everything oillamp does to the host (installs, file writes, podman invocations) MUST be logged to the session log. `--dry-run` shows it in advance.
 - ⬜ **NFR-05 Least privilege.** Rootless Podman, all Linux capabilities dropped except the few the container entrypoint needs to drop privileges (§13.2), `no-new-privileges`, read-only image root filesystem, no host network, no host display/D-Bus/Wayland sockets shared into the container.
-- ⬜ **NFR-06 Monitoring cannot be disabled by the agent.** The compositor, VNC server, recorder, and network bridges run as a different container user than the agent, and the agent cannot signal, reconfigure, or read/write their private sockets or recordings.
+- ✅ **NFR-06 Monitoring cannot be disabled by the agent.** The compositor, VNC server, recorder, and network bridges run as a different container user than the agent, and the agent cannot signal, reconfigure, or read/write their private sockets or recordings. *(Verified as `agent` on real hardware, 23 September — see §32's checklist item 6. Reading a recording is allowed and intended; everything else is refused.)*
 - ⬜ **NFR-07 Startup time.** With the image already built, `oillamp at` SHOULD show both windows within ~10 seconds on a typical laptop.
 - ✅ **NFR-08 GUI-ready core.** All decision logic MUST be pure and UI-independent; progress and state MUST be exposed as event streams, so a Swing GUI can drive the same core without changes (§23).
 - ✅ **NFR-09 No preview features.** Only final Java language/library features of Java 25.
@@ -552,7 +552,7 @@ Nothing else. In particular: **no** host `$XDG_RUNTIME_DIR`, Wayland socket, X11
 4. Wait (≤ 20 s) for `/run/lamp/wayland-1`. If sway exits and the renderer was `gles2`, restart once with `pixman` and record `"renderer":"pixman","gpuFallback":true`. Otherwise exit with code 70 and a clear message.
 5. `chmod 0666 /run/lamp/wayland-1` (sway's IPC socket stays 0700, so the agent can never run `swaymsg exec` as `lamp`).
 6. Start **wayvnc** as `lamp` with `umask 000`: `wayvnc --unix-socket --socket=/run/lamp/private/wayvncctl --render-cursor --max-fps=<fps> --output=HEADLESS-1 /oillamp/sockets/infra/vnc.sock`. The control socket is in the private dir so the agent cannot use `wayvncctl` to disconnect viewers or stop wayvnc.
-7. If recording is enabled, start **wf-recorder** as `lamp` with `umask 022`: `wf-recorder --output=HEADLESS-1 --codec=<codec> --file=/oillamp/recordings/<session>.mkv <extra args>` (**⚠ VERIFY** flag names for frame-rate limiting and codec params in the packaged wf-recorder version).
+7. If recording is enabled, start **wf-recorder** as `lamp` with `umask 022`: `wf-recorder --output=HEADLESS-1 --codec=<codec> --framerate=<max_fps> -p <crf|qp>=<crf> --file=/oillamp/recordings/<session>.mkv`. The quality parameter is named `crf` for the software encoders and `qp` for the hardware ones (`*vaapi*`, `*nvenc*`, `*qsv*`, `*_v4l2m2m`); the recorder is a critical process, so a parameter the encoder rejects would end the session.
 8. Start the **bridges** as `lamp`: `socat TCP-LISTEN:3128,bind=127.0.0.1,reuseaddr,fork UNIX-CONNECT:/oillamp/sockets/host/proxy.sock` and one per forward.
 9. Start as `agent`: a D-Bus session bus (`dbus-daemon --session --address=unix:path=/run/agent/bus --nofork --nopidfile`), and the **SSH listener** `socat UNIX-LISTEN:/oillamp/sockets/agent/ssh.sock,fork,unlink-early,mode=600 EXEC:"/usr/sbin/sshd -i -f /etc/oillamp/sshd_config"`.
 10. Write `/oillamp/sockets/infra/ready.json` (as `lamp`): `{"session":…, "renderer":…, "gpuFallback":…, "output":"HEADLESS-1", "size":"1920x1080", "versions":{…}}`.
@@ -1564,7 +1564,7 @@ oillamp [--verbose] [--debug] [--no-color] <command>
 
 Each milestone ends with its tests green and a short demo.
 
-**M1–M5 are built and verified. M0, M6 and M7 are not started.** `docs/STATUS.md` has the
+**M1–M6 are built and verified. M0 and M7 are not started.** `docs/STATUS.md` has the
 current detail; the Status column here is the summary.
 
 | # | Milestone | Status | Scope | Done when |
@@ -1575,7 +1575,7 @@ current detail; the Status column here is the summary.
 | **M3** | Image and container | ✅ **done** — `oillamp at` builds the image (content-hash tag), starts the container and waits for `ready.json`. `--dry-run` shows the whole plan including every podman flag | image resources, build hash, `podman build`; container spec + run; entrypoint with sway, wayvnc, ssh listener, readiness | `oillamp at` starts a container that reaches ready; `vncviewer <socket>` shows the desktop; ssh via socket works |
 | **M4** | Supervisor | ✅ **done** — `oillamp at` runs a session: two new windows, both relays, the control socket, the §10.7 shutdown, and the five session commands. Verified on real podman for all three endings, plus `kill -9` recovery | session machine, SSH relays, terminal and viewer launchers with profiles, control socket, shutdown sequence, `view`/`shell`/`stop`/`status`/`list` | the full golden path §3 works without network features; closing the terminal cleans up everything; kill -9 recovery works |
 | **M5** | Network | ✅ **done** — the egress proxy is up: `CONNECT` and absolute-form HTTP, per-address policy, forwards, the JSONL journal and denials on the console. Verified on real podman: `npm install`, `pip install` and `git clone` over HTTPS all work from inside the sandbox, while the host's loopback and the LAN are refused by rule. **M5.1** adds SDKMAN to the image, seeded into the agent's home, so a JVM project can have the JDK, Groovy or Gradle it asks for. *Firefox policy and LLM preconfiguration are not done* | proxy, policy engine, forwards, network journal, in-container proxy env, Firefox policy, ssh-over-proxy, LLM preconfiguration | integration tests for allow/deny/forward pass; OpenCode and pi talk to the configured LLM |
-| **M6** | Recording and agent tooling | ⬜ not started — *retention already built* | wf-recorder, retention, `recordings` command; `lamp` helper script (D-27); agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
+| **M6** | Recording and agent tooling | ✅ **done** — verified on real hardware 23 September | wf-recorder, retention, `recordings` command; `lamp` helper script (D-27); agent guide; GPU auto mode with fallback | `lamp screenshot/click/type` work; recordings are playable; the agent cannot kill infra processes |
 | **M7** | Packaging and polish | ⬜ not started | jpackage `.deb`, completion scripts, README, E2E checklist on Ubuntu 24.04 + 26.04 | acceptance criteria §34 all pass |
 
 ## 33. Verification spikes (⚠ VERIFY items)
@@ -1599,8 +1599,8 @@ without them.
 | S2 | ✅ **confirmed** — non-root `sshd -i` works; no dropbear needed | Non-root `sshd -i` works with trixie's OpenSSH (sshd-session split) for the same user | spike container | `dropbear -i -s -j -k` with equivalent restrictions |
 | S3 | ✅ **confirmed** — absolute `WAYLAND_DISPLAY` accepted | Clients accept `WAYLAND_DISPLAY` as an absolute path | run `foot`, GTK, and Firefox as `agent` | symlink into `/run/agent` and relative name |
 | S4 | ✅ **confirmed** — custom mode honoured, windows render | sway headless honours `output HEADLESS-1 mode --custom WxH` and `scale`; Xwayland starts on demand; a Swing app renders and receives input via VNC with `_JAVA_AWT_WM_NONREPARENTING=1` | spike with a Swing hello-world incl. a modal dialog | `WLR_HEADLESS_OUTPUTS` + `swaymsg create_output`/`output` from the entrypoint (entrypoint as `lamp` may use the IPC socket) |
-| S5 | ⬜ open | GPU mode: `--device` render node + `--group-add keep-groups` + `setpriv --keep-groups` lets `lamp` and `agent` open the render node; `WLR_RENDERER=gles2` works headless | spike on Intel/AMD laptop | GPU only for `lamp` (compositor), software GL for agent apps; or `gpu=off` default |
-| S6 | ✅ **confirmed** — `.mkv` playable after shutdown; no segmenting needed | wf-recorder flags (`--codec`, frame-rate limit, codec params) and that `.mkv` is playable after SIGINT and after SIGKILL | spike | adjust flags; if unplayable after SIGKILL, segment recordings (restart recorder every N minutes) |
+| S5 | ✅ **confirmed on real hardware (AMD Phoenix, 23 September)** — `--device` + `--group-add keep-groups` + `setpriv --keep-groups` gives the compositor the render node: sway holds ten fds on `/dev/dri/renderD128` with `libdrm_amdgpu.so` mapped and no llvmpipe. Needs the user in the `render` group, which oillamp now names with the exact `usermod` line. `amdgpu_cs_ctx_create2 failed (-13)` in the log is a probe of a non-render device, not the real context | GPU mode: `--device` render node + `--group-add keep-groups` + `setpriv --keep-groups` lets `lamp` and `agent` open the render node; `WLR_RENDERER=gles2` works headless | spike on Intel/AMD laptop | GPU only for `lamp` (compositor), software GL for agent apps; or `gpu=off` default |
+| S6 | ✅ **confirmed** — `.mkv` playable after shutdown; no segmenting needed. Flags settled 23 September: `--framerate N` and `-p <name>=<value>`, where the parameter is `crf` for the software encoders and `qp` for the hardware ones. Default VFR-with-damage makes a recording shorter than its wall-clock; at a constant frame rate the two agree to within ~1.6 s | wf-recorder flags (`--codec`, frame-rate limit, codec params) and that `.mkv` is playable after SIGINT and after SIGKILL | spike | adjust flags; if unplayable after SIGKILL, segment recordings (restart recorder every N minutes) |
 | S7 | ✅ **confirmed** — all present, `wlrctl` 0.2.2 included | trixie has `sway xwayland wayvnc wf-recorder grim wtype wlrctl firefox-esr`; Adoptium APT repo supports trixie; Firefox ESR policies path | `podman run debian:trixie apt-cache policy …` | drop `wlrctl`; install Temurin from tarball; find policies path with `dpkg -L firefox-esr` |
 | S8 | ✅ **confirmed** | Rootless Podman works out of the box on Ubuntu 24.04 and 26.04 with the AppArmor userns restriction (profiles shipped) | fresh VMs | document remedies in `OIL-PODMAN-004` text precisely |
 | S9 | 🟡 **verified for the terminals on the dev host**; the rest are still guesses | Terminal argument templates (§17.4) | smoke-test each installed terminal | adjust the profile table (it's data) |
@@ -1621,10 +1621,10 @@ weakened; they are the same criteria the finished tool must meet.
 3. ⬜ Closing the terminal window stops and removes the container within 20 s, finalizes a playable `.mkv`, removes sockets and the runtime dir, prints a summary, and exits 0.
 4. ⬜ `kill -9` of the supervisor, followed by `oillamp at` on the same lamp, cleans up the leftover container with a `OIL-LOCK-002` warning and starts normally.
 5. ⬜ In the sandbox, `ls /` shows no host files; the only host paths visible are those of §13.3. Files created by the agent in `~` appear on the host in `agent-lamp-<id>/` owned by the host user.
-6. ⬜ As `agent`: `kill` of any `lamp`-owned process fails; connecting to sway's IPC socket fails; `wayvncctl` cannot reach wayvnc; writing to `/oillamp/recordings` fails; reading `oillamp.toml` is impossible (not mounted).
+6. ✅ *(23 September)* As `agent`: `pkill -9 sway` and `kill -9 <wf-recorder>` both give "Operation not permitted"; `/run/lamp/` — which holds sway's IPC socket — is "Permission denied"; writing, deleting or creating anything under `/oillamp/recordings` is refused, while *reading* a recording works, as §9.2 intends.
 7. 🟡 `curl -I https://example.com` succeeds; `curl -I http://10.0.0.1` and `curl -I http://<host LAN IP>:22` return 403 with the rule label; `curl` with `--noproxy '*'` fails (no network). All are in `network-<session>.jsonl`; denials appear on the supervisor console.
 8. ⬜ With a forward `llm` configured, `curl http://127.0.0.1:<port>/v1/models` inside reaches the target; OpenCode and pi, started without further setup, can chat with the configured model.
-9. ⬜ A Swing test application (with a modal dialog) started from the SSH terminal appears on the agent's desktop and in the viewer; `lamp screenshot` produces a PNG showing it; `lamp click` on its button triggers the action; `lamp type` enters text into a text field.
+9. 🟡 *(23 September, with a terminal rather than a Swing application)* An application started from the SSH shell appears on the agent's desktop; `lamp screenshot` produces a PNG showing it; `lamp type` followed by `lamp key Return` entered a command into it **and ran it**; `lamp click`, `move` and `scroll` are accepted by `wlrctl`. Still to do with a Swing app and a modal dialog.
 10. ⬜ Firefox ESR opens on the desktop and loads a public website through the proxy.
 11. ⬜ A native library copied to `agent-lamp-<id>/libs/` is loadable by the Swing app via `System.loadLibrary` without extra flags.
 12. ✅ An invalid `oillamp.toml` (unknown key + bad CIDR + duplicate forward) produces exactly three `OIL-CONFIG-*` problems in one run, each with file, key path, value, and expectation; exit code 2.
@@ -1801,6 +1801,22 @@ changed for convenience alone.
   same paragraph's claim that harnesses could not be installed at run time, obsolete since M5, is
   also gone — it sat three lines above a sentence explaining that `pi install` works.
 
+- **`recording.crf` and `recording.max_fps` were read, passed in, and ignored (§16).** Both
+  reached the container as environment variables and the entrypoint used neither, so every
+  recording ran at whatever the compositor did — 60 fps measured — and FR-33's promise that frame
+  rate and quality are configurable was not kept. The flags are `--framerate` and
+  `-p <name>=<value>`; the parameter is `crf` for the software encoders and `qp` for the hardware
+  ones, and since the recorder is a critical process, a name the encoder rejects would take the
+  session down rather than just the recording.
+- **A recording is shorter than the session that made it (§16).** wf-recorder's default is
+  variable frame rate driven by damage, so a still screen writes no frames at all: a 62-second
+  session produced a 50-second video. Any duration derived from the clock therefore overstated it,
+  by a quarter in that case. Setting a constant frame rate — which `max_fps` now does — brings the
+  two to within about 1.6 seconds, the recorder's own startup and finalisation.
+- **`oillamp recordings` needed no running session (§28).** It was grouped with `image` as a
+  command that "needs a running session, which the next milestone adds". It does not: it reads a
+  directory, and it is most useful precisely when a session has ended. It also lists during one.
+
 ### 36.3 Defects found in this specification
 
 - **§10.2's example `agentId` `k3v9x2ab` is invalid under its own alphabet.** The identifier is
@@ -1973,7 +1989,8 @@ REC_PID=""
 if [[ "$OILLAMP_RECORDING_ENABLED" == true ]]; then
   drop lamp 022 rec env XDG_RUNTIME_DIR=/run/lamp WAYLAND_DISPLAY=wayland-1 \
        wf-recorder --output=HEADLESS-1 --codec="$OILLAMP_RECORDING_CODEC" \
-                   --file="/oillamp/recordings/${OILLAMP_SESSION}.mkv"   # + fps/crf flags per spike S6
+                   --framerate="$OILLAMP_RECORDING_MAX_FPS" -p "$quality" \
+                   --file="/oillamp/recordings/${OILLAMP_SESSION}.mkv"
   REC_PID=$LAST_PID
 fi
 

@@ -6,7 +6,9 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -144,6 +146,52 @@ final class Filesystem {
             survivors = survivors.add(root);
         }
         return survivors;
+    }
+
+    /**
+     * Every {@code .mkv} in a recordings directory, oldest first.
+     *
+     * <p>Two ends of one life, and the gap between them is the point: the file is created when
+     * wf-recorder opens it and written to until it is interrupted, so its own timestamps say how
+     * long it ran. Taking both here is what lets a listing show a duration without opening the
+     * file or shelling out to ffprobe — neither of which oillamp requires of the host.
+     *
+     * @return what is there; empty when the directory does not exist or cannot be read, because
+     *         "no recordings" and "not readable" lead to the same, harmless, listing
+     */
+    public static Tuple<RecordingFile> listRecordings(Path directory) {
+        Tuple<RecordingFile> found = Tuple.of(RecordingFile.class);
+        if (!Files.isDirectory(directory)) return found;
+        try (Stream<Path> entries = Files.list(directory)) {
+            for (Path entry : entries.sorted().toList()) {
+                if (!entry.toString().endsWith(".mkv")) continue;
+                BasicFileAttributes attributes =
+                        Files.readAttributes(entry, BasicFileAttributes.class);
+                found = found.add(new RecordingFile(entry, startOf(entry, attributes),
+                        attributes.lastModifiedTime().toInstant(), attributes.size()));
+            }
+        } catch (IOException e) {
+            return found;
+        }
+        return found;
+    }
+
+    /**
+     * When the recording began, from the best source this filesystem offers.
+     *
+     * <p>Creation time is the truthful answer, but not every filesystem keeps one: where it does
+     * not, the JDK hands back the modification time, which would make every recording zero
+     * seconds long. The session in the name is the fallback — a few seconds early, because the
+     * sandbox has to start before there is a screen to record, but never wrong by more than that.
+     */
+    private static Instant startOf(Path file, BasicFileAttributes attributes) {
+        Instant created = attributes.creationTime().toInstant();
+        if (created.isBefore(attributes.lastModifiedTime().toInstant())) return created;
+        Path name = file.getFileName();
+        return name == null ? created
+                : SessionId.parse(name.toString().replaceFirst("\\.mkv$", ""))
+                           .map(SessionId::startedAt)
+                           .orElse(created);
     }
 
     /** Looks at a candidate lamp directory, producing the value {@code LampClassifier} decides on. */

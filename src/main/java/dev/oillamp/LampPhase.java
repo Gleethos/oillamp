@@ -214,17 +214,6 @@ final class LampPhase {
     }
 
     private Tuple<RecordingFile> existingRecordings(LampLayout layout) {
-        Tuple<RecordingFile> recordings = Tuple.of(RecordingFile.class);
-        if (!Filesystem.exists(layout.recordingsDir())) return recordings;
-        try (var entries = Files.list(layout.recordingsDir())) {
-            for (Path entry : entries.sorted().toList()) {
-                if (!entry.toString().endsWith(".mkv")) continue;
-                recordings = recordings.add(new RecordingFile(entry,
-                        Files.getLastModifiedTime(entry).toInstant(), Files.size(entry)));
-            }
-        } catch (IOException e) {
-            context.info("lamp", "could not list existing recordings: " + Problems.reason(e));
-        }
-        return recordings;
+        return Filesystem.listRecordings(layout.recordingsDir());
     }
 }

@@ -27,5 +27,23 @@ record SessionId(String value) {
         return new SessionId(FORMAT.format(start));
     }
 
+    /**
+     * The id in this name, when the name is one — spec §16.
+     *
+     * <p>Recordings are named after their session, so this is how a file on disk says when it
+     * began. Anything else in that directory is somebody's own file, and gets an empty answer
+     * rather than a guess.
+     */
+    public static java.util.Optional<SessionId> parse(String name) {
+        return name.matches("\\d{8}-\\d{6}")
+                ? java.util.Optional.of(new SessionId(name))
+                : java.util.Optional.empty();
+    }
+
+    /** When this session started, which is what its id encodes. */
+    public Instant startedAt() {
+        return java.time.LocalDateTime.parse(value, FORMAT).toInstant(ZoneOffset.UTC);
+    }
+
     @Override public String toString() { return value; }
 }

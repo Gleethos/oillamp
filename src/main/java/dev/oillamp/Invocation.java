@@ -34,6 +34,11 @@ final class Invocation {
         // Likewise --yes, which only `remove` reads. It is not a general "assume yes": it is the
         // answer to one question, asked by one command, that deletes the agent's home.
         boolean confirmed = false;
+        // `recordings` only. --open takes a session id, so it is the one option here that
+        // consumes the argument after it; openPending is how a flat switch does that.
+        Optional<String> open = Optional.empty();
+        boolean openPending = false;
+        boolean prune = false;
         List<String> positional = new ArrayList<>();
         for (String argument : arguments) {
             switch (argument) {
@@ -46,8 +51,15 @@ final class Invocation {
                 case "--no-viewer"     -> options = options.withViewer(false);
                 case "--view-only"     -> viewOnly = true;
                 case "--yes", "-y"     -> confirmed = true;
+                case "--prune"         -> prune = true;
+                case "--open"          -> openPending = true;
                 default -> {
-                    if (argument.startsWith("-")) {
+                    if (argument.startsWith("--open=")) {
+                        open = Optional.of(argument.substring("--open=".length()));
+                    } else if (openPending) {
+                        open = Optional.of(argument);
+                        openPending = false;
+                    } else if (argument.startsWith("-")) {
                         console.banner(version, "");
                         sink.accept(new LampEvent.Failure(Problems.usage(
                                 "'" + argument + "' is not an option oillamp knows", usage())));
@@ -143,7 +155,14 @@ final class Invocation {
 
             // These arrive with the milestones that make them meaningful; saying so beats a
             // bare "unknown command" for something the help text lists.
-            case "recordings", "image" -> {
+            case "recordings" -> {
+                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "recordings");
+                yield commands.recordings(Path.of(rest.get(0)), open, prune);
+            }
+
+            // Arrives with the milestone that makes it meaningful; saying so beats a bare
+            // "unknown command" for something the help text lists.
+            case "image" -> {
                 sink.accept(new LampEvent.Failure(Problems.usage(
                         "'" + command + "' needs a running session, which the next milestone adds",
                         usage())));
@@ -187,6 +206,9 @@ final class Invocation {
                     Delete a lamp: the agent's home, the state, the config. Without --yes it
                     only says what would go. Needed because parts of a lamp belong to the
                     sandbox's own users and `rm -rf` cannot remove them.
+              recordings <dir> [--open <session>] [--prune]
+                    List this lamp's screen recordings. --open plays one, --prune
+                    applies the configured retention now instead of at the next start.
               doctor [<dir>]
                     Check the host, and the lamp if one is given. Changes nothing.
               config <dir> (check | show-effective | path)

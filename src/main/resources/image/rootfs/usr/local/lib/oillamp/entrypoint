@@ -27,6 +27,8 @@ set -a; . /oillamp/session/runtime.env; set +a
 : "${OILLAMP_VNC_MAX_FPS:=30}"
 : "${OILLAMP_RECORDING_ENABLED:=false}"
 : "${OILLAMP_RECORDING_CODEC:=libx264}"
+: "${OILLAMP_RECORDING_CRF:=30}"
+: "${OILLAMP_RECORDING_MAX_FPS:=10}"
 : "${OILLAMP_FORWARDS:=}"
 
 # ── drop privileges ──────────────────────────────────────────────────────────────────────────
@@ -214,8 +216,19 @@ VNC_PID=$LAST_PID
 # ── the recording ────────────────────────────────────────────────────────────────────────────
 REC_PID=""
 if [ "$OILLAMP_RECORDING_ENABLED" = true ]; then
+    # recording.crf reaches ffmpeg as a codec parameter, and the parameter's *name* depends on
+    # the encoder: the software encoders call it crf, the hardware ones qp. Guessing wrong is not
+    # cosmetic — wf-recorder is a critical process (see CRITICAL below), so an unknown parameter
+    # name would fail the encoder and take the whole session down with it.
+    case "$OILLAMP_RECORDING_CODEC" in
+        *vaapi*|*nvenc*|*qsv*|*_v4l2m2m) quality="qp=$OILLAMP_RECORDING_CRF" ;;
+        *)                               quality="crf=$OILLAMP_RECORDING_CRF" ;;
+    esac
+    # --framerate, not a cap: wf-recorder has no cap, and left alone it follows the compositor at
+    # 60. recording.max_fps is what the user asked the recording to cost, so it is what we set.
     drop lamp 022 rec env XDG_RUNTIME_DIR=/run/lamp WAYLAND_DISPLAY=wayland-1 \
          wf-recorder --output=HEADLESS-1 --codec="$OILLAMP_RECORDING_CODEC" \
+                     --framerate="$OILLAMP_RECORDING_MAX_FPS" -p "$quality" \
                      --file="/oillamp/recordings/${OILLAMP_SESSION}.mkv"
     REC_PID=$LAST_PID
 fi

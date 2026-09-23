@@ -45,6 +45,8 @@ final class Problems {
     public static final Code LAMP_NOT_WRITABLE     = new Code("OIL-LAMP-006");
     public static final Code LAMP_STILL_RUNNING    = new Code("OIL-LAMP-007");
     public static final Code LAMP_NOT_REMOVED      = new Code("OIL-LAMP-008");
+    public static final Code NO_SUCH_RECORDING     = new Code("OIL-LAMP-009");
+    public static final Code RECORDING_NOT_OPENED  = new Code("OIL-LAMP-010");
     public static final Code LOCK_BUSY             = new Code("OIL-LOCK-001");
     public static final Code LOCK_RECOVERED        = new Code("OIL-LOCK-002");
     public static final Code CONFIG_UNPARSEABLE    = new Code("OIL-CONFIG-001");
@@ -327,6 +329,44 @@ final class Problems {
             .withEvidence(new Evidence.File(path, "could not be deleted"))
             .withFix(Fix.run("delete it from inside podman's user namespace",
                     "podman unshare rm -rf " + path));
+    }
+
+    /**
+     * {@code oillamp recordings --open} named a session with no recording.
+     *
+     * <p>Lists what is there rather than only saying what is not. The id is a timestamp, so the
+     * usual cause is a typo or a half-remembered session, and the answer the user needs is the
+     * handful of ids they could have meant.
+     */
+    public static Problem noSuchRecording(String session, Path lamp, Path directory,
+                                          Tuple<RecordingFile> existing) {
+        Tuple<String> ids = Tuple.of(String.class);
+        for (RecordingFile file : existing)
+            if (file.session().isPresent()) ids = ids.add(file.session().get().value());
+        return error(NO_SUCH_RECORDING, "No recording of that session",
+                "there is no recording of session '" + session + "' in " + directory,
+                ids.isEmpty()
+                        ? "this lamp has no recordings at all — recording is off unless "
+                        + "`recording.enabled = true` is set in oillamp.toml"
+                        : "the sessions that were recorded are: " + String.join(", ", ids))
+            .withFix(Fix.run("see the ones that are there", "oillamp recordings " + lamp));
+    }
+
+    /**
+     * The desktop would not open a recording.
+     *
+     * <p>oillamp hands the file to {@code xdg-open} rather than picking a player, so this is the
+     * desktop declining — usually because nothing is registered for {@code video/x-matroska}, and
+     * occasionally because there is no desktop at all.
+     */
+    public static Problem recordingNotOpened(Path file, String why) {
+        return error(RECORDING_NOT_OPENED, "That recording could not be opened",
+                why,
+                "oillamp asks the desktop to open the file rather than choosing a video player "
+              + "for you, so this is the desktop saying it has nothing for a .mkv")
+            .withEvidence(new Evidence.File(file, "the recording"))
+            .withFix(Fix.run("play it with whatever you have", "ffplay " + file))
+            .withFix(Fix.of("or open " + file + " from your file manager"));
     }
 
     public static Problem lockRecovered(Path root, String what) {

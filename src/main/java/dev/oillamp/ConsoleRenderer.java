@@ -181,6 +181,9 @@ final class ConsoleRenderer {
     private String area(String name) {
         StringBuilder out = new StringBuilder("[").append(name).append(']');
         while (out.length() < 10) out.append(' ');
+        // A name longer than the column still gets its separator. Without this the longest of
+        // them runs straight into the tick — "[recordings]✓" — and only that one area looks broken.
+        if (out.charAt(out.length() - 1) != ' ') out.append(' ');
         return dim(out.toString());
     }
 

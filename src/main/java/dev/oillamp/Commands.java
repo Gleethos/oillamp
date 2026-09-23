@@ -453,6 +453,117 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
+    /**
+     * {@code oillamp recordings <dir> [--open <session>] [--prune]} — spec §16, §28.
+     *
+     * <p>Reads a directory the host user cannot write. The recordings belong to the container's
+     * infra user so that the agent cannot tamper with the record of its own screen (§9.2, NFR-06),
+     * and the same ownership is why {@code --prune} goes through {@code podman unshare} rather
+     * than deleting the files directly.
+     *
+     * <p>Lists even when a session is running. The file being written right now is included, with
+     * the size and duration it has reached so far — a user asking what is being recorded is
+     * usually asking precisely because something is.
+     */
+    public ExitStatus recordings(Path lampPath, Optional<String> open, boolean prune) {
+        Result<LampLayout> found = layoutOf(lampPath);
+        if (found instanceof Result.Err<LampLayout> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        LampLayout layout = ((Result.Ok<LampLayout>) found).value();
+        Tuple<RecordingFile> existing = Filesystem.listRecordings(layout.recordingsDir());
+
+        if (open.isPresent()) return openRecording(existing, open.get(), layout);
+
+        context.emit(new LampEvent.Answer(describeRecordings(existing, layout)));
+        if (!prune) return ExitStatus.SUCCESS;
+
+        Result<LampConfig> loaded = loadConfig(lampPath);
+        if (loaded instanceof Result.Err<LampConfig> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        LampConfig.Recording policy = ((Result.Ok<LampConfig>) loaded).value().recording();
+        Tuple<RecordingFile> doomed = Retention.select(existing, policy, machine.now());
+        if (doomed.isEmpty()) {
+            context.ok("recordings", "nothing is beyond the configured retention of "
+                    + policy.maxAgeDays() + " days / " + policy.maxTotalGb() + " GB");
+            return ExitStatus.SUCCESS;
+        }
+        Result<Plan> done = new StepRunner(machine, context)
+                .run(LampPlanner.planPrune(doomed, policy));
+        if (done instanceof Result.Err<Plan> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        context.report(done.warnings());
+        if (context.options().dryRun()) return ExitStatus.SUCCESS;
+        context.ok("recordings", doomed.size() + " recording(s) deleted");
+        return ExitStatus.SUCCESS;
+    }
+
+    private ExitStatus openRecording(Tuple<RecordingFile> existing, String session, LampLayout layout) {
+        for (RecordingFile file : existing)
+            if (file.session().map(id -> id.value().equals(session)).orElse(false)) {
+                // Detached, and deliberately not waited for: xdg-open hands the file to whatever
+                // the desktop uses for video and returns, but some players are themselves the
+                // process it starts. Waiting would block the terminal for as long as the user
+                // watches.
+                Machine.Window window = machine.launch(
+                        Machine.Command.of("xdg-open", file.path().toString()).labelled("xdg-open"),
+                        Machine.Window.Stdio.DETACHED);
+                if (window.failure().isPresent()) {
+                    context.report(Tuple.of(Problem.class,
+                            Problems.recordingNotOpened(file.path(), window.failure().get())));
+                    return ExitStatus.ERROR;
+                }
+                context.ok("recordings", "opened " + file.path());
+                return ExitStatus.SUCCESS;
+            }
+        context.report(Tuple.of(Problem.class,
+                Problems.noSuchRecording(session, layout.root(), layout.recordingsDir(), existing)));
+        return ExitStatus.USAGE;
+    }
+
+    private static String describeRecordings(Tuple<RecordingFile> existing, LampLayout layout) {
+        if (existing.isEmpty())
+            return "no recordings in " + layout.recordingsDir()
+                 + "\nrecording is off unless `recording.enabled = true` is set in oillamp.toml";
+        StringBuilder out = new StringBuilder(layout.recordingsDir() + "\n\n");
+        long total = 0;
+        for (RecordingFile file : existing) {
+            total += file.sizeBytes();
+            Path name = file.path().getFileName();
+            out.append("  ").append(name == null ? file.path().toString() : name.toString())
+               .append("  ").append(pad(describeDuration(file), 9))
+               .append("  ").append(pad(describeSize(file.sizeBytes()), 8))
+               .append("  ").append(file.recordedAt().truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
+               .append('\n');
+        }
+        return out.append("\n  ").append(existing.size()).append(" recording(s), ")
+                  .append(describeSize(total)).append(" in total").toString();
+    }
+
+    private static String pad(String text, int width) {
+        return text.length() >= width ? text : text + " ".repeat(width - text.length());
+    }
+
+    /** Blank rather than zero for a file that cannot say: an unknown length is not a length. */
+    private static String describeDuration(RecordingFile file) {
+        return file.duration()
+                .map(gap -> gap.toHours() > 0
+                        ? "%dh%02dm".formatted(gap.toHours(), gap.toMinutesPart())
+                        : "%dm%02ds".formatted(gap.toMinutes(), gap.toSecondsPart()))
+                .orElse("-");
+    }
+
+    private static String describeSize(long bytes) {
+        if (bytes >= 1024L * 1024 * 1024) return "%.1f GB".formatted(bytes / (1024.0 * 1024 * 1024));
+        if (bytes >= 1024L * 1024)        return "%.1f MB".formatted(bytes / (1024.0 * 1024));
+        return "%d kB".formatted(bytes / 1024);
+    }
+
     private Result<Control.Reply> askTheSession(Path lampPath, String command, Control.Request request) {
         Result<LampLayout> layout = layoutOf(lampPath);
         if (layout instanceof Result.Err<LampLayout> failure) return Result.err(failure.problems());

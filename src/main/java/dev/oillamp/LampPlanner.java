@@ -182,6 +182,24 @@ final class LampPlanner {
     record Removal(Path root, Tuple<Path> agentDirs, Optional<Path> runtimeDir) {}
 
     /**
+     * The recordings {@code oillamp recordings --prune} deletes — spec §16, §28.
+     *
+     * <p>The same {@link Retention} decision the next session would make anyway, brought forward
+     * to now. A user who wants the disk back today should not have to start a sandbox to get it,
+     * and running the same function in both places is what stops the two from drifting into
+     * disagreeing about what "keep 14 days" means.
+     */
+    public static Plan planPrune(Tuple<RecordingFile> doomed, LampConfig.Recording policy) {
+        if (doomed.isEmpty()) return Plan.of(LampEvent.Phase.LAMP, Tuple.of(Step.class));
+        Tuple<Path> paths = Tuple.of(Path.class);
+        for (RecordingFile file : doomed) paths = paths.add(file.path());
+        return Plan.of(LampEvent.Phase.LAMP, Tuple.of(Step.class,
+                new Step.DeleteContainerOwnedFiles(paths,
+                        "beyond the configured retention of " + policy.maxAgeDays()
+                      + " days / " + policy.maxTotalGb() + " GB")));
+    }
+
+    /**
      * Everything {@code oillamp remove} deletes, in the order it deletes it.
      *
      * <p>Named paths rather than "the directory". The lamp directory is the user's — they chose
