@@ -132,11 +132,16 @@ def main(argv):
         desktop.pointer(0, x, y)
     elif action == "click":
         x, y = numbers(args, 2, "lamp click X Y [left|middle|right] [double]")
-        rest = args[2:]
-        button = BUTTONS.get(rest[0] if rest else "left")
-        if button is None:
-            fail(f"unknown button '{rest[0]}': use left, middle or right", 2)
-        times = 2 if "double" in rest else 1
+        # The button and "double" are both optional, so "click X Y double" is a left double click.
+        button, times = BUTTONS["left"], 1
+        for word in args[2:]:
+            if word == "double":
+                times = 2
+            elif word in BUTTONS:
+                button = BUTTONS[word]
+            else:
+                fail(f"unknown word '{word}' after the position: use left, middle or right, "
+                     "and/or double", 2)
         desktop.pointer(0, x, y)
         for _ in range(times):
             desktop.pointer(button, x, y)

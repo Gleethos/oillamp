@@ -43,12 +43,12 @@ The fast test suite has 98 scenarios and passes. The spikes pass on the developm
 | `oillamp list` | Works. |
 | `oillamp remove <dir> [--yes]` | Works. Without `--yes`, lists what would be deleted and exits 2. |
 | `oillamp recordings <dir> [--open <session>] [--prune]` | Works. |
-| `oillamp config <dir> check \| show-effective \| path` | Works, but reads only the lamp's file, not the global one. See known gaps. |
+| `oillamp config <dir> check \| show-effective \| path` | Works. Reads the global file and the lamp's, as `at` does. |
 | `oillamp completion bash` | Works. |
 | `oillamp version`, `oillamp help` | Work. |
 | `--verbose` | Works. |
 | `--debug` | Accepted. Currently the same as `--verbose`. |
-| `--no-color` | Accepted but has no effect. Use the `NO_COLOR` environment variable. |
+| `--no-color` | Works, as does the `NO_COLOR` environment variable. |
 | `oillamp image` | Removed on purpose; see DECISIONS.md. Refused with a usage error. |
 
 ---
@@ -176,11 +176,6 @@ suggests. Each is a decision for the team: implement it, or remove the option.
   opencode or pi. Only `OILLAMP_LLM_BASE_URL`, `OILLAMP_LLM_MODELS` and `OILLAMP_LLM_PROVIDER` are
   set when `llm.forward` names a forward.
 - `agent_tools.versions` is ignored; the newest versions are always installed.
-- `host.auto_install = false` is ignored; only `--no-install` stops installation. (The
-  "packages missing" message suggests the setting anyway.)
-- `timeouts.container_ready_seconds` is ignored. The wait for readiness is fixed at 60 s, or 120 s
-  when the image was just built.
-- `--no-color` does nothing. `NO_COLOR=1` works.
 - `--debug` does nothing beyond `--verbose`.
 
 ### Things that are described but do not exist
@@ -210,28 +205,16 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 
 ### Inconsistencies
 
-- `oillamp config check` and `config show-effective` read only `<lamp>/oillamp.toml`, while
-  `oillamp at` also merges `~/.config/oillamp/config.toml`. The two can disagree.
-- Problem codes `OIL-LAMP-001` and `OIL-EXEC-002` are defined but never reported.
 - `oillamp list` and `remove` recognise containers by the label `oillamp.lamp`; the archived
   specification calls it `oillamp.lamp-path`. The code is correct; the archive is not.
-- Unused code: `Viewers.titleFor`, `HostProbe.canAutoInstall` and `Commands.noPlan` have no
-  callers. The viewer's window title was meant to come from wayvnc's desktop name, which was never
-  set up.
-
-### Tests that check less than they say
-
-- `SupervisingASessionSpec`, "Closing that terminal window ends the session…": the line
-  `outcome.console().contains('podman stop') || true` always passes, so the scenario does not
-  check that `podman stop` ran.
-- `TheSessionCommandsSpec`, "stop cleans up after a supervisor that was killed…": accepts either
-  success or error, so it only checks that `session.json` is gone.
 
 ### Not yet tested
 
 - Ubuntu 26.04, and any distribution other than Ubuntu 24.04.
 - A Java Swing modal dialog on the sandbox desktop. (A Swing window works; see the lessons table.)
-- Loading a native library from `~/libs` with `System.loadLibrary`.
+- Loading a native library from `~/libs` with `System.loadLibrary` in a real sandbox. (A fast
+  scenario checks that the agent's shell puts `~/libs` and the system directories on Java's
+  library path.)
 - Firefox loading a website through the proxy.
 - A forward to a real LLM service, and opencode or pi using it.
 - Two lamps running at the same time.
@@ -265,6 +248,7 @@ the code that would otherwise look unnecessary.
 | `recording.crf` and `recording.max_fps` were ignored; recordings ran at 60 fps. | The entrypoint never passed them to wf-recorder. | Passed as `--framerate` and `-p crf=`/`-p qp=`. |
 | Java Swing applications could not open a window: "Authorization required" / "Can't connect to X11 window server". | sway starts Xwayland as the infra user, and Xwayland only accepts its own user. The X11 socket directory was also `lamp`-only (sway runs with umask 077). No test had ever started an X11 application. | sway keeps Xwayland running (`xwayland force`), and the entrypoint creates `/tmp/.X11-unix` with mode 1777, opens the socket and runs `xhost +si:localuser:agent`. A spike and a static scenario check it; the agent guide says what to do if it ever fails again. |
 | `lamp click` never clicked where it was told, and its clicks reached no window, in Swing or anywhere else. `lamp type` lost the first key in X11 applications. | `wlrctl pointer move` is relative, and each `wlrctl` call's virtual mouse disappears when it exits, taking pointer focus with it. Each `wtype` call sends a new keyboard layout, and Xwayland drops the key that comes with it. The earlier check only confirmed that `wlrctl` accepted the commands. | Pointer input goes through the desktop's VNC server (`lamp-pointer`), keyboard input waits 150 ms before the first key. A spike clicks and types into a real X11 application and checks what it received. |
+| The new click-and-type spike failed on its first run although `lamp` worked. | The scenario before it leaves a terminal open, sway tiles the windows side by side, and the fixed click position was on the terminal. | The scenario asks X11 where the test window is and clicks its centre. |
 | A 403 sometimes arrived without the sentence naming the rule. | Head and body were written separately; some clients read once. | One write. |
 | A lamp could not be deleted. | Infra-owned files are a subordinate id on the host. | `oillamp remove`. |
 | `oillamp remove` deleted a lamp whose container was still running, when `lamp.json` was already gone. | It looked for the container by a name derived from `lamp.json`. | It asks podman for a container labelled with the lamp's path. |

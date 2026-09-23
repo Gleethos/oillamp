@@ -185,7 +185,8 @@ final class Control {
     ///
     /// No socket file means no session is running (`OIL-SESSION-001`). A socket that does
     /// not answer means a supervisor died without cleaning up (`OIL-SESSION-002`), which
-    /// `oillamp stop` can fix.
+    /// `oillamp stop` can fix. A session that answers but says no, for example because it is
+    /// already shutting down, is alive (`OIL-SESSION-003`).
     static Result<Reply> ask(Path socket, Path lamp, Request request, String command) {
         if (!Files.exists(socket)) return Result.err(Problems.noSessionRunning(lamp, command));
         try (SocketChannel channel = SocketChannel.open(UnixDomainSocketAddress.of(socket))) {
@@ -193,7 +194,7 @@ final class Control {
             channel.shutdownOutput();
             Reply reply = Reply.parse(readLine(channel));
             return reply.succeeded() ? Result.ok(reply)
-                              : Result.err(Problems.supervisorUnreachable(socket, reply.error()));
+                              : Result.err(Problems.sessionRefused(lamp, command, reply.error()));
         } catch (IOException e) {
             return Result.err(Problems.supervisorUnreachable(socket, Problems.reason(e)));
         }

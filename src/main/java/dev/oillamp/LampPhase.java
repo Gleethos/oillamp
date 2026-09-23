@@ -146,15 +146,23 @@ final class LampPhase {
     /// created from the shipped template, and the built-in defaults describe exactly what that
     /// template says.
     private Result<LampConfig> loadConfiguration(LampLayout layout, HostFacts host) {
+        return ConfigLoader.load(configurationFiles(host.user().home(), layout.config()));
+    }
+
+    /// The configuration files that apply to a lamp, in the order they are merged: the user's
+    /// global `~/.config/oillamp/config.toml`, then the lamp's own `oillamp.toml`. Files that do
+    /// not exist are left out. Every command that reads a lamp's configuration uses this, so
+    /// that `config check` judges the same configuration `at` uses.
+    static Tuple<ConfigSource> configurationFiles(Path home, Path lampConfig) {
         Tuple<ConfigSource> sources = Tuple.of(ConfigSource.class);
-        Path global = host.user().home().resolve(".config").resolve("oillamp").resolve("config.toml");
+        Path global = home.resolve(".config").resolve("oillamp").resolve("config.toml");
         Optional<String> globalText = Filesystem.readString(global);
         if (globalText.isPresent())
             sources = sources.add(ConfigSource.userGlobal(global, globalText.get()));
-        Optional<String> lampText = Filesystem.readString(layout.config());
+        Optional<String> lampText = Filesystem.readString(lampConfig);
         if (lampText.isPresent())
-            sources = sources.add(ConfigSource.lamp(layout.config(), lampText.get()));
-        return ConfigLoader.load(sources);
+            sources = sources.add(ConfigSource.lamp(lampConfig, lampText.get()));
+        return sources;
     }
 
     private void describeConfiguration(LampConfig config) {

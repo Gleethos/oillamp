@@ -36,8 +36,5 @@ final class Viewers {
         return argv.add(layout.vncSocket().toString());
     }
 
-    /// The window title oillamp would like. Not used yet: wayvnc's desktop name has not been set up.
-    public static String titleFor(String lampName) { return "oillamp · " + lampName; }
-
     private static String flag(boolean on) { return on ? "1" : "0"; }
 }

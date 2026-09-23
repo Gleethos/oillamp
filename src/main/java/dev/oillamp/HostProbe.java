@@ -255,7 +255,4 @@ final class HostProbe {
             out.append(out.isEmpty() ? "" : "\n").append(all[i]);
         return out.toString();
     }
-
-    /// Only apt-based machines can have packages installed automatically. Currently unused.
-    static boolean canAutoInstall(OsRelease os) { return os.family() == DistroFamily.DEBIAN; }
 }

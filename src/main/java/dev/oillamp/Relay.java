@@ -172,9 +172,6 @@ final class Relay implements AutoCloseable {
         }
     }
 
-    /// True once all allowed connections have been used; for the primary relay, after the first.
-    public boolean isTaken() { return accepted.get() >= maxConnections; }
-
     /// Stops accepting, drops every connection and removes the socket file.
     ///
     /// The first step of the shutdown sequence. Safe to call more than once, because the terminal

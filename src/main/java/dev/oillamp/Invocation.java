@@ -20,6 +20,8 @@ final class Invocation {
     static ExitStatus execute(Machine machine, Consumer<LampEvent> sink,
                               ConsoleRenderer console, String version, String... argv) {
         List<String> arguments = new ArrayList<>(List.of(argv));
+        // Before anything is printed, so that even a usage error comes without colour.
+        if (arguments.contains("--no-color")) console.withoutColour();
 
         Context.Options options = Context.Options.defaults();
         // Only `view` reads this, so it stays a local rather than joining Options, where every
@@ -38,8 +40,7 @@ final class Invocation {
             switch (argument) {
                 case "--verbose", "-v" -> options = options.withVerbose(true);
                 case "--debug"         -> options = options.withDebug(true).withVerbose(true);
-                // Accepted but not connected: the renderer only checks NO_COLOR. See docs/STATUS.md.
-                case "--no-color"      -> { }
+                case "--no-color"      -> { }   // handled before this loop
                 case "--dry-run"       -> options = options.withDryRun(true);
                 case "--no-install"    -> options = options.withAutoInstall(false);
                 case "--init"          -> options = options.withInit(true);
@@ -63,6 +64,14 @@ final class Invocation {
                     positional.add(argument);
                 }
             }
+        }
+
+        if (openPending) {
+            console.banner(version, "");
+            sink.accept(new LampEvent.Failure(Problems.usage(
+                    "--open needs the session to play, for example --open 20260101-120000",
+                    "oillamp recordings <dir> [--open <session>] [--prune]")));
+            return ExitStatus.USAGE;
         }
 
         // The renderer was created before the options were known, so tell it now.

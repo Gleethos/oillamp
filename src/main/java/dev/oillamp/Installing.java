@@ -14,6 +14,9 @@ enum Installing {
     /// The user passed `--no-install`.
     DECLINED,
 
+    /// The configuration says `host.auto_install = false`.
+    DECLINED_IN_CONFIG,
+
     /// The command never changes the machine: `doctor` and `config check`. The advice
     /// then points at `oillamp at`, the command that does install.
     NEVER;

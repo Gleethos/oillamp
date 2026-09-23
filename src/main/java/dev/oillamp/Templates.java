@@ -110,7 +110,7 @@ final class Templates {
             auto_install = true       # install missing host packages with sudo apt-get (logged)
 
             [timeouts]
-            container_ready_seconds  = 45
+            container_ready_seconds  = 60
             terminal_connect_seconds = 60
             stop_seconds             = 15
             """;

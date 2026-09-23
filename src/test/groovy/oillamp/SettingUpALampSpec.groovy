@@ -574,4 +574,23 @@ class SettingUpALampSpec extends Specification {
             again.console().contains('nothing is beyond')
             Files.exists(recent)
     }
+
+    def 'A directory whose path contains a colon is refused, because podman could not mount it'() {
+        reportInfo """
+            Parts of the lamp are mounted into the sandbox with `podman run --volume
+            HOST:CONTAINER`, which separates its parts with colons. A colon in the lamp's path
+            would be read as one of those separators, and the sandbox would get the wrong
+            directories or fail to start with a message about something else.
+        """
+        given:
+            var lamp = sandbox.home.resolve('lamps').resolve('feature:x')
+
+        when:
+            var outcome = sandbox.oillamp.run('at', lamp.toString())
+
+        then: 'oillamp refuses before creating anything, and says what is wrong with the path'
+            outcome.reported('OIL-LAMP-001')
+            outcome.errors().first().whatHappened().contains('colon')
+            !Files.exists(lamp)
+    }
 }

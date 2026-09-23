@@ -44,10 +44,12 @@ export http_proxy=$HTTP_PROXY https_proxy=$HTTPS_PROXY
 export NO_PROXY=localhost,127.0.0.1,::1 no_proxy=localhost,127.0.0.1,::1
 export NODE_USE_ENV_PROXY=1
 
-# ~/libs is on both paths so that System.loadLibrary finds what the agent put there, with no
-# extra flags, as the agent guide promises.
+# ~/libs goes on LD_LIBRARY_PATH so that System.loadLibrary finds what the agent put there, with
+# no extra flags, as the agent guide promises. Java builds java.library.path from LD_LIBRARY_PATH
+# followed by the system directories. Do not set -Djava.library.path as well: it would replace
+# that list, and libraries installed in /usr/lib would no longer be found.
 export LD_LIBRARY_PATH="$(oillamp_prepend "${LD_LIBRARY_PATH:-}" "$HOME/libs")"
-export JAVA_TOOL_OPTIONS="-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Djava.library.path=$HOME/libs"
+export JAVA_TOOL_OPTIONS="-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttp.nonProxyHosts=localhost|127.0.0.1"
 export PATH="$(oillamp_prepend "$PATH" "$HOME/.local/bin")"
 
 # Debian marks its Python installation externally-managed (PEP 668), so a plain `pip install`

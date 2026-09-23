@@ -290,4 +290,59 @@ class ConfiguringALampSpec extends Specification {
             outcome.reported('OIL-CONFIG-001')
             outcome.status() == ExitStatus.USAGE
     }
+
+    def 'How long oillamp waits for the sandbox to start is set in the configuration'() {
+        reportInfo """
+            `timeouts.container_ready_seconds` is how long oillamp waits for the desktop and the
+            shell to come up before it gives up. A slow machine needs more. The setting used to
+            be accepted and then ignored.
+
+            Straight after the image is built, the first start is slower, because nothing is
+            cached yet, so oillamp waits twice as long then.
+        """
+        given:
+            var lamp = sandbox.lampPath()
+            sandbox.givenConfig(lamp, '''
+                schema_version = 1
+
+                [timeouts]
+                container_ready_seconds = 90
+            '''.stripIndent())
+
+        when: 'the image has to be built first'
+            var afterABuild = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+
+        then:
+            afterABuild.steps().any { it.contains('ready (up to 180s)') }
+
+        when: 'the image is already there'
+            sandbox.machine { it.commandSucceeding('podman image exists', '') }
+            var withTheImage = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+
+        then:
+            withTheImage.steps().any { it.contains('ready (up to 90s)') }
+    }
+
+    def 'Checking a configuration judges the same settings a session would use'() {
+        reportInfo """
+            A session merges the company-wide file `~/.config/oillamp/config.toml` with the lamp's
+            own `oillamp.toml`. `oillamp config <dir> check` used to read only the lamp's file, so
+            it could call a configuration valid that `oillamp at` then refused.
+        """
+        given: 'a valid lamp file, and a company-wide file with a mistake in it'
+            var lamp = sandbox.lampPath()
+            sandbox.givenConfig(lamp, 'schema_version = 1\n')
+            sandbox.givenGlobalConfig('''
+                [display]
+                width = 10
+            '''.stripIndent())
+
+        when:
+            var outcome = sandbox.oillamp.run('config', lamp.toString(), 'check')
+
+        then: 'the mistake is found, and located in the company-wide file'
+            outcome.status() == ExitStatus.USAGE
+            outcome.reported('OIL-CONFIG-004')
+            outcome.console().contains('.config/oillamp/config.toml')
+    }
 }

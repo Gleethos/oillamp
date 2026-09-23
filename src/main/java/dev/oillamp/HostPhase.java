@@ -87,9 +87,4 @@ final class HostPhase {
         }
         return ExitStatus.ERROR;
     }
-
-    /// Announces the phase even when there is nothing to do, so the console reads consistently.
-    public void announce() {
-        context.emit(new LampEvent.PhaseStarted(LampEvent.Phase.HOST));
-    }
 }

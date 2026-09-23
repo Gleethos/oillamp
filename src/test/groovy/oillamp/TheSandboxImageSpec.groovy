@@ -180,10 +180,34 @@ class TheSandboxImageSpec extends Specification {
         and: 'and the JVM, which reads none of them, is told separately'
             profile.contains('JAVA_TOOL_OPTIONS')
             profile.contains('-Dhttps.proxyHost=127.0.0.1')
+    }
 
-        and: 'and ~/libs is on both library paths, which the agent guide promises'
-            profile.contains('LD_LIBRARY_PATH')
-            profile.contains('-Djava.library.path=$HOME/libs')
+    def 'Java in the agent shell finds native libraries in ~/libs and in the system directories'() {
+        reportInfo """
+            The agent guide promises that System.loadLibrary finds libraries in ~/libs with no
+            extra flags. It must not stop finding the ones installed with the system: the shell
+            once set -Djava.library.path=~/libs, which replaced Java's list instead of adding to
+            it. This loads the real profile into bash and asks a real JVM for its library path.
+        """
+        given:
+            var home = Files.createTempDirectory('oillamp-agent-home')
+            var probe = home.resolve('LibraryPath.java')
+            Files.writeString(probe, 'class LibraryPath { public static void main(String[] a) { ' +
+                    'System.out.println(System.getProperty("java.library.path")); } }')
+            var java = Path.of(System.getProperty('java.home'), 'bin', 'java').toString()
+
+        when: 'a shell reads the profile and runs Java'
+            var process = new ProcessBuilder('bash', '-c',
+                    '. "$PROFILE" && exec "$JAVA" "$HOME/LibraryPath.java"')
+            process.environment().putAll(HOME: home.toString(), JAVA: java, LD_LIBRARY_PATH: '',
+                    PROFILE: IMAGE.resolve('rootfs/etc/profile.d/oillamp.sh').toString())
+            var started = process.redirectErrorStream(false).start()
+            var paths = started.inputStream.text.trim().split(':') as List
+            started.waitFor()
+
+        then: 'the agent\'s own directory comes first, and the system directories are still there'
+            paths.first() == home.resolve('libs').toString()
+            paths.contains('/usr/lib')
     }
 
     def 'the agent harnesses are installed into the image, so they are there from the first session'() {

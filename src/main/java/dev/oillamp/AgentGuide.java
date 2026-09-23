@@ -76,7 +76,8 @@ final class AgentGuide {
             lamp screenshot                 # PNG of the whole screen; prints the path
             lamp screenshot --region X,Y,W,H
             lamp click X Y                  # click at screen pixels X,Y (as in a screenshot)
-            lamp click X Y right double     # other buttons, double click
+            lamp click X Y double           # double click
+            lamp click X Y right            # right (or middle) button
             lamp move X Y                   # move the pointer to X,Y
             lamp drag X1 Y1 X2 Y2
             lamp scroll X Y 3               # scroll down 3 steps at X,Y; negative scrolls up

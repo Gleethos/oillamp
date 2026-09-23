@@ -48,6 +48,8 @@ final class Egress implements AutoCloseable {
     private static final Duration RESOLVE_TIMEOUT = Duration.ofSeconds(5);
     private static final int MAX_CONNECTIONS = 512;
     private static final int BUFFER_BYTES = 64 * 1024;
+    /// The rule name logged for a host name that could not be resolved.
+    private static final String UNRESOLVED = "unresolved";
 
     /// What the supervisor is told as it happens. Called from connection threads.
     interface Listener {
@@ -108,7 +110,10 @@ final class Egress implements AutoCloseable {
         Egress egress = new Egress(config.network(), config.network().logAllowed(),
                                    listener, journal);
         Result<ServerSocketChannel> proxy = bindShared(layout.proxySocket());
-        if (proxy instanceof Result.Err<ServerSocketChannel> failure) return Result.err(failure.problems());
+        if (proxy instanceof Result.Err<ServerSocketChannel> failure) {
+            egress.close();   // stops the network log's writer thread
+            return Result.err(failure.problems());
+        }
         egress.serve(((Result.Ok<ServerSocketChannel>) proxy).value(), egress::handleProxy, "proxy");
 
         for (Forward forward : config.forwards()) {
@@ -202,7 +207,7 @@ final class Egress implements AutoCloseable {
         if (resolution.failed()) {
             respond(out, 502, "oillamp: cannot resolve " + head.host());
             record(new Journey(Instant.now(), "proxy", "CONNECT", head.host(), head.port(),
-                    Optional.empty(), Decision.DENY, "unresolved", 0, 0,
+                    Optional.empty(), Decision.DENY, UNRESOLVED, 0, 0,
                     Duration.between(started, Instant.now())));
             return;
         }
@@ -406,7 +411,9 @@ final class Egress implements AutoCloseable {
     }
 
     private void record(Journey entry) {
-        if (entry.decision() == Decision.DENY) listener.denied(entry);
+        // A name that does not resolve is logged as refused, but it is not the policy refusing it,
+        // so it is not printed as "denied": that would send the user looking for a rule to change.
+        if (entry.decision() == Decision.DENY && !entry.rule().equals(UNRESOLVED)) listener.denied(entry);
         if (entry.decision() == Decision.ALLOW && !logAllowed) return;
         journal.write(entry);
     }

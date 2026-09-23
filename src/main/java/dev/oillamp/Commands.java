@@ -48,8 +48,7 @@ final class Commands {
     /// does not return when the sandbox is up, but when the session is over, so that one Ctrl-C,
     /// one closed window or one `oillamp stop` takes down everything it created.
     public ExitStatus at(Path lampPath) {
-        HostPhase.Outcome host = new HostPhase(machine, context).prepare(lampPath, true,
-                context.options().autoInstall() ? Installing.ALLOWED : Installing.DECLINED);
+        HostPhase.Outcome host = new HostPhase(machine, context).prepare(lampPath, true, installing(lampPath));
         if (!host.succeeded()) {
             context.report(host.result().problems());
             return HostPhase.exitStatusFor(host.result().problems());
@@ -123,6 +122,24 @@ final class Commands {
                         Problems.internal("lock release", Problems.reason(e))));
             }
         }
+    }
+
+    /// Whether `at` may install host packages: not with `--no-install`, and not when the
+    /// configuration says `host.auto_install = false`.
+    ///
+    /// The host is prepared before the lamp, so the configuration is read here once already. If it
+    /// cannot be read, installing stays allowed; the lamp phase reports what is wrong with it.
+    private Installing installing(Path lampPath) {
+        if (!context.options().autoInstall()) return Installing.DECLINED;
+        Result<LampConfig> config = ConfigLoader.load(LampPhase.configurationFiles(home(),
+                lampPath.toAbsolutePath().resolve("oillamp.toml")));
+        return config instanceof Result.Ok<LampConfig> ok && !ok.value().host().autoInstall()
+                ? Installing.DECLINED_IN_CONFIG
+                : Installing.ALLOWED;
+    }
+
+    private Path home() {
+        return machine.environmentVariable("HOME").map(Path::of).orElse(Path.of("/nonexistent"));
     }
 
     // ─── commands that talk to a running session through its control socket ─────────────
@@ -526,7 +543,11 @@ final class Commands {
     }
 
     /// No supervisor answered. Either nothing is running, or a supervisor was killed without
-    /// cleaning up; in that case remove its container and `session.json`.
+    /// cleaning up. In that case its container, its control socket and `session.json` are left
+    /// behind; this removes them. Without removing the socket, every later `status` would say
+    /// "the session did not answer, run `oillamp stop`", and `stop` would say the same.
+    ///
+    /// A supervisor that answered at all, even to say no, is alive, and nothing is removed.
     private ExitStatus cleanUpAfterACrashedSession(Path lampPath, Tuple<Problem> why) {
         Result<LampLayout> found = layoutOf(lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
@@ -534,29 +555,42 @@ final class Commands {
             return exitStatusFor(failure.problems());
         }
         LampLayout layout = ((Result.Ok<LampLayout>) found).value();
-        ContainerName container = layout.containerName();
-        boolean wasThere = machine.run(Machine.Command
-                .of("podman", "container", "exists", container.value())
-                .labelled("podman container exists")).succeeded();
-        if (!wasThere) {
+        if (Relay.answers(layout.controlSocket())) {
             context.report(why);
             return exitStatusFor(why);
         }
-        context.info("stop", "no supervisor is running, but its sandbox is — cleaning up after it");
-        Machine.Outcome removed = machine.run(Machine.Command
-                .of("podman", "rm", "-f", container.value())
-                .withTimeout(java.time.Duration.ofSeconds(30)).labelled("podman rm"));
-        if (!removed.succeeded()) {
-            context.report(Tuple.of(Problem.class, Problems.podmanFailed(
-                    "podman rm", removed.exitCode(), removed.errorOutput().strip())));
-            return ExitStatus.ERROR;
+        ContainerName container = layout.containerName();
+        boolean containerLeft = machine.run(Machine.Command
+                .of("podman", "container", "exists", container.value())
+                .labelled("podman container exists")).succeeded();
+        boolean filesLeft = Filesystem.exists(layout.controlSocket())
+                || Filesystem.exists(layout.sessionMeta());
+        if (!containerLeft && !filesLeft) {
+            context.report(why);
+            return exitStatusFor(why);
         }
-        try {
-            Filesystem.deleteIfPresent(layout.sessionMeta());
-        } catch (java.io.IOException e) {
-            context.report(Tuple.of(Problem.class, Problems.internal("session.json", Problems.reason(e))));
+        context.info("stop", "no supervisor is running, but its session left things behind — cleaning up");
+        if (containerLeft) {
+            Machine.Outcome removed = machine.run(Machine.Command
+                    .of("podman", "rm", "-f", container.value())
+                    .withTimeout(java.time.Duration.ofSeconds(30)).labelled("podman rm"));
+            if (!removed.succeeded()) {
+                context.report(Tuple.of(Problem.class, Problems.podmanFailed(
+                        "podman rm", removed.exitCode(), removed.errorOutput().strip())));
+                return ExitStatus.ERROR;
+            }
         }
-        context.ok("stop", "the sandbox left by the previous session has been removed");
+        for (Path leftover : java.util.List.of(layout.controlSocket(), layout.primarySshSocket(),
+                                                layout.extraSshSocket(), layout.sessionMeta())) {
+            try {
+                Filesystem.deleteIfPresent(leftover);
+            } catch (java.io.IOException e) {
+                context.report(Tuple.of(Problem.class, Problems.internal("cleanup", Problems.reason(e))));
+            }
+        }
+        context.ok("stop", containerLeft
+                ? "the sandbox left by the previous session has been removed"
+                : "removed what the previous session left behind; its sandbox was already gone");
         return ExitStatus.SUCCESS;
     }
 
@@ -581,8 +615,8 @@ final class Commands {
         return checkConfiguration(lampPath, true);
     }
 
-    /// `oillamp config <dir> show-effective`: print a summary of the validated configuration.
-    /// Currently reads only the lamp's own file, not the global one.
+    /// `oillamp config <dir> show-effective`: print a summary of the validated configuration,
+    /// the global file and the lamp's merged, as `at` would use it.
     public ExitStatus showEffectiveConfig(Path lampPath) {
         Result<LampConfig> loaded = loadConfig(lampPath);
         if (loaded instanceof Result.Err<LampConfig> failure) {
@@ -608,14 +642,13 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
+    /// The lamp's configuration merged over the global one, exactly as `at` reads it.
     private Result<LampConfig> loadConfig(Path lampPath) {
-        Tuple<ConfigSource> sources = Tuple.of(ConfigSource.class);
         Path lampConfig = lampPath.resolve("oillamp.toml");
-        Optional<String> text = Filesystem.readString(lampConfig);
-        if (text.isEmpty())
+        if (!Filesystem.exists(lampConfig))
             return Result.err(Problems.lampNotWritable(lampPath,
                     "there is no oillamp.toml here — run `oillamp at " + lampPath + "` to create one"));
-        return ConfigLoader.load(sources.add(ConfigSource.lamp(lampConfig, text.get())));
+        return ConfigLoader.load(LampPhase.configurationFiles(home(), lampConfig));
     }
 
     private static String describe(LampConfig config) {
@@ -683,7 +716,4 @@ final class Commands {
             if (problem.isError()) return ExitStatus.ERROR;
         return ExitStatus.SUCCESS;
     }
-
-    /// Currently unused.
-    public static Plan noPlan() { return Plan.nothingToDo(LampEvent.Phase.HOST); }
 }

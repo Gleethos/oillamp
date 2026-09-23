@@ -11,8 +11,8 @@ import java.util.Optional;
 ///
 /// Everything printed is also kept, so tests can check exactly what the user saw.
 ///
-/// Colour is used when output goes to a terminal and `NO_COLOR` is not set. The
-/// `--no-color` option is accepted but not yet connected to this.
+/// Colour is used when output goes to a terminal, `NO_COLOR` is not set and `--no-color` was not
+/// given.
 final class ConsoleRenderer {
 
     private static final String RESET  = "\u001B[0m";
@@ -22,7 +22,9 @@ final class ConsoleRenderer {
     private static final String RED    = "\u001B[31m";
 
     private final StringBuilder captured = new StringBuilder();
-    private final boolean colour;
+    /// Mutable for the same reason as `verbose`: `--no-color` is only known after the command
+    /// line is read.
+    private boolean colour;
     /// Mutable on purpose: the renderer exists before the command line is parsed, so that usage
     /// errors can be printed, and `--verbose` is only known afterwards. An earlier version
     /// returned a modified copy, which nobody used, so `--verbose` had no effect.
@@ -114,6 +116,9 @@ final class ConsoleRenderer {
     }
 
     public String text() { return captured.toString(); }
+
+    /// `--no-color`: no colour codes, even on a terminal.
+    void withoutColour() { colour = false; }
 
     /// Writes text with no banner, tag or colour. Used only for the completion script, which a
     /// shell evaluates, so any decoration would be evaluated too.

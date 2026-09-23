@@ -650,7 +650,9 @@ finds the orphaned container and removes it.
 | `{"op":"shell"}` | `{"ok":true,"argv":["ssh","-F",…]}`; the *asking* process runs that ssh in its own terminal |
 
 A missing socket means no session is running (`OIL-SESSION-001`). A socket that does not answer
-means a supervisor died without cleaning up (`OIL-SESSION-002`).
+means a supervisor died without cleaning up (`OIL-SESSION-002`); `oillamp stop` then removes the
+container, the dead socket and `session.json`. A session that answers `{"ok":false,…}`, for example
+to `shell` while it is shutting down, is alive and has refused (`OIL-SESSION-003`).
 
 ### The windows
 
@@ -764,7 +766,8 @@ be unique.
 `rule` is `(default)` when no rule matched, `unresolved` when the name did not resolve, and
 `forward` for forwards. Allowed connections are only logged when `network.log_allowed = true` (the
 default). Denials are also printed in your terminal when `network.console_denied = true` (the
-default).
+default). A name that did not resolve is logged with `"decision":"deny"` but not printed as a
+denial, because no rule refused it.
 
 ### Outbound SSH and other tools
 
@@ -929,14 +932,14 @@ STATUS.md.
 | `image.node_version` | `"24"` | Node.js major version | yes |
 | `image.jdk_package` | `"temurin-25-jdk"` | JDK apt package | yes |
 | `image.extra_apt_packages` | `[]` | extra apt packages in the image | yes |
-| `host.auto_install` | true | allow installing host packages | **no** (only `--no-install` counts) |
-| `timeouts.container_ready_seconds` | 45 | wait for `ready.json` | **no** (fixed at 60 s, or 120 s after a new build) |
+| `host.auto_install` | true | allow installing host packages (`false` works like `--no-install`) | yes |
+| `timeouts.container_ready_seconds` | 60 | wait for `ready.json`; twice as long straight after an image build | yes |
 | `timeouts.terminal_connect_seconds` | 60 | wait for the terminal to connect | yes |
 | `timeouts.stop_seconds` | 15 | `podman stop --time` | yes |
 
 `oillamp config <dir> check` validates, `show-effective` prints a summary of the result, `path`
-prints the file's path. Note that `check` and `show-effective` currently read only the lamp's
-file, not the global one.
+prints the file's path. `check` and `show-effective` merge the global file and the lamp's, as
+`oillamp at` does (`LampPhase.configurationFiles`).
 
 Environment variables `EDENAI_API_KEY`, `EDENAI_BASE_URL`, `EDENAI_EU_ONLY` and
 `EDENAI_MAX_TOKENS` are copied from your environment into the sandbox when set
@@ -986,6 +989,7 @@ variables.
 | `OIL-PODMAN-002` | podman is not rootless. |
 | `OIL-PODMAN-003` | `podman unshare true` fails. |
 | `OIL-PODMAN-004` | Ubuntu's AppArmor restriction on user namespaces blocks podman. |
+| `OIL-LAMP-001` | The lamp's path cannot be mounted by podman (it contains a colon). |
 | `OIL-LAMP-002` | Directory is not empty and not a lamp (use `--init` to proceed anyway). |
 | `OIL-LAMP-003` | Refused path: `/`, your home directory, or a system directory. |
 | `OIL-LAMP-004` | Lamp created by a newer oillamp. |
@@ -1014,17 +1018,17 @@ variables.
 | `OIL-NET-010` | Warning: a forward's target is unreachable. |
 | `OIL-SESSION-001` | No session is running for this lamp. |
 | `OIL-SESSION-002` | The session's control socket does not answer. |
+| `OIL-SESSION-003` | The running session refused the request (for example, it is shutting down). |
 | `OIL-IMAGE-001` | `podman build` failed. |
 | `OIL-SANDBOX-001` | `podman run` failed. |
 | `OIL-SANDBOX-002` | The container exited while starting. |
 | `OIL-SANDBOX-003` | The container did not report ready in time. |
 | `OIL-SANDBOX-004` | A sandbox socket refuses connections. |
 | `OIL-SANDBOX-005` | The container could not be stopped or removed. |
+| `OIL-SANDBOX-006` | Warning: podman did not say whether the sandbox is running; the session carries on. |
 | `OIL-EXEC-001` | A required command is not on `PATH`. |
 | `OIL-USAGE-001` | Invalid command line. |
 | `OIL-INTERNAL-001` | A bug in oillamp. |
-
-`OIL-LAMP-001` and `OIL-EXEC-002` are defined in `Problems.java` but nothing reports them.
 
 ---
 

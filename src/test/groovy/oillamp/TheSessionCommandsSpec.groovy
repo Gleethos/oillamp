@@ -8,6 +8,10 @@ import spock.lang.Subject
 import spock.lang.TempDir
 import spock.lang.Timeout
 
+import java.net.StandardProtocolFamily
+import java.net.UnixDomainSocketAddress
+import java.nio.channels.ServerSocketChannel
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.util.concurrent.TimeUnit
@@ -178,26 +182,59 @@ class TheSessionCommandsSpec extends Specification {
 
     def 'stop cleans up after a supervisor that was killed without tidying up'() {
         reportInfo """
-            Killing the supervising process outright - a crash, a `kill -9`, a power cut - must
-            never leave a mess that the user has to clear up by hand. The lock goes with
-            the process, so the lamp is free - but the container is not, and the next `oillamp at`
-            would meet a name clash that says nothing about what happened.
+            Killing the supervising process outright (a crash, a `kill -9`, a power cut) must
+            never leave a mess that the user has to clear up by hand. The lock goes with the
+            process, but its control socket file and `session.json` stay, and so may its
+            container. `status` then says the session does not answer and suggests `oillamp stop`.
 
-            So `stop` with no supervisor to talk to is not an error: it is the cleanup.
+            So `stop` with no supervisor to talk to is the cleanup. It once removed only the
+            container: when that was already gone, it removed nothing and repeated the same advice,
+            so the user went round in a circle.
         """
-        given: 'a lamp whose sandbox is running with nobody supervising it'
+        given: 'what a killed supervisor leaves behind: a socket nobody listens on, and session.json'
             var lamp = sandbox.lampPath()
-            startASession(lamp)
-            var machine = sandbox.oillamp
-            session.interrupt()
-            session.join(20_000)
+            var socket = leftBehindByAKilledSupervisor(lamp)
+            sandbox.machine { containerStillThere ? it.commandSucceeding('podman container exists', '')
+                                                  : it.commandFailing('podman container exists', 1, '') }
+
+        expect: 'status says the session does not answer'
+            sandbox.oillamp.run('status', lamp.toString()).reported('OIL-SESSION-002')
 
         when:
-            var outcome = machine.run('stop', lamp.toString())
+            var stopped = sandbox.oillamp.run('stop', lamp.toString())
 
-        then: 'oillamp either tidied up, or truthfully said there was nothing left to tidy'
-            outcome.status() in [ExitStatus.SUCCESS, ExitStatus.ERROR]
-            !java.nio.file.Files.exists(lamp.resolve('.oillamp/session.json'))
+        then: 'stop cleans up and says what it did'
+            stopped.status() == ExitStatus.SUCCESS
+            stopped.console().contains(containerStillThere ? 'the sandbox left by the previous session has been removed'
+                                                          : 'its sandbox was already gone')
+            !Files.exists(socket)
+            !Files.exists(lamp.resolve('.oillamp/session.json'))
+
+        and: 'afterwards status says plainly that no session is running'
+            sandbox.oillamp.run('status', lamp.toString()).reported('OIL-SESSION-001')
+
+        where:
+            containerStillThere << [true, false]
+    }
+
+    /**
+     *  Runs a session to its end, then puts back what a supervisor killed with `kill -9` would
+     *  have left: its control socket file with nothing listening, and `session.json`.
+     *
+     *  @return the control socket
+     */
+    private Path leftBehindByAKilledSupervisor(Path lamp) {
+        startASession(lamp)
+        var sessionJson = Files.readString(lamp.resolve('.oillamp/session.json'))
+        var socket = Path.of((sessionJson =~ /"controlSocket": "([^"]+)"/)[0][1] as String)
+        sandbox.oillamp.run('stop', lamp.toString())
+        session.join(20_000)
+
+        var abandoned = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
+        abandoned.bind(UnixDomainSocketAddress.of(socket))
+        abandoned.close()       // closing does not remove the file, as a killed process would not
+        Files.writeString(lamp.resolve('.oillamp/session.json'), sessionJson)
+        socket
     }
 
     // ─── running a session beside the scenario ─────────────────────────────────────────────

@@ -90,8 +90,9 @@ class SupervisingASessionSpec extends Specification {
                                                   && it.title().startsWith('session ') }
             summary.lines().toList().any { it.contains('you closed the terminal window') }
 
-        and: 'the container was stopped politely first, so the recording could be finalised'
-            outcome.console().contains('podman stop') || true
+        and: 'the container was asked to stop, with time to finalise the recording, and is gone'
+            outcome.console().contains('stopping the sandbox — up to 15s')
+            outcome.console().contains('(removed)')
             var sessionFile = sandbox.lampPath().resolve('.oillamp/session.json')
             !java.nio.file.Files.exists(sessionFile)
     }
@@ -318,5 +319,36 @@ class SupervisingASessionSpec extends Specification {
 
         and: 'and given the one command that clears it'
             outcome.console().contains('podman rm -f ')
+    }
+
+    def 'A podman that is too busy to answer does not end a working session'() {
+        reportInfo """
+            Every two seconds the session asks podman whether the sandbox is still running. podman
+            can be slow or fail to answer, for example while another lamp's image is being built
+            and podman's database is locked. The session used to treat any failed answer as "the
+            sandbox has died" and shut down, taking the user's shell with it.
+
+            Only a clear answer ends the session now: podman saying the container stopped, or that
+            it no longer exists. When podman does not answer, the user is warned once, and the
+            session carries on.
+        """
+        given: 'a podman that fails every question about the container while the session runs'
+            sandbox.machine {
+                it.commandFailing('podman container inspect', 125,
+                                  'Error: timed out waiting for the database lock')
+                  .windowsStayOpenFor(Duration.ofSeconds(6))
+            }
+
+        when: 'the session runs until the user closes the terminal'
+            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+
+        then: 'it ended because the terminal closed, not because the sandbox was thought dead'
+            outcome.status() == ExitStatus.SUCCESS
+            outcome.console().contains('ended because')
+            !outcome.console().contains('the sandbox stopped')
+
+        and: 'the user was told once that podman was not answering, with its own words'
+            outcome.problems().count { it.code().value() == 'OIL-SANDBOX-006' } == 1
+            outcome.console().contains('timed out waiting for the database lock')
     }
 }

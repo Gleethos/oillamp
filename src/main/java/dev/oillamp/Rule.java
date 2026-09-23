@@ -18,6 +18,4 @@ record Rule(String label, Decision action,
         if (label.isBlank())
             throw new IllegalArgumentException("Every network rule needs a label — it is what denials quote");
     }
-
-    public boolean matchesEverything() { return hosts.isEmpty() && ports.isEmpty() && cidrs.isEmpty(); }
 }

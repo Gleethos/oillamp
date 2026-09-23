@@ -31,6 +31,6 @@ final class ConfigDefaults {
             new LampConfig.Image("docker.io/library/debian:trixie", "24", "temurin-25-jdk",
                     Tuple.of(String.class)),
             new LampConfig.Host(true),
-            new LampConfig.Timeouts(45, 60, 15));
+            new LampConfig.Timeouts(60, 60, 15));
     }
 }

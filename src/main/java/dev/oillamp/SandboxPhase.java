@@ -65,7 +65,7 @@ final class SandboxPhase {
                         "left behind by the previous session on this lamp"),
                 new Step.RunContainer(container, image, containerArgv(container, image, prepared, host)),
                 new Step.AwaitReady(container, layout.readyFile(), prepared.session(),
-                                    readyTimeout(imagePresent)),
+                                    readyTimeout(prepared.config(), imagePresent)),
                 new Step.CheckEndpoints(container, Tuple.of(Step.Endpoint.class,
                         new Step.Endpoint("the desktop (VNC)", layout.vncSocket()),
                         new Step.Endpoint("the shell (SSH)", layout.agentSshSocket()))));
@@ -145,10 +145,12 @@ final class SandboxPhase {
                         layout.agentSocketsDir().resolve("ssh.sock"));
     }
 
-    /// How long to wait for `ready.json`: longer after a fresh build, because nothing is cached
-    /// yet. `timeouts.container_ready_seconds` is not used here yet.
-    private static Duration readyTimeout(boolean imageWasAlreadyPresent) {
-        return imageWasAlreadyPresent ? Duration.ofSeconds(60) : Duration.ofSeconds(120);
+    /// How long to wait for `ready.json`: `timeouts.container_ready_seconds`, and twice that
+    /// straight after a build, because the first start of a new image is slower (nothing is cached
+    /// yet).
+    private static Duration readyTimeout(LampConfig config, boolean imageWasAlreadyPresent) {
+        Duration configured = config.timeouts().containerReady();
+        return imageWasAlreadyPresent ? configured : configured.multipliedBy(2);
     }
 
     private SortedMap<String, String> buildArgumentsFor(LampConfig config) {

@@ -67,6 +67,9 @@ final class Supervisor {
     private boolean desktopAnswering = true;
     private boolean shellAnswering = true;
     private boolean briefed;
+    /// Whether the last question to podman about the container went unanswered, so that a podman
+    /// that stops answering is reported once, not every two seconds.
+    private boolean podmanSilent;
     private final java.util.List<Machine.Window> viewers = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     /// An event and when it happened. [SessionMachine] gets the time from here rather than asking the clock.
@@ -466,7 +469,8 @@ final class Supervisor {
             while (!shuttingDown.get() && !state.isFinal()) {
                 sleep(CONTAINER_POLL);
                 if (shuttingDown.get() || state.isFinal()) return;
-                if (!containerIsRunning()) {
+                Optional<Boolean> running = containerIsRunning();
+                if (running.isPresent() && !running.get()) {
                     post(new SessionEvent.ContainerExited(exitCodeOfContainer()));
                     return;
                 }
@@ -554,8 +558,8 @@ final class Supervisor {
                         : "denied by default — only what the rules allow")
                         + " (" + config.network().rules().size() + " rule(s), "
                         + config.forwards().size() + " forward(s))",
-                "               the host's own loopback and private ranges stay out of reach; "
-                        + "denials are printed here",
+                "               the host's own loopback and private ranges stay out of reach"
+                        + (config.network().consoleDenied() ? "; denials are printed here" : ""),
                 "network log    " + layout.networkLog(prepared.session()));
         // Recording is off by default, so say whether it is on, and how to turn it on if not.
         lines = config.recording().enabled()
@@ -568,12 +572,31 @@ final class Supervisor {
         context.emit(new LampEvent.Summary("your session is up", lines));
     }
 
-    private boolean containerIsRunning() {
+    /// Whether the container is running, or empty when podman could not say.
+    ///
+    /// Only a clear answer ends the session: podman saying the container is not running, or that
+    /// it no longer exists. A podman that is slow or failing, for example while another lamp's
+    /// image is being built, is reported as a warning, and the session carries on. Ending a
+    /// working session because podman was busy for 15 seconds would lose the user's shell for
+    /// nothing.
+    private Optional<Boolean> containerIsRunning() {
         Machine.Outcome outcome = machine.run(Machine.Command
                 .of("podman", "container", "inspect", "--format", "{{.State.Running}}",
                     sandbox.container().value())
                 .withTimeout(Duration.ofSeconds(15)).labelled("podman inspect"));
-        return outcome.succeeded() && outcome.output().strip().equals("true");
+        Optional<Boolean> answer = switch (outcome) {
+            case Machine.Outcome.Finished finished when finished.exitCode() == 0 ->
+                    Optional.of(finished.standardOutput().strip().equals("true"));
+            case Machine.Outcome.Finished finished
+                    when finished.standardError().toLowerCase(java.util.Locale.ROOT).contains("no such container") ->
+                    Optional.of(false);
+            case Machine.Outcome ignored -> Optional.empty();
+        };
+        if (answer.isEmpty() && !podmanSilent)
+            context.emit(new LampEvent.Warning(Problems.sandboxStateUnknown(
+                    sandbox.container().value(), describeFailure(outcome))));
+        podmanSilent = answer.isEmpty();
+        return answer;
     }
 
     private int exitCodeOfContainer() {

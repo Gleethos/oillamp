@@ -77,11 +77,7 @@ record LampConfig(
 
     /// `[llm]`. `apiKeyEnv` and `apiKeyFile` are not used yet.
     public record Llm(String forward, String basePath, String apiKeyEnv, String apiKeyFile,
-                      Tuple<String> models, String providerName) {
-        public Optional<String> defaultModel() {
-            return models.isEmpty() ? Optional.empty() : Optional.of(models.first());
-        }
-    }
+                      Tuple<String> models, String providerName) {}
 
     /// `[agent_tools]`. `versions` is not used yet; the newest versions are installed.
     public record AgentTools(Tuple<String> install, Association<String, String> versions) {}
@@ -91,7 +87,7 @@ record LampConfig(
     /// `[host]`. `autoInstall` is not used yet; only `--no-install` stops installing.
     public record Host(boolean autoInstall) {}
 
-    /// `[timeouts]`. `containerReadySeconds` is not used yet; the wait is fixed in `SandboxPhase`.
+    /// `[timeouts]`. The wait for readiness is doubled straight after an image build.
     public record Timeouts(int containerReadySeconds, int terminalConnectSeconds, int stopSeconds) {
         public Timeouts {
             if (containerReadySeconds  < 1) throw new IllegalArgumentException("timeouts.container_ready_seconds");

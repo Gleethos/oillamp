@@ -123,4 +123,28 @@ class UsingTheCommandLineSpec extends Specification {
         and: 'and the directory is still not there, because asking created nothing'
             !java.nio.file.Files.exists(lamp)
     }
+
+    def '--open without a session to play is a usage error, not a silent listing'() {
+        when:
+            var outcome = sandbox.oillamp.run('recordings', sandbox.lampPath().toString(), '--open')
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.console().contains('--open needs the session to play')
+    }
+
+    def '--no-color leaves no colour codes in the output'() {
+        reportInfo """
+            Colour codes are invisible on a terminal but end up as junk in a log file or a
+            pasted bug report. `NO_COLOR=1` turned them off before; the `--no-color` option was
+            listed in the help but did nothing.
+        """
+        when: 'the same command runs on a terminal, with and without the option'
+            var coloured = sandbox.oillamp.run('doctor')
+            var plain = sandbox.oillamp.run('doctor', '--no-color')
+
+        then:
+            coloured.console().contains('\u001B[')
+            !plain.console().contains('\u001B[')
+    }
 }

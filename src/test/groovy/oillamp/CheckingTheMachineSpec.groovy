@@ -349,4 +349,32 @@ class CheckingTheMachineSpec extends Specification {
             problem.evidence().any { it.toString().contains('podman') }
             problem.evidence().any { it.toString().contains('tigervnc-viewer') }
     }
+
+    def 'A lamp configured not to install anything installs nothing'() {
+        reportInfo """
+            `host.auto_install = false` is the configuration's way of saying what `--no-install`
+            says on the command line: tell me what is missing, but do not run sudo. It used to be
+            accepted and then ignored, so oillamp asked for a sudo password anyway.
+        """
+        given: 'a machine without podman, and a lamp that says not to install'
+            sandbox.machine { it.withoutPodman() }
+            var lamp = sandbox.lampPath()
+            sandbox.givenConfig(lamp, '''
+                schema_version = 1
+
+                [host]
+                auto_install = false
+            '''.stripIndent())
+
+        when:
+            var outcome = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+
+        then: 'nothing is installed; the missing packages are reported instead'
+            !outcome.stepKinds().contains('InstallPackages')
+            outcome.reported('OIL-PKG-001')
+
+        and: 'and the advice points at the setting, not at a flag the user never passed'
+            outcome.console().contains('auto_install = true')
+            !outcome.console().contains('without --no-install')
+    }
 }

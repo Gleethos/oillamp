@@ -33,7 +33,7 @@ final class Problems {
     public static final Code PODMAN_NOT_ROOTLESS   = new Code("OIL-PODMAN-002");
     public static final Code PODMAN_USERNS_BROKEN  = new Code("OIL-PODMAN-003");
     public static final Code PODMAN_APPARMOR       = new Code("OIL-PODMAN-004");
-    public static final Code LAMP_INVALID_PATH     = new Code("OIL-LAMP-001");   // not reported anywhere
+    public static final Code LAMP_INVALID_PATH     = new Code("OIL-LAMP-001");
     public static final Code LAMP_NOT_EMPTY        = new Code("OIL-LAMP-002");
     public static final Code LAMP_FORBIDDEN_PATH   = new Code("OIL-LAMP-003");
     public static final Code LAMP_NEWER_SCHEMA     = new Code("OIL-LAMP-004");
@@ -61,14 +61,15 @@ final class Problems {
     public static final Code NET_FORWARD_UNREACHABLE = new Code("OIL-NET-010");
     public static final Code SESSION_NOT_RUNNING   = new Code("OIL-SESSION-001");
     public static final Code SESSION_UNREACHABLE   = new Code("OIL-SESSION-002");
+    public static final Code SESSION_REFUSED       = new Code("OIL-SESSION-003");
     public static final Code IMAGE_BUILD_FAILED    = new Code("OIL-IMAGE-001");
     public static final Code SANDBOX_START_FAILED  = new Code("OIL-SANDBOX-001");
     public static final Code SANDBOX_DIED          = new Code("OIL-SANDBOX-002");
     public static final Code SANDBOX_NOT_READY     = new Code("OIL-SANDBOX-003");
     public static final Code SANDBOX_ENDPOINT_DEAD = new Code("OIL-SANDBOX-004");
     public static final Code SANDBOX_NOT_REMOVED   = new Code("OIL-SANDBOX-005");
+    public static final Code SANDBOX_STATE_UNKNOWN = new Code("OIL-SANDBOX-006");
     public static final Code EXEC_NOT_FOUND        = new Code("OIL-EXEC-001");
-    public static final Code EXEC_TIMED_OUT        = new Code("OIL-EXEC-002");   // not reported anywhere
     public static final Code INTERNAL              = new Code("OIL-INTERNAL-001");
 
     // ─── network ───────────────────────────────────────────────────────────────────────────
@@ -138,6 +139,9 @@ final class Problems {
         String letOillampDoIt = switch (installing) {
             case ALLOWED, DECLINED ->
                     "or let oillamp install them by running without --no-install";
+            case DECLINED_IN_CONFIG ->
+                    "or let oillamp install them: set `auto_install = true` under [host] in "
+                  + "oillamp.toml or ~/.config/oillamp/config.toml";
             case NEVER ->
                     "or run `oillamp at <dir>`, which installs them for you after one sudo prompt "
                   + "(this command only ever looks)";
@@ -234,6 +238,17 @@ final class Problems {
               + "your home directory itself would put your own files inside the sandbox")
             .withEvidence(new Evidence.Value("requested path", requested.toString()))
             .withFix(Fix.of("choose a dedicated directory, for example ~/lamps/my-feature"));
+    }
+
+    /// A path podman cannot mount. `--volume` separates the host path, the container path and
+    /// the options with colons, so a colon inside the host path would be read as one of them.
+    public static Problem lampInvalidPath(Path requested, String why) {
+        return error(LAMP_INVALID_PATH, "This directory cannot hold a lamp",
+                requested + " " + why,
+                "parts of the lamp are mounted into the sandbox with `podman run --volume "
+              + "HOST:CONTAINER`, which separates its parts with colons")
+            .withEvidence(new Evidence.Value("requested path", requested.toString()))
+            .withFix(Fix.of("choose a directory whose path has no colon in it"));
     }
 
     public static Problem lampNotEmpty(Path root, Tuple<String> sampleEntries) {
@@ -490,6 +505,25 @@ final class Problems {
             .withFix(Fix.of("`oillamp stop <dir>` cleans up after a session that died this way"));
     }
 
+    /// The session answered, but said no. It is alive, so nothing needs cleaning up.
+    public static Problem sessionRefused(Path lamp, String command, String reason) {
+        return error(SESSION_REFUSED, "The running session refused",
+                "`oillamp " + command + "` was refused by the session on " + lamp + ": " + reason,
+                "the session is running and answered, so there is nothing to clean up")
+            .withFix(Fix.run("start a new session once this one has ended", "oillamp at " + lamp));
+    }
+
+    /// podman did not answer whether the sandbox is running. A warning: the session goes on, and
+    /// the user is told once, not at every check.
+    public static Problem sandboxStateUnknown(String container, String reason) {
+        return warning(SANDBOX_STATE_UNKNOWN, "podman did not say whether the sandbox is running",
+                "`podman container inspect " + container + "` failed: " + reason,
+                "oillamp checks every two seconds that the sandbox is still there; until podman "
+              + "answers again, a sandbox that stops would not be noticed. The session carries on")
+            .withFix(Fix.of("this is usually a busy podman, for example during an image build, and "
+                          + "passes; if it does not, check `podman ps` in another terminal"));
+    }
+
     public static Problem sshKeygenFailed(Evidence.Command command) {
         return error(SSH_KEYGEN_FAILED, "Key generation failed",
                 "ssh-keygen exited with code " + command.exitCode(),
@@ -585,13 +619,6 @@ final class Problems {
                 executable + " is not on PATH",
                 "oillamp shells out to a small, fixed set of tools and cannot continue without this one")
             .withEvidence(new Evidence.Value("executable", executable));
-    }
-
-    public static Problem commandTimedOut(Evidence.Command command) {
-        return error(EXEC_TIMED_OUT, "Command timed out",
-                "the command did not finish within " + command.took(),
-                "every external command has a timeout so a hung tool can never hang oillamp")
-            .withEvidence(command);
     }
 
     /// The user typed something oillamp does not understand. Exit code 2.

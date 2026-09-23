@@ -39,6 +39,8 @@ final class LampPaths {
                   + "use a subdirectory such as " + user.home().resolve("lamps").resolve("my-feature")));
 
         String text = path.toString();
+        if (text.contains(":"))
+            return Result.err(Problems.lampInvalidPath(path, "contains a colon"));
         for (String prefix : FORBIDDEN_PREFIXES) {
             // "/lib" must also catch "/lib64" and "/libexec".
             if (text.equals(prefix) || text.startsWith(prefix + "/")

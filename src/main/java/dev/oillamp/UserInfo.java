@@ -16,6 +16,5 @@ record UserInfo(String name, int uid, int gid, Path home, ValueSet<String> group
         if (uid < 0)        throw new IllegalArgumentException("Negative uid: " + uid);
     }
 
-    public boolean isRoot() { return uid == 0; }
     public boolean isInGroup(String group) { return groups.contains(group); }
 }
