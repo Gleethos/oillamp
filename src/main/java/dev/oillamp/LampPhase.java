@@ -10,18 +10,16 @@ import sprouts.Association;
 import sprouts.Tuple;
 
 /**
- * Phase B: turn a directory into a lamp that is ready to run — spec §10.5.
+ * The lamp phase: turns a directory into a lamp that is ready to run.
  *
- * <p>Does the reading the pure planners cannot: resolves the path, looks at what is there, reads
- * the configuration files, checks that the filesystem can host Unix sockets, and takes the lock.
- * Every decision that follows from those facts is made by a pure function in the core.
- *
- * <p>Deliberately <b>package-private</b>: Phase B of §10.5, wired together. On the effects
- * allowlist.
+ * <p>It does the reading the pure planners cannot: resolves the path, looks at what is there,
+ * reads the configuration files and checks the filesystem can hold Unix sockets. The decisions are
+ * made by {@link LampPaths}, {@link LampClassifier}, {@link ConfigLoader}, {@link Gpu} and
+ * {@link LampPlanner}. The lock is taken afterwards, by {@code Commands.at}.
  */
 final class LampPhase {
 
-    /** Filesystems that cannot host Unix domain sockets, which the whole design depends on (§11.2). */
+    /** Filesystems that cannot hold Unix domain sockets, which every connection to the sandbox uses. */
     private static final Tuple<String> UNUSABLE_FILESYSTEMS =
             Tuple.of(String.class, "nfs", "nfs4", "cifs", "smb3", "vfat", "exfat", "fuse.sshfs", "msdos");
 
@@ -100,12 +98,10 @@ final class LampPhase {
     }
 
     /**
-     * The handful of host variables the agent's tools are given — spec §19.5.
-     *
-     * <p>Out of the box matters here: a user who has already set {@code EDENAI_API_KEY} on their
-     * machine should not have to set it again inside a sandbox they cannot type into yet. Only
-     * the names in {@link RuntimeEnv#INHERITED_FROM_HOST} cross, and the log says which were
-     * found — never what they contain.
+     * The host environment variables passed to the agent's tools: only the names in
+     * {@link RuntimeEnv#INHERITED_FROM_HOST}. A user who set {@code EDENAI_API_KEY} on the host
+     * does not have to set it again in the sandbox. The console says which were found, never their
+     * values.
      */
     private Association<String, String> inheritedFromHost() {
         Association<String, String> found = Association.between(String.class, String.class);
@@ -124,7 +120,7 @@ final class LampPhase {
 
     /**
      * Renders the per-session files. Separate from the skeleton because it needs the keys that
-     * the skeleton generated — see {@link LampPlanner#planSession}.
+     * the skeleton generated; see {@link LampPlanner#planSession}.
      */
     private Result<Plan> planSessionFiles(LampLayout layout, LampConfig config,
                                           SessionId session, Gpu.Decision gpu) {
@@ -151,7 +147,7 @@ final class LampPhase {
     // ─── configuration ─────────────────────────────────────────────────────────────────────
 
     /**
-     * Reads the configuration files that apply to this lamp, in precedence order (§20.1).
+     * Reads the configuration files that apply to this lamp: the global file, then the lamp's.
      *
      * <p>A lamp whose {@code oillamp.toml} does not exist yet is not an error: it is about to be
      * created from the shipped template, and the built-in defaults describe exactly what that
@@ -193,7 +189,7 @@ final class LampPhase {
 
     /**
      * Makes the path absolute and resolves symlinks <em>before</em> validation, so a link
-     * pointing into a system directory cannot slip past the refusal in {@link LampPaths} (FR-03).
+     * pointing into a system directory cannot get past the refusal in {@link LampPaths}.
      */
     private Path resolve(Path requested) {
         Path absolute = requested.isAbsolute()

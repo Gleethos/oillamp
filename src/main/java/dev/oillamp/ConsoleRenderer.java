@@ -2,17 +2,16 @@ package dev.oillamp;
 
 
 /**
- * Turns events into the text a person reads — spec §27.4.
+ * Prints events as text for a person to read.
  *
- * <p>Two shapes only. Progress is one short line per fact, prefixed by the area it belongs to,
- * so a successful run reads like a checklist. A failure is a block: what happened, why that
- * matters, the evidence, and what to try — because NFR-03 asks for errors a user can act on
- * without guessing, and a stack trace is not that.
+ * <p>Progress is one short line per fact, prefixed with its area ({@code [host]}, {@code [lamp]},
+ * ...), so a successful run reads like a checklist. A warning or error is a block: what happened,
+ * why it matters, the evidence, and what to try.
  *
- * <p>Everything is also captured verbatim, so a scenario can assert on exactly what the user saw.
+ * <p>Everything printed is also kept, so tests can check exactly what the user saw.
  *
- * <p>Deliberately <b>package-private</b>: how oillamp looks in a terminal must stay free to change
- * without that being a breaking change for anyone.
+ * <p>Colour is used when output goes to a terminal and {@code NO_COLOR} is not set. The
+ * {@code --no-color} option is accepted but not yet connected to this.
  */
 final class ConsoleRenderer {
 
@@ -25,10 +24,9 @@ final class ConsoleRenderer {
     private final StringBuilder captured = new StringBuilder();
     private final boolean colour;
     /**
-     * Mutable, and deliberately so: the renderer has to exist before the command line is parsed
-     * (a usage error must still print in colour), but {@code --verbose} is only known afterwards.
-     * Returning a copy instead left the sink holding the original, which is how this flag came to
-     * parse correctly and then do nothing at all.
+     * Mutable on purpose: the renderer exists before the command line is parsed, so that usage
+     * errors can be printed, and {@code --verbose} is only known afterwards. An earlier version
+     * returned a modified copy, which nobody used, so {@code --verbose} had no effect.
      */
     private boolean verbose;
     private boolean echoToTerminal = true;
@@ -38,7 +36,7 @@ final class ConsoleRenderer {
         this.verbose = verbose;
     }
 
-    /** Colour when a human is watching and {@code NO_COLOR} is unset — the usual convention. */
+    /** Colour when output goes to a terminal and {@code NO_COLOR} is unset. */
     public static ConsoleRenderer forMachine(Machine machine) {
         boolean colour = machine.isInteractive() && machine.environmentVariable("NO_COLOR").isEmpty();
         return new ConsoleRenderer(colour, false);
@@ -59,10 +57,8 @@ final class ConsoleRenderer {
     public String text() { return captured.toString(); }
 
     /**
-     * Writes text with no decoration of any kind — no banner, no tag, no colour.
-     *
-     * <p>For output that is not addressed to a human reading a terminal. The completion script is
-     * the only such output: a shell evaluates it, and a decorated line would be evaluated too.
+     * Writes text with no banner, tag or colour. Used only for the completion script, which a
+     * shell evaluates, so any decoration would be evaluated too.
      */
     public void plain(String text) {
         line(text.stripTrailing());
@@ -109,7 +105,7 @@ final class ConsoleRenderer {
             case LampEvent.WindowOpened opened -> {
                 line(area("session") + colour(GREEN, "✓ ") + "opened " + opened.what());
                 // The command matters when the window misbehaves, and by then it is too late to
-                // ask for it — so --verbose keeps it, and a failure quotes it in full.
+                // ask for it, so --verbose keeps it, and a failure quotes it in full.
                 if (verbose) line(dim(" ".repeat(10) + "  $ " + String.join(" ", opened.argv())));
             }
             case LampEvent.Summary summary -> {
@@ -191,8 +187,8 @@ final class ConsoleRenderer {
     private String area(String name) {
         StringBuilder out = new StringBuilder("[").append(name).append(']');
         while (out.length() < 10) out.append(' ');
-        // A name longer than the column still gets its separator. Without this the longest of
-        // them runs straight into the tick — "[recordings]✓" — and only that one area looks broken.
+        // A name longer than the column still gets a space after it; otherwise "[recordings]"
+        // would run straight into the tick mark.
         if (out.charAt(out.length() - 1) != ' ') out.append(' ');
         return dim(out.toString());
     }

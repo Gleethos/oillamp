@@ -5,23 +5,19 @@ import sprouts.Tuple;
 import sprouts.ValueSet;
 
 /**
- * Decides what has to be fixed on the host before a sandbox can run — spec §11, Phase A of §10.5.
+ * Decides what has to be fixed on the host before a sandbox can run: packages to install, a
+ * subordinate id range to add, or problems to report.
  *
- * <p>Pure, so that "a stock Ubuntu with nothing installed" and "Fedora" and "podman present but
- * blocked by AppArmor" are all unit tests rather than virtual machines.
+ * <p>It is a pure function, so situations such as "a stock Ubuntu with nothing installed",
+ * "Fedora" or "podman blocked by AppArmor" are tested without a virtual machine.
  *
- * <p>Two properties matter more than they look:
  * <ul>
- *   <li><b>Every deficiency is collected</b>, not just the first. A user missing three packages
- *       and a subuid range should learn all of it in one run (§27.1).</li>
- *   <li><b>Podman checks are skipped while podman is still being installed.</b> On a fresh machine
- *       the first pass cannot ask a program that is not there yet; §10.5 re-probes after the
- *       fixes and the second pass ({@link Options#afterFixes()}) insists that everything is right.</li>
+ *   <li><b>Every problem is collected</b>, not just the first. A user missing three packages and a
+ *       subordinate id range learns all of it in one run.</li>
+ *   <li><b>Podman is not checked while it is still to be installed.</b> After the fixes,
+ *       {@link HostPhase} probes again and plans with {@link Options#afterFixes()}, which plans
+ *       nothing and reports anything still wrong.</li>
  * </ul>
- *
- * <p>Deliberately <b>package-private</b>: the decision "what must be fixed before a sandbox can
- * run". Users meet it through {@code doctor} and {@code at --dry-run}, which is the only shape of
- * it worth promising.
  */
 final class HostPlanner {
 
@@ -32,7 +28,7 @@ final class HostPlanner {
      *
      * @param installing               may oillamp change this machine, and if not, why not
      * @param requiresGraphicalSession true for commands that open windows; false for {@code doctor}
-     * @param afterFixes               the verification pass after Phase A's fixes: plan nothing, demand everything
+     * @param afterFixes               the second pass after the fixes: plan nothing, report everything still wrong
      * @param willExecute              false for a dry run, where steps are only described
      */
     public record Options(Installing installing, boolean requiresGraphicalSession,

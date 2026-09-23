@@ -5,17 +5,12 @@ import java.nio.file.Path;
 import sprouts.Tuple;
 
 /**
- * DRM render nodes found on the host — spec §14.3.
- *
- * <p>GPU acceleration is welcome but must never block a session (D-24), so this is only ever an
- * input to a decision that can always fall back to software rendering.
- *
- * <p>Deliberately <b>package-private</b>: what was found in {@code /dev/dri}, as facts to decide
- * from.
+ * The GPU render devices ({@code /dev/dri/renderD*}) found on the host. Input to {@link Gpu#decide},
+ * which can always fall back to software rendering.
  */
 record GpuFacts(Tuple<RenderNode> renderNodes) {
 
-    /** Drivers whose open Mesa stack is known to work in the sandbox (§14.3). */
+    /** Kernel drivers whose open-source Mesa graphics stack works in the sandbox. */
     public static final Tuple<String> SUPPORTED_DRIVERS =
             Tuple.of(String.class, "i915", "xe", "amdgpu", "radeon", "nouveau", "virtio_gpu");
 

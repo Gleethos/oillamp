@@ -1,19 +1,15 @@
 package dev.oillamp;
 
 /**
- * Something that happened to a running session — spec §24.5.
+ * Something that happened to a running session: the container becoming ready or exiting, a shell
+ * connecting or disconnecting, a signal, {@code oillamp stop}, or a second passing.
  *
- * <p>Everything that can change a session's course arrives here: the container reporting itself
- * ready or exiting, a shell connecting or disconnecting, a signal, {@code oillamp stop}, the
- * clock. They are produced by several threads and consumed by exactly one (§26.5), which is what
- * makes the session's state a thing that never has to be locked.
- *
- * <p>Deliberately <b>package-private</b>: the supervisor's input alphabet. Users see the
- * consequences as {@link LampEvent}s, which is the part that is promised.
+ * <p>Several threads produce these; one thread, the supervisor's event loop, consumes them. That is
+ * why the session's state needs no locking.
  */
 sealed interface SessionEvent {
 
-    /** One second has passed. The only way a timeout can be noticed. */
+    /** One second has passed. This is how timeouts are noticed. */
     record Tick(java.time.Instant now) implements SessionEvent {}
 
     /** The sandbox is up and answering on its sockets. */
@@ -22,7 +18,7 @@ sealed interface SessionEvent {
     /** The container is gone. Always bad news: nothing in a healthy session stops the container. */
     record ContainerExited(int exitCode) implements SessionEvent {}
 
-    /** The terminal window oillamp opened has connected through the primary relay (D-09). */
+    /** The terminal window oillamp opened has connected through the primary SSH relay. */
     record PrimaryConnected() implements SessionEvent {}
 
     /** That terminal closed. In a running session this is the user saying they are finished. */

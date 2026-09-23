@@ -20,10 +20,10 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
 /**
- *  M5, the egress proxy — spec §18.
+ *  The egress proxy and its policy.
  *
  *  <p>The sandbox runs with {@code --network=none}. Everything it reaches, it reaches by asking
- *  oillamp — so these scenarios ask oillamp the same way the sandbox does: over the real proxy
+ *  oillamp's proxy, so these scenarios ask the proxy the same way the sandbox does: over the real proxy
  *  socket, in real HTTP, from a real session. The far side is a real server on loopback, so an
  *  allowed connection really carries bytes and a denied one really does not.
  *
@@ -61,12 +61,10 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             rewrites the request into origin form and streams the answer back. A real server on
             the other side receives it and replies.
 
-            The lamp here adds one allow rule *above* the shipped deny rule, which is exactly what
-            a user is told to do for an internal service — and is the only way to point this
-            scenario at a server it can actually run, since anything a test can start is on
-            loopback, which the shipped default denies on purpose. The default-allow half of the
-            policy is what lets a public host through; the rule below is the only thing standing
-            in the way here, and lifting it is the documented move.
+            The lamp here adds one allow rule *above* the default deny rule, which is what a user
+            does to reach an internal service. It is also the only way to point this scenario at
+            a server it can run: a test server is on loopback, which the default policy denies on
+            purpose.
         """
         given: 'a server to reach, and a lamp told it may be reached'
             var port = givenAnOriginServer()
@@ -84,16 +82,16 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             requestsSeen.any { it.startsWith('GET /packages ') }
     }
 
-    def 'The host and its own network stay out of reach — decided by address, not by name'() {
+    def 'The host and its own network stay out of reach, decided by address and not by name'() {
         reportInfo """
-            This is the half of the default that makes the other half safe, and it is why the policy
-            decides per *resolved address* rather than per host name.
+            The default policy allows the internet but denies private and loopback addresses. This
+            is why the policy decides per *resolved address* rather than per host name.
 
             A name is a claim its owner controls. `totally-normal.example.com` can be pointed at
             127.0.0.1 whenever its DNS operator likes, and a proxy that trusted names would wave
             it through to whatever the user happens to be running on their own machine. Checking
-            the address catches it whatever the name says — which is precisely this scenario,
-            since the server being asked for really is on loopback.
+            the address catches it whatever the name says. Here, `localhost` resolves to the
+            loopback address and is refused.
         """
         given:
             var port = givenAnOriginServer()
@@ -115,9 +113,9 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
 
     def 'A denial is printed in the terminal the user is already watching'() {
         reportInfo """
-            `console_denied` exists because the two halves of a denial happen in different places:
-            the agent sees a build fail, and the reason lives on the host. Without this the user
-            reads "connection refused" in one window with nowhere to go and find out who refused.
+            With `network.console_denied` on (the default), every denial is printed in the
+            terminal oillamp was started from. The agent only sees its build fail; the user needs
+            to see which rule refused the connection, so they know what to change.
         """
         given:
             var port = givenAnOriginServer()
@@ -135,9 +133,10 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
 
     def 'Every connection is written to the session network log'() {
         reportInfo """
-            the session's network journal. Host, port, resolved address, decision, deciding rule and byte counts — and
-            never content, because a CONNECT tunnel is copied without being read. What the log is
-            for is answering "what did this agent talk to" afterwards, without having had to watch.
+            Every connection is written to `.oillamp/logs/network-<session>.jsonl`, one JSON object
+            per line: host, port, resolved address, decision, deciding rule and byte counts. Never
+            content, because a CONNECT tunnel is copied without being read. The log answers "what
+            did this agent talk to?" afterwards.
         """
         given:
             var port = givenAnOriginServer()
@@ -176,12 +175,11 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
     }
 
     /**
-     *  A lamp whose policy allows the scenario's own server — the §18.4 shape, exactly.
+     *  A lamp whose policy allows the scenario's own server.
      *
-     *  <p>Allow-rules go <em>above</em> the deny rule, because the first match wins. Writing the
-     *  deny rule out again is not redundancy: arrays replace rather than merge (§20.1), so a
-     *  config that listed only the allow rule would silently drop the protection that makes
-     *  allow-by-default reasonable in the first place.
+     *  <p>Allow rules go <em>above</em> the deny rule, because the first match wins. The deny rule
+     *  is written out again because a lamp's list of rules replaces the default list instead of
+     *  being added to it; listing only the allow rule would drop the deny rule.
      */
     private void givenALampAllowing(int port) {
         sandbox.givenConfig(sandbox.lampPath(), """
@@ -204,11 +202,11 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
 
     def 'CONNECT opens a tunnel that oillamp carries without reading'() {
         reportInfo """
-            The path almost everything real takes, because almost everything real is HTTPS: npm,
-            pip, cargo, git-over-https and every API an agent calls. The policy is applied to the
-            host and port in the CONNECT line — which is all a proxy can see of a TLS connection
-            without becoming a man in the middle of it — and after the 200, bytes are copied in
-            both directions without being looked at.
+            Most real traffic uses CONNECT, because it is HTTPS: npm, pip, cargo, git over HTTPS
+            and every API an agent calls. The policy is applied to the host and port in the
+            CONNECT line, which is all a proxy can see of an encrypted connection without
+            intercepting it. After the 200, bytes are copied in both directions without being
+            read.
 
             Checked here by tunnelling a plain request through and getting the answer back, which
             proves the copying rather than taking it on trust.
@@ -310,14 +308,6 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
     }
 
     /**
-     *  The proxy socket by its <em>short</em> path, which is the only one that can be connected to.
-     *
-     *  <p>D-25: {@code sockets} under the runtime directory is a symlink into the lamp, because
-     *  the lamp's own path is routinely longer than the kernel's 107-byte limit for a Unix socket
-     *  address. Going through the symlink is not a shortcut here, it is the requirement — and it
-     *  is exactly what the socat bridge inside the container does.
-     */
-    /**
      *  Asks for a CONNECT tunnel and, if it is granted, speaks through it.
      *
      *  <p>Written as one exchange on one channel because that is what a tunnel is: the same
@@ -342,7 +332,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
         channel.write(ByteBuffer.wrap(text.getBytes(StandardCharsets.ISO_8859_1)))
     }
 
-    /** Reads whatever has arrived so far — enough for a status line, without waiting for close. */
+    /** Reads whatever has arrived so far: enough for a status line, without waiting for close. */
     private static String readSome(SocketChannel channel) {
         var buffer = ByteBuffer.allocate(4096)
         var read = channel.read(buffer)
@@ -366,6 +356,11 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
         received.toString(StandardCharsets.UTF_8)
     }
 
+    /**
+     *  The proxy socket, reached through the short runtime directory. The lamp's own path is
+     *  often longer than the kernel's 107-byte limit for a Unix socket path, so the runtime
+     *  directory holds a symlink into the lamp, and oillamp always connects through it.
+     */
     private Path proxySocket() {
         var agents = Files.list(sandbox.runtime.resolve('oillamp')).toList()
         assert agents.size() == 1 : "expected one agent runtime directory, found ${agents}"

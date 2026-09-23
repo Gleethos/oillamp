@@ -10,22 +10,16 @@ import sprouts.Tuple;
 import sprouts.ValueSet;
 
 /**
- * Finds out what this machine is — spec §26.2.
+ * Finds out what this machine is, producing {@link HostFacts}.
  *
- * <p>Every probe is allowed to fail. A missing {@code podman} becomes an empty Optional, an
- * unreadable {@code /etc/subuid} becomes "no ranges", a broken {@code podman unshare} becomes a
- * {@code Fails} fact carrying its own evidence. Nothing throws, because one failed probe must
- * not hide the other nine: the user should learn everything that is wrong with their machine in
- * a single run, not one item per attempt.
+ * <p>Every check may fail without throwing. A missing podman becomes an empty {@code Optional}, an
+ * unreadable {@code /etc/subuid} becomes "no ranges", a failing {@code podman unshare} becomes a
+ * {@code Fails} value with its evidence. So one failed check does not hide the others, and the
+ * user learns everything that is wrong in one run.
  *
- * <p>The checks that matter most are <em>functional</em>, not declarative. oillamp does not ask
- * whether podman is new enough and conclude that user namespaces work — it runs
- * {@code podman unshare true}, because on Ubuntu 23.10 and later an AppArmor profile can stop a
- * perfectly modern podman, and only trying reveals that (§11.2).
- *
- * <p>Deliberately <b>package-private</b>: it asks the machine questions and turns the answers into
- * facts. On the effects allowlist; the parsing of tool output changes whenever those tools change
- * theirs.
+ * <p>Where possible it tries things rather than checking versions. It runs
+ * {@code podman unshare true} because on Ubuntu 23.10 and newer AppArmor can block user namespaces
+ * even for an up-to-date podman.
  */
 final class HostProbe {
 
@@ -188,7 +182,7 @@ final class HostProbe {
     }
 
     private static UsernsFacts probeUserNamespaces(Machine machine, Optional<PodmanFacts> podman) {
-        if (podman.isEmpty()) return new UsernsFacts.Works();   // nothing to test yet; Phase A re-probes
+        if (podman.isEmpty()) return new UsernsFacts.Works();   // nothing to test yet; HostPhase probes again after installing
         Machine.Outcome outcome = machine.run(
                 Machine.Command.of("podman", "unshare", "true").withTimeout(QUICK));
         if (outcome.succeeded()) return new UsernsFacts.Works();
@@ -266,6 +260,6 @@ final class HostProbe {
         return out.toString();
     }
 
-    /** Only APT-based machines can be repaired automatically (D-17). */
+    /** Only apt-based machines can have packages installed automatically. Currently unused. */
     static boolean canAutoInstall(OsRelease os) { return os.family() == DistroFamily.DEBIAN; }
 }

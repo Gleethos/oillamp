@@ -163,7 +163,7 @@ class SettingUpALampSpec extends Specification {
             and never again: from the moment it exists it belongs to the agent.
 
             The guide is checked here for a related reason. The in-sandbox banner tells the agent
-            to read ~/AGENTS.md, and for four milestones nothing put a file there.
+            to read ~/AGENTS.md, and for a long time nothing put a file there.
         """
         given:
             var lamp = sandbox.lampPath()
@@ -291,11 +291,11 @@ class SettingUpALampSpec extends Specification {
     def 'A lamp whose sandbox is still up is not removed out from under it'() {
         reportInfo """
             Deleting the agent's home while a container has it mounted would leave the session
-            working in directories that no longer exist, and the container would outlive
-            everything that describes it - a sandbox with nothing left to stop it with.
+            working in directories that no longer exist, and the container would outlive everything
+            that describes it, leaving a sandbox with nothing left to stop it with.
 
             The answer names `oillamp stop`, which is also what clears up a container left behind
-            by a supervisor that died. Both cases are the same instruction, so they get the same
+            by a supervisor that died. Both cases need the same instruction, so they get the same
             message.
         """
         given: 'a lamp whose container is still registered with podman'

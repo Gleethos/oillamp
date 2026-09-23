@@ -13,7 +13,7 @@ import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
- *  {@code view}, {@code shell}, {@code stop}, {@code status} and {@code list} — spec §26.6, §28.
+ *  {@code view}, {@code shell}, {@code stop}, {@code status} and {@code list}.
  *
  *  <p>These are not five more things oillamp can do to a lamp. They are questions put to the
  *  supervisor that already owns it, over the control socket, and they have to be: that process
@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
  *  behind its back would leave it believing it still had a session.
  *
  *  <p>Each scenario therefore runs a real session on one thread and asks it something from
- *  another — which is the only arrangement that tests what these commands actually are.
+ *  another, which is the only arrangement that tests what these commands actually are.
  */
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
 class TheSessionCommandsSpec extends Specification {

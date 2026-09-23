@@ -10,8 +10,8 @@ import java.nio.file.Path
  * A place to run oillamp against, for the scenarios in this package.
  *
  * <p>Note what this file can and cannot see: it lives outside {@code dev.oillamp}, so the only
- * oillamp types it can touch are the six that are public. Every scenario in this package is
- * therefore written against the same surface a real caller has — not because a rule says so,
+ * oillamp types it can touch are the five that are public. Every scenario in this package is
+ * therefore written against the same surface a real caller has, not because a rule says so,
  * but because the compiler will not allow anything else.
  */
 class Sandbox {
@@ -34,8 +34,8 @@ class Sandbox {
      * temporary directory.
      *
      * <p>The sockets a session binds are real, and the kernel caps a Unix socket path at 107
-     * bytes — which is the entire reason D-25 puts them under {@code $XDG_RUNTIME_DIR} rather
-     * than in the lamp. Spock's temporary directories are named after the scenario and are long
+     * bytes, which is why oillamp reaches them through {@code $XDG_RUNTIME_DIR} rather than
+     * through the lamp. Spock's temporary directories are named after the scenario and are long
      * enough on their own to break that, so a scenario run from one would fail for a reason that
      * has nothing to do with what it is testing. A real runtime directory is {@code /run/user/1000};
      * this is the same shape and the same length.

@@ -3,15 +3,12 @@ package dev.oillamp;
 import java.util.Optional;
 
 /**
- * A network in CIDR notation, e.g. {@code 10.0.0.0/8} — spec §18.3.
+ * An address range in CIDR notation, such as {@code 10.0.0.0/8}, from a network rule's
+ * {@code cidrs} list.
  *
- * <p>These are what keeps the agent out of the intranet. The shipped default policy denies the
- * private, loopback, link-local and CGNAT ranges (§18.4), so an agent that follows a link into
- * the company network is stopped by address, not by a host name it could have been tricked about.
- *
- * <p>Deliberately <b>package-private</b>: an address range for the policy engine, not a
- * general-purpose IP library. It implements exactly what {@code oillamp.toml} needs to express and
- * nothing more.
+ * <p>Address ranges are what keep the agent out of private networks. The default policy denies
+ * the private, loopback, link-local and carrier-grade NAT ranges, so a connection is refused by
+ * where it goes, whatever host name was used to get there.
  */
 record Cidr(IpAddress network, int prefixLength) {
 

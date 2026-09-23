@@ -1,10 +1,8 @@
 package dev.oillamp;
 
 /**
- * The podman container name for a lamp — {@code oillamp-<agentId>}, spec §10.2.
- *
- * <p>Deliberately <b>package-private</b>: derived from the agentId. Callers ask the layout for
- * names rather than composing them, so the naming scheme stays in one place.
+ * The podman container name for a lamp: {@code oillamp-<agent id>}. Get it from
+ * {@link LampLayout#containerName()} rather than building it by hand.
  */
 record ContainerName(String value) {
 

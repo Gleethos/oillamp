@@ -6,16 +6,15 @@ import sprouts.Association;
 import sprouts.Tuple;
 
 /**
- * A lamp's complete, validated configuration — spec §24.3.
+ * A lamp's complete, validated configuration.
  *
- * <p>By the time this record exists, every value has been checked: the display size is sane, the
- * CIDRs parse, no two forwards share a name or a port, and {@code llm.forward} names a forward
- * that actually exists. Everything downstream can therefore read it without re-validating, and a
- * configuration mistake can only surface in one place — the loader — where it can be reported
- * with a file, a key path and an expectation (FR-52).
+ * <p>{@link ConfigLoader} checks every value before building this: the display size is in range,
+ * the address ranges parse, no two forwards share a name or a port, and {@code llm.forward} names a
+ * forward that exists. Code that reads it does not need to validate again, and every configuration
+ * mistake is reported in one place, with its file and key path.
  *
- * <p>Deliberately <b>package-private</b>: {@code oillamp.toml} is what users depend on. This record
- * is only today's in-memory shape of it, and it grows a field with every new option.
+ * <p>Some settings are read and validated but not yet used; see "Configuration reference" in
+ * {@code docs/ARCHITECTURE.md}.
  */
 record LampConfig(
     Display display,
@@ -49,9 +48,9 @@ record LampConfig(
         }
     }
 
-    /** How to find the terminal emulator that hosts the sandbox shell (D-22). */
+    /** Which terminal emulator opens the sandbox shell. */
     public sealed interface Terminal {
-        /** Detect it: the desktop's own terminal first, then the known table (§17.4). */
+        /** Detect it: the desktop's own terminal first, then the first installed one from the table. */
         record Auto() implements Terminal {}
         record Profile(TerminalProfileId id) implements Terminal {}
         /** A user-supplied argv template containing {@code {cmd}} and optionally {@code {title}}. */
@@ -74,10 +73,11 @@ record LampConfig(
             if (cpus < 0)  throw new IllegalArgumentException("limits.cpus cannot be negative");
             if (pids < 64) throw new IllegalArgumentException("limits.pids is far too low: " + pids);
         }
-        /** {@code cpus = 0} means "all host CPUs but one", so the desktop stays responsive (§13.1). */
+        /** {@code cpus = 0} means all host CPUs but one, so the host's own desktop stays responsive. */
         public int resolveCpus(int hostCpuCount) { return cpus > 0 ? cpus : Math.max(1, hostCpuCount - 1); }
     }
 
+    /** {@code [llm]}. {@code apiKeyEnv} and {@code apiKeyFile} are not used yet. */
     public record Llm(String forward, String basePath, String apiKeyEnv, String apiKeyFile,
                       Tuple<String> models, String providerName) {
         public Optional<String> defaultModel() {
@@ -85,12 +85,15 @@ record LampConfig(
         }
     }
 
+    /** {@code [agent_tools]}. {@code versions} is not used yet; the newest versions are installed. */
     public record AgentTools(Tuple<String> install, Association<String, String> versions) {}
 
     public record Image(String base, String nodeVersion, String jdkPackage, Tuple<String> extraAptPackages) {}
 
+    /** {@code [host]}. {@code autoInstall} is not used yet; only {@code --no-install} stops installing. */
     public record Host(boolean autoInstall) {}
 
+    /** {@code [timeouts]}. {@code containerReadySeconds} is not used yet; the wait is fixed in {@code SandboxPhase}. */
     public record Timeouts(int containerReadySeconds, int terminalConnectSeconds, int stopSeconds) {
         public Timeouts {
             if (containerReadySeconds  < 1) throw new IllegalArgumentException("timeouts.container_ready_seconds");
@@ -108,7 +111,7 @@ record LampConfig(
         return Optional.empty();
     }
 
-    /** The forward the LLM configuration points at, if both are configured (§19.5). */
+    /** The forward that {@code llm.forward} names, if both are configured. */
     public Optional<Forward> llmForward() {
         return llm.flatMap(config -> forwardNamed(config.forward()));
     }

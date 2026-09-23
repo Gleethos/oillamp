@@ -3,15 +3,12 @@ package dev.oillamp;
 import sprouts.Tuple;
 
 /**
- * Picks a subordinate id range that does not collide with anyone else's — spec §11.2.
+ * Picks a subordinate id range for the user that overlaps nobody else's.
  *
- * <p>A pure function on purpose. Getting this wrong means two users share host uids, which
- * silently lets one user's container write files as another user; and it is only discovered
- * much later. Being pure means every awkward case (ranges touching, ranges out of order,
- * a range that ends exactly where ours would start) is a unit test rather than a field report.
- *
- * <p>Deliberately <b>package-private</b>: it picks a free subordinate id range around the ones
- * already taken. An algorithm, and free to get smarter.
+ * <p>An overlap would give two users the same host ids, so one user's containers could write files
+ * as the other, and nobody would notice for a long time. That is why this is a pure function with
+ * its own tests for the awkward cases: ranges that touch, ranges out of order, a range that ends
+ * exactly where the new one would start.
  */
 final class SubIdAllocator {
 

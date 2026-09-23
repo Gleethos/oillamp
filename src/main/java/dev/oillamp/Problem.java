@@ -7,18 +7,15 @@ import java.util.Optional;
 import sprouts.Tuple;
 
 /**
- * A structured, diagnosable failure — spec §27.2 / NFR-03.
+ * Something that went wrong, described well enough to act on.
  *
- * <p>oillamp never reports a bare stack trace to the user. Everything that can go wrong is
- * a value of this type: <em>what</em> failed, <em>why that matters</em>, the <em>evidence</em>
- * (command lines, exit codes, file paths, config key paths), concrete <em>fixes</em>, and where
- * the full log is. That makes failures renderable (console, log, future GUI) and assertable.
+ * <p>oillamp never shows the user a bare stack trace. Every failure is one of these: <em>what</em>
+ * happened, <em>why it matters</em>, the <em>evidence</em> (commands and their output, files,
+ * values, configuration locations) and concrete <em>fixes</em>. The wording for each code lives in
+ * {@link Problems}.
  *
- * <p>This is part of the public API: it is what a caller — a terminal user, a test, or the
- * planned Swing front end — actually observes when something goes wrong.
- *
- * <p>Deliberately <b>public</b>: NFR-03 requires failures to be structured rather than prose —
- * which only helps a caller that is allowed to inspect the structure instead of re-parsing English.
+ * <p>Public because callers, including tests and a future GUI, need to inspect failures rather than
+ * parse text.
  */
 public record Problem(
     Code code,
@@ -39,8 +36,9 @@ public record Problem(
     public enum Severity { INFO, WARNING, ERROR }
 
     /**
-     * A stable identifier from the catalog in spec §27.3, of the form {@code OIL-<AREA>-<NNN>}.
-     * Users quote it in bug reports and tests assert on it, so it must never change meaning.
+     * A stable identifier of the form {@code OIL-<AREA>-<NNN>}. Users quote it in bug reports and
+     * tests match on it, so a code must never change meaning. The codes are listed in
+     * {@link Problems} and in {@code docs/ARCHITECTURE.md}.
      */
     public record Code(String value) {
         public Code {
@@ -60,7 +58,7 @@ public record Problem(
         record Value(String name, String value) implements Evidence {}
         /** A block of text, e.g. the tail of a container log. */
         record Excerpt(String title, String text) implements Evidence {}
-        /** A configuration mistake, located precisely — spec FR-52. */
+        /** A configuration mistake: the file, the key path, the value found and what was expected. */
         record Config(Path file, String keyPath, String value, String expected) implements Evidence {}
     }
 

@@ -1,4 +1,4 @@
-# The sandbox compositor — design spec Appendix C.
+# Configuration of sway, the sandbox's compositor.
 #
 # Read the last line before adding anything: this config runs as the `lamp` user, which owns the
 # recording and the VNC server. A keybinding that runs a command would let anyone typing into the
@@ -29,4 +29,5 @@ bindsym $mod+Down  focus down
 bindsym $mod+f     fullscreen toggle
 bindsym $mod+space floating toggle
 
-# NO exec, NO exit, NO reload bindings — keyboard input must never run commands as `lamp`.
+# NO exec, NO exit, NO reload bindings: keyboard input must never run commands as `lamp`.
+# TheSandboxImageSpec checks this.

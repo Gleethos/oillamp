@@ -5,23 +5,20 @@ import sprouts.Pair;
 import sprouts.Tuple;
 
 /**
- * Renders {@code .oillamp/session/runtime.env} — spec §20.3.
+ * Writes {@code .oillamp/session/runtime.env}, the settings file the container reads.
  *
- * <p>This file is sourced by the container entrypoint (a Bash script running as container root)
- * and by every agent login shell. That makes it the one place where a quoting mistake turns a
- * configuration value into executed code, so the rules are strict and tested:
+ * <p>The entrypoint (a bash script running as container root) and every login shell of the agent
+ * execute this file with {@code source}. A quoting mistake would therefore turn a configuration
+ * value into a command, so the rules are strict:
  *
  * <ul>
  *   <li>every value is wrapped in single quotes, inside which the shell expands nothing;</li>
- *   <li>an embedded single quote is closed, escaped and reopened ({@code '\''});</li>
- *   <li>a value containing a newline is <b>refused</b>, not escaped — {@code source} would read
- *       the remainder as a separate assignment, and no legitimate value needs one.</li>
+ *   <li>a single quote inside a value is written as {@code '\''} (close, escaped quote, reopen);</li>
+ *   <li>a value containing a line break is <b>refused</b>, because {@code source} would read the
+ *       rest as a separate command, and no real value needs one.</li>
  * </ul>
  *
- * <p>Keys are emitted in sorted order so the file is stable across runs and diffable in the log.
- *
- * <p>Deliberately <b>package-private</b>: it renders the environment file the container is started
- * with. Quoting rules and variable names change with the image.
+ * <p>Keys are written in sorted order, so the file is the same for the same configuration.
  */
 final class RuntimeEnv {
 
@@ -45,25 +42,22 @@ final class RuntimeEnv {
     }
 
     /**
-     * The variables the sandbox is started with — spec §20.3.
+     * Environment variables copied from the host into the sandbox when they are set.
      *
-     * <p>Read twice: by the container entrypoint, which uses them to size the display and start
-     * the recorder, and by every agent login shell through {@code /etc/profile.d/oillamp.sh},
-     * which turns the proxy variables into the agent's network configuration (§18.6).
-     *
-     * <p>Built sorted, so the rendered file — and therefore the image hash and the log — is
-     * stable between runs that configured the same thing.
-     */
-    /**
-     * Host environment variables the agent's tools are given, if the host has them set.
-     *
-     * <p>Kept to a named list rather than "everything", because this file crosses into the
-     * sandbox: the agent can read it, which is the point — its harness needs the key — and it is
-     * also why the list is short, explicit and written down here rather than inferred.
+     * <p>The agent can read everything in {@code runtime.env}; that is the point, since its harness
+     * needs these keys. It is also why this is a short, explicit list rather than the whole host
+     * environment.
      */
     public static final Tuple<String> INHERITED_FROM_HOST = Tuple.of(String.class,
             "EDENAI_API_KEY", "EDENAI_BASE_URL", "EDENAI_EU_ONLY", "EDENAI_MAX_TOKENS");
 
+    /**
+     * The variables for this session.
+     *
+     * <p>They are read by the entrypoint, which uses them to set up the display, the recorder and
+     * the network bridges, and by every login shell of the agent through
+     * {@code /etc/profile.d/oillamp.sh}, which turns them into the agent's environment.
+     */
     public static Association<String, String> variables(LampConfig config,
                                                         LampLayout layout,
                                                         SessionId session,
@@ -98,7 +92,7 @@ final class RuntimeEnv {
         return env;
     }
 
-    /** {@code "name:port name:port …"}, which the entrypoint splits to start one bridge each. */
+    /** {@code "name:port name:port"}, which the entrypoint splits to start one bridge per forward. */
     private static String forwardList(LampConfig config) {
         Tuple<String> entries = Tuple.of(String.class);
         for (Forward forward : config.forwards())

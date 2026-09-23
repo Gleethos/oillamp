@@ -1,10 +1,11 @@
 # Sprouts cheat sheet (verified against `io.github.globaltcad:sprouts:2.8.0`)
 
-Spec §23 requires Sprouts persistent collections in every domain record and flags the exact
-API names as **⚠ VERIFY** (spike S11). This is the verified result — read it before writing
-a record, so you don't reach for `java.util.List`.
+oillamp's records hold Sprouts persistent collections instead of `java.util.List`, `Set` and
+`Map` (see "Coding conventions" in [ARCHITECTURE.md](ARCHITECTURE.md)). These collections are
+immutable: every "change" returns a new collection and leaves the old one as it was. This sheet
+lists the methods you will need. Read it before writing a record.
 
-## Tuple&lt;T&gt; — ordered sequence
+## Tuple&lt;T&gt;: an ordered sequence
 
 ```java
 Tuple<String> empty   = Tuple.of(String.class);              // ALWAYS pass the class for empty
@@ -26,7 +27,7 @@ Tuple<Step>   built   = empty.add(step).addAll(more);        // returns a NEW tu
 
 `Tuple` is `Iterable<T>`, so enhanced `for` and Groovy's `each`/`collect`/`find` work in specs.
 
-## ValueSet&lt;E&gt; — set
+## ValueSet&lt;E&gt;: a set
 
 ```java
 ValueSet<String> pkgs = ValueSet.of(String.class);           // empty
@@ -41,7 +42,7 @@ Also: `of(Class,Iterable)`, `ofLinked(...)` (insertion order), `ofSorted(...)`, 
 > Use `ofLinked` / `ofSorted` whenever the iteration order is observable (console output,
 > golden files, hashes). Plain `of` does **not** promise an order.
 
-## Association&lt;K,V&gt; — map
+## Association&lt;K,V&gt;: a map
 
 ```java
 Association<String,String> env = Association.between(String.class, String.class);
@@ -55,14 +56,14 @@ Optional<String> v = env.get("OILLAMP_SESSION");             // Optional, never 
 | single entry | `Association.of(k, v)` |
 | write | `put(K,V)`, `putIfAbsent(K,V)`, `putAll(...)`, `remove(K)` |
 | read | `get(K) -> Optional<V>`, `containsKey(K)`, `keySet() -> ValueSet<K>`, `values() -> Tuple<V>` |
-| iterate | `Iterable<Pair<K,V>>` — `pair.first()` / `pair.second()` |
+| iterate | `Iterable<Pair<K,V>>`: `pair.first()` / `pair.second()` |
 
 > `runtime.env` and podman `--build-arg` rendering must be **deterministic**, so build those
 > with `betweenSorted(String.class, String.class)` or sort the key set before rendering.
 
-## Rules that follow from §23
+## Rules
 
 - No `java.util.List/Set/Map` and no arrays in any record component.
-- Empty collections are created with the `Class` overload — `Tuple.of()` without a class
+- Empty collections are created with the `Class` overload. `Tuple.of()` without a class
   cannot infer the element type and will not compile where a `Tuple<X>` is expected.
 - Every "builder" in a pure function is just repeated `add`/`put` on the returned value.

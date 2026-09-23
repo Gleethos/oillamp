@@ -13,20 +13,16 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import sprouts.Tuple;
 
 /**
- * Reads one table of the merged config tree, collecting mistakes instead of stopping at the first.
+ * Reads one table of the merged configuration, collecting mistakes instead of stopping at the
+ * first.
  *
- * <p>This is where FR-52 is actually delivered. Every accessor does three things: it reports a
- * <em>type</em> error if the value is the wrong shape, falls back to the default so reading can
- * continue, and — via {@link #allowOnly} — reports any key the schema does not know. Because
- * nothing throws, a user with an unknown key, a bad CIDR and a duplicate forward sees all three
- * in one run (acceptance criterion 12) rather than one per attempt.
+ * <p>When a value has the wrong type, each accessor records a problem and returns the default, so
+ * reading continues. {@link #allowOnly} records any key that is not known. Because nothing throws,
+ * a user with an unknown key, a bad address range and a duplicate forward sees all three in one
+ * run.
  *
- * <p>Every problem carries the file, the dotted key path, the offending value and what was
- * expected, because "invalid configuration" without a location is just a puzzle.
- *
- * <p>Deliberately <b>package-private</b>: an accumulating reader that turns a TOML subtree into
- * located problems. Its shape follows the error-reporting strategy of §27.1, which is free to
- * change.
+ * <p>Every problem names the file, the key path (such as {@code network.rules[0].cidrs}), the value
+ * and what was expected.
  */
 final class ConfigSection {
 
@@ -140,7 +136,7 @@ final class ConfigSection {
         return out;
     }
 
-    /** Reads an array whose elements may be numbers or strings, as {@code ports} is (§18.3). */
+    /** Reads an array whose elements may be numbers or strings, as a rule's {@code ports} may be. */
     public Tuple<String> scalarsAsText(String key) {
         JsonNode value = node.get(key);
         Tuple<String> out = Tuple.of(String.class);
@@ -213,11 +209,11 @@ final class ConfigSection {
     // ─── schema enforcement ────────────────────────────────────────────────────────────────
 
     /**
-     * Rejects any key this table does not define — spec FR-52.
+     * Reports every key in this table that is not one of {@code knownKeys}.
      *
-     * <p>Unknown keys are errors rather than warnings because a typo in a key name would
-     * otherwise be silently ignored, and a silently ignored network rule is a hole in the sandbox.
-     * The message suggests the closest known key, since the mistake is almost always a typo.
+     * <p>Unknown keys are errors, not warnings, because a misspelled key would otherwise be ignored,
+     * and an ignored network rule setting is a hole in the sandbox. The message suggests the nearest
+     * known key, because the cause is almost always a typo.
      */
     public ConfigSection allowOnly(String... knownKeys) {
         for (Map.Entry<String, JsonNode> field : ((ObjectNode) node).properties()) {
@@ -269,7 +265,7 @@ final class ConfigSection {
         return value.asText();
     }
 
-    /** The closest known key, so "netwrok" is answered with "did you mean network?". */
+    /** The nearest known key by edit distance, so "netwrok" gets "did you mean 'network'?". */
     private static String suggestionFor(String typo, String[] knownKeys) {
         String best = "";
         int bestDistance = Integer.MAX_VALUE;

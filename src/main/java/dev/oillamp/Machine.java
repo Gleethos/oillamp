@@ -9,25 +9,22 @@ import sprouts.Association;
 import sprouts.Tuple;
 
 /**
- * The machine oillamp is running on — the single boundary between decisions and effects.
+ * The machine oillamp runs on: its interface to the outside world.
  *
- * <p>Everything oillamp does that it cannot decide on its own passes through here: running a
- * command, reading a system file, looking up an executable, asking the time, asking for
- * randomness. The rest of oillamp is pure and takes the results as values (spec §23).
+ * <p>Running a command, opening a window, reading a system file, finding an executable, asking the
+ * time and generating random ids all go through here. The rest of oillamp takes the results as
+ * values.
  *
- * <p>Keeping the seam this narrow is what makes the tool testable. A scenario describes a
- * machine — "Ubuntu 24.04, GNOME on Wayland, no podman installed, sudo needs a password" — and
- * then runs the real command-line entry point against it. No mocking of oillamp's own types is
- * needed, and no test has to install anything.
+ * <p>This is what makes oillamp testable. A scenario describes a machine, for example "Ubuntu
+ * 24.04, GNOME on Wayland, no podman, sudo needs a password", with {@link #simulated()}, and runs
+ * the real entry point against it.
  *
- * <p>Note what is <em>not</em> here: ordinary file reads and writes inside the lamp directory.
- * Those use the real filesystem even in tests, because the lamp's whole security story is made
- * of POSIX permission bits, ownership and symlinks (§9.2), and a simulated filesystem that got
- * those subtly wrong would be worse than no test at all.
+ * <p>Not everything goes through here. Files inside the lamp directory are read and written by
+ * {@link Filesystem} on the real disk, even in tests, because the lamp's security depends on real
+ * permission bits, ownership and symlinks. The sockets of a running session ({@link Relay},
+ * {@link Control}, {@link Egress}) are also real.
  *
- * <p>Deliberately <b>public</b>: a caller must be able to supply one — that is what makes it a
- * seam. Scenarios describe a machine, {@code main} passes the real one, and a future GUI would do
- * the same.
+ * <p>Public because callers supply it: {@code main} passes the real machine, tests a simulated one.
  */
 public interface Machine {
 
@@ -35,19 +32,17 @@ public interface Machine {
     static Machine real() { return new RealMachine(); }
 
     /**
-     * Starts describing a machine instead of using this one.
+     * Starts describing a simulated machine, for tests.
      *
-     * <p>Described in the words a person would use — "Ubuntu 24.04 with GNOME on Wayland, podman
-     * missing, sudo needs a password" — but answering with genuine command output underneath, so
-     * the real parsers run. A simulation that handed back pre-parsed facts would quietly stop
-     * testing the half of the code most likely to break when a tool changes its output.
+     * <p>The simulated machine answers commands with realistic output (real {@code podman info}
+     * JSON, real {@code dpkg-query} lines), so oillamp's real parsers are tested too.
      */
     static Simulation simulated() { return new Simulation(); }
 
     /** The current instant. Taken from here so that session ids and retention are testable. */
     Instant now();
 
-    /** What this machine calls itself, as {@code os.name} reports it. oillamp requires Linux (FR-03). */
+    /** What this machine calls itself, as {@code os.name} reports it. oillamp requires Linux. */
     String operatingSystemName();
 
     Optional<String> environmentVariable(String name);
@@ -60,8 +55,8 @@ public interface Machine {
     String randomToken(int length);
 
     /**
-     * Whether a human is at the other end: decides whether {@code sudo} may prompt for a
-     * password (§11.2) and whether console output is coloured (§27.4).
+     * Whether standard input and output are a terminal. Decides whether {@code sudo} may ask for a
+     * password and whether console output is coloured.
      */
     boolean isInteractive();
 
@@ -69,40 +64,30 @@ public interface Machine {
     Outcome run(Command command);
 
     /**
-     * Starts a process and does <em>not</em> wait for it — a window on the user's desktop.
+     * Starts a process and does not wait for it: a terminal window, a viewer, or an interactive
+     * shell.
      *
-     * <p>The second kind of effect a session needs, and different enough from {@link #run} to be
-     * its own method rather than a flag on it. A terminal window and a desktop viewer outlive the
-     * call that opened them, have no timeout that would make sense, and are interesting mainly
-     * for whether they are <em>still</em> there. Running them through {@code run} would mean
-     * oillamp blocking for the length of the session on a command it started.
-     *
-     * <p>It is also what lets a scenario check the part of a session a human would otherwise have
-     * to watch for: that two windows were opened, which command each was given, and that neither
-     * of them was the terminal oillamp was launched from.
+     * <p>Unlike {@link #run}, there is no timeout. These processes live as long as the user keeps
+     * them open, and oillamp only needs to know whether they are still running.
      */
     Window launch(Command command, Window.Stdio stdio);
 
     /**
      * A process oillamp started but is not waiting for.
      *
-     * <p>Deliberately not a {@code Process}: a window that could not be opened at all is a normal
-     * outcome here, not an exception, and the callers care about four questions only — is it
-     * still there, how did it end, what did it say, and please go away now.
+     * <p>Not a {@code Process}, because a window that could not be started at all is a normal
+     * outcome here ({@link #refused}), not an exception.
      */
     interface Window {
 
         /** Where the process's input and output go. */
         enum Stdio {
             /**
-             * Its own window. oillamp keeps whatever it prints, because a window that dies on
-             * opening says why on its standard error and nowhere else.
+             * A window of its own. oillamp keeps whatever it prints, because a window that closes
+             * straight away explains why only on its standard error.
              */
             DETACHED,
-            /**
-             * This terminal, handed over for as long as the process runs — what {@code oillamp
-             * shell} needs, since an interactive shell whose output was captured is not a shell.
-             */
+            /** The current terminal, for as long as the process runs. Used by {@code oillamp shell}. */
             TERMINAL
         }
 
@@ -123,7 +108,7 @@ public interface Machine {
         /** Waits for it to end and returns its exit code. Used by {@code oillamp shell}. */
         int waitFor();
 
-        /** Asks it to close, and stops caring. Never throws: shutdown must not fail here. */
+        /** Asks it to close. Never throws, because shutdown must not fail here. */
         void close();
 
         /** A window that never opened, because the executable is not there or could not run. */
@@ -143,8 +128,8 @@ public interface Machine {
     }
 
     /**
-     * Reads a file that belongs to the host rather than to a lamp — {@code /etc/os-release},
-     * {@code /etc/subuid}, a {@code /proc/sys} entry. Empty when it does not exist or cannot be read.
+     * Reads a system file such as {@code /etc/os-release}, {@code /etc/subuid} or a
+     * {@code /proc/sys} entry. Empty when it does not exist or cannot be read.
      */
     Optional<String> readSystemFile(Path path);
 
@@ -155,11 +140,11 @@ public interface Machine {
     Optional<Path> locateExecutable(String name);
 
     /**
-     * One external command, fully described before it runs — spec §26.1.
+     * One external command, fully described before it runs.
      *
-     * <p>oillamp never invokes a shell: the argv is the argv, so nothing a configuration value
-     * contains can turn into a second command. Every command has a timeout, so a hung tool can
-     * never hang oillamp (NFR-02).
+     * <p>The command is an argument list passed directly to the program, never a string given to a
+     * shell, so nothing inside a configuration value can become a second command. Every command has
+     * a timeout, so a tool that hangs cannot hang oillamp.
      */
     record Command(Tuple<String> argv,
                    Association<String, String> environment,
@@ -200,14 +185,12 @@ public interface Machine {
         }
 
         /**
-         * Runs this command out of reach of the terminal's signals.
+         * Runs this command so that Ctrl-C in the terminal does not reach it.
          *
-         * <p>Children of oillamp share its process group, so Ctrl-C in the launching terminal
-         * goes to <em>all</em> of them. That is right for the session, and wrong for the commands
-         * that clean it up: a user who presses Ctrl-C a second time because shutdown is taking a
-         * moment would otherwise kill the very {@code podman stop} that is finalising their
-         * recording. Shielded commands get their own session, so only oillamp decides when they
-         * end.
+         * <p>Programs oillamp starts share its process group, so Ctrl-C in the terminal goes to all
+         * of them. Users often press Ctrl-C again while shutdown is running, which would kill the
+         * {@code podman stop} that is finishing the recording. A shielded command runs in its own
+         * session ({@code setsid}), out of reach of the terminal's signals.
          */
         public Command shieldedFromSignals() {
             return new Command(argv, environment, workingDirectory, timeout, label, true);
@@ -215,7 +198,7 @@ public interface Machine {
 
         public String executable() { return argv.first(); }
 
-        /** The command line as a human would type it — used in logs and in problem evidence. */
+        /** The command line as a person would type it, for logs and problem evidence. */
         public String commandLine() { return String.join(" ", argv); }
     }
 
@@ -290,7 +273,7 @@ public interface Machine {
             return this;
         }
 
-        /** Makes this machine claim not to be Linux at all, so FR-03's refusal can be exercised. */
+        /** Makes this machine claim not to be Linux, to test that oillamp refuses to run. */
         public Simulation notLinux(String osName) {
             builder.operatingSystemName(osName);
             return this;
@@ -308,7 +291,7 @@ public interface Machine {
             return this;
         }
 
-        /** Where {@code $XDG_RUNTIME_DIR} points — short-path sockets live under it (D-25). */
+        /** Where {@code $XDG_RUNTIME_DIR} points. The short socket paths are under it. */
         public Simulation runtimeDirectory(Path path) {
             builder.runtimeDirectory(path);
             return this;
@@ -331,7 +314,7 @@ public interface Machine {
             return this;
         }
 
-        /** No display at all — as when oillamp is run over a plain SSH login (OIL-HOST-003). */
+        /** No display at all, as when oillamp is run over a plain SSH login. */
         public Simulation noGraphicalSession() {
             builder.session("", "", "");
             return this;
@@ -345,11 +328,10 @@ public interface Machine {
         }
 
         /**
-         * A socket whose file is present but which refuses connections.
+         * A sandbox socket whose file exists but which refuses connections.
          *
-         * <p>The shape of a real failure: wayvnc could not bind because the previous session's
-         * socket file was already there, so the path looks exactly right and nothing is behind
-         * it. Scenarios use this to check that oillamp finds out before the user does.
+         * <p>This happened for real: wayvnc could not bind because the previous session's socket
+         * file was still there, so the path existed with nothing listening behind it.
          */
         public Simulation endpointRefusingConnections(String socketFileName) {
             builder.endpointRefusingConnections(socketFileName);
@@ -357,11 +339,8 @@ public interface Machine {
         }
 
         /**
-         * A window that cannot be started at all — the executable is gone, or will not run.
-         *
-         * <p>The two windows fail very differently, which is the point of being able to describe
-         * this: a viewer that will not open is a warning on a session that carries on, and a
-         * terminal that will not open ends the session, because nobody is in the sandbox.
+         * A window program that cannot be started at all. A viewer failing this way is a warning;
+         * a terminal failing this way ends the session.
          */
         public Simulation windowRefusing(String executable) {
             builder.windowRefusing(executable);
@@ -375,8 +354,8 @@ public interface Machine {
         }
 
         /**
-         * The terminal window opens but no shell ever reaches the sandbox — the terminal emulator
-         * that starts and then fails on its own arguments, which §10.6 answers with OIL-TERM-002.
+         * The terminal window opens but its shell never connects to the sandbox, for example
+         * because the terminal rejected its arguments. oillamp reports {@code OIL-TERM-002}.
          */
         public Simulation terminalThatNeverConnects() {
             builder.terminalNeverConnects();
@@ -384,12 +363,9 @@ public interface Machine {
         }
 
         /**
-         * A command that fails however often it is run, with the given exit code and stderr.
-         *
-         * <p>Written for the shape that actually happened: a user pressed Ctrl-C a second time
-         * while the session was shutting down, the signal reached {@code podman stop} because it
-         * shares oillamp's process group, and it died with exit 130 and nothing on stderr. A
-         * cleanup killed that way must not be reported as a bug in oillamp.
+         * A command, identified by the start of its command line, that always fails with the given
+         * exit code and error output. For example {@code podman stop} dying with exit 130 and no
+         * output, as it did when a second Ctrl-C reached it.
          */
         public Simulation commandFailing(String commandPrefix, int exitCode, String stderr) {
             builder.commandFailing(commandPrefix, exitCode, stderr);
@@ -397,13 +373,8 @@ public interface Machine {
         }
 
         /**
-         * The other half of {@link #commandFailing}: a command that succeeds where the simulation
-         * would otherwise say it had not.
-         *
-         * <p>{@code podman container exists} is the case that needs it. It reports absence with a
-         * non-zero exit rather than with output, so the simulation answers 1 by default — which
-         * is right for almost every scenario and wrong for the one about a container that is
-         * still there.
+         * A command that succeeds with the given output. For example {@code podman container
+         * exists}, which the simulation otherwise answers with "no" for commands it does not model.
          */
         public Simulation commandSucceeding(String commandPrefix, String stdout) {
             builder.scriptCommand(commandPrefix,
@@ -423,7 +394,7 @@ public interface Machine {
             return this;
         }
 
-        /** Podman present but running against a root daemon-style setup — refused by NFR-05. */
+        /** podman present but not rootless, which oillamp refuses. */
         public Simulation rootfulPodman(String version) {
             builder.podman(version, "runc", false);
             return this;
@@ -434,7 +405,7 @@ public interface Machine {
             return this;
         }
 
-        /** Unprivileged user namespaces blocked, as on Ubuntu ≥ 23.10 (OIL-PODMAN-004). */
+        /** User namespaces blocked by AppArmor, as can happen on Ubuntu 23.10 and newer. */
         public Simulation userNamespacesBlockedByAppArmor() {
             builder.usernsFails(true);
             return this;
@@ -486,7 +457,7 @@ public interface Machine {
         public Simulation sudoNeedsPassword() { builder.sudo(SimulatedMachine.Sudo.NEEDS_PASSWORD); return this; }
         public Simulation withoutSudo()       { builder.sudo(SimulatedMachine.Sudo.UNAVAILABLE); return this; }
 
-        /** Whether a human is at the keyboard — decides if sudo may prompt and if output is coloured. */
+        /** Whether a person is at a terminal. Decides whether sudo may ask for a password and whether output is coloured. */
         public Simulation interactive(boolean interactive) {
             builder.interactive(interactive);
             return this;
@@ -512,11 +483,8 @@ public interface Machine {
         }
 
         /**
-         * Lets time pass on this machine, instead of standing still.
-         *
-         * <p>Only for scenarios about waiting — a session's timeouts, a heartbeat. Everything
-         * else is better off with a clock that does not move, because that is what makes a
-         * session id, a recording's name and a retention decision the same on every run.
+         * Lets the clock move. By default the simulated clock stands still, so session ids and
+         * retention decisions are the same on every run. Scenarios about timeouts need it to move.
          */
         public Simulation clockRuns() {
             builder.clockRuns();
@@ -530,12 +498,8 @@ public interface Machine {
         }
 
         /**
-         * Lets these executables really run on this computer instead of being answered with a
-         * canned result.
-         *
-         * <p>Needed when a scenario depends on what a command <em>produces</em> rather than on
-         * what it reports — {@code ssh-keygen} is the case in point: a lamp is only really set up
-         * if the key files exist afterwards, and no canned answer can make that true.
+         * Lets these programs really run instead of being simulated. Needed when a scenario depends
+         * on what a command creates, such as the key files {@code ssh-keygen} writes.
          */
         public Simulation reallyRuns(String... executables) {
             builder.passThrough(Tuple.of(String.class, executables));
@@ -548,13 +512,13 @@ public interface Machine {
             return this;
         }
 
-        /** The filesystem the lamp directory is on, e.g. {@code nfs} to exercise OIL-LAMP-005. */
+        /** The filesystem type the lamp is on, for example {@code nfs}, which oillamp refuses. */
         public Simulation lampFilesystemType(String type) {
             builder.filesystemType(type);
             return this;
         }
 
-        /** A stock, fully prepared Ubuntu desktop: the machine most scenarios are not about. */
+        /** An Ubuntu 24.04 desktop with everything oillamp needs. Most scenarios start from this. */
         public Simulation ubuntuWithEverything() {
             return ubuntu("24.04")
                     .waylandSession("GNOME")

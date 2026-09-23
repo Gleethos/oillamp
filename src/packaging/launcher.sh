@@ -1,5 +1,5 @@
 #!/bin/sh
-# oillamp — a single file that contains the whole program, including the Java runtime it needs.
+# oillamp: a single file that contains the whole program, including the Java runtime it needs.
 #
 # WHAT THIS FILE IS
 #

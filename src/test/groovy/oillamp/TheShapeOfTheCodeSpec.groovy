@@ -79,23 +79,20 @@ class TheShapeOfTheCodeSpec extends Specification {
             that were gathered elsewhere. Only a named handful of classes actually touch the
             filesystem, spawn processes, read the clock or generate randomness.
 
-            That split is why this project has 29 scenarios covering broken machines, hostile
-            directories and malformed configuration without installing anything or needing a
-            container. If a planner starts reading a file directly, that stops being true - and
+            That split is why the scenarios can cover broken machines, dangerous directories and
+            malformed configuration without installing anything or needing a container. If a planner starts reading a file directly, that stops being true - and
             it stops quietly, one class at a time. Hence this test.
         """
         given: 'the classes whose job is to touch the outside world'
             var allowed = ['RealMachine', 'SimulatedMachine', 'Filesystem', 'LampLock', 'HostProbe',
                            'StepRunner', 'LampPhase', 'HostPhase', 'Commands', 'ConsoleRenderer',
                            'OilLamp', 'Invocation', 'Machine',
-                           // M4: the session. These three bind sockets, move bytes between them
-                           // and start the windows - the part of oillamp that has no pure core
-                           // because it IS the effect. What they must not do is decide anything,
-                           // and they do not: every choice a session makes is SessionMachine's.
+                           // The session. These three bind sockets, move bytes between them
+                           // and start the windows. They decide nothing: every decision a
+                           // session makes is SessionMachine's.
                            'Supervisor', 'Relay', 'Control',
-                           // M5: the egress proxy. Sockets, DNS and byte copying - and, like the
-                           // three above, it decides nothing: what a connection is allowed to do
-                           // is Policy's answer, computed from values, with no socket in sight.
+                           // The egress proxy: sockets, DNS and byte copying. Whether a
+                           // connection is allowed is decided by Policy, a pure function.
                            'Egress'] as Set
 
         and: 'the things only they may use'

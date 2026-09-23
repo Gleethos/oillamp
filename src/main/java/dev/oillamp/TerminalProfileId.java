@@ -1,12 +1,12 @@
 package dev.oillamp;
 
 /**
- * The terminal emulators oillamp knows how to open a window in — spec §17.4 (D-22).
+ * The terminal emulators oillamp knows how to open a window in. See {@link Terminals} for the
+ * command line each one needs.
  *
- * <p>The order of the constants is the fallback order used when nothing better applies, so it
- * runs from "most likely to be the user's actual terminal on a modern desktop" to "always works".
- *
- * <p>Deliberately <b>package-private</b>: names one row of the D-22 table.
+ * <p>The order of the constants is the fallback order when neither the configuration nor the
+ * desktop picks one: from the most likely terminal on a modern desktop to the one that is almost
+ * always installed.
  */
 enum TerminalProfileId {
     PTYXIS("ptyxis"),

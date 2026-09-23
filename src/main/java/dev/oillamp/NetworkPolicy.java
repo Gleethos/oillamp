@@ -3,21 +3,17 @@ package dev.oillamp;
 import sprouts.Tuple;
 
 /**
- * The egress policy for one lamp — spec §18.3/§18.4.
+ * The {@code [network]} section of the configuration: which outbound connections the egress proxy
+ * allows. {@link Policy#decide} applies it.
  *
- * <p>Lives in {@code oillamp.toml}, which sits outside the agent directory precisely so that the
- * agent cannot rewrite its own jail (D-10).
- *
- * <p>Deliberately <b>package-private</b>: first-match-wins evaluation over the rules. Public would
- * commit us to that evaluation model forever; the rule syntax in {@code oillamp.toml} is the
- * commitment instead.
+ * <p>It lives in {@code oillamp.toml}, outside the agent directory, so the agent cannot change it.
  */
 record NetworkPolicy(Decision defaultDecision, Tuple<Rule> rules,
                             boolean logAllowed, boolean consoleDenied) {
 
     /**
-     * The shipped default (§18.4): the open web, minus everything that would reach the intranet
-     * or the host's own loopback. Users add allow-rules for internal services above this one.
+     * The default policy: allow the internet, deny private networks and the host's own loopback.
+     * Users add allow rules for internal services above the deny rule.
      */
     public static NetworkPolicy shippedDefault() {
         return new NetworkPolicy(Decision.ALLOW, Tuple.of(Rule.class, blockPrivateRanges()), true, true);

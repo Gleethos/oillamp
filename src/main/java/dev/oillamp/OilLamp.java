@@ -7,23 +7,17 @@ import java.util.function.Consumer;
 import sprouts.Tuple;
 
 /**
- * oillamp itself — the one thing a caller needs.
+ * The entry point of oillamp.
  *
  * <pre>{@code
  * OilLamp.on(Machine.real()).run("at", "/home/me/lamps/feature-x");
  * }</pre>
  *
- * <p>The public surface of this project is deliberately four ideas: this entry point, the
- * {@link Machine} it runs against, the {@link LampEvent}s it emits, and the {@link Problem}s it
- * reports. Everything else — the planners, the policy engine, the podman adapter, the session
- * machine — is implementation, and is free to change without breaking anyone.
+ * <p>{@link #run} takes the command line as the user would type it, rather than offering a method
+ * per command, so tests go through the same argument parsing and usage errors a person does.
  *
- * <p>The entry point takes an argument vector rather than typed methods on purpose: it is what
- * the user actually types, so a scenario exercises the same path a person does, argument parsing
- * and usage errors included.
- *
- * <p>Deliberately <b>public</b>: this is the entry point. {@code OilLamp.on(machine).run(argv)} is
- * the entire tool, and it is the only name a caller needs to know to use it.
+ * <p>Public because it is how the tool is started, by {@code main}, by tests, and by any future
+ * front end.
  */
 public final class OilLamp {
 
@@ -50,7 +44,7 @@ public final class OilLamp {
     /**
      * Watches everything oillamp does, as it happens.
      *
-     * <p>Not needed to read the outcome — {@link Outcome} already carries every event — but a
+     * <p>Not needed to read the outcome ({@link Outcome} already carries every event), but a
      * long-running session streams for minutes, so a live subscriber is what a front end uses.
      */
     public OilLamp observedBy(Consumer<LampEvent> listener) {
@@ -76,8 +70,8 @@ public final class OilLamp {
         try {
             status = Invocation.execute(machine, sink, console, VERSION, argv);
         } catch (RuntimeException | StackOverflowError failure) {
-            // A bug in oillamp still has to reach the user as something they can report,
-            // not as a stack trace on the console (NFR-03). The trace goes to --debug.
+            // A bug in oillamp is reported as problem OIL-INTERNAL-001, with the start of the
+            // stack trace as evidence, rather than as a raw stack trace on the console.
             sink.accept(new LampEvent.Failure(Problems.crash(failure)));
             status = ExitStatus.ERROR;
         }
@@ -127,12 +121,10 @@ public final class OilLamp {
         }
 
         /**
-         * The fuller explanation attached to each step — what {@code --verbose} prints.
+         * The fuller explanation attached to each step: what {@code --verbose} prints.
          *
-         * <p>The counterpart to {@link #steps()}: FR-60 requires oillamp to say not just what it
-         * will change on someone's machine but <em>why</em>, and this is where that reasoning
-         * lives. Without it there is no way to assert that the reason is actually present, and a
-         * reason nothing checks is a reason that quietly rots.
+         * <p>The counterpart to {@link #steps()}. The detail includes the reason for each change,
+         * for example why each host package is installed, so tests can check it is there.
          */
         public Tuple<String> stepDetails() {
             Tuple<String> out = Tuple.of(String.class);
@@ -145,7 +137,7 @@ public final class OilLamp {
             return out;
         }
 
-        /** The kinds of step, e.g. {@code "InstallPackages"} — stable across wording changes. */
+        /** The kinds of step, for example {@code "InstallPackages"}. Unaffected by wording changes. */
         public Tuple<String> stepKinds() {
             Tuple<String> out = Tuple.of(String.class);
             for (LampEvent event : events)

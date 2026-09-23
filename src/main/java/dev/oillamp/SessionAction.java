@@ -1,38 +1,32 @@
 package dev.oillamp;
 
 /**
- * Something the supervisor should do, decided by a pure function and carried out by an impure
- * one — spec §24.5.
+ * Something the supervisor should do during a session.
  *
- * <p>This is the whole reason the session machine can be a pure function. Deciding "the terminal
- * window should open now" and actually opening it are different jobs: the first is a rule that a
- * scenario can check exhaustively in milliseconds, the second is a process on someone's desktop.
- * The machine returns these values; {@link Supervisor} performs them and reports back as events.
- *
- * <p>Deliberately <b>package-private</b>: the instruction set between the session machine and its
- * runner. Both sides are internal, and a new kind of action must never be an API change.
+ * <p>{@link SessionMachine} decides which actions to take and returns them as values;
+ * {@link Supervisor} carries them out and reports the results back as {@link SessionEvent}s. This
+ * split keeps the session's rules in a pure function that tests can check quickly.
  */
 sealed interface SessionAction {
 
-    /** Open the desktop viewer. Its own window; its lifetime is independent of the session (§15). */
+    /** Open a desktop viewer window. Closing it does not end the session. */
     record LaunchViewer(boolean viewOnly) implements SessionAction {}
 
     /**
-     * Open the terminal window that owns the session.
+     * Open the terminal window whose SSH connection is the session.
      *
-     * <p>A <em>new</em> window, never the one oillamp was started from: the launching terminal
-     * goes on printing what the session is doing, and that log is the thing the user reads when
-     * they want to know what happened.
+     * <p>Always a new window. The terminal oillamp was started from keeps printing what the
+     * session is doing.
      */
     record LaunchTerminal() implements SessionAction {}
 
-    /** Close any extra {@code oillamp shell} connections — they do not outlive the session. */
+    /** Close any extra shells opened with {@code oillamp shell}. They do not outlive the session. */
     record CloseShells() implements SessionAction {}
 
-    /** Run the shutdown sequence of §10.7, then report back with {@code ShutdownCompleted}. */
+    /** Run the shutdown sequence ({@code Supervisor.shutDown}), then report {@code ShutdownCompleted}. */
     record BeginShutdown(SessionState.ShutdownReason reason) implements SessionAction {}
 
-    /** Tell the user something. The machine decides what is worth saying, the console decides how. */
+    /** Report an event to the user. */
     record Announce(LampEvent event) implements SessionAction {}
 
     /** Leave, with this code. Only ever the last action of a transition. */

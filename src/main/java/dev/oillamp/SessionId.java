@@ -5,13 +5,11 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 
 /**
- * One run of {@code oillamp at}, identified by its UTC start time — spec §10.3.
+ * Identifies one session by its UTC start time, as {@code yyyyMMdd-HHmmss}, for example
+ * {@code 20260923-085055}.
  *
- * <p>A timestamp is enough to be unique per lamp because sessions never overlap (FR-04), and it
- * sorts chronologically, which is what the recordings and log listings want.
- *
- * <p>Deliberately <b>package-private</b>: names one run. Derived from the clock, which is why it
- * comes through the seam.
+ * <p>A timestamp is unique per lamp because only one session can run on a lamp at a time, and it
+ * sorts in time order, which suits recordings and log files.
  */
 record SessionId(String value) {
 
@@ -28,11 +26,8 @@ record SessionId(String value) {
     }
 
     /**
-     * The id in this name, when the name is one — spec §16.
-     *
-     * <p>Recordings are named after their session, so this is how a file on disk says when it
-     * began. Anything else in that directory is somebody's own file, and gets an empty answer
-     * rather than a guess.
+     * Reads a session id from a name such as a recording's file name, or returns empty if the
+     * name is not a session id.
      */
     public static java.util.Optional<SessionId> parse(String name) {
         return name.matches("\\d{8}-\\d{6}")

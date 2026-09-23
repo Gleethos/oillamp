@@ -4,13 +4,10 @@ import java.time.Instant;
 import java.util.Optional;
 
 /**
- * The contents of {@code .oillamp/lamp.json} — a lamp's identity card, spec §10.1.
+ * The contents of {@code .oillamp/lamp.json}: the lamp's identity.
  *
- * <p>{@code schemaVersion} is what lets a future oillamp migrate an old lamp instead of
- * misreading it, and lets this one refuse a lamp from the future rather than damaging it.
- *
- * <p>Deliberately <b>package-private</b>: the persisted {@code meta.json}. Its on-disk form is
- * versioned and migrated (§10.4); the Java record is not the thing being promised.
+ * <p>{@code schemaVersion} lets this oillamp refuse a lamp written by a newer version instead of
+ * damaging it, and would let a future version upgrade an older lamp. Only version 1 exists so far.
  */
 record LampMeta(
     int schemaVersion,

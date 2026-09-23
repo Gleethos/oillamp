@@ -25,10 +25,9 @@ application {
     mainClass = 'dev.oillamp.OilLamp'
 }
 
-// The sandbox image ships inside the jar, and a jar cannot be asked "what files are under this
-// directory". Rather than hardcode a list that would rot the moment someone adds a file to the
-// image, generate one at build time — and carry the executable bit with it, because an entrypoint
-// extracted without +x produces a container that dies with "permission denied" as pid 1.
+// The sandbox image's files ship inside the jar, and a jar cannot list a directory. So this task
+// writes a list of them at build time, one line per file with its mode (755 or 644). The mode
+// matters: an entrypoint extracted without its executable bit makes the container fail at once.
 def imageManifest = tasks.register('imageManifest') {
     description = 'Lists the sandbox image resources, so they can be extracted from the jar.'
     def imageDirectory = file('src/main/resources/image')
@@ -85,7 +84,7 @@ dependencies {
     // The report renderer builds its pages with GStringTemplateEngine, which lives here.
     testImplementation 'org.apache.groovy:groovy-templates:5.0.6'
 
-    // Used by ArchitectureSpec to keep the pure core free of I/O, time and randomness.
+    // Used by TheShapeOfTheCodeSpec to check the public types and which classes may do I/O.
     testImplementation group: 'com.tngtech.archunit', name: 'archunit', version: '1.4.1'
 }
 
@@ -110,15 +109,14 @@ test {
     }
 }
 
-// The spikes of design spec section 33 are the opposite kind of test. Each one confirms an
-// assumption about a third-party tool - podman, sway, wayvnc, sshd - that the simulation cannot
-// tell us anything about, because the simulation only knows what we already believed. They pull
-// images, start containers and are therefore slow, online, and allowed to fail on a machine that
-// is not set up. That is why they are a separate task rather than @Ignore'd scenarios: `check`
-// stays green without them, and running them is a deliberate act.
+// The spikes are the opposite kind of test. Each one checks an assumption about a third-party
+// tool (podman, sway, wayvnc, sshd) that the simulation cannot confirm, because the simulation
+// only knows what we already believed. They pull images and start containers, so they are slow
+// and need a network. They are a separate task so that `build` stays fast and passes without
+// podman.
 tasks.register('spikes', Test) {
     group = 'verification'
-    description = 'Verifies the ⚠ VERIFY assumptions of spec §33 against real podman. Needs podman.'
+    description = 'Checks assumptions about podman, sway, wayvnc and sshd against the real tools. Needs podman.'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
@@ -138,17 +136,14 @@ tasks.register('spikes', Test) {
 
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-// Packaging: one file that contains the program and the Java runtime it needs (spec §31, D-21).
+// Packaging: one file that contains the program and the Java runtime it needs.
 //
-// The result is `build/dist/oillamp`: an executable of about 50 MB that can be copied onto a USB
-// stick, carried to a machine that has no Java at all, and run. It is a shell script with a
-// compressed archive appended to it; `src/packaging/launcher.sh` is that script, and it is meant
-// to be read.
+// The result is `build/dist/oillamp`: an executable of about 40 MB that can be copied to a machine
+// without Java and run there. It is a shell script with a compressed archive attached;
+// `src/packaging/launcher.sh` is that script, and it is meant to be read.
 //
-// This is a deliberate departure from D-21, which called for a `.deb`. A `.deb` has to be
-// installed with root before it can be run, and must match the distribution's packaging format.
-// The requirement here was a file that runs where it lands. D-21's actual reason - "no JDK needed
-// on the host" - is unchanged: the runtime is bundled either way.
+// A `.deb` package was planned originally. It was not built, because a `.deb` must be installed
+// as root and only suits Debian-family systems. See docs/DECISIONS.md.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 // Gradle 9 removed `exec {}` and `copy {}` from inside task actions; the supported way to reach

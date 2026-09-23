@@ -1,14 +1,12 @@
 package dev.oillamp;
 
 /**
- * A sandbox image tag — spec §12.3.
+ * A sandbox image tag, {@code localhost/oillamp/sandbox:<16 hex digits>}.
  *
- * <p>The tag carries the first 16 hex characters of the build-input hash, so every lamp whose
- * configuration produces the same image shares one build, and changing a build input (base image,
- * extra packages, the bundled helper jar) automatically produces a different tag and a rebuild.
- *
- * <p>Deliberately <b>package-private</b>: derived from the image's content hash, so it changes
- * whenever the image does.
+ * <p>The digits are the start of a hash of everything that goes into the image (see
+ * {@link ImageResources#hashOf}). Lamps whose configuration produces the same image share one
+ * build, and changing any input, such as the base image, extra packages or a file under
+ * {@code src/main/resources/image}, produces a new tag and therefore a rebuild.
  */
 record ImageTag(String value) {
 

@@ -3,20 +3,16 @@ package dev.oillamp;
 import java.nio.file.Path;
 
 /**
- * Every path a lamp owns, derived purely from its root, its {@link AgentId} and the host's
- * runtime directory — spec §9.1.
+ * Every path belonging to a lamp, computed from the lamp's root directory, its {@link AgentId} and
+ * the host's runtime directory ({@code $XDG_RUNTIME_DIR}). The layout is described in
+ * {@code docs/ARCHITECTURE.md}, "The lamp directory on disk".
  *
- * <p>Nothing else in oillamp is allowed to build a lamp path by concatenating strings. Having
- * exactly one function per path is what keeps the two-layer split of D-10 true: the agent's
- * world is {@link #agentDir()} and nothing else, while keys, logs, recordings and — critically —
- * the network policy live beside it in {@link #stateDir()}, out of the agent's reach.
+ * <p>Build lamp paths with these methods rather than by joining strings. Keeping them in one place
+ * keeps the two layers apart: the agent's world is {@link #agentDir()}, and the keys, logs,
+ * recordings and the network policy are beside it, out of the agent's reach.
  *
- * <p>Host-side socket paths go through {@link #runtimeDir()} rather than the lamp itself, because
- * Unix socket paths are capped at 107 bytes and lamp paths can be long (D-25).
- *
- * <p>Deliberately <b>package-private</b>: the layout of §9.1 is a promise about the
- * <em>directory</em>. It is not a promise about this class, which is simply where that layout is
- * written down once.
+ * <p>Sockets the host uses are addressed through {@link #runtimeDir()} rather than through the
+ * lamp, because Unix socket paths are limited to 107 bytes and lamp paths can be longer.
  */
 record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
 
@@ -28,18 +24,16 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     }
 
     /**
-     * The three paths a lamp has whatever its identity — knowable from the root alone.
+     * Paths that do not depend on the agent id, so they can be found from the root alone.
      *
-     * <p>They exist as statics because of one case: a lamp somebody already tried to delete by
-     * hand. {@code rm -rf} removes {@code lamp.json} and then stops on the sockets it has no
-     * permission over, leaving a directory that can no longer say which lamp it was and still
-     * cannot be deleted. {@code oillamp remove} has to be able to address it anyway, and it must
-     * not do that by spelling out ".oillamp" somewhere else in the codebase.
+     * <p>{@code oillamp remove} needs them for a lamp someone already tried to delete with
+     * {@code rm -rf}: that removes {@code lamp.json}, so the agent id is lost, and then stops at the
+     * files it has no permission to delete.
      */
     static Path stateDirOf(Path root) { return root.resolve(".oillamp"); }
     static Path configOf(Path root)   { return root.resolve("oillamp.toml"); }
     static Path readmeOf(Path root)   { return root.resolve("README.txt"); }
-    /** The prefix every agent home is named with, so a damaged lamp's can still be found. */
+    /** The prefix of every agent directory's name, so it can be found in a lamp without {@code lamp.json}. */
     static final String AGENT_DIR_PREFIX = "agent-lamp-";
 
     /** The lamp's human name — the directory name the user thinks in. */
@@ -50,11 +44,11 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
 
     // ─── the user's layer ──────────────────────────────────────────────────────────────────
 
-    /** The policy file. Deliberately outside the agent dir: the agent cannot rewrite its own jail. */
+    /** The configuration file. It is outside the agent directory so the agent cannot change its own policy. */
     public Path config()        { return configOf(root); }
     public Path readme()        { return readmeOf(root); }
 
-    // ─── the state layer (mode 0700, never mounted as a whole) ─────────────────────────────
+    // ─── the state directory (mode 0700; only some parts are mounted into the container) ──
 
     public Path stateDir()      { return stateDirOf(root); }
     public Path lampMeta()      { return stateDir().resolve("lamp.json"); }
@@ -80,7 +74,7 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path imageDir()      { return stateDir().resolve("image"); }
     public Path imageContext()  { return imageDir().resolve("context"); }
 
-    /** Mounted read-write at {@code /oillamp/sockets}; the three sub-directories have different owners. */
+    /** Mounted at {@code /oillamp/sockets}. {@code host/} and {@code agent/} belong to the user, {@code infra/} to the infra user. */
     public Path socketsDir()       { return stateDir().resolve("sockets"); }
     public Path hostSocketsDir()   { return socketsDir().resolve("host"); }
     public Path infraSocketsDir()  { return socketsDir().resolve("infra"); }
@@ -96,7 +90,7 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path networkLog(SessionId s)   { return logsDir().resolve("network-" + s.value() + ".jsonl"); }
     public Path installLog(String stamp)  { return logsDir().resolve("install-" + stamp + ".log"); }
 
-    // ─── the agent's layer (the only part mounted into the container as a home) ─────────────
+    // ─── the agent directory (mounted into the container as /home/agent) ───────────────────
 
     public Path agentDir()   { return root.resolve(AGENT_DIR_PREFIX + agentId.value()); }
     public Path workspace()  { return agentDir().resolve("workspace"); }
@@ -113,7 +107,7 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
      */
     public Path agentBashrc(){ return agentDir().resolve(".bashrc"); }
 
-    // ─── the short runtime dir (D-25): host-only sockets and the symlink to socketsDir ──────
+    // ─── the short runtime directory: host-only sockets, and a symlink to socketsDir ────────
 
     public Path runtimeDir()        { return xdgRuntimeDir.resolve("oillamp").resolve(agentId.value()); }
     /** Symlink to {@link #socketsDir()}, so socket paths stay under the 107-byte limit. */
@@ -128,11 +122,11 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     /** Host-only sockets. The container never sees this directory, so the agent cannot reach them. */
     public Path runDir()            { return runtimeDir().resolve("run"); }
     public Path controlSocket()     { return runDir().resolve("control.sock"); }
-    /** Accepts exactly one connection per session: the terminal window oillamp opened (D-09). */
+    /** Accepts exactly one connection per session: the terminal window oillamp opened. */
     public Path primarySshSocket()  { return runDir().resolve("ssh-primary.sock"); }
     public Path extraSshSocket()    { return runDir().resolve("ssh.sock"); }
 
-    // ─── derived names (spec §10.2) ────────────────────────────────────────────────────────
+    // ─── names derived from the agent id ───────────────────────────────────────────────────
 
     public ContainerName containerName() { return ContainerName.of(agentId); }
     public String containerHostname()    { return "lamp-" + agentId.value(); }

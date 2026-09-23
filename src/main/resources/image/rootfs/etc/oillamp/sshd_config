@@ -1,4 +1,4 @@
-# sshd for the agent account — design spec Appendix D.
+# sshd configuration for the agent account.
 #
 # Run as `sshd -i` from socat, one process per connection, as the `agent` user. Every forwarding
 # mechanism is off on purpose: SSH is how the human gets a shell, and must not become a second

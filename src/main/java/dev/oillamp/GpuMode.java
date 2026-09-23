@@ -1,12 +1,8 @@
 package dev.oillamp;
 
-/**
- * {@code display.gpu} — spec §14.3 (D-24). GPU is welcome, but must never block a session.
- *
- * <p>Deliberately <b>package-private</b>: one configuration value.
- */
+/** The {@code display.gpu} setting: whether the sandbox desktop may use the host's graphics card. */
 enum GpuMode {
-    /** Use the GPU if everything lines up; fall back to software silently otherwise. */
+    /** Use the GPU if every condition is met; otherwise draw in software and say why. */
     AUTO,
     /** Insist on the GPU; a missing render node is an error ({@code OIL-GPU-003}). */
     ON,

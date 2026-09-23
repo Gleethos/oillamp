@@ -12,7 +12,7 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * Starting the sandbox, and knowing whether it really started — design spec §15, §16.
+ * Starting the sandbox, and knowing whether it really started.
  *
  * <p>Every scenario here comes from one run on a real machine. The second session on a lamp came
  * up with a working shell and a dead desktop, and oillamp printed a green tick, told the user
@@ -21,7 +21,7 @@ import java.time.Instant
  *
  * <p>The cause was one file: /oillamp/sockets is a bind mount, so it outlives the container, and
  * `vnc.sock` from the previous session was still there when wayvnc tried to bind. wayvnc has no
- * equivalent of socat's `unlink-early`, so it failed — and every check on both sides of the
+ * equivalent of socat's `unlink-early`, so it failed, and every check on both sides of the
  * mount was an existence test that the leftover file satisfied.
  *
  * <p>So these scenarios are all the same question asked in different places: does oillamp know

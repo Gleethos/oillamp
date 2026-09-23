@@ -6,16 +6,12 @@ import java.util.Optional;
 import sprouts.Tuple;
 
 /**
- * Choosing a terminal emulator and building its command line — spec §17.4 (D-22).
+ * Chooses a terminal emulator and builds the command line that opens the sandbox shell in it.
  *
- * <p>Terminal emulators disagree about almost everything: how to set a title, whether the command
- * follows {@code --} or {@code -e}, whether a window is even a new process. The differences are
- * kept here as <em>data</em>, so supporting one more terminal is a table row plus a smoke test
- * rather than a new branch in the launcher.
- *
- * <p>Deliberately <b>package-private</b>: the terminal profile table of D-22, which that decision
- * explicitly calls data. New terminals get added without ceremony, which requires that nobody
- * depend on the table.
+ * <p>Terminal emulators differ in how they set a window title and how they are given a command
+ * ({@code --} or {@code -e}). The differences are kept in a table, so supporting another terminal
+ * means adding a row. {@code VerifyingTerminalProfilesSpec} checks the rows against the terminals
+ * installed on the machine it runs on.
  */
 final class Terminals {
 
@@ -26,7 +22,7 @@ final class Terminals {
     /** Expands to the window title; may sit inside a larger token, as in {@code --title={title}}. */
     public static final String TITLE_PLACEHOLDER = "{title}";
 
-    /** One terminal's argument template (§17.4). Every row is verified by a golden test. */
+    /** One terminal's argument template, with {@code {cmd}} and {@code {title}} placeholders. */
     public record Profile(TerminalProfileId id, Tuple<String> template) {}
 
     private static final Tuple<Profile> TABLE = Tuple.of(Profile.class,
@@ -61,9 +57,9 @@ final class Terminals {
     /**
      * Picks the terminal to open the sandbox shell in.
      *
-     * <p>Preference order (§17.4): an explicit {@code terminal.profile}, then the native terminal
-     * of the detected desktop, then the table order. Preferring the desktop's own terminal means
-     * the window oillamp opens looks and behaves like the ones the user opens themselves.
+     * <p>Preference order: {@code terminal.profile} if set, then the detected desktop's own
+     * terminal (GNOME or KDE), then the table order. Preferring the desktop's own terminal means
+     * the window looks like the ones the user opens themselves.
      */
     public static Result<Profile> choose(Optional<TerminalProfileId> requested,
                                          Tuple<TerminalCandidate> available,
@@ -116,6 +112,6 @@ final class Terminals {
         return argv;
     }
 
-    /** The window title oillamp gives the sandbox terminal — spec §17.4. */
+    /** The window title oillamp gives the sandbox terminal. */
     public static String titleFor(String lampName) { return "oillamp · " + lampName; }
 }

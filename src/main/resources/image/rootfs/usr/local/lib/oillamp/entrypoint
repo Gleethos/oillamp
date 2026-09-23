@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The sandbox's pid 1 — design spec §16, Appendix B.
+# The sandbox's first process (pid 1). See docs/ARCHITECTURE.md, "The entrypoint, step by step".
 #
 # Starts the compositor, the VNC server, the recorder and the two socket bridges, each as the
 # right user with the right umask, then supervises them. When any *critical* process dies the
@@ -38,12 +38,12 @@ set -a; . /oillamp/session/runtime.env; set +a
 drop() {
     local user=$1 mask=$2 tag=$3; shift 3
     local groups_opt=--init-groups
-    # GPU mode needs the host's render group carried in, which only --keep-groups does — and only
-    # under crun. This is why crun is a required host package (§36.3).
+    # GPU mode needs the host's render group kept, which only --keep-groups does, and only under
+    # crun. This is why crun is a required host package.
     [ "${OILLAMP_RENDERER}" = gles2 ] && groups_opt=--keep-groups
 
     # setpriv changes the user but not the environment, so without this every dropped process
-    # inherits root's HOME=/root — which is mode 0700 and owned by root, so the process is denied
+    # inherits root's HOME=/root, which is mode 0700 and owned by root, so the process is denied
     # its own home directory. That surfaces as whatever each tool says when it cannot read its
     # config: wayvnc calls it "Failed to load config. Permission denied", fontconfig calls it
     # "No writable cache directories", and neither mentions HOME.
@@ -126,7 +126,7 @@ chown lamp:lamp /run/lamp/output.conf
 
 # ── the agent's pi installation ──────────────────────────────────────────────────────────────
 # pi keeps its packages and its settings.json in its agent directory, which lives in the agent's
-# home — and that home is a bind mount from the lamp, so anything the image put there at build
+# home, and that home is a bind mount from the lamp, so anything the image put there at build
 # time is hidden the moment the container starts. The build therefore installs into
 # /usr/local/share/oillamp/pi (via pi's own PI_CODING_AGENT_DIR) and this copies it across once
 # per session, entry by entry, never over anything the agent already has.
@@ -152,7 +152,7 @@ seed_pi_agent_dir || true
 
 # ── SDKMAN ───────────────────────────────────────────────────────────────────────────────────
 # Same problem as pi's extensions, a slightly different answer. SDKMAN cannot be read from
-# /usr/local and used in place, because it writes as it works — candidates, caches, a lock file —
+# /usr/local and used in place, because it writes as it works (candidates, caches, a lock file)
 # and the root filesystem is read-only. So the whole thing is copied into the agent's home, once,
 # the first time a lamp starts. That is also what the agent wants: a JDK installed with `sdk
 # install java` lands under ~/.sdkman and is still there next session.
@@ -218,7 +218,7 @@ REC_PID=""
 if [ "$OILLAMP_RECORDING_ENABLED" = true ]; then
     # recording.crf reaches ffmpeg as a codec parameter, and the parameter's *name* depends on
     # the encoder: the software encoders call it crf, the hardware ones qp. Guessing wrong is not
-    # cosmetic — wf-recorder is a critical process (see CRITICAL below), so an unknown parameter
+    # cosmetic: wf-recorder is a critical process (see CRITICAL below), so an unknown parameter
     # name would fail the encoder and take the whole session down with it.
     case "$OILLAMP_RECORDING_CODEC" in
         *vaapi*|*nvenc*|*qsv*|*_v4l2m2m) quality="qp=$OILLAMP_RECORDING_CRF" ;;
@@ -275,7 +275,7 @@ stop_all() {
     trap - TERM INT
     if [ -n "$REC_PID" ]; then
         # SIGINT, not SIGTERM: wf-recorder finalises the container on INT, and a .mkv killed with
-        # TERM may not be playable. Spike S6 is what settles how long that takes.
+        # TERM may not be playable. VerifyingTheSandboxDesktopSpec checks the file plays.
         kill -INT "$REC_PID" 2>/dev/null || true
         timeout 10 tail --pid="$REC_PID" -f /dev/null || log "recorder did not finish in time"
     fi

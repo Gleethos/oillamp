@@ -20,19 +20,16 @@ import sprouts.Pair;
 import sprouts.Tuple;
 
 /**
- * How a second oillamp process talks to a running session — spec §26.6.
+ * The control socket, through which another oillamp process talks to a running session.
  *
- * <p>{@code view}, {@code shell}, {@code stop} and {@code status} are not separate ways of doing
- * things to a lamp; they are questions put to the supervisor that already owns it. That has to be
- * so, because the supervisor holds the lock, the relays and the state: a {@code stop} that killed
- * the container directly would leave that supervisor believing it still had a session.
+ * <p>{@code view}, {@code shell}, {@code stop} and {@code status} send requests to the supervisor
+ * rather than acting on the lamp themselves, because the supervisor holds the lock, the relays and
+ * the session state. A {@code stop} that removed the container directly would leave the supervisor
+ * believing its session was still running.
  *
- * <p>One JSON object per line, one request per connection. It is deliberately the dullest
- * protocol that works — §26.6 also names it as where a future GUI attaches, and a GUI should not
- * have to speak anything cleverer than this.
- *
- * <p>Deliberately <b>package-private</b>: the control protocol is an implementation detail shared
- * between two oillamp processes of the same version, which is why it needs no compatibility story.
+ * <p>The protocol is one JSON object per line and one request per connection, simple enough for a
+ * future front end to use as well. It is only spoken between processes of the same oillamp
+ * version, so it has no versioning.
  */
 final class Control {
 
@@ -81,7 +78,7 @@ final class Control {
      * What the supervisor answers.
      *
      * @param values named facts, for {@code status} and for whatever a front end wants to show
-     * @param argv   a command the asking process should run itself — see {@code shell} in §26.6
+     * @param argv   a command the asking process should run itself; used by {@code shell}
      */
     record Reply(boolean succeeded, Association<String, String> values, Tuple<String> argv) {
 
@@ -168,7 +165,7 @@ final class Control {
                     write(client, reply.render() + "\n");
                 } catch (IOException e) {
                     if (closing) return;
-                    // One malformed or abandoned connection must never take the session with it.
+                    // A malformed or abandoned connection must not end the session.
                 }
             }
         }
@@ -191,10 +188,9 @@ final class Control {
     /**
      * Asks a running session something.
      *
-     * <p>Distinguishes the two ways there can be no answer, because they need different words:
-     * no socket at all means no session is running, while a socket that refuses means a
-     * supervisor died without tidying up — and the second is the one the user can do something
-     * about.
+     * <p>No socket file means no session is running ({@code OIL-SESSION-001}). A socket that does
+     * not answer means a supervisor died without cleaning up ({@code OIL-SESSION-002}), which
+     * {@code oillamp stop} can fix.
      */
     static Result<Reply> ask(Path socket, Path lamp, Request request, String command) {
         if (!Files.exists(socket)) return Result.err(Problems.noSessionRunning(lamp, command));
@@ -209,7 +205,7 @@ final class Control {
         }
     }
 
-    // ─── the dullest possible framing ──────────────────────────────────────────────────────
+    // ─── reading and writing one line ──────────────────────────────────────────────────────
 
     private static String readLine(SocketChannel channel) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(64 * 1024);

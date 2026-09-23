@@ -5,15 +5,12 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * A POSIX permission bit set, as the octal number people actually think in.
+ * File permission bits, written as the familiar octal number such as {@code 0700}.
  *
- * <p>The exact modes matter here: spec §9.2 makes the whole state directory {@code 0700} so
- * that other host users cannot reach the sockets inside it, and then relaxes individual socket
- * files to {@code 0666} so the container's infra user can connect. Getting one of those wrong
- * either breaks the sandbox or opens it up, so the mode is a typed value, not an int passed around.
- *
- * <p>Deliberately <b>package-private</b>: a permission bit set, so §9.2's modes are written as
- * names rather than octal literals scattered through the code.
+ * <p>The exact modes matter. The state directory is {@code 0700} so no other host user can reach
+ * the sockets inside it, which is what allows the proxy socket inside it to be {@code 0666} so the
+ * container's infra user can connect. A wrong mode either breaks the sandbox or opens it up, so
+ * modes are a type with named constants rather than bare integers.
  */
 record PosixMode(int bits) {
 
@@ -30,7 +27,7 @@ record PosixMode(int bits) {
 
     public static PosixMode of(int octalBits) { return new PosixMode(octalBits); }
 
-    /** Parses the form people write in documentation and config, e.g. {@code "0700"}. */
+    /** Parses an octal string such as {@code "0700"} or {@code "755"}. */
     public static PosixMode parse(String octal) {
         return new PosixMode(Integer.parseInt(octal, 8));
     }

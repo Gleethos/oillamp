@@ -3,15 +3,12 @@ package dev.oillamp;
 import sprouts.Tuple;
 
 /**
- * Phase A: make this machine able to run a sandbox — spec §10.5, §11.
+ * The host phase: makes sure this machine can run a sandbox. Used by {@code oillamp at} and, without
+ * changing anything, by {@code doctor} and {@code config check}.
  *
- * <p>Runs the cycle the spec insists on: probe, plan, execute, then <b>probe again and verify</b>.
- * The second probe is not belt-and-braces — the first one ran on a machine that did not have
- * podman yet, so its answers about podman were meaningless. Only after the fixes have been
- * applied can oillamp truthfully say the host is ready.
- *
- * <p>Deliberately <b>package-private</b>: Phase A of §10.5, wired together. On the effects
- * allowlist. Users meet it as {@code doctor} and as the first half of {@code at}.
+ * <p>It probes the host, plans the fixes, runs them, and then <b>probes and plans again</b>. The
+ * second round is necessary: the first probe may have run before podman was installed, so its
+ * answers about podman meant nothing.
  */
 final class HostPhase {
 
@@ -84,7 +81,7 @@ final class HostPhase {
                         + ", " + podman.ociRuntime()));
     }
 
-    /** The exit code the spec assigns to a host that is not ready — {@code 3}, not a generic error. */
+    /** Exit code 3 when the host is not ready (missing packages, podman or subordinate ids), otherwise 1. */
     public static ExitStatus exitStatusFor(Tuple<Problem> problems) {
         for (Problem problem : problems) {
             String code = problem.code().value();

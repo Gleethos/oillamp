@@ -10,18 +10,13 @@ import sprouts.Pair;
 import sprouts.Tuple;
 
 /**
- * Carries out a {@link Plan} — spec §24.4.
+ * Carries out a {@link Plan}, step by step, and reports each step as an event.
  *
- * <p>The switch below has no {@code default} branch, so adding a {@link Step} is a compile error
- * here until someone decides how to perform it. That is the whole point of modelling effects as
- * data: a new kind of change cannot be introduced without being executed, logged and dry-runnable.
+ * <p>In a dry run it only reports each step as planned and does nothing. Because it is the only
+ * place steps are carried out, the dry run and the real run cannot drift apart.
  *
- * <p>In dry-run mode nothing happens at all — the same plan is announced rather than performed,
- * which is what makes {@code --dry-run} trustworthy instead of a parallel code path that drifts
- * (FR-12, NFR-04).
- *
- * <p>Deliberately <b>package-private</b>: it executes a plan and emits events. On the effects
- * allowlist.
+ * <p>The {@code switch} in {@link #perform} has no {@code default} branch, so a new kind of
+ * {@link Step} does not compile until this class knows how to carry it out.
  */
 final class StepRunner {
 
@@ -69,8 +64,8 @@ final class StepRunner {
     }
 
     /**
-     * Whether this step is already done. Reported rather than silently passed over, so the log
-     * shows why a run on an existing lamp is nearly empty.
+     * Whether this step is already done, and why. Skipped steps are reported, so it is clear why a
+     * run on an existing lamp changes almost nothing.
      */
     private Optional<String> reasonToSkip(Step step) {
         return switch (step) {
@@ -136,11 +131,8 @@ final class StepRunner {
     // ─── the image and the container ───────────────────────────────────────────────────────
 
     /**
-     * Unpacks the image's files out of the jar and onto disk, where podman can read them.
-     *
-     * <p>The mode from the manifest is applied rather than assumed: an entrypoint written without
-     * its executable bit gives a container that dies immediately as pid 1, and the message podman
-     * reports for that names the file but not the reason.
+     * Copies the image's files out of the jar onto disk, where {@code podman build} can read them,
+     * with the modes from the manifest. Without its executable bit the entrypoint could not start.
      */
     private Result<Step> extractImageContext(Step.ExtractImageContext step) throws IOException {
         Filesystem.createDirectories(step.targetDir(), PosixMode.PUBLIC_DIR);
@@ -162,8 +154,7 @@ final class StepRunner {
             argv.add(argument.first() + "=" + argument.second());
         }
         argv.add(step.context().toString());
-        // Generous: a first build installs a desktop and a JDK over the network. The user is
-        // watching a progress line, not a frozen terminal, because the build streams to the log.
+        // Generous, because a first build downloads a desktop and a JDK.
         Machine.Outcome outcome = run("podman build", Duration.ofMinutes(45),
                                       argv.toArray(String[]::new));
         return outcomeToResult(step, outcome, "podman build");
@@ -178,12 +169,13 @@ final class StepRunner {
     }
 
     /**
-     * Waits for the container's own readiness signal, and explains a failure with its log.
+     * Waits for {@code ready.json}, checking every 250 ms, and explains a failure with the
+     * container's log.
      *
-     * <p>Polling a file is not elegant, but it is the only signal that crosses the user-namespace
-     * boundary without giving the container a way to talk back — which §16 is careful not to do.
-     * The container exiting is checked on every pass, so a sandbox that dies during startup is
-     * reported in a second with its own log rather than after the full timeout with nothing.
+     * <p>A file in the shared socket directory is a simple signal that needs no extra channel from
+     * the container to the host. Each pass also checks that the container is still running, so a
+     * container that dies while starting is reported at once, with its log, instead of after the
+     * full timeout.
      */
     private Result<Step> awaitReady(Step.AwaitReady step) {
         java.time.Instant deadline = machine.now().plus(step.timeout());
@@ -205,12 +197,11 @@ final class StepRunner {
     }
 
     /**
-     * True once {@code ready.json} exists <em>and</em> belongs to this session.
+     * True once {@code ready.json} exists and carries this session's id.
      *
-     * <p>The sockets directory is a bind mount that outlives the container, so a file from the
-     * previous session is sitting there when the wait begins. Testing only for existence makes
-     * every session after the first report itself ready instantly — against a container that has
-     * not started yet. The session id is already in the file, so this costs nothing.
+     * <p>The socket directory outlives the container, so the previous session's file may still be
+     * there. Checking only that the file exists would report a new session ready before its
+     * container had started.
      */
     private boolean readyForThisSession(Step.AwaitReady step) {
         return Filesystem.readString(step.readyFile())
@@ -219,17 +210,15 @@ final class StepRunner {
     }
 
     /**
-     * Opens every socket the session is about to depend on — spec §16.
+     * Connects to every socket the session depends on.
      *
-     * <p>Connecting is the only test that tells a listening server apart from a file with the
-     * right name, and it is exactly what the viewer and the shell will do moments later. A
-     * refusal here becomes a problem with the sandbox's own log attached, rather than a green
-     * tick followed by a connection the user has to diagnose themselves.
+     * <p>Connecting is the only test that tells a listening server apart from a leftover file with
+     * the right name. A refusal becomes a problem with the container's log attached.
      */
     private Result<Step> checkEndpoints(Step.CheckEndpoints step) {
         for (Step.Endpoint endpoint : step.endpoints()) {
-            // socat rather than a Java Unix socket, so that this effect goes through the same
-            // seam as every other one and the simulation can model a socket that refuses.
+            // Uses socat through Machine rather than a Java socket, so the simulated machine can
+            // model a socket that refuses connections.
             Machine.Outcome outcome = run("socat", Duration.ofSeconds(10),
                     Tuple.of(String.class, "socat", "-u", "/dev/null",
                              "UNIX-CONNECT:" + endpoint.socket()));
@@ -303,9 +292,9 @@ final class StepRunner {
     }
 
     /**
-     * Hands a directory to a container user. {@code podman unshare} runs inside the user
-     * namespace, so "uid 1001" means the container's infra user and podman maps it to the right
-     * host subuid itself — no arithmetic on {@code /etc/subuid} needed (§9.2).
+     * Gives a directory to a container user. {@code podman unshare} runs the command inside
+     * podman's user namespace, where uid 1001 means the container's infra user, and podman
+     * translates it to the right subordinate id on the host.
      */
     private Result<Step> chownForContainer(Step.ChownForContainer step) {
         Tuple<String> argv = Tuple.of(String.class, "podman", "unshare", "chown",
@@ -323,23 +312,22 @@ final class StepRunner {
         for (Path file : step.files()) argv = argv.add(file.toString());
         Machine.Outcome outcome = run("podman", Duration.ofSeconds(60), argv);
         if (outcome.succeeded()) return Result.ok(step);
-        // Not fatal on its own: the entrypoint clears anything left here before it binds, and
-        // the endpoint check afterwards catches the case where that did not work either.
+        // Not fatal: the entrypoint deletes these files too, and checking that the sandbox's
+        // sockets answer catches the case where neither worked.
         return Result.ok(step, Tuple.of(Problem.class,
                 Problems.internal("cleanup", "could not delete files " + step.reason() + ": "
                         + outcome.errorOutput().trim())));
     }
 
     /**
-     * Deletes a tree that this user only partly owns.
+     * Deletes a directory tree that this user only partly owns.
      *
-     * <p>{@code podman unshare} first, because it is the only thing that works: the infra sockets
-     * and the recordings belong to the sandbox's second user (§9.2), so a plain {@code rm -rf}
-     * stops on them with "Permission denied". That is the gotcha this whole command exists to
-     * spare the user, and doing it by hand is what they would otherwise have to discover.
+     * <p>First with {@code podman unshare rm -rf}, which can delete the infra user's files (the
+     * infra sockets and the recordings). A plain {@code rm -rf} fails on those with "Permission
+     * denied".
      *
-     * <p>Then a plain delete for whatever is left, which covers the machine where podman is not
-     * installed at all — a lamp that never ran has nothing in it but this user's own files.
+     * <p>Then with a plain delete for whatever is left. That covers a machine without podman, where
+     * a lamp that never ran contains only this user's files.
      */
     private Result<Step> removeTree(Step.RemoveTree step) {
         if (!Filesystem.exists(step.path())) return Result.ok(step);
@@ -381,7 +369,7 @@ final class StepRunner {
         return outcome;
     }
 
-    /** Secrets never reach the log: anything that looks like a credential is masked (§26.1). */
+    /** Masks anything that looks like a credential before a command line is reported. */
     private static String redacted(Machine.Command command) {
         StringBuilder out = new StringBuilder();
         for (String token : command.argv())

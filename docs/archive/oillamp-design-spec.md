@@ -1,3 +1,12 @@
+> **Archived. Do not use this as a reference.**
+>
+> This is the original design specification, written before the code. The code has moved on in
+> many places, and the status markers below are out of date and contradict each other. It is kept
+> only so that the history of the design can be traced.
+>
+> For the current system see [ARCHITECTURE.md](../ARCHITECTURE.md), for the reasons behind it see
+> [DECISIONS.md](../DECISIONS.md), and for what works see [STATUS.md](../STATUS.md).
+
 # oillamp — Design Specification
 
 > *Rub the lamp, get a genie.*

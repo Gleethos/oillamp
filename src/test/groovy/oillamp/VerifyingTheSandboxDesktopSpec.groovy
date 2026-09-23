@@ -11,14 +11,12 @@ import java.nio.file.Path
 import java.time.Duration
 
 /**
- * Spikes S1–S4, S6 and S14 of design spec §33, and the first end-to-end proof of the golden path.
- *
- * <p>This builds the real image, starts the real container, connects over SSH the way the terminal
- * window will, and drives the desktop with the real {@code lamp} script. It is the scenario that
- * answers "does any of this work", and everything M4 adds sits on top of what it establishes.
+ * Builds the real image, starts the real container, connects over SSH the way the terminal window
+ * does, and drives the desktop with the real {@code lamp} script. It checks the assumptions about
+ * sshd, Wayland, sway, vncviewer and wf-recorder that the rest of oillamp depends on.
  *
  * <p>Slow by nature: the first run builds an image. {@code WITH_TOOLCHAIN=false} keeps that to the
- * desktop and SSH stack, which is all these assumptions concern — adding a JDK and a browser would
+ * desktop and SSH stack, which is all these assumptions concern; adding a JDK and a browser would
  * multiply the build time without testing one extra thing.
  */
 @Tag('spike')
@@ -40,9 +38,9 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
                 .each { Files.createDirectories(lamp.resolve(it)) }
         ['workspace', 'screenshots', 'libs'].each { Files.createDirectories(agentHome.resolve(it)) }
 
-        // §9.2: the infra directories belong to the `lamp` user, not the agent. This is not
-        // decoration — wayvnc and wf-recorder run as `lamp` and create their socket and their
-        // recording in here, and a directory owned by the agent is one they cannot write to.
+        // The infra directories belong to the `lamp` user, as in a real lamp. wayvnc and
+        // wf-recorder run as `lamp` and create their socket and recording here; they cannot write
+        // to a directory owned by the agent.
         // Leaving this out was the first thing that broke when this spec ran unattended, and the
         // symptom was simply no ready.json, with nothing in the log naming a permission.
         ['sockets/infra', 'recordings'].each {
@@ -97,7 +95,7 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
 
     private static Spike.Result run(String... argv) { Spike.run(argv) }
 
-    /** SSH in and run a login shell, exactly as the terminal window of §17.4 will. */
+    /** SSH in and run a login shell, as the terminal window oillamp opens does. */
     private Spike.Result inSandbox(String script) {
         Spike.run(Duration.ofMinutes(2), 'ssh', '-F', lamp.resolve('ssh_config').toString(),
                 '-o', "ProxyCommand=socat - UNIX-CONNECT:${lamp.resolve('sockets/agent/ssh.sock')}",
@@ -106,22 +104,22 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
 
     private static String escape(String script) { "'" + script.replace("'", "'\\''") + "'" }
 
-    def 'the sandbox starts and reports itself ready'() {
+    def 'The sandbox starts and reports itself ready'() {
         reportInfo """
-            The acceptance criterion for the container milestone, and the first time the entrypoint runs in full: it
+            The entrypoint running in full: it
             starts sway, wayvnc, the recorder and the socket bridges as the right users, waits for
             each to prove itself, and only then writes ready.json.
 
             Two bugs found the first time this ran, both invisible to any simulation:
 
             1. `setpriv` changes the user but not the environment, so every dropped process
-               inherited root's HOME=/root — mode 0700, owned by root. wayvnc reported "Failed to
+               inherited root's HOME=/root (mode 0700, owned by root). wayvnc reported "Failed to
                load config. Permission denied" and fontconfig reported "No writable cache
                directories"; neither mentioned HOME.
             2. `\${gpu_fallback:+…}` tests for a non-empty string, and "false" is one, so a run
                that never attempted the GPU announced that it had fallen back from it.
         """
-        when: 'the container is started the way §15.3 specifies'
+        when: 'the container is started with the same security flags oillamp uses'
             var started = Spike.run('podman', 'run', '-d', '--name', CONTAINER,
                     '--network=none', '--read-only', '--user', '0:0',
                     '--userns=keep-id:uid=1000,gid=1000',
@@ -147,17 +145,17 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             logs.mentions('compositor up (pixman)')
             !logs.mentions('fell back')
 
-        and: 'S13 again, now for real: the infra files belong to a user the agent is not'
+        and: 'the infra files belong to a host user that is neither you nor the agent'
             var owner = Spike.run('stat', '-c', '%u',
                     lamp.resolve('sockets/infra/ready.json').toString()).out.trim()
             owner.toInteger() > 65535
     }
 
-    def 'S2: a shell over the Unix socket lands as the agent user'() {
+    def 'A shell over the Unix socket lands as the agent user'() {
         reportInfo """
-            D-08: the user's shell is SSH over a Unix socket, so that `--network=none` survives.
+            The user's shell is SSH over a Unix socket, so that the container can have no network.
             It was not certain that a non-root `sshd -i` still works with trixie's OpenSSH, which split out
-            a separate `sshd-session` binary — the fallback was to replace it with dropbear.
+            a separate `sshd-session` binary. The fallback was to replace it with dropbear.
 
             It works. No fallback needed.
         """
@@ -172,12 +170,12 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             result.out.readLines()*.trim().contains('1000')
     }
 
-    def 'S3: clients accept an absolute path in WAYLAND_DISPLAY'() {
+    def 'Clients accept an absolute path in WAYLAND_DISPLAY'() {
         reportInfo """
             The compositor runs as `lamp` with its socket at /run/lamp/wayland-1, and the agent has
             its own XDG_RUNTIME_DIR, so the two cannot agree on a relative socket name. The design
             resolves this with an absolute path in WAYLAND_DISPLAY, and it was not certain that libwayland
-            would accept one — the fallback was a symlink and a relative name.
+            would accept one. The fallback was a symlink and a relative name.
 
             grim connecting is the proof: it is a Wayland client and it captured the screen.
         """
@@ -189,7 +187,7 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             result.mentions('captured')
     }
 
-    def 'S4: sway honours the requested mode, and the desktop really renders windows'() {
+    def 'Sway honours the requested mode, and the desktop really renders windows'() {
         reportInfo """
             The assumption behind the whole product: sway headless with a custom mode, Xwayland
             available, and applications that actually appear. An empty desktop of the right size
@@ -218,25 +216,25 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             var described = Spike.run('file', shot.toString())
             described.mentions('PNG image data, 1280 x 720')
 
-        and: 'the desktop before the window was already drawn — it has the wallpaper on it'
+        and: 'the desktop before the window was already drawn: it has the wallpaper on it'
             var empty = agentHome.resolve('screenshots/empty.png')
             Files.exists(empty)
 
         and: 'and launching the application visibly changed the screen'
-            // Comparing the two captures beats comparing file sizes, and beats counting
-            // non-background pixels now that the desktop has a wallpaper: it asks exactly the
-            // question S4 exists for — did an application appear — and nothing else.
+            // Comparing the two captures pixel by pixel answers exactly "did an application
+            // appear?", which file sizes or background colours would not, now the desktop has a
+            // wallpaper.
             differingPixels(empty, shot) > 10_000
 
         and: 'the locale is set, so applications do not fall back to C'
             inSandbox('echo "$LANG"').mentions('UTF-8')
     }
 
-    def 'S1: the viewer connects straight to the wayvnc Unix socket'() {
+    def 'The viewer connects straight to the wayvnc Unix socket'() {
         reportInfo """
             It was not certain that TigerVNC's vncviewer accepts a Unix socket path as its server
             argument. The fallback was an extra socat bridge onto a random loopback TCP port with
-            a VNC password — more moving parts, and a listening TCP socket that did not need to
+            a VNC password: more moving parts, and a listening TCP socket that did not need to
             exist.
 
             It is not needed: vncviewer connects to the socket directly and negotiates RFB 3.8.
@@ -252,10 +250,10 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             viewer.mentions('RFB protocol version 3.8')
     }
 
-    def 'S6: the recording is finalised and playable after the sandbox stops'() {
+    def 'The recording is finalised and playable after the sandbox stops'() {
         reportInfo """
             oillamp promises the human a recording of everything the agent did. A file that exists but
-            cannot be played is the worst possible outcome — it is discovered when someone needs to
+            cannot be played is the worst possible outcome, because it is discovered when someone needs to
             watch it. The fallback, had this failed, was to split recordings into segments every few minutes if a killed
             recorder left an unplayable file.
 
@@ -281,7 +279,7 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             probe.text =~ /duration=[1-9]/
     }
 
-    def 'a second session on the same lamp comes up with a working desktop'() {
+    def 'A second session on the same lamp comes up with a working desktop'() {
         reportInfo """
             The regression this spec exists to prevent, and the one bug here that a user found
             before the suite did. The first session on a lamp always worked. The second came up
@@ -298,7 +296,7 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             satisfied perfectly. The entrypoint wrote ready.json for a dead VNC server, and the
             host believed it.
 
-            Note where this scenario sits: immediately after S6, which stops the container. The
+            Note where this scenario sits: right after the recording scenario, which stops the container. The
             sockets directory is therefore in exactly the state that broke - full of the previous
             session's files - and no setup is needed to arrange it.
         """
@@ -345,8 +343,8 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
     /**
      * How many pixels differ between two captures of the same desktop.
      *
-     * <p>This is the whole of S4's question — "do applications actually appear" — asked directly,
-     * rather than inferred from how well a PNG happened to compress. Both images come from the
+     * <p>This asks directly whether an application appeared, rather than inferring it from how well
+     * a PNG compressed. Both images come from the
      * same desktop seconds apart, so the only thing that can differ is what was launched.
      */
     private static int differingPixels(Path before, Path after) {

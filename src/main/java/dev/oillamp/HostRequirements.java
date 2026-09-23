@@ -5,14 +5,11 @@ import sprouts.Tuple;
 import sprouts.ValueSet;
 
 /**
- * The host packages oillamp needs, and why — spec §11.1.
+ * The host packages oillamp needs, each with the reason it is needed.
  *
- * <p>Deliberately data keyed by {@link DistroFamily}, so a dnf or pacman variant is a new table
- * entry rather than a new code path. The reasons are not decoration: FR-60 requires oillamp to
- * tell the user what it is about to install on their machine and why, before it does it.
- *
- * <p>Deliberately <b>package-private</b>: the package list. It changes whenever the image or the
- * host stack does.
+ * <p>The reasons are shown to the user before anything is installed, so they know what is about
+ * to change on their machine and why. The list is keyed by {@link DistroFamily}; today every
+ * family gets the Debian list, which is also what is printed for manual installation elsewhere.
  */
 record HostRequirements(DistroFamily family, Tuple<String> packages,
                                Association<String, String> reasons) {
@@ -48,7 +45,7 @@ record HostRequirements(DistroFamily family, Tuple<String> packages,
         return missing;
     }
 
-    /** The exact command oillamp will run, and the one it prints when it may not run it (FR-63). */
+    /** The command oillamp runs to install the packages, and prints when it is not allowed to. */
     public String installCommand(Tuple<String> missing) {
         return "sudo apt-get install -y --no-install-recommends " + String.join(" ", missing);
     }

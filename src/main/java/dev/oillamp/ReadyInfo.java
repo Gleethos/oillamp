@@ -7,35 +7,30 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * What the sandbox said about itself when it came up — the contents of {@code ready.json}, §16.
+ * The contents of {@code ready.json}, which the container's entrypoint writes once the desktop and
+ * the SSH listener accept connections.
  *
- * <p>Only three fields, and only one of them is load-bearing. The session id is what tells this
- * session's readiness file apart from the one the previous session left in the same bind-mounted
- * directory; the renderer and the fallback flag are there because they are the two facts the
- * human most wants repeated back to them when the desktop opens.
+ * <p>The session id tells this session's file apart from one the previous session left behind in
+ * the same directory. The renderer and the fallback flag are shown to the user when the desktop
+ * opens.
  *
- * <p>Note what is deliberately <em>not</em> taken from here: the desktop size. The host rendered
- * {@code runtime.env} and therefore already knows it, and a viewer sized from the container's own
- * account of itself would be sized from the less trustworthy of the two sources.
- *
- * <p>Deliberately <b>package-private</b>: the sandbox's startup report. Its on-disk shape is a
- * private protocol between the entrypoint and the host, free to change with them.
+ * <p>The desktop size in the file is deliberately ignored. The host wrote it into
+ * {@code runtime.env} itself, and trusts its own value over what the container reports.
  */
 record ReadyInfo(String renderer, boolean gpuFallback, Optional<SessionId> session) {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** Unknown rather than absent: a session can be running perfectly with an unreadable report. */
+    /** Used when the file cannot be read. The session may still be working perfectly. */
     public static ReadyInfo unknown() {
         return new ReadyInfo("unknown", false, Optional.empty());
     }
 
     /**
-     * Reads the file the entrypoint wrote, falling back to {@link #unknown()} rather than failing.
+     * Reads the file, falling back to {@link #unknown()} instead of failing.
      *
-     * <p>By the time this is parsed, oillamp has already connected to both of the sandbox's
-     * sockets. The session is therefore known to be working, and refusing to start it over a
-     * field that could not be read would be the tool inventing a problem it does not have.
+     * <p>By the time this runs, oillamp has already connected to both of the sandbox's sockets, so
+     * the session is known to work. An unreadable field is no reason to stop it.
      */
     public static ReadyInfo parse(String json) {
         try {

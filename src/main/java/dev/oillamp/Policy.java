@@ -5,21 +5,15 @@ import java.util.Optional;
 import sprouts.Tuple;
 
 /**
- * Whether one connection may be made — spec §18.3.
+ * Decides whether the egress proxy may make one connection.
  *
- * <p>Pure, and deliberately the whole of the decision. The proxy resolves names and moves bytes;
- * this decides, from values alone, and can therefore be asked every awkward question in a
- * scenario without a socket anywhere near it.
+ * <p>This is the whole decision, as a pure function. {@link Egress} resolves names and moves
+ * bytes; this class only looks at values, so tests can check every case without a network.
  *
- * <p>The rule that gives the model its teeth is that a decision is made <em>per resolved
- * address</em>, not per host name. A name is a claim the other side controls: an attacker who can
- * publish DNS can point any public-looking name at {@code 127.0.0.1} or at the machine's own
- * intranet. Since every candidate address is checked against the CIDR rules, the shipped deny
- * rule catches that no matter what the name says — which is what makes "allow the open web" a
- * safe default rather than a hopeful one.
- *
- * <p>Deliberately <b>package-private</b>: the evaluation model of §18.3. The rule syntax in
- * {@code oillamp.toml} is the promise; first-match-wins is an implementation of it.
+ * <p>The decision is made for each <em>resolved address</em>, not for the host name. Whoever
+ * controls a domain's DNS can point any name at {@code 127.0.0.1} or at a private network. Because
+ * every address is checked against the rules' address ranges, the default deny rule catches that
+ * whatever the name is. This is what makes "allow the internet by default" safe for the host.
  */
 final class Policy {
 
@@ -28,9 +22,9 @@ final class Policy {
     /**
      * What the policy said, and which rule said it.
      *
-     * @param rule the label of the deciding rule, or {@code (default)} when nothing matched —
-     *             quoted verbatim in the 403 body and in the network log, so the agent can report
-     *             why a connection failed instead of guessing at it
+     * @param rule the label of the deciding rule, or {@code (default)} when no rule matched. It is
+     *             quoted in the 403 body and the network log, so the agent can report why a
+     *             connection failed
      */
     record Verdict(Decision decision, String rule, Optional<IpAddress> address) {
 
@@ -47,14 +41,12 @@ final class Policy {
     static final String NO_RULE = "(default)";
 
     /**
-     * The address to connect to, or why not.
+     * Decides a connection to {@code host:port}, given the addresses the host name resolved to.
      *
-     * <p>Follows §18.3 exactly: every candidate is evaluated in resolver order, the first one
-     * that is allowed is the one to use, and if none is, the denial reported is the one belonging
-     * to the <em>first</em> candidate. Reporting the first rather than the last matters for the
-     * message the agent reads — for a name that resolves to several private addresses, "denied by
-     * the private-ranges rule" is the truth, while the verdict of some later address would be an
-     * arbitrary pick among equals.
+     * <p>Each address is checked in the order the resolver returned them. The first allowed address
+     * is the one to connect to. If none is allowed, the verdict for the <em>first</em> address is
+     * returned, so the agent is told the rule that applies to the address it would normally have
+     * used.
      */
     static Verdict decide(NetworkPolicy policy, String host, int port, Tuple<IpAddress> candidates) {
         if (candidates.isEmpty())
@@ -76,12 +68,9 @@ final class Policy {
     }
 
     /**
-     * All criteria present must match; a rule with none matches everything (§18.3).
-     *
-     * <p>The asymmetry is deliberate and is the reason this is not a fold over three booleans: an
-     * <em>absent</em> criterion is "don't care", while a <em>present but unmatched</em> one makes
-     * the whole rule miss. A rule listing only {@code cidrs} must therefore apply to every host
-     * name and port — which is exactly what the shipped deny rule relies on.
+     * Whether a rule matches: every criterion the rule lists must match, and a criterion it does
+     * not list is ignored. So a rule with only {@code cidrs}, like the default deny rule, applies to
+     * every host name and port.
      */
     private static boolean matches(Rule rule, String host, int port, IpAddress address) {
         if (!rule.hosts().isEmpty() && rule.hosts().stream().noneMatch(p -> p.matches(host)))

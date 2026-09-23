@@ -2,19 +2,15 @@ package dev.oillamp;
 
 
 /**
- * Renders the guide the agent reads as {@code ~/AGENTS.md} — spec §19.3.
+ * Writes {@code ~/AGENTS.md}, the guide that tells the agent what kind of machine it is on.
  *
- * <p>An agent that does not know it is in a sandbox wastes its time and the user's: it will try
- * {@code sudo apt install}, wonder why DNS does not resolve, and report "network is broken" when
- * a policy denied one host. This file is written fresh every session and tells it, concretely,
- * what persists, what does not, how to reach the desktop, and why a request may be refused.
+ * <p>An agent that does not know it is in a sandbox wastes time: it tries {@code sudo apt install},
+ * wonders why DNS does not work, and reports "the network is broken" when a policy rule refused one
+ * host. The guide is rewritten every session from the current configuration and says what
+ * persists, how to use the desktop, how the network works and why a request may be refused.
  *
- * <p>It deliberately does not hide the sandbox. An agent that understands the boundary can work
- * inside it and report accurately when it hits one; an agent that does not will guess.
- *
- * <p>Deliberately <b>package-private</b>: the Markdown it renders is the contract, not this class.
- * The guide is rewritten whenever we learn something new about how agents misread their sandbox
- * (§19.3).
+ * <p>It is open about the sandbox's limits, so the agent can work within them and report
+ * accurately when it hits one.
  */
 final class AgentGuide {
 
@@ -29,9 +25,7 @@ final class AgentGuide {
             Linux user, its own graphical desktop, and no direct network access.
 
             """);
-        // Said, not assumed. Recording is off unless the human turned it on (§16), and a guide
-        // that announces a recording to every agent regardless is telling most of them something
-        // false about how their work is being watched.
+        // Recording is off unless the user turned it on, so the guide says which is the case.
         out.append(config.recording().enabled()
                 ? "A human can watch this desktop live, and everything on screen is being "
                 + "recorded\nto a file they keep. You cannot stop, read or alter that recording.\n"
@@ -160,7 +154,8 @@ final class AgentGuide {
                 .append("An OpenAI-compatible endpoint is reachable at `")
                 .append(forward.inContainerUrl(config.llm().map(LampConfig.Llm::basePath).orElse("/v1")))
                 .append("`.\n")
-                .append("`OPENAI_BASE_URL` and `OILLAMP_LLM_BASE_URL` already point at it.\n\n"));
+                .append("`OILLAMP_LLM_BASE_URL` already points at it, and `OILLAMP_LLM_MODELS` lists\n")
+                .append("the model names to use. No API key is configured for you.\n\n"));
 
         if (!config.forwards().isEmpty()) {
             out.append("## Direct forwards\n\nThese endpoints bypass the proxy policy entirely:\n\n");

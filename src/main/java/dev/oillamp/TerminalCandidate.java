@@ -2,10 +2,5 @@ package dev.oillamp;
 
 import java.nio.file.Path;
 
-/**
- * A terminal emulator found on PATH, with the profile that knows how to drive it (D-22).
- *
- * <p>Deliberately <b>package-private</b>: one terminal found on PATH, with the profile that drives
- * it.
- */
+/** A terminal emulator found on {@code PATH}, and which entry of the terminal table it matches. */
 record TerminalCandidate(TerminalProfileId id, Path executable) {}

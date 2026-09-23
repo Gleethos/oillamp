@@ -6,15 +6,11 @@ import sprouts.Association;
 import sprouts.Tuple;
 
 /**
- * oillamp's built-in configuration — the bottom of the precedence chain of spec §20.1.
+ * oillamp's built-in configuration: the values a lamp gets for every setting its files do not
+ * mention.
  *
- * <p>These are the effective values a lamp gets when its {@code oillamp.toml} says nothing.
- * The commented template that {@code oillamp at} writes into a new lamp (§20.2) must agree with
- * them exactly; a scenario asserts that, so the documentation a user reads and the behaviour
- * they get can never drift apart.
- *
- * <p>Deliberately <b>package-private</b>: defaults are meant to change between releases. Freezing
- * them in the API would turn every improved default into a compatibility question.
+ * <p>The commented {@code oillamp.toml} written into a new lamp ({@link Templates#defaultConfig})
+ * must describe exactly these values. A scenario in {@code ConfiguringALampSpec} checks that.
  */
 final class ConfigDefaults {
 

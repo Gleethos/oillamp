@@ -9,15 +9,11 @@ import java.util.function.Consumer;
 import sprouts.Tuple;
 
 /**
- * Parses what the user typed and dispatches it — spec §28.
+ * Parses the command line and calls the matching method on {@link Commands}.
  *
- * <p>Hand-written rather than delegating to a command-line library, because oillamp's surface is
- * a handful of subcommands with a handful of flags, and the two things that actually matter here
- * — a helpful message for a mistyped command, and exit code 2 for every usage error — are easier
- * to get exactly right directly than to configure.
- *
- * <p>Deliberately <b>package-private</b>: the parsed command line. §28's grammar is the contract
- * users type against; this record is merely how it is represented in memory today.
+ * <p>Written by hand rather than with a command-line library. There are only a few commands and
+ * options, and this makes it simple to give a helpful message for a mistyped command and exit
+ * code 2 for every usage error.
  */
 final class Invocation {
 
@@ -44,7 +40,8 @@ final class Invocation {
             switch (argument) {
                 case "--verbose", "-v" -> options = options.withVerbose(true);
                 case "--debug"         -> options = options.withDebug(true).withVerbose(true);
-                case "--no-color"      -> { }   // honoured by the renderer, which is already built
+                // Accepted but not connected: the renderer only checks NO_COLOR. See docs/STATUS.md.
+                case "--no-color"      -> { }
                 case "--dry-run"       -> options = options.withDryRun(true);
                 case "--no-install"    -> options = options.withAutoInstall(false);
                 case "--init"          -> options = options.withInit(true);
@@ -70,9 +67,7 @@ final class Invocation {
             }
         }
 
-        // Now that the options are known, tell the renderer. Until this line --verbose parsed
-        // correctly and changed nothing, because the sink was holding the renderer built before
-        // the command line was read.
+        // The renderer was created before the options were known, so tell it now.
         console.verbose(options.verbose());
 
         if (positional.isEmpty()) {
@@ -126,8 +121,8 @@ final class Invocation {
                     }
                 };
             }
-            // The four that talk to a session already running (§26.6). None of them sets
-            // anything up: they are questions put to the supervisor that holds the lamp.
+            // These four talk to a running session through its control socket. None of them
+            // sets anything up.
             case "view" -> {
                 if (rest.isEmpty()) yield missingDirectory(console, sink, version, "view");
                 yield commands.view(Path.of(rest.get(0)), viewOnly);
@@ -153,8 +148,6 @@ final class Invocation {
                 yield commands.remove(Path.of(rest.get(0)), confirmed);
             }
 
-            // These arrive with the milestones that make them meaningful; saying so beats a
-            // bare "unknown command" for something the help text lists.
             case "recordings" -> {
                 if (rest.isEmpty()) yield missingDirectory(console, sink, version, "recordings");
                 yield commands.recordings(Path.of(rest.get(0)), open, prune);
@@ -175,11 +168,13 @@ final class Invocation {
                 yield ExitStatus.SUCCESS;
             }
 
-            // Arrives with the milestone that makes it meaningful; saying so beats a bare
-            // "unknown command" for something the help text lists.
+            // Planned once and then dropped: the image is rebuilt automatically whenever its
+            // inputs change, so there is nothing to manage by hand. Explain that instead of
+            // answering "unknown command".
             case "image" -> {
                 sink.accept(new LampEvent.Failure(Problems.usage(
-                        "'" + command + "' needs a running session, which the next milestone adds",
+                        "there is no 'image' command: oillamp rebuilds the sandbox image by itself "
+                      + "whenever anything that goes into it changes",
                         usage())));
                 yield ExitStatus.USAGE;
             }

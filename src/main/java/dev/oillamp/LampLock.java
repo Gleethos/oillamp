@@ -10,17 +10,15 @@ import java.nio.file.StandardOpenOption;
 import java.util.Optional;
 
 /**
- * The exclusive claim on a lamp, held for the whole session — spec §10.4 (FR-04).
+ * The exclusive lock on a lamp, held by the supervisor for the whole session, so that only one
+ * session can run on a lamp at a time.
  *
- * <p>An OS file lock rather than a pid file, for one reason: the kernel releases it when the
- * process dies, however it dies. A supervisor killed with {@code kill -9}, or lost to a power
- * cut, therefore leaves no stale lock behind, and the next {@code oillamp at} on that lamp starts
- * normally instead of demanding manual cleanup (FR-08).
+ * <p>It is an operating-system file lock on {@code .oillamp/lock}, not a file containing a process
+ * id, because the kernel releases the lock when the process dies, however it dies. After a
+ * {@code kill -9} or a power cut, the next {@code oillamp at} simply starts.
  *
- * <p>{@code session.json} beside it is informational only. The lock is the truth.
- *
- * <p>Deliberately <b>package-private</b>: one lamp, at most one running sandbox. On the effects
- * allowlist; the lock's stale-detection strategy is free to improve.
+ * <p>{@code session.json} beside it is only informational. The lock decides whether a session is
+ * running.
  */
 final class LampLock implements AutoCloseable {
 

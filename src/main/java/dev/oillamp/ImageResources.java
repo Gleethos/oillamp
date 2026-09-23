@@ -11,20 +11,15 @@ import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
 /**
- * The sandbox image's own files, as they are carried inside the oillamp jar — spec §12.3, §15.2.
+ * The files the sandbox image is built from, stored inside the oillamp jar under {@code /image/}.
  *
- * <p>Two jobs, and they are the same job seen twice. Extracting the build context needs to know
- * which files exist; deciding whether the image must be rebuilt needs to know what is <em>in</em>
- * them. Both read the generated {@code image/MANIFEST}, so a file added to the image is picked up
- * by both without anybody remembering to update a list — the failure that a hardcoded list invites
- * is an image that silently keeps being reused after its contents changed.
+ * <p>A jar cannot list its own directories, so the build writes {@code /image/MANIFEST}: one line
+ * per file with its mode ({@code 755} or {@code 644}) and path. This class uses it for two things:
+ * extracting the files before a build, and hashing their contents to compute the image tag. Adding
+ * a file to the image needs no code change; it appears in the manifest automatically.
  *
- * <p>The mode in the manifest is not decoration either: an entrypoint extracted without its
- * executable bit produces a container that dies as pid 1 with "permission denied", which is a
- * long way from the cause.
- *
- * <p>Deliberately <b>package-private</b>: how oillamp carries its own image around. Callers see
- * the consequence — a build that is skipped or not — rather than the mechanism.
+ * <p>The mode matters: an entrypoint extracted without its executable bit makes the container die
+ * at once with "permission denied".
  */
 final class ImageResources {
 
@@ -39,8 +34,8 @@ final class ImageResources {
     /**
      * Every file of the image, in manifest order.
      *
-     * @throws IllegalStateException if the manifest is missing, which means a broken build rather
-     *         than anything a user did — the jar is not the jar we shipped.
+     * @throws IllegalStateException if the manifest is missing, which means oillamp itself was
+     *         built incorrectly
      */
     public static Tuple<Entry> entries() {
         String manifest = readText(MANIFEST).orElseThrow(() -> new IllegalStateException(
@@ -71,13 +66,13 @@ final class ImageResources {
     }
 
     /**
-     * A hash over every image file and every build argument, which becomes the image tag.
+     * A SHA-256 hash over every image file (path, mode and contents) and every build argument.
+     * Its first 16 hex digits become the image tag.
      *
-     * <p>This is what makes rebuilds automatic and sharing safe: two lamps whose configuration
-     * produces byte-identical inputs get the same tag and one build, and changing any input — a
-     * package added to {@code extra_apt_packages}, a line edited in the entrypoint — produces a
-     * different tag, so the old image is never silently reused. Paths are hashed alongside the
-     * contents so that moving a file counts as a change.
+     * <p>Lamps whose inputs are identical get the same tag and share one image. Changing any input,
+     * such as a package in {@code extra_apt_packages} or a line in the entrypoint, gives a new tag,
+     * so an outdated image is never reused. Paths are included so that moving a file counts as a
+     * change.
      */
     public static String hashOf(java.util.SortedMap<String, String> buildArguments) {
         MessageDigest digest = sha256();

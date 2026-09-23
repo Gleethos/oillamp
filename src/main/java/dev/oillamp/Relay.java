@@ -14,29 +14,22 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * A host-side socket that forwards into the sandbox — spec §17.3, §26.3 (D-09).
+ * A Unix socket on the host that forwards each connection into the sandbox's SSH socket.
  *
- * <p>The sandbox is reached only over Unix sockets, and the two that matter live in different
- * places for a reason. The container binds {@code sockets/agent/ssh.sock}, which it can see; the
- * supervisor binds {@code run/ssh-primary.sock} and {@code run/ssh.sock}, which it cannot. Each
- * connection to one is copied into the other. That extra hop buys the thing the whole session
- * lifecycle depends on: the agent <em>cannot</em> reach the primary socket, so it cannot take the
- * slot that decides when the session ends, and closing the terminal window is a signal only a
- * human can send.
+ * <p>The container listens on {@code sockets/agent/ssh.sock}. The supervisor listens on
+ * {@code run/ssh-primary.sock} and {@code run/ssh.sock}, which are outside anything mounted into the
+ * container, and copies each connection through. Because the agent cannot reach the primary
+ * socket, it cannot take the one connection whose closing ends the session.
  *
- * <p>The primary accepts exactly one connection per session; the extra relay accepts any number,
- * because {@code oillamp shell} is supposed to be openable as often as the user likes.
- *
- * <p>Deliberately <b>package-private</b>: the relay of D-09. On the effects allowlist — it binds
- * sockets and moves bytes, which is as impure as this codebase gets.
+ * <p>The primary relay accepts exactly one connection per session: the terminal window. The extra
+ * relay accepts any number, for {@code oillamp shell}.
  */
 final class Relay implements AutoCloseable {
 
     /**
-     * The kernel's limit on a Unix socket path, minus the terminating NUL. Lamps live where the
-     * user keeps their projects, which is why the sockets live under {@code $XDG_RUNTIME_DIR}
-     * instead (D-25) — but a long username or a custom runtime dir can still exceed it, and the
-     * failure for that is an {@code EINVAL} from {@code bind} that explains nothing.
+     * The kernel's limit on a Unix socket path, in bytes. Sockets are addressed through the short
+     * runtime directory for this reason, but a long user name or a custom runtime directory can
+     * still exceed it, and {@code bind} would then fail with an unhelpful {@code EINVAL}.
      */
     static final int MAX_SOCKET_PATH = 107;
 
@@ -70,7 +63,7 @@ final class Relay implements AutoCloseable {
     /**
      * Binds {@code socket} and forwards everything it receives to {@code target}.
      *
-     * @param maxConnections {@code 1} for the primary (D-09), or {@link Integer#MAX_VALUE}
+     * @param maxConnections {@code 1} for the primary relay, {@link Integer#MAX_VALUE} for extra shells
      */
     static Result<Relay> open(Path socket, Path target, int maxConnections, Listener listener) {
         return bind(socket).map(server -> {
@@ -81,14 +74,12 @@ final class Relay implements AutoCloseable {
     }
 
     /**
-     * Binds a host-only Unix socket at 0600 — used by the relays and by the control socket.
+     * Binds a host-only Unix socket at 0600. Used by the relays and by the control socket.
      *
-     * <p>Two details are the whole reason this is one function rather than three call sites. The
-     * path is measured first, because a path over the kernel's limit fails with an {@code EINVAL}
-     * from {@code bind} that mentions neither the path nor the limit. And the file is unlinked
-     * first, because a socket file left by a crashed session is not a listener: binding over it
-     * fails with "address already in use" for an address nothing is using. That is the host-side
-     * twin of what the entrypoint learned to do inside the container (§16).
+     * <p>The path length is checked first, because a path over the kernel's limit fails with an
+     * unhelpful {@code EINVAL}. An existing file is deleted first, because a socket file left by a
+     * crashed session makes {@code bind} fail with "address already in use". The container's
+     * entrypoint does the same for its own sockets.
      */
     static Result<ServerSocketChannel> bind(Path socket) {
         int length = socket.toString().getBytes(StandardCharsets.UTF_8).length;
@@ -100,9 +91,7 @@ final class Relay implements AutoCloseable {
             Files.deleteIfExists(socket);
             ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
             server.bind(UnixDomainSocketAddress.of(socket));
-            // 0600 as soon as it exists: these sockets are the session's control points, and the
-            // reason they live in the host-only runtime directory is that nothing else may reach
-            // them — least of all the agent.
+            // 0600 at once: only this user may connect to the session's relays and control socket.
             Filesystem.setMode(socket, PosixMode.PRIVATE_FILE);
             return Result.ok(server);
         } catch (IOException e) {
@@ -113,10 +102,8 @@ final class Relay implements AutoCloseable {
     /**
      * Whether something is listening on this socket right now.
      *
-     * <p>The same question the readiness check asks during startup, asked again while the session
-     * runs. Connecting is the only form of it that distinguishes a server from a file with the
-     * right name — and a session whose desktop died an hour in looks, from any cheaper check,
-     * exactly like one that is fine.
+     * <p>Used by the health check during a session. Connecting is the only check that tells a
+     * listening server apart from a leftover file with the right name.
      */
     static boolean answers(Path socket) {
         if (!Files.exists(socket)) return false;
@@ -137,9 +124,8 @@ final class Relay implements AutoCloseable {
                 return;
             }
             if (accepted.incrementAndGet() > maxConnections) {
-                // §17.3: the primary slot belongs to the terminal oillamp opened. A second
-                // connection is either a mistake or someone trying to take over the session's
-                // lifetime, and neither should be answered with a shell.
+                // The primary relay belongs to the terminal window oillamp opened. A second
+                // connection is a mistake or an attempt to take over the session, so it is refused.
                 closeQuietly(client);
                 listener.trouble(Problems.extraPrimaryRejected(socket));
                 continue;
@@ -154,8 +140,8 @@ final class Relay implements AutoCloseable {
         try {
             sandbox = SocketChannel.open(UnixDomainSocketAddress.of(target));
         } catch (IOException e) {
-            // The sandbox's own socket is gone or refusing. The user sees this as a terminal
-            // window that opens and closes, so it has to be said out loud rather than logged.
+            // The sandbox's SSH socket is gone or refusing. The user only sees a terminal window
+            // that opens and closes, so this is reported in the supervisor's terminal.
             listener.trouble(Problems.sandboxEndpointDead("the shell (SSH)", target,
                     "the sandbox", "connecting for a shell: " + Problems.reason(e)));
             closeQuietly(client);
@@ -198,14 +184,14 @@ final class Relay implements AutoCloseable {
         }
     }
 
-    /** True once the one connection the primary allows has been used (§17.3). */
+    /** True once all allowed connections have been used; for the primary relay, after the first. */
     public boolean isTaken() { return accepted.get() >= maxConnections; }
 
     /**
      * Stops accepting, drops every connection and removes the socket file.
      *
-     * <p>Step 1 of the shutdown sequence (§10.7), and idempotent, because the shutdown sequence
-     * can be reached from the terminal closing, a signal and {@code oillamp stop} at once.
+     * <p>The first step of the shutdown sequence. Safe to call more than once, because the terminal
+     * closing, a signal and {@code oillamp stop} can all start a shutdown.
      */
     @Override public void close() {
         closing = true;

@@ -7,11 +7,9 @@ import sprouts.ValueSet;
 /**
  * The host user oillamp runs as.
  *
- * <p>This user is mapped onto container uid 1000 (D-14), which is why files the agent creates in
- * its home show up on the host owned by this user, and why the GPU render node's group membership
- * decides whether hardware rendering is possible at all (§14.3).
- *
- * <p>Deliberately <b>package-private</b>: who is running oillamp, as probed.
+ * <p>This user becomes container uid 1000, the agent user. That is why files the agent creates in
+ * its home belong to this user on the host. Its groups decide whether the GPU can be used: the
+ * user must be in the group that owns the render device.
  */
 record UserInfo(String name, int uid, int gid, Path home, ValueSet<String> groups) {
 

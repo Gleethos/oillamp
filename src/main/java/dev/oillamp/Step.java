@@ -7,19 +7,14 @@ import sprouts.Tuple;
 import sprouts.ValueSet;
 
 /**
- * One change oillamp intends to make to the world — spec §24.4.
+ * One change oillamp intends to make, such as creating a directory or starting the container.
  *
- * <p>Every effect oillamp performs during setup is first described as one of these values, and
- * only then executed. That is what makes {@code --dry-run} honest (FR-12): it is not a separate
- * code path that might drift from the real one, it is the same plan with the execution left out.
- * It is also what makes NFR-04 (transparency) cheap — the log is just the plan, annotated.
+ * <p>Every change oillamp makes during setup is first described as one of these and only then
+ * carried out by {@link StepRunner}. A dry run builds the same steps and only prints them, so what
+ * {@code --dry-run} shows is exactly what a real run would do.
  *
- * <p>{@link #describe()} is the one line the console and {@code --dry-run} show; {@link #detail()}
- * is the full story for the session log.
- *
- * <p>Deliberately <b>package-private</b>: one described effect. Steps are the mechanism that keeps
- * {@code --dry-run} and the real run on the same code path, and adding a step kind must never be an
- * API change.
+ * <p>{@link #describe()} is one line, printed for every step. {@link #detail()} is the full
+ * description, including the reason where there is one; {@code --verbose} prints it.
  */
 sealed interface Step {
 
@@ -36,7 +31,7 @@ sealed interface Step {
 
     record AddSubIds(String user, IdRange range) implements Step {}
 
-    /** Re-initialises podman's storage after the id range changed — otherwise podman keeps the old map. */
+    /** Runs {@code podman system migrate} after the id range changed; otherwise podman keeps using the old one. */
     record PodmanMigrate() implements Step {}
 
     record CreateDirectory(Path path, PosixMode mode) implements Step {}
@@ -48,9 +43,9 @@ sealed interface Step {
     record CreateSymlink(Path link, Path target) implements Step {}
 
     /**
-     * Hands a directory to a container user via {@code podman unshare chown} — spec §9.2.
-     * This is how the recordings directory ends up writable only by the infra user, which is
-     * what stops the agent from tampering with its own recording (NFR-06).
+     * Gives a directory to a container user with {@code podman unshare chown}. This is how the
+     * recordings directory becomes writable only by the infra user, so the agent cannot change its
+     * own recording.
      */
     record ChownForContainer(Path path, int containerUid, int containerGid, PosixMode mode) implements Step {}
 
@@ -64,21 +59,18 @@ sealed interface Step {
     record RemoveContainer(ContainerName name, String reason) implements Step {}
 
     /**
-     * Start the sandbox — spec §15.3.
+     * Start the sandbox container with {@code podman run}.
      *
-     * <p>The whole argument list is data, so that {@code --dry-run} can show exactly what will be
-     * run. That matters more here than anywhere else in oillamp: these flags are the sandbox's
-     * guarantees, and a user who wants to check that {@code --network=none} is really being passed
-     * should not have to read the source to find out.
+     * <p>The full argument list is part of the step, so {@code --dry-run --verbose} shows it. These
+     * flags are the sandbox's security settings, and a user should be able to check that
+     * {@code --network=none} is passed without reading the source.
      */
     record RunContainer(ContainerName name, ImageTag image, Tuple<String> argv) implements Step {}
 
     /**
-     * Wait for the sandbox to say it is ready, by writing {@code ready.json} — spec §16.
+     * Wait until the container writes {@code ready.json} for this session.
      *
-     * <p>A step rather than a bare sleep, because it can fail in a way worth reporting: the
-     * container may exit during startup, and then the useful thing to show the user is its log,
-     * not a timeout.
+     * <p>If the container exits while starting, the problem reported includes its log.
      */
     record AwaitReady(ContainerName name, Path readyFile, SessionId session,
                       java.time.Duration timeout) implements Step {}
@@ -87,12 +79,10 @@ sealed interface Step {
     record Endpoint(String what, Path socket) {}
 
     /**
-     * Connect to each of the sandbox's sockets before calling the session good — spec §16.
+     * Connect to each of the sandbox's sockets before telling the user the session is ready.
      *
-     * <p>{@code ready.json} is the sandbox's own account of itself, and a report written by the
-     * thing being reported on is worth checking. This step is the host doing exactly what the
-     * human is about to do — open the socket — so that "the desktop is ready" is a statement
-     * oillamp has tested rather than one it was told.
+     * <p>{@code ready.json} is the container's own report. This step checks it by doing what the
+     * viewer and the terminal are about to do: connect.
      */
     record CheckEndpoints(ContainerName name, Tuple<Endpoint> endpoints) implements Step {}
 
@@ -102,12 +92,11 @@ sealed interface Step {
     record RemovePath(Path path, String reason) implements Step {}
 
     /**
-     * Deletes a whole tree, including anything in it owned by a container uid.
+     * Deletes a whole directory tree, including files owned by a container user.
      *
-     * <p>Separate from {@link RemovePath} because it goes through {@code podman unshare}: part of
-     * a lamp belongs to the sandbox's infra user and cannot be deleted by the human who owns the
-     * directory it sits in. Symlinks are removed, never followed — the runtime directory contains
-     * one pointing back into the lamp (D-25).
+     * <p>Unlike {@link RemovePath}, it deletes through {@code podman unshare}, because part of a lamp
+     * belongs to the infra user and the lamp's owner cannot delete it directly. Symlinks are
+     * removed, never followed; the runtime directory contains one that points into the lamp.
      */
     record RemoveTree(Path path, String reason) implements Step {}
 
@@ -172,12 +161,12 @@ sealed interface Step {
                 for (Path file : s.files()) out.append("\n  ").append(file);
                 yield out.toString();
             }
-            // Listed individually rather than behind a `default`, so that adding a Step
-            // forces a decision about how it appears in the log (spec section 23, rule 2).
+            // Listed one by one instead of a `default`, so that adding a Step does not compile
+            // until someone decides how it is described.
             case RunContainer s -> {
-                // The full argument list, one flag per line. These flags *are* the sandbox: no
-                // network, read-only root, the user mapping of §9.2. Anyone auditing what oillamp
-                // actually does should find it here rather than in the source.
+                // The full argument list, one flag per line. These flags define the sandbox (no
+                // network, read-only root, the uid mapping), so anyone checking what oillamp does
+                // should be able to read them here.
                 StringBuilder out = new StringBuilder("podman run");
                 for (String argument : s.argv())
                     out.append(argument.startsWith("-") ? "\n  " : " ").append(argument);
@@ -191,7 +180,7 @@ sealed interface Step {
             }
             case AwaitReady s -> "waiting for " + s.readyFile()
                                + "\n  written by the container once sway, the VNC server and the "
-                               + "ssh listener have all proved themselves (§16)"
+                               + "ssh listener all accept connections"
                                + "\n  it must carry session " + s.session()
                                + ", or it is the previous session's file and says nothing about this one";
             case PodmanMigrate ignored      -> describe();

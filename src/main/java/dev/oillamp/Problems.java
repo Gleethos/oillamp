@@ -10,21 +10,19 @@ import java.util.Optional;
 import sprouts.Tuple;
 
 /**
- * The problem catalog of spec §27.3, as pure data.
+ * Every problem oillamp can report, with its code and wording.
  *
- * <p>Each code has one fixed title, one fixed "why it matters", and default fixes; call sites
- * add the concrete evidence. Keeping the wording here — rather than at the throw site — is what
- * makes the messages consistent and reviewable, and lets tests assert on a code rather than prose.
- *
- * <p>Deliberately <b>package-private</b>: the catalogue of everything oillamp can report. The
- * problem <em>codes</em> are the stable thing scripts match on (§27.2) — this class is only where
- * their text lives, and that text should improve freely.
+ * <p>Each method builds one kind of problem with a fixed title and "why it matters", plus the
+ * evidence and fixes for the case at hand. Keeping the wording here keeps the messages consistent
+ * and easy to review. The codes must never change meaning, because users and scripts match on
+ * them; the wording can be improved freely. The codes are also listed in
+ * {@code docs/ARCHITECTURE.md}.
  */
 final class Problems {
 
     private Problems() {}
 
-    // ─── codes (spec §27.3) ────────────────────────────────────────────────────────────────
+    // ─── codes ─────────────────────────────────────────────────────────────────────────────
 
     public static final Code HOST_NOT_LINUX        = new Code("OIL-HOST-001");
     public static final Code HOST_NOT_APT          = new Code("OIL-HOST-002");
@@ -37,7 +35,7 @@ final class Problems {
     public static final Code PODMAN_NOT_ROOTLESS   = new Code("OIL-PODMAN-002");
     public static final Code PODMAN_USERNS_BROKEN  = new Code("OIL-PODMAN-003");
     public static final Code PODMAN_APPARMOR       = new Code("OIL-PODMAN-004");
-    public static final Code LAMP_INVALID_PATH     = new Code("OIL-LAMP-001");
+    public static final Code LAMP_INVALID_PATH     = new Code("OIL-LAMP-001");   // not reported anywhere
     public static final Code LAMP_NOT_EMPTY        = new Code("OIL-LAMP-002");
     public static final Code LAMP_FORBIDDEN_PATH   = new Code("OIL-LAMP-003");
     public static final Code LAMP_NEWER_SCHEMA     = new Code("OIL-LAMP-004");
@@ -72,18 +70,15 @@ final class Problems {
     public static final Code SANDBOX_ENDPOINT_DEAD = new Code("OIL-SANDBOX-004");
     public static final Code SANDBOX_NOT_REMOVED   = new Code("OIL-SANDBOX-005");
     public static final Code EXEC_NOT_FOUND        = new Code("OIL-EXEC-001");
-    public static final Code EXEC_TIMED_OUT        = new Code("OIL-EXEC-002");
+    public static final Code EXEC_TIMED_OUT        = new Code("OIL-EXEC-002");   // not reported anywhere
     public static final Code INTERNAL              = new Code("OIL-INTERNAL-001");
 
     // ─── network ───────────────────────────────────────────────────────────────────────────
 
     /**
-     * A forward whose target will not answer — §18.5, {@code OIL-NET-010}.
-     *
-     * <p>A warning, never an error. A forward is a convenience pointed at something outside
-     * oillamp's control, and an internal service being down is not a reason to refuse the user
-     * their sandbox — but it is very much a reason to say so, because inside the sandbox it looks
-     * only like a connection that closed.
+     * A forward's target could not be reached. A warning, not an error: the service being down is
+     * no reason to stop the session, but inside the sandbox it only looks like a closed connection,
+     * so the user is told here.
      */
     public static Problem forwardUnreachable(Forward forward, String why) {
         return warning(NET_FORWARD_UNREACHABLE, "A forward target cannot be reached",
@@ -133,7 +128,8 @@ final class Problems {
                 "rootless Podman maps container users onto these ids; without them the sandbox "
               + "cannot start, and the infra user that guards monitoring cannot exist")
             .withEvidence(new Evidence.File(Path.of("/etc/subuid"), "no usable entry for " + user))
-            .withFix(Fix.run("oillamp can add a free range for you",
+            .withFix(Fix.run("run `oillamp at <dir>`, which picks a free range and adds it; or add one "
+                           + "yourself that does not overlap any other line in /etc/subuid, for example",
                              "sudo usermod --add-subuids 100000-165535 --add-subgids 100000-165535 " + user));
     }
 
@@ -141,12 +137,11 @@ final class Problems {
 
     public static Problem packagesMissing(Tuple<String> missing, String installCommand,
                                           Installing installing) {
-        // The second remedy has to match why oillamp is not installing them itself. Telling a
-        // `doctor` user to "drop --no-install" names a flag they never passed, and reads as though
-        // oillamp cannot install packages at all - which is the opposite of true (FR-60).
+        // The second fix depends on why oillamp is not installing them itself. A `doctor` user
+        // never passed --no-install, so telling them to drop it would be confusing.
         String letOillampDoIt = switch (installing) {
             case ALLOWED, DECLINED ->
-                    "or let oillamp install them by dropping --no-install / setting host.auto_install = true";
+                    "or let oillamp install them by running without --no-install";
             case NEVER ->
                     "or run `oillamp at <dir>`, which installs them for you after one sudo prompt "
                   + "(this command only ever looks)";
@@ -297,9 +292,8 @@ final class Problems {
     /**
      * {@code oillamp remove} asked to delete a lamp that is in use.
      *
-     * <p>Deleting the agent's home out from under a running container would leave the session
-     * holding paths that no longer exist, and the container itself would survive the deletion of
-     * everything that describes it — a sandbox with no lamp to stop it with.
+     * <p>Deleting the agent's home under a running container would leave the session using
+     * directories that no longer exist, and a container with no lamp left to stop it with.
      */
     public static Problem lampStillRunning(Path root, String what) {
         return new Problem(LAMP_STILL_RUNNING, Severity.ERROR, "That lamp is in use",
@@ -316,10 +310,9 @@ final class Problems {
     /**
      * Part of a lamp survived {@code oillamp remove}.
      *
-     * <p>Almost always the same cause: some of a lamp belongs to a <em>container</em> uid — the
-     * infra sockets and the recordings are owned by the sandbox's second user (§9.2) — and this
-     * user cannot delete those without entering podman's user namespace. That is exactly what the
-     * command does, so reaching this means podman itself was unavailable or refused.
+     * <p>The infra sockets and recordings belong to the infra user, which this user can only delete
+     * through podman's user namespace. {@code remove} does that, so reaching this means podman was
+     * missing or refused.
      */
     public static Problem lampNotRemoved(Path path, String why) {
         return error(LAMP_NOT_REMOVED, "Part of the lamp could not be removed",
@@ -334,9 +327,7 @@ final class Problems {
     /**
      * {@code oillamp recordings --open} named a session with no recording.
      *
-     * <p>Lists what is there rather than only saying what is not. The id is a timestamp, so the
-     * usual cause is a typo or a half-remembered session, and the answer the user needs is the
-     * handful of ids they could have meant.
+     * <p>Lists the sessions that do have recordings, since the usual cause is a mistyped id.
      */
     public static Problem noSuchRecording(String session, Path lamp, Path directory,
                                           Tuple<RecordingFile> existing) {
@@ -355,9 +346,8 @@ final class Problems {
     /**
      * The desktop would not open a recording.
      *
-     * <p>oillamp hands the file to {@code xdg-open} rather than picking a player, so this is the
-     * desktop declining — usually because nothing is registered for {@code video/x-matroska}, and
-     * occasionally because there is no desktop at all.
+     * <p>oillamp hands the file to {@code xdg-open}, so this usually means no program is set up to
+     * open {@code .mkv} files, or there is no desktop.
      */
     public static Problem recordingNotOpened(Path file, String why) {
         return error(RECORDING_NOT_OPENED, "That recording could not be opened",
@@ -443,15 +433,14 @@ final class Problems {
             .withFix(Fix.run("clear anything a crashed session left behind", "rm -f " + socket));
     }
 
-    // ─── the windows of a session (§17.4, §15) ─────────────────────────────────────────────
+    // ─── the windows of a session ──────────────────────────────────────────────────────────
 
     /**
      * The terminal window was started but never connected.
      *
-     * <p>Reported rather than waited on forever, because the alternative is the worst outcome
-     * this tool has: a sandbox running with nobody in it and nothing that will ever end it. What
-     * the user sees is a window that opened and did nothing, so the evidence has to be the
-     * command that was run — the failure is almost always in the terminal's own arguments.
+     * <p>Without a timeout, a sandbox would keep running with nobody in it and nothing to end it.
+     * The cause is usually the terminal's arguments, so the fix suggests running the command by
+     * hand.
      */
     public static Problem terminalDidNotConnect(java.time.Duration waited) {
         return error(TERM_NO_CONNECT, "The terminal window did not connect",
@@ -463,7 +452,7 @@ final class Problems {
             .withFix(Fix.of("or name a terminal you know works with terminal.profile in oillamp.toml"));
     }
 
-    /** The terminal emulator itself would not start — a different failure from not connecting. */
+    /** The terminal emulator itself would not start, as opposed to starting and never connecting. */
     public static Problem terminalNotStarted(Tuple<String> argv, String reason, String output) {
         Problem problem = error(TERM_NOT_STARTED, "The terminal window could not be opened",
                 "starting " + argv.first() + " failed: " + reason,
@@ -477,11 +466,8 @@ final class Problems {
     }
 
     /**
-     * The viewer window closed straight after opening — a warning, never an error.
-     *
-     * <p>§10.6 is deliberate about this: the viewer's lifetime is independent of the session's.
-     * A session with no view of the desktop is degraded, not broken, and ending it would throw
-     * away work over a window the user can reopen with {@code oillamp view}.
+     * The viewer window closed straight after opening. A warning, not an error: the session still
+     * works, and the user can open another viewer with {@code oillamp view}.
      */
     public static Problem viewerDiedImmediately(Tuple<String> argv, int exitCode, String output) {
         return warning(VIEWER_DIED, "The viewer window closed immediately",
@@ -493,17 +479,17 @@ final class Problems {
             .withFix(Fix.of("open another one with `oillamp view <dir>` once it is fixed"));
     }
 
-    /** A second connection to the primary socket, which belongs to one terminal only (§17.3). */
+    /** A second connection to the primary SSH socket, which belongs to the terminal window only. */
     public static Problem extraPrimaryRejected(Path socket) {
         return warning(SSH_PRIMARY_TAKEN, "A second connection to the session's own socket was refused",
                 socket + " accepts one connection per session, and it is already in use",
                 "closing that one terminal is what ends the session, so the slot cannot be shared; "
               + "use `oillamp shell <dir>` for extra shells, which do not end anything")
-            .withEvidence(new Evidence.File(socket, "the primary relay (D-09)"))
+            .withEvidence(new Evidence.File(socket, "the primary SSH relay"))
             .withFix(Fix.of("open extra shells with `oillamp shell <dir>`"));
     }
 
-    // ─── reaching a running session (§26.6) ────────────────────────────────────────────────
+    // ─── reaching a running session ────────────────────────────────────────────────────────
 
     public static Problem noSessionRunning(Path lamp, String command) {
         return error(SESSION_NOT_RUNNING, "No session is running for this lamp",
@@ -546,9 +532,8 @@ final class Problems {
     /**
      * The container exited while oillamp was waiting for it to become ready.
      *
-     * <p>Carries the container's own log, because that is the only place the reason exists: the
-     * entrypoint knows why it gave up and says so, and without this the user sees a timeout and a
-     * container that is simply gone.
+     * <p>Includes the last lines of the container's log, the only place the entrypoint explains
+     * why it stopped.
      */
     public static Problem sandboxDied(String container, String log) {
         return error(SANDBOX_DIED, "The sandbox stopped while starting up",
@@ -560,11 +545,8 @@ final class Problems {
     }
 
     /**
-     * The one shutdown failure worth telling a user about: the container is still there.
-     *
-     * <p>Deliberately not an internal error. Neither {@code podman stop} nor {@code podman rm -f}
-     * working is a real problem the user has to deal with — the next session on this lamp will
-     * hit the leftover name — but it is a problem with podman or the machine, not a bug to report.
+     * Neither {@code podman stop} nor {@code podman rm -f} worked, so the container is still there.
+     * Not an internal error: it is a problem with podman or the machine, and the fix is a command.
      */
     public static Problem containerNotRemoved(String container, String stopError, String removeError) {
         return error(SANDBOX_NOT_REMOVED, "The sandbox container is still there",
@@ -586,19 +568,17 @@ final class Problems {
                 "oillamp waits for the sandbox to say it is ready rather than guessing, so that a "
               + "session never starts against a desktop that is not there yet")
             .withEvidence(new Evidence.Value("last lines of the sandbox log", log))
-            .withFix(Fix.of("if the log shows it still working, the machine may simply be slow — "
-                          + "raise the timeout with session.ready_timeout"))
+            .withFix(Fix.of("if the log shows it was still working, the machine may just be slow; "
+                          + "run oillamp again, since a second start is usually faster"))
             .withFix(Fix.run("stop the container that is still running", "podman rm -f " + container));
     }
 
     /**
      * The sandbox said it was ready, but one of its sockets refuses connections.
      *
-     * <p>This is the problem that exists because the sandbox reports on itself. A server can die
-     * after writing {@code ready.json}, or fail to bind and leave the previous session's socket
-     * file standing in for it — and in both cases the sandbox looks healthy from the outside while
-     * the human's viewer is refused. Finding that here, rather than letting the user find it, is
-     * the whole point of connecting before saying the session is up.
+     * <p>A server can die after {@code ready.json} is written, or fail to start and leave the
+     * previous session's socket file in place. Either way the sandbox looks healthy until
+     * something connects, which is why oillamp connects before saying the session is ready.
      */
     public static Problem sandboxEndpointDead(String what, java.nio.file.Path socket,
                                               String container, String log) {
@@ -608,9 +588,7 @@ final class Problems {
               + "calls ready is one you can actually reach")
             .withEvidence(new Evidence.Value("socket", socket.toString()))
             .withEvidence(new Evidence.Value("last lines of the sandbox log", log))
-            // Only promise the log when there is one. A container that died before it could say
-            // anything is a different situation, and pointing at an empty log for the reason
-            // sends the reader looking for something that is not there.
+            // Only point at the log when it has something in it.
             .withFix(hasContent(log)
                     ? Fix.of("the log above is from inside the sandbox and names the process that failed")
                     : Fix.of("the sandbox logged nothing, so it stopped before it could report a "
@@ -634,11 +612,11 @@ final class Problems {
     public static Problem commandTimedOut(Evidence.Command command) {
         return error(EXEC_TIMED_OUT, "Command timed out",
                 "the command did not finish within " + command.took(),
-                "every external command has a timeout so a hung tool can never hang oillamp (NFR-02)")
+                "every external command has a timeout so a hung tool can never hang oillamp")
             .withEvidence(command);
     }
 
-    /** The user typed something oillamp does not understand — exit code 2, never a stack trace. */
+    /** The user typed something oillamp does not understand. Exit code 2. */
     static Problem usage(String whatHappened, String usage) {
         return error(new Code("OIL-USAGE-001"), "Invalid command line",
                 whatHappened,
@@ -651,13 +629,13 @@ final class Problems {
                 detail,
                 "this is a bug in oillamp, not something you did wrong")
             .withEvidence(new Evidence.Value("where", where))
-            .withFix(Fix.of("re-run with --debug and attach the session log to a bug report"));
+            .withFix(Fix.of("re-run with --verbose and include the whole output in a bug report"));
     }
 
     public static Problem gpuSoftware(String reason, Tuple<Fix> remedy) {
         return new Problem(GPU_SOFTWARE, Severity.INFO, "GPU not used",
                 reason,
-                "the desktop falls back to software rendering, which is slower but always works (D-24)",
+                "the desktop falls back to software rendering, which is slower but always works",
                 Tuple.of(Evidence.class),
                 remedy.add(Fix.of("or set display.gpu = \"off\" in oillamp.toml to silence this")),
                 Optional.empty());
@@ -680,10 +658,7 @@ final class Problems {
         return frames.length == 0 ? "unknown" : frames[0].getClassName() + "." + frames[0].getMethodName();
     }
 
-    /**
-     * A human-readable reason from an exception. Some exceptions carry no message at all, and
-     * "null" is never a useful thing to show a user.
-     */
+    /** A readable reason from an exception: its message, or its class name if it has none. */
     public static String reason(Throwable failure) {
         String message = failure.getMessage();
         return message == null || message.isBlank()

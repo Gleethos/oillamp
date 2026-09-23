@@ -3,18 +3,15 @@ package dev.oillamp;
 import java.nio.file.Path;
 
 /**
- * One configuration file, already read by the shell — spec §20.1.
+ * The text of one configuration file and where it came from.
  *
- * <p>The loader is pure, so it receives text rather than reading files itself. Keeping the
- * {@code origin} with the text is what lets a problem say <em>which</em> file the bad key is in
- * when a lamp file and the user-global file both contribute.
- *
- * <p>Deliberately <b>package-private</b>: records which file a value came from so a problem can
- * point at it. A reporting detail.
+ * <p>{@link ConfigLoader} does not read files itself; it is given their text. The {@code origin}
+ * lets a problem name the file a bad key is in when both the global file and the lamp's file
+ * contribute.
  */
 record ConfigSource(Path origin, String text, Kind kind) {
 
-    /** Which layer of the precedence chain this file is (§20.1). */
+    /** Which of the two configuration files this is. The lamp's file wins over the global one. */
     public enum Kind {
         /** {@code ~/.config/oillamp/config.toml} — optional defaults for every lamp. */
         USER_GLOBAL,

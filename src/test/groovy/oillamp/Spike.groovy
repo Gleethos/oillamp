@@ -5,7 +5,7 @@ import dev.oillamp.Machine
 import java.time.Duration
 
 /**
- * Runs real commands on this real machine, for the verification spikes of design spec §33.
+ * Runs real commands on this machine, for the spike tests ({@code ./gradlew spikes}).
  *
  * <p>Note what this deliberately is not: it is not a second execution path invented for tests. It
  * goes through {@link Machine#real()}, the same seam oillamp itself runs everything through. If
@@ -14,8 +14,8 @@ import java.time.Duration
  *
  * <p>The spikes answer questions the simulation structurally cannot. {@code Machine.simulated()}
  * replays what we already believe about podman and sway; that makes it perfect for testing
- * oillamp's reasoning and worthless for testing whether the belief is true. §33 exists because
- * several of those beliefs are load-bearing and unconfirmed.
+ * oillamp's reasoning and useless for testing whether the belief is true. The spikes check the
+ * beliefs the design depends on.
  */
 class Spike {
 
@@ -76,7 +76,7 @@ class Spike {
     /**
      * Removes a directory tree that may contain files chowned into the subuid range.
      *
-     * <p>Plain {@code rm -rf} fails on those with "Operation not permitted" — the host user does
+     * <p>Plain {@code rm -rf} fails on those with "Operation not permitted": the host user does
      * not own uid 166536 and cannot unlink its files. Found the hard way while writing these
      * spikes, and it is the same problem a user will have removing a lamp directory by hand.
      */
@@ -87,7 +87,7 @@ class Spike {
     /**
      * True when a container can reach the network at all.
      *
-     * <p>Rootless podman needs a userspace networking backend — slirp4netns or pasta — and Ubuntu
+     * <p>Rootless podman needs a userspace networking backend (slirp4netns or pasta), and Ubuntu
      * 24.04 installs neither with podman. Without one, every networked container dies with
      * "could not find slirp4netns, the network namespace can't be configured". The spikes that
      * need a network skip rather than fail on such a host, because "this assumption is still

@@ -7,15 +7,11 @@ import sprouts.Tuple;
 import sprouts.ValueSet;
 
 /**
- * Everything oillamp learned about the machine it is running on — spec §24.2.
+ * Everything oillamp learned about the host, gathered by {@link HostProbe}.
  *
- * <p>This is the whole input to host planning. Probing is effectful and lives in the shell;
- * deciding what to install and fix is pure and takes only this record. A probe that fails
- * becomes a <em>fact</em> (an empty Optional, a {@code Fails} variant) rather than an exception,
- * so one broken check never hides the other nine.
- *
- * <p>Deliberately <b>package-private</b>: everything probed about the host, in one record. It gains
- * a field whenever a new check is added, and that must never be a breaking change.
+ * <p>This is the only input to {@link HostPlanner}. A check that fails is recorded as a fact (an
+ * empty {@code Optional}, a {@code Fails} case) rather than thrown, so one broken check does not
+ * hide the others.
  */
 record HostFacts(
     OsRelease os,

@@ -8,18 +8,15 @@ import java.util.List;
 import sprouts.Tuple;
 
 /**
- * Chooses which recordings to delete before a new session starts — spec §16.
+ * Chooses which screen recordings to delete, at every session start and on
+ * {@code oillamp recordings --prune}.
  *
- * <p>Recording is on by default and a lamp is used day after day, so without retention a laptop
- * fills up quietly. Two independent limits apply, and a recording goes if <em>either</em> says so:
- * it is older than {@code max_age_days}, or it falls outside the newest {@code max_total_gb}.
+ * <p>A lamp with recording enabled and used every day would otherwise fill the disk. Two
+ * independent limits apply, and a recording is deleted if either says so: it is older than
+ * {@code recording.max_age_days}, or it falls outside the newest {@code recording.max_total_gb}.
  *
- * <p>Pure, and deliberately phrased as "select what to delete" rather than "delete": the caller
- * shows the list, logs it, and only then removes the files — which for these files needs
- * {@code podman unshare} anyway, since they belong to the container's infra user (§9.2).
- *
- * <p>Deliberately <b>package-private</b>: which recordings to delete. Policy that should stay
- * tunable.
+ * <p>This only selects; it deletes nothing. The caller turns the selection into a step, which
+ * deletes through {@code podman unshare} because the files belong to the infra user.
  */
 final class Retention {
 

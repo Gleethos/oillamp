@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Node from NodeSource, because trixie's is too old for the agent harnesses — spec §15.2.
+# Installs Node.js from NodeSource, because Debian trixie's version is too old for the agent harnesses.
 set -Eeuo pipefail
 major="${1:-24}"
 curl -fsSL "https://deb.nodesource.com/setup_${major}.x" | bash -

@@ -1,9 +1,8 @@
 package dev.oillamp;
 
 /**
- * Package-manager families. Only {@link #DEBIAN} can be installed onto automatically in v1 (D-17).
- *
- * <p>Deliberately <b>package-private</b>: apt today, possibly dnf and pacman later (§7). Public
- * would turn adding a family into an API change.
+ * Families of Linux distributions, grouped by package manager. oillamp can only install host
+ * packages automatically on {@link #DEBIAN} (apt). On the others it lists the packages for the
+ * user to install.
  */
 enum DistroFamily { DEBIAN, RPM, ARCH, UNKNOWN }

@@ -1,11 +1,6 @@
 package dev.oillamp;
 
-/**
- * What {@code podman version} and {@code podman info} reported — spec §11.2.
- *
- * <p>Deliberately <b>package-private</b>: parsed {@code podman version} and {@code podman info}
- * output.
- */
+/** What {@code podman version} and {@code podman info} reported. */
 record PodmanFacts(
     String version,
     boolean rootless,
@@ -16,7 +11,7 @@ record PodmanFacts(
     /** The oldest podman with the rootless keep-id mapping oillamp needs. Ubuntu 24.04 ships 4.9.x. */
     public static final String MINIMUM_VERSION = "4.9";
 
-    /** GPU pass-through needs {@code --group-add keep-groups}, which only crun implements (§13.1). */
+    /** Passing the GPU into the container needs {@code --group-add keep-groups}, which only crun supports. */
     public boolean supportsKeepGroups() { return ociRuntime.equals("crun"); }
 
     public boolean isAtLeastMinimum() { return compareVersions(version, MINIMUM_VERSION) >= 0; }

@@ -6,15 +6,10 @@ import java.util.Optional;
 import sprouts.Tuple;
 
 /**
- * What each oillamp command actually does — the layer between argument parsing and the phases.
+ * One method per oillamp command. {@link Invocation} parses the command line and calls these.
  *
- * <p>Nothing here decides anything: it sequences the phases, turns their results into exit codes
- * and lets {@link Context} carry the events out. The decisions all live in pure functions in the
- * core, which is why they are tested as such.
- *
- * <p>Deliberately <b>package-private</b>: it assembles argv for podman, ssh and apt. Those command
- * lines change whenever the tools do, which is precisely why nobody outside may depend on their
- * shape.
+ * <p>These methods run the phases in order, turn their results into exit codes, and report
+ * through {@link Context}. The decisions are made by the pure planners they call.
  */
 final class Commands {
 
@@ -27,10 +22,10 @@ final class Commands {
     }
 
     /**
-     * {@code oillamp doctor [<dir>]} — check everything, change nothing.
- *
- * <p>Deliberately does not require a graphical session, because "you are running this over
- * SSH with no display" is one of the things a user runs doctor to find out.
+     * {@code oillamp doctor [<dir>]}: check the host (and the lamp's configuration), change nothing.
+     *
+     * <p>Does not require a graphical session, because finding out that you are on a plain SSH
+     * login is one of the reasons to run it.
      */
     public ExitStatus doctor(Optional<Path> lampPath) {
         Context.Options original = context.options();
@@ -52,12 +47,11 @@ final class Commands {
     }
 
     /**
-     * {@code oillamp at <dir>} — prepare the host and the lamp, then run a session.
+     * {@code oillamp at <dir>}: prepare the host and the lamp, then run a session.
      *
-     * <p>All four phases of §10.5, in order, each re-reading what the one before it changed. The
-     * command does not return when the sandbox is up: it becomes the session's supervisor and
-     * returns when the session is over, which is what lets one Ctrl-C, one closed window or one
-     * {@code oillamp stop} take down everything it created.
+     * <p>Runs the phases in order: host, lamp, image and sandbox, then the {@link Supervisor}. It
+     * does not return when the sandbox is up, but when the session is over, so that one Ctrl-C,
+     * one closed window or one {@code oillamp stop} takes down everything it created.
      */
     public ExitStatus at(Path lampPath) {
         HostPhase.Outcome host = new HostPhase(machine, context).prepare(lampPath, true,
@@ -75,10 +69,8 @@ final class Commands {
         LampPhase.Prepared prepared = ((Result.Ok<LampPhase.Prepared>) lamp).value();
         context.report(lamp.warnings());
 
-        // A dry run shows the *whole* plan, the container included, and takes no lock: it changes
-        // nothing, so it must not be able to block a session that is actually running. Stopping
-        // here instead would hide the one part of the plan a user most wants to inspect — the
-        // podman arguments that are the sandbox's guarantees (§15.3).
+        // A dry run also plans the image and container steps, so the full podman command is
+        // shown. It takes no lock, so it cannot block a session that is really running.
         if (context.options().dryRun()) {
             Result<SandboxPhase.Running> planned =
                     new SandboxPhase(machine, context).start(prepared, host.facts());
@@ -91,8 +83,8 @@ final class Commands {
             return ExitStatus.SUCCESS;
         }
 
-        // One session per lamp (FR-04). The OS releases this when the process dies, however it
-        // dies, so a crashed supervisor never blocks the next run.
+        // One session per lamp. The OS releases the lock when the process dies, however it dies,
+        // so a crashed supervisor never blocks the next run.
         Optional<LampLock> lock;
         try {
             lock = LampLock.tryAcquire(prepared.layout().lockFile());
@@ -123,15 +115,11 @@ final class Commands {
 
             SandboxPhase.Running running = ((Result.Ok<SandboxPhase.Running>) sandbox).value();
             context.ok("session", "sandbox running — container " + running.container());
-            // Said out loud because it is the difference between a tick that was reported and one
-            // that was tested: oillamp opened both of these sockets before printing this.
+            // oillamp connected to both sockets (CheckEndpoints) before printing this.
             context.ok("session", "desktop and shell both answering — "
                     + "oillamp connected to each socket before handing it over");
 
-            // From here on `at` does not return until the session is over. It opens the two
-            // windows, holds the relays they come back through, and takes everything down again
-            // when the user closes the terminal — which is why this call is the last thing the
-            // command does rather than one more step in a list (§26.5).
+            // From here `at` does not return until the session is over.
             return new Supervisor(machine, context, host.facts(), prepared, running).run();
         } finally {
             try {
@@ -143,9 +131,9 @@ final class Commands {
         }
     }
 
-    // ─── the commands that talk to a session already running (§26.6) ───────────────────────
+    // ─── commands that talk to a running session through its control socket ─────────────
 
-    /** {@code oillamp view <dir> [--view-only]} — open another window onto the same desktop. */
+    /** {@code oillamp view <dir> [--view-only]}: open another viewer onto the same desktop. */
     public ExitStatus view(Path lampPath, boolean viewOnly) {
         return askTheSession(lampPath, "view",
                 Control.Request.of("view").with("view_only", String.valueOf(viewOnly)),
@@ -153,11 +141,11 @@ final class Commands {
     }
 
     /**
-     * {@code oillamp shell <dir>} — an extra shell, in <em>this</em> terminal.
+     * {@code oillamp shell <dir>}: an extra shell in this terminal.
      *
-     * <p>The supervisor hands back the command rather than running it, because the shell belongs
-     * to the terminal the user typed this into (§26.6). Closing it ends nothing: only the window
-     * oillamp opened itself has that power (D-09).
+     * <p>The supervisor returns the ssh command and this process runs it, because the shell belongs
+     * in the terminal the user typed this into. Closing it does not end the session; only closing
+     * the terminal window oillamp opened does.
      */
     public ExitStatus shell(Path lampPath) {
         Result<Control.Reply> reply = askTheSession(lampPath, "shell", Control.Request.of("shell"));
@@ -178,11 +166,11 @@ final class Commands {
     }
 
     /**
-     * {@code oillamp stop <dir>} — ask the running session to end.
+     * {@code oillamp stop <dir>}: ask the running session to end.
      *
-     * <p>Asks rather than kills: the supervisor holds the lock, the relays and the recording, and
-     * a container removed behind its back would leave it believing it still had a session. When
-     * there is no supervisor to ask, this cleans up after one that died instead.
+     * <p>It asks the supervisor rather than removing the container, because the supervisor holds
+     * the lock, the relays and the recording and must run its own shutdown. If no supervisor
+     * answers, it removes a container left behind by one that died.
      */
     public ExitStatus stop(Path lampPath) {
         Result<Control.Reply> reply = askTheSession(lampPath, "stop", Control.Request.of("stop"));
@@ -194,21 +182,17 @@ final class Commands {
     }
 
     /**
-     * {@code oillamp remove <dir>} — delete a lamp and everything in it.
+     * {@code oillamp remove <dir>}: delete a lamp.
      *
-     * <p>This exists because a lamp cannot be deleted with {@code rm -rf}. Part of one belongs to
-     * the sandbox's second user — the infra sockets and the recordings, so that the agent cannot
-     * tamper with the recording of its own screen (§9.2, NFR-06) — and those map onto subordinate
-     * ids that the human who owns the directory has no permission over. They find out when
-     * {@code rm -rf} stops halfway with "Permission denied" on a path they have never heard of.
+     * <p>A lamp cannot be deleted with {@code rm -rf}: the infra sockets and the recordings belong
+     * to the infra user, which is a subordinate id on the host that the lamp's owner cannot delete
+     * files of. This command deletes them through {@code podman unshare}.
      *
-     * <p>It deletes what oillamp created and nothing else. The lamp directory is the user's —
-     * they named it, and may keep files of their own beside {@code oillamp.toml} — so the root
-     * itself survives unless removal leaves it empty.
+     * <p>It deletes only what oillamp created. The lamp directory itself is removed only if nothing
+     * else is left in it, because the user may keep their own files there.
      *
-     * <p>Requires {@code --yes}, because there is no prompt to answer here and this deletes the
-     * agent's home — repositories, installed toolchains, everything it did. Without the flag it
-     * prints exactly what would go and stops, which is the closest thing to asking.
+     * <p>It requires {@code --yes}, because it deletes the agent's home and all its work, and there
+     * is no interactive prompt. Without {@code --yes} it lists what would be deleted and exits 2.
      */
     public ExitStatus remove(Path lampPath, boolean confirmed) {
         Path root = lampPath.toAbsolutePath().normalize();
@@ -226,9 +210,8 @@ final class Commands {
             return ExitStatus.USAGE;
         }
 
-        // The identity is what names the container and the runtime directory, and a lamp that was
-        // half-deleted by hand no longer has one. Everything else is still addressable, so a
-        // missing identity costs only those two checks — not the command.
+        // A lamp half-deleted by hand may have lost lamp.json, and with it the agent id that names
+        // the container and the runtime directory. Everything else can still be removed.
         Optional<LampLayout> layout = layoutOf(lampPath) instanceof Result.Ok<LampLayout> ok
                 ? Optional.of(ok.value())
                 : Optional.empty();
@@ -261,12 +244,9 @@ final class Commands {
     }
 
     /**
-     * Whether anything would be pulled out from under a running session.
-     *
-     * <p>Two questions, because they fail differently. A supervisor that answers is a session the
-     * user is probably still looking at. A container with no supervisor is the wreck of one that
-     * died — which {@code oillamp stop} already knows how to clear up, so the answer in both
-     * cases is the same and says so.
+     * What is still running for this lamp, if anything: a container, a supervisor that answers, or
+     * a container left behind by a supervisor that died. In each case the user is told to run
+     * {@code oillamp stop} first.
      */
     private Optional<String> whatIsStillRunning(Path root, Optional<LampLayout> layout) {
         Optional<String> container = runningSandboxFor(root);
@@ -285,13 +265,10 @@ final class Commands {
     }
 
     /**
-     * Any sandbox podman is running for this lamp, found by the label rather than by the name.
+     * A container podman is running for this lamp, found by its {@code oillamp.lamp} label.
      *
-     * <p>The name is derived from the lamp's identity, and the case that most needs this check is
-     * the one where that identity is gone: a lamp somebody started deleting by hand. The
-     * container still carries the lamp's path as a label, so podman can answer even when the
-     * directory no longer can — which is what stops {@code remove} deleting a lamp out from under
-     * a sandbox that is still up.
+     * <p>Found by label rather than by name, because the name comes from {@code lamp.json}, which
+     * may already have been deleted by hand. The label holds the lamp's path.
      */
     private Optional<String> runningSandboxFor(Path root) {
         Machine.Outcome outcome = machine.run(Machine.Command
@@ -311,19 +288,15 @@ final class Commands {
                         : text(container, "Names"));
             }
         } catch (com.fasterxml.jackson.core.JacksonException unreadable) {
-            // A podman that answers with something else is a reason to fall back to the checks
-            // below, not a reason to decide the lamp is free.
+            // Unreadable output: fall back to the other checks in whatIsStillRunning.
             return Optional.empty();
         }
         return Optional.empty();
     }
 
     /**
-     * The list a user reads before typing {@code --yes}.
-     *
-     * <p>The agent's home is listed entry by entry rather than as a total in megabytes, because
-     * the question being asked is not "how much" but "what": one of those names is usually a
-     * repository with work in it, and a number would not show that.
+     * The list of what {@code remove} would delete, shown before the user adds {@code --yes}. The
+     * agent's home is listed entry by entry, so the user can see which repositories would go.
      */
     private static String describeWhatWouldGo(LampPlanner.Removal found) {
         StringBuilder out = new StringBuilder("`oillamp remove` permanently deletes:\n\n");
@@ -348,13 +321,7 @@ final class Commands {
         return out.toString();
     }
 
-    /**
-     * Takes the lamp directory too, but only if oillamp was all that was in it.
-     *
-     * <p>A lamp created by {@code oillamp at <new dir>} should not leave an empty directory
-     * behind; one the user has kept their own files in must not take those with it. Nothing
-     * records which of the two this was — but by this point the directory itself answers.
-     */
+    /** Removes the lamp directory itself, but only if nothing else is left in it. */
     private String removeTheRootIfEmpty(Path root) {
         DirListing left = Filesystem.list(root);
         if (!left.readable() || !left.isEmpty())
@@ -367,7 +334,7 @@ final class Commands {
         }
     }
 
-    /** {@code oillamp status <dir>} — what the running session is doing. */
+    /** {@code oillamp status <dir>}: what the running session is doing. */
     public ExitStatus status(Path lampPath) {
         Result<Control.Reply> reply = askTheSession(lampPath, "status", Control.Request.of("status"));
         if (reply instanceof Result.Err<Control.Reply> failure) {
@@ -385,16 +352,12 @@ final class Commands {
     }
 
     /**
-     * {@code oillamp list} — every sandbox running on this host.
-     *
-     * <p>Asks podman rather than keeping a list of its own. A second list beside the one the
-     * container runtime already maintains is a list that can be wrong, and it would be wrong in
-     * exactly the case it is needed: after a supervisor was killed.
+     * {@code oillamp list}: every oillamp container running on this host, found by its
+     * {@code oillamp.agent-id} label. oillamp keeps no list of its own that could go out of date.
      */
     public ExitStatus list() {
-        // JSON rather than a --format template. Templates reach into podman's own internal
-        // struct, and the field that holds a label is spelled differently between podman 4 and
-        // 5 — a listing that works here and not on the user's machine is worse than no listing.
+        // JSON rather than a --format template: the template field names differ between podman
+        // 4 and 5, and this must work with both.
         Machine.Outcome outcome = machine.run(Machine.Command
                 .of("podman", "ps", "--filter", "label=oillamp.agent-id", "--format", "json")
                 .withTimeout(java.time.Duration.ofSeconds(20)).labelled("podman ps"));
@@ -427,8 +390,7 @@ final class Commands {
                 rows = rows.add(column(name) + column(text(container, "State")) + lamp);
             }
         } catch (com.fasterxml.jackson.core.JacksonException unreadable) {
-            // A podman that answers with something other than the JSON it was asked for is a
-            // reason to show nothing, not a reason to fail the command.
+            // Output that is not the expected JSON: show nothing rather than fail.
             return Tuple.of(String.class);
         }
         return rows.isEmpty() ? rows
@@ -454,16 +416,14 @@ final class Commands {
     }
 
     /**
-     * {@code oillamp recordings <dir> [--open <session>] [--prune]} — spec §16, §28.
+     * {@code oillamp recordings <dir> [--open <session>] [--prune]}: list, play or prune the lamp's
+     * recordings.
      *
-     * <p>Reads a directory the host user cannot write. The recordings belong to the container's
-     * infra user so that the agent cannot tamper with the record of its own screen (§9.2, NFR-06),
-     * and the same ownership is why {@code --prune} goes through {@code podman unshare} rather
-     * than deleting the files directly.
+     * <p>The recordings belong to the infra user, so this user can read them but not delete them
+     * directly; {@code --prune} deletes through {@code podman unshare}.
      *
-     * <p>Lists even when a session is running. The file being written right now is included, with
-     * the size and duration it has reached so far — a user asking what is being recorded is
-     * usually asking precisely because something is.
+     * <p>Works while a session is running. The file being recorded is listed with its current size
+     * and duration.
      */
     public ExitStatus recordings(Path lampPath, Optional<String> open, boolean prune) {
         Result<LampLayout> found = layoutOf(lampPath);
@@ -506,10 +466,7 @@ final class Commands {
     private ExitStatus openRecording(Tuple<RecordingFile> existing, String session, LampLayout layout) {
         for (RecordingFile file : existing)
             if (file.session().map(id -> id.value().equals(session)).orElse(false)) {
-                // Detached, and deliberately not waited for: xdg-open hands the file to whatever
-                // the desktop uses for video and returns, but some players are themselves the
-                // process it starts. Waiting would block the terminal for as long as the user
-                // watches.
+                // Not waited for: with some players xdg-open only returns when the video is closed.
                 Machine.Window window = machine.launch(
                         Machine.Command.of("xdg-open", file.path().toString()).labelled("xdg-open"),
                         Machine.Window.Stdio.DETACHED);
@@ -549,7 +506,7 @@ final class Commands {
         return text.length() >= width ? text : text + " ".repeat(width - text.length());
     }
 
-    /** Blank rather than zero for a file that cannot say: an unknown length is not a length. */
+    /** "-" for a file whose duration is unknown. */
     private static String describeDuration(RecordingFile file) {
         return file.duration()
                 .map(gap -> gap.toHours() > 0
@@ -572,12 +529,8 @@ final class Commands {
     }
 
     /**
-     * Finds a lamp's paths without setting anything up.
-     *
-     * <p>{@code view}, {@code shell}, {@code stop} and {@code status} must not create, migrate or
-     * repair anything: they are questions about a session that is already running, and a command
-     * that fixed a lamp on its way to asking one would be the last thing a user wants from
-     * {@code status}.
+     * Finds a lamp's paths without creating or changing anything. Used by {@code view},
+     * {@code shell}, {@code stop}, {@code status} and {@code recordings}.
      */
     private Result<LampLayout> layoutOf(Path lampPath) {
         Path root = lampPath.toAbsolutePath().normalize();
@@ -597,8 +550,8 @@ final class Commands {
     }
 
     /**
-     * There is no supervisor. Either nothing is running, or one was killed without tidying up —
-     * and FR-08 is explicit that the second case must not need manual cleanup.
+     * No supervisor answered. Either nothing is running, or a supervisor was killed without
+     * cleaning up; in that case remove its container and {@code session.json}.
      */
     private ExitStatus cleanUpAfterACrashedSession(Path lampPath, Tuple<Problem> why) {
         Result<LampLayout> found = layoutOf(lampPath);
@@ -645,7 +598,7 @@ final class Commands {
         return out.toString();
     }
 
-    /** {@code oillamp config <dir> check} — validate without touching anything. */
+    /** {@code oillamp config <dir> check}: validate the lamp's configuration without changing anything. */
     public ExitStatus checkConfig(Path lampPath) {
         HostPhase.Outcome host = new HostPhase(machine, new Context(context::emit,
                 context.options().withDryRun(true).withAutoInstall(false), context.version()))
@@ -654,7 +607,10 @@ final class Commands {
         return checkConfiguration(lampPath, true);
     }
 
-    /** {@code oillamp config <dir> show-effective} — print the merged, validated configuration. */
+    /**
+     * {@code oillamp config <dir> show-effective}: print a summary of the validated configuration.
+     * Currently reads only the lamp's own file, not the global one.
+     */
     public ExitStatus showEffectiveConfig(Path lampPath) {
         Result<LampConfig> loaded = loadConfig(lampPath);
         if (loaded instanceof Result.Err<LampConfig> failure) {
@@ -744,7 +700,7 @@ final class Commands {
         });
     }
 
-    /** Maps a lamp-phase failure to the exit code the spec promises (§27.5). */
+    /** The exit code for a list of problems: 4 for a busy lamp, 2 for configuration errors, otherwise 1. */
     public static ExitStatus exitStatusFor(Tuple<Problem> problems) {
         for (Problem problem : problems) {
             String code = problem.code().value();
@@ -756,6 +712,6 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
-    /** Used by the entry point to announce itself before any phase runs. */
+    /** Currently unused. */
     public static Plan noPlan() { return Plan.nothingToDo(LampEvent.Phase.HOST); }
 }

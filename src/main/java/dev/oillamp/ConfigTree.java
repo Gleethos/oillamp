@@ -9,19 +9,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import sprouts.Association;
 
 /**
- * Several configuration files merged into one tree, remembering where each value came from.
+ * The configuration files merged into one tree, remembering which file each value came from.
  *
- * <p>Merge semantics are spec §20.1: <b>tables merge key by key</b> (a later file overrides
- * single values) but <b>arrays replace as a whole</b>. That asymmetry is deliberate and
- * documented at the top of the shipped template: a lamp that defines {@code network.rules} gets
- * exactly the rules it lists, and never a silent union with the user-global file's rules. A
- * half-merged policy would be a policy nobody can reason about.
+ * <p><b>Tables merge key by key</b>: a later file overrides single values. <b>Arrays are replaced
+ * as a whole</b>: a lamp that defines {@code network.rules} gets exactly the rules it lists, never
+ * a combination with the global file's rules, which nobody could reason about. The template
+ * written into each new lamp says this at the top.
  *
- * <p>Origins are tracked per key path so that a problem can name the file the offending value
- * actually came from, which matters as soon as two files are in play.
- *
- * <p>Deliberately <b>package-private</b>: a thin walk over Jackson's tree, and the only place
- * Jackson is named. That is only true while it stays internal — which is the point.
+ * <p>The file of origin is kept for every key path, so a problem can name the file the bad value
+ * came from.
  */
 record ConfigTree(JsonNode root, Association<String, Path> origins) {
 
@@ -39,7 +35,7 @@ record ConfigTree(JsonNode root, Association<String, Path> origins) {
     public Optional<Path> originOf(String keyPath) {
         Optional<Path> exact = origins.get(keyPath);
         if (exact.isPresent()) return exact;
-        // Fall back to the nearest ancestor - e.g. an element inside an array of tables.
+        // Fall back to the nearest parent key, for example for an element inside an array of tables.
         String path = keyPath;
         while (true) {
             int cut = Math.max(path.lastIndexOf('.'), path.lastIndexOf('['));

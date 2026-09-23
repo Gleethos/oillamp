@@ -3,8 +3,8 @@
 #
 # Nothing here may fail the build. A sandbox without an agent harness is still a working sandbox
 # with a desktop, a shell and a recording, and the user can install a harness themselves or name
-# a different one in oillamp.toml. A build that died because npm was having a bad afternoon would
-# take all of that away for no reason — so every step reports and carries on.
+# a different one in oillamp.toml. A build that failed because npm was briefly unreachable would
+# take all of that away, so every step reports its failure and carries on.
 #
 # Takes friendly names ("pi", "opencode") or raw npm specifiers. The friendly names are what a
 # user writes in oillamp.toml; the mapping to a published package lives here because that is what
@@ -14,8 +14,8 @@ set -Eeuo pipefail
 # Where pi looks for extensions when PI_CODING_AGENT_DIR points at it (pi's own convention).
 PI_DIR=/usr/local/share/oillamp/pi
 
-# Extensions are fetched here at build time because the sandbox has no network of its own: an
-# agent cannot run `pi install` at runtime, so anything it is meant to have must already be here.
+# Extensions are installed at build time so they are there from the first session. (`pi install`
+# also works inside the sandbox, through the egress proxy.)
 PI_EXTENSIONS_DEFAULT="git:github.com/edenai/pi-edenai"
 
 specifier_for() {

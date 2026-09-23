@@ -10,7 +10,9 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Spikes S8, S12 and S13 of design spec §33 — the podman assumptions the container design rests on.
+ * Checks the podman behaviour the container design depends on: rootless podman works on Ubuntu,
+ * the uid mapping, a read-only container with writable mounts, and Unix sockets across the
+ * container boundary.
  *
  * <p>These run against real podman on a real machine. They are tagged {@code spike} and excluded
  * from {@code test}; run them with {@code ./gradlew spikes}.
@@ -35,10 +37,10 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
         Spike.removeTree(scratch.toString())
     }
 
-    def 'S8: rootless podman runs here despite the Ubuntu restriction on unprivileged user namespaces'() {
+    def 'Rootless podman runs here despite the Ubuntu restriction on unprivileged user namespaces'() {
         reportInfo """
             Ubuntu 23.10 and newer refuse unprivileged user namespaces to programs without a
-            matching AppArmor profile, and rootless podman needs them. The spec assumes Ubuntu
+            matching AppArmor profile, and rootless podman needs them. oillamp assumes Ubuntu
             ships a profile that permits podman. If that were wrong, oillamp would not work at all
             on its primary target platform, and OIL-PODMAN-004 would be the most important message
             in the product rather than a rare one.
@@ -56,10 +58,10 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
             Spike.run('podman', 'info', '--format', '{{.Host.Security.Rootless}}').mentions('true')
     }
 
-    def 'S13: the container sees the human as its own user, and the infrastructure as a different one'() {
+    def 'The container sees the human as its own user, and the infrastructure as a different one'() {
         reportInfo """
-            This is the single most load-bearing assumption in the whole design, so it is worth
-            setting out from the beginning.
+            The whole security design depends on this assumption, so it is explained from the
+            beginning.
 
             On Linux every file is owned by a *number*, and every running process has one. Names
             like "dnepp" or "root" are a convenience layered on top; the kernel only ever compares
@@ -114,7 +116,7 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
             result.mentions('1000:1000 /probe')
             result.mentions('1000:1000 /probe/agent-owned.txt')
 
-        and: 'and what was given to the infra user is uid 1001 inside — a user the agent is not'
+        and: 'and what was given to the infra user is uid 1001 inside, a user the agent is not'
             result.mentions('1001:1001 /probe/infra')
 
         and: 'while on the host that same directory is a subuid the user does not own'
@@ -123,11 +125,11 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
             hostOwner.toInteger() > 65535
     }
 
-    def 'S12: a read-only container can still write to its bind-mounted home'() {
+    def 'A read-only container can still write to its bind-mounted home'() {
         reportInfo """
             The container is run with `--read-only`, so that everything outside the agent's
             home is discarded and cannot be quietly modified. That is only useful if bind mounts
-            onto pre-created mount points stay writable — otherwise the agent cannot work at all.
+            onto pre-created mount points stay writable; otherwise the agent cannot work at all.
         """
         given: 'a workspace directory on the host'
             var work = Files.createDirectories(scratch.resolve('work'))
@@ -154,13 +156,13 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
                     Spike.run('id', '-u').out.trim()
     }
 
-    def 'S12: a Unix socket the container creates is connectable from the host'() {
+    def 'A Unix socket the container creates is connectable from the host'() {
         reportInfo """
-            This is the direction SSH uses (D-08): sshd listens inside the container on a socket in
+            This is the direction SSH uses: sshd listens inside the container on a socket in
             a bind-mounted directory, and the host's ssh client connects to it. It is what keeps
             `--network=none` possible while still giving the user a shell.
 
-            The container borrows the host's socat — see Spike.borrowedSocat for why.
+            The container borrows the host's socat; see Spike.borrowedSocat for why.
         """
         given: 'a directory both sides can see'
             var sockets = Files.createDirectories(scratch.resolve('sockets'))
@@ -185,9 +187,9 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
             Spike.run('podman', 'rm', '-f', 'oillamp-spike-listen')
     }
 
-    def 'S12: a Unix socket the host creates is connectable from the container'() {
+    def 'A Unix socket the host creates is connectable from the container'() {
         reportInfo """
-            The other direction, and the one the whole network design depends on: the agent
+            The other direction, which the network design depends on: the agent
             has no route and no DNS, and reaches the egress proxy only through a socket the host
             supervisor is listening on. If this did not work, `--network=none` would have to go,
             and with it the guarantee that nothing leaves the sandbox unseen.

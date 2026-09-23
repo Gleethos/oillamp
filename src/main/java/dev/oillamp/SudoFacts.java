@@ -1,10 +1,9 @@
 package dev.oillamp;
 
 /**
- * Whether oillamp can become root to install things — spec §11.2, {@code OIL-PKG-002}.
- *
- * <p>Deliberately <b>package-private</b>: whether sudo works, needs a password, or is absent —
- * which decides both what can be fixed and what may merely be planned (§36.2).
+ * Whether oillamp can use {@code sudo} to install host packages. This decides whether missing
+ * packages can be installed now or only reported ({@code OIL-PKG-002}). A dry run does not need
+ * sudo, because it only describes what would be done.
  */
 sealed interface SudoFacts {
     /** {@code sudo -n true} succeeded: no prompt needed. */

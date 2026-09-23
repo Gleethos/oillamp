@@ -1,13 +1,12 @@
 package dev.oillamp;
 
 /**
- * Whether there is a desktop to open windows on — spec §11.2, {@code OIL-HOST-003}.
+ * The graphical session oillamp is running in, from {@code WAYLAND_DISPLAY}, {@code DISPLAY} and
+ * {@code XDG_CURRENT_DESKTOP}.
  *
- * <p>Fatal for {@code at}, {@code view} and {@code shell}, which all open windows; {@code doctor}
- * runs anyway, because being told "you have no display" over SSH is exactly what doctor is for.
- *
- * <p>Deliberately <b>package-private</b>: what kind of desktop session the host has, as probed. A
- * fact, not a concept users name.
+ * <p>{@code oillamp at} needs one, because it opens windows ({@code OIL-HOST-003} otherwise).
+ * {@code doctor} runs without one, because finding out that you are on a plain SSH login is one of
+ * the things it is for.
  */
 sealed interface GraphicalSession {
     record Wayland(String display, String desktop) implements GraphicalSession {}
@@ -22,7 +21,7 @@ sealed interface GraphicalSession {
         };
     }
 
-    /** The desktop environment name, used to pick that desktop's native terminal first (D-22). */
+    /** The desktop environment's name, used to prefer that desktop's own terminal emulator. */
     default String desktop() {
         return switch (this) {
             case Wayland w -> w.desktop();

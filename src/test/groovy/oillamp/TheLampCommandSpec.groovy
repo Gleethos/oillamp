@@ -8,12 +8,12 @@ import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 
 /**
- * The `lamp` command the agent uses to drive the desktop — design spec §19.4, decision D-27.
+ * The `lamp` command the agent uses to drive the desktop.
  *
  * <p>`lamp` is a shell script, so it cannot be unit-tested the way the Java can. It can still be
  * <em>run</em>: these scenarios put stubs for grim, wtype and wlrctl on the PATH, invoke the real
  * script, and assert on the argv it produced. That catches the failures that actually happen to
- * shell scripts — a mis-built argument list, a quoting bug, an option in the wrong order — without
+ * shell scripts (a wrongly built argument list, a quoting bug, an option in the wrong order) without
  * needing a compositor or a container.
  *
  * <p>Not tagged {@code spike}: there is no third-party assumption here and nothing to install, so
@@ -75,7 +75,7 @@ class TheLampCommandSpec extends Specification {
     }
 
     def 'lamp key turns a combination into wtype modifiers and a final key'() {
-        given: """
+        reportInfo """
             This is the one piece of real logic in the script, and the one most likely to be wrong:
             wtype takes every modifier as its own -M and only the last key as -k, so `ctrl+shift+t`
             has to become `-M ctrl -M shift -k t`. Getting it backwards produces no error, just a
@@ -99,7 +99,7 @@ class TheLampCommandSpec extends Specification {
     }
 
     def 'lamp screenshot --region converts the documented X,Y,W,H into grim geometry'() {
-        given: """
+        reportInfo """
             The agent guide documents `--region X,Y,W,H` because that is what an agent will guess.
             grim wants `X,Y WxH`. The translation is one line and it is worth a scenario, because
             if it were wrong grim would either fail or - worse - silently capture the wrong part
@@ -155,11 +155,10 @@ class TheLampCommandSpec extends Specification {
     }
 
     def 'a missing tool is reported as a missing tool, not as a broken lamp'() {
-        given: """
-            Spike S7 doubts that `wlrctl` exists in trixie, and §33's fallback is to accept losing
-            pointer control. If that happens, the agent must be told which tool is absent and that
-            everything else still works - not left with a generic failure it will read as "the
-            desktop is broken".
+        reportInfo """
+            If a tool such as `wlrctl` is ever missing from the image, the agent must be told which
+            tool is absent and that everything else still works, not left with a generic failure
+            it will read as "the desktop is broken".
         """
         when: 'wlrctl is not on the PATH'
             Files.delete(stubs.resolve('wlrctl'))
@@ -172,10 +171,10 @@ class TheLampCommandSpec extends Specification {
     }
 
     def 'lamp help tells the agent how to bypass lamp entirely'() {
-        given: """
-            D-27 dropped the Java helper on the grounds that "an agent will certainly find ways to
-            solve the issue". That is only true if the agent knows what is available, so the help
-            names the underlying tools rather than pretending lamp is the only way in.
+        reportInfo """
+            `lamp` is a thin script, and an agent may need something it does not do. That only
+            helps if the agent knows what is available, so the help names the underlying tools
+            rather than presenting lamp as the only way.
         """
         when:
             var result = runLamp('help')

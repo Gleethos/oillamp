@@ -7,17 +7,16 @@ import spock.lang.Tag
 import java.time.Duration
 
 /**
- * Spike S9 of design spec §33 — the terminal profile table of §17.4, and the premise of D-09.
+ * Checks the terminal table in {@code Terminals.java}, and why a session is tied to the SSH
+ * connection rather than to the terminal program.
  *
- * <p>Runs on the host, not in a container, so it needs no image and no network. It can only check
- * the terminals this machine actually has; the table is data (§17.4) and the rest stay unverified
- * until someone runs this on a machine that has them. That is stated rather than hidden, because
- * a table where nine of ten rows are guesses should look like one.
+ * <p>Runs on the host, not in a container. It can only check the terminals installed on this
+ * machine and reports which it could not check.
  */
 @Tag('spike')
 class VerifyingTerminalProfilesSpec extends Specification {
 
-    /** §17.4, as the option each profile uses to set the window title. */
+    /** The option each terminal in {@code Terminals.java} is given to set the window title. */
     static final Map<String, String> TITLE_OPTION = [
             'ptyxis'        : null,          // uses --new-window, no title option
             'gnome-terminal': '--title',
@@ -30,7 +29,7 @@ class VerifyingTerminalProfilesSpec extends Specification {
             'xterm'         : '-T',
     ]
 
-    def 'S9: the terminals installed here accept the arguments oillamp gives them'() {
+    def 'The terminals installed here accept the arguments oillamp gives them'() {
         reportInfo """
             The profile table is nine argument templates, each one a guess until something runs it.
             A wrong template is not a subtle bug: the terminal window simply never opens, and the
@@ -41,14 +40,14 @@ class VerifyingTerminalProfilesSpec extends Specification {
             launching windows, so it can run unattended. It reports which terminals it could not
             check at all, because a green result that only covered one row would be misleading.
         """
-        given: 'the terminals from §17.4 that exist on this machine'
+        given: 'the terminals from the table that exist on this machine'
             var installed = TITLE_OPTION.keySet().findAll { Spike.run('command', '-v', it).ok ||
                                                             Spike.run('which', it).ok }
 
         expect: 'at least one, or this scenario proves nothing and should say so'
             !installed.isEmpty()
 
-        and: 'each one still has the option §17.4 passes it'
+        and: 'each one still has the option oillamp passes it'
             installed.each { terminal ->
                 var option = TITLE_OPTION[terminal]
                 if (option == null) {
@@ -58,7 +57,7 @@ class VerifyingTerminalProfilesSpec extends Specification {
                 var help = Spike.run(Duration.ofSeconds(30), terminal, '--help-all')
                 if (!help.ok) help = Spike.run(Duration.ofSeconds(30), terminal, '--help')
                 assert help.text.contains(option),
-                        "§17.4 passes `$option` to $terminal, but its help does not mention it:\n" +
+                        "oillamp passes `$option` to $terminal, but its help does not mention it:\n" +
                         help.describe()
                 reportInfo("$terminal: `$option` accepted.")
             }
@@ -66,13 +65,13 @@ class VerifyingTerminalProfilesSpec extends Specification {
         and: 'and the table records which rows nobody has verified yet'
             var unchecked = TITLE_OPTION.keySet() - installed
             reportInfo(unchecked.isEmpty()
-                    ? 'Every profile in §17.4 was verified on this machine.'
+                    ? 'Every terminal in the table was verified on this machine.'
                     : "Not installed here, so still unverified: ${unchecked.join(', ')}.")
             true
     }
 
     @Requires({ Spike.run('command', '-v', 'gnome-terminal').ok || Spike.run('which', 'gnome-terminal').ok })
-    def 'S9: a terminal emulator returns long before its child exits, so its process id proves nothing'() {
+    def 'A terminal emulator returns long before its child exits, so its process id proves nothing'() {
         reportInfo """
             oillamp decides that a session has ended by watching the SSH connection it relays to
             the terminal window, and deliberately *not* by watching the terminal program it
@@ -80,8 +79,7 @@ class VerifyingTerminalProfilesSpec extends Specification {
             hand the new window to a separate, already-running server process and exit at once, so
             the process id oillamp holds means nothing a moment later.
 
-            That is the load-bearing sentence behind the entire supervision loop, and until now it
-            was a belief. This measures it: gnome-terminal is asked to run a child that sleeps, and
+            The whole design of how a session ends depends on this. This measures it: gnome-terminal is asked to run a child that sleeps, and
             the launch returns in a fraction of that time.
 
             If this scenario ever *fails* - if a terminal really did stay running until its child
@@ -95,7 +93,7 @@ class VerifyingTerminalProfilesSpec extends Specification {
         given: 'a child that takes clearly longer than the terminal needs to start'
             var childSeconds = 3
 
-        when: 'the terminal is launched with it, the way §17.4 would'
+        when: 'the terminal is launched with it, as oillamp would'
             var started = System.nanoTime()
             Spike.run(Duration.ofSeconds(30), 'gnome-terminal', '--title=oillamp-spike',
                       '--', 'sh', '-c', "sleep $childSeconds")
@@ -104,6 +102,6 @@ class VerifyingTerminalProfilesSpec extends Specification {
         then: 'it came back well before the child was done'
             elapsed.toMillis() < childSeconds * 1000
             reportInfo("gnome-terminal returned after ${elapsed.toMillis()} ms " +
-                       "while its child ran for ${childSeconds}s — its PID says nothing about the session.")
+                       "while its child ran for ${childSeconds}s, so its PID says nothing about the session.")
     }
 }

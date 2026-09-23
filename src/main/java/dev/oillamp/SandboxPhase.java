@@ -9,15 +9,12 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 
 /**
- * Phase C: build the image if needed, then start the sandbox and wait for it — spec §10.5, §15, §16.
+ * The image and sandbox phases: builds the image if needed, then starts the container and waits
+ * until it is ready.
  *
- * <p>Like the phases before it, this plans before it acts, so {@code --dry-run} shows the exact
- * {@code podman run} that would happen. That is worth more here than anywhere else: those flags
- * are the sandbox's guarantees, and someone who wants to check that {@code --network=none} is
- * really passed should be able to see it without reading the source or trusting a summary.
- *
- * <p>Deliberately <b>package-private</b>: Phase C of §10.5, wired together. On the effects
- * allowlist. Users meet it as the second half of {@code at}.
+ * <p>Like the other phases, it plans before it acts, so {@code --dry-run} shows the exact
+ * {@code podman run} command. Those flags are the sandbox's security settings, and it should be
+ * possible to check them without reading the source.
  */
 final class SandboxPhase {
 
@@ -40,14 +37,13 @@ final class SandboxPhase {
 
         Tuple<Step> steps = Tuple.of(Step.class);
 
-        // A container from a previous session with the same name would make `podman run` fail with
-        // a name clash, which says nothing about the real situation: the last session did not
-        // clean up, probably because it was killed.
+        // A container with the same name, left by a session that was killed, would make
+        // `podman run` fail with a confusing name clash. Remove it first.
         if (containerExists(container))
             steps = steps.add(new Step.RemoveContainer(container, "left over from an earlier session"));
 
-        // Images are content-addressed (§12.3), so an existing one with this tag was built from
-        // exactly these inputs and there is nothing to gain by building it again.
+        // The tag is a hash of the image's inputs, so an image with this tag was built from exactly
+        // these inputs and does not need building again.
         boolean imagePresent = imageExists(image);
         if (!imagePresent) {
             steps = steps.add(new Step.ExtractImageContext(layout.imageContext()));
@@ -57,9 +53,8 @@ final class SandboxPhase {
 
         StepRunner runner = new StepRunner(machine, context);
 
-        // Two plans rather than one, because §10.5 makes them separate phases and they fail for
-        // different reasons: "the image could not be built" and "the sandbox would not start" are
-        // not the same problem and should not arrive under the same heading.
+        // Two plans, reported as separate phases, because "the image could not be built" and
+        // "the sandbox would not start" are different problems.
         if (!steps.isEmpty()) {
             Result<Plan> image_ = runner.run(Plan.of(LampEvent.Phase.IMAGE, steps));
             if (image_ instanceof Result.Err<Plan> failure) return Result.err(failure.problems());
@@ -87,21 +82,21 @@ final class SandboxPhase {
     }
 
     /**
-     * The arguments that make the container a sandbox — spec §15.3.
-     *
-     * <p>Every one of these is load-bearing, and the spikes of §33 are what establish that they
-     * behave as assumed:
+     * The {@code podman run} arguments that make the container a sandbox. The spike tests check
+     * that these flags behave as described.
      *
      * <ul>
-     *   <li>{@code --network=none} (FR-40) — no route, no DNS. Everything outbound goes through
-     *       the proxy socket instead.</li>
-     *   <li>{@code --read-only} (S12) — the image cannot be modified, so what a session installs
-     *       outside the agent's home is gone when it ends, by construction rather than by policy.</li>
-     *   <li>{@code --userns=keep-id:uid=1000,gid=1000} (S13) — the agent's files belong to the
-     *       host user, and the infra user stays a different user the agent cannot become.</li>
-     *   <li>{@code --user 0:0} — the entrypoint needs to create each user's runtime directories
-     *       and then drop privileges; this is root <em>inside the namespace</em>, which is an
-     *       unprivileged subuid on the host.</li>
+     *   <li>{@code --network=none}: no network interface except loopback, no route, no DNS.
+     *       Outbound traffic goes through the proxy socket instead.</li>
+     *   <li>{@code --read-only}: the image cannot be changed, so anything a session installs outside
+     *       the agent's home is gone when it ends.</li>
+     *   <li>{@code --userns=keep-id:uid=1000,gid=1000}: the host user becomes container uid 1000,
+     *       so the agent's files belong to the host user, and the infra user (1001) is a
+     *       subordinate id the agent cannot become.</li>
+     *   <li>{@code --user 0:0}: the entrypoint starts as container root to create each user's
+     *       runtime directories. Container root is a subordinate id on the host with no rights
+     *       there. The entrypoint starts every long-running process without capabilities; no
+     *       podman flag removes them.</li>
      * </ul>
      */
     private Tuple<String> containerArgv(ContainerName container, ImageTag image,
@@ -120,9 +115,8 @@ final class SandboxPhase {
                 "--memory", config.limits().memory(),
                 "--cpus", String.valueOf(config.limits().resolveCpus(host.cpuCount())),
                 "--pids-limit", String.valueOf(config.limits().pids()),
-                // Labels, so that `oillamp list` can find every sandbox on this host without a
-                // registry of its own. podman already knows what is running; a second list kept
-                // beside it would only be a list that can disagree.
+                // Labels let `oillamp list` and `oillamp remove` find oillamp's containers by asking
+                // podman, without keeping a separate list that could go out of date.
                 "--label", "oillamp.agent-id=" + layout.agentId(),
                 "--label", "oillamp.lamp=" + layout.root(),
                 "--label", "oillamp.session=" + prepared.session());
@@ -133,9 +127,8 @@ final class SandboxPhase {
                 "--volume", layout.recordingsDir() + ":/oillamp/recordings",
                 "--volume", layout.agentDir() + ":/home/agent"));
 
-        // Only when the GPU was actually granted. `keep-groups` is what carries the host's render
-        // group across the user namespace, and it works under crun but not runc — which is why
-        // crun is a required host package (§36.3).
+        // Only when the GPU is used. `keep-groups` carries the host's render group into the
+        // container. It works with crun but not runc, which is why crun is a required package.
         if (prepared.gpu() instanceof Gpu.Decision.Hardware hardware)
             argv = argv.addAll(Tuple.of(String.class,
                     "--device", hardware.node().path().toString(),
@@ -145,17 +138,14 @@ final class SandboxPhase {
     }
 
     /**
-     * The files the last session left in the sockets directory — spec §9.2, §16.
+     * The files the previous session left in the socket directory.
      *
-     * <p>That directory is a bind mount, so it outlives the container: {@code vnc.sock} from the
-     * previous run is still there when wayvnc tries to bind, and wayvnc has no way to take a path
-     * that is already taken. {@code ready.json} is worse, because the host starts watching for it
-     * the instant the container starts and would otherwise read the previous session's answer.
+     * <p>That directory is on the host, so it outlives the container. wayvnc cannot bind
+     * {@code vnc.sock} if the old file is still there, and the host would read an old
+     * {@code ready.json} as this session's answer.
      *
-     * <p>They belong to a container uid, which is why this is a
-     * {@link Step.DeleteContainerOwnedFiles} and not an ordinary delete: {@code rm} from the host
-     * gets EPERM on a directory inside the subuid range, so it has to go through
-     * {@code podman unshare}.
+     * <p>They belong to the infra user, so they are deleted with {@code podman unshare} rather than
+     * an ordinary delete, which would be refused.
      */
     private static Tuple<Path> staleSessionFiles(LampLayout layout) {
         return Tuple.of(layout.readyFile(),
@@ -164,12 +154,8 @@ final class SandboxPhase {
     }
 
     /**
-     * How long to wait for readiness.
-     *
-     * <p>A freshly built image has nothing in the page cache and starts a compositor, a VNC server
-     * and a recorder from cold, so the first run is legitimately slower than every run after it.
-     * One timeout for both cases would either be too tight for the first or uselessly long for
-     * the rest.
+     * How long to wait for {@code ready.json}: longer after a fresh build, because nothing is cached
+     * yet. {@code timeouts.container_ready_seconds} is not used here yet.
      */
     private static Duration readyTimeout(boolean imageWasAlreadyPresent) {
         return imageWasAlreadyPresent ? Duration.ofSeconds(60) : Duration.ofSeconds(120);
@@ -181,10 +167,8 @@ final class SandboxPhase {
         arguments.put("JDK_PACKAGE", config.image().jdkPackage());
         arguments.put("NODE_MAJOR", config.image().nodeVersion());
         arguments.put("EXTRA_APT_PACKAGES", String.join(" ", config.image().extraAptPackages()));
-        // Until now `agent_tools.install` was read, validated and then never used: the image was
-        // built with the Containerfile's own default whatever the lamp asked for. Passing it here
-        // also makes it part of the content hash, so changing the list rebuilds the image — which
-        // is the only way a new harness can appear in a sandbox that has no network of its own.
+        // Passing the harness list as a build argument also makes it part of the image hash, so
+        // changing `agent_tools.install` rebuilds the image with the new list.
         arguments.put("AGENT_TOOLS", String.join(" ", config.agentTools().install()));
         return arguments;
     }

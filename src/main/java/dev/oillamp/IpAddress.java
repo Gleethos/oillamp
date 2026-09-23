@@ -4,17 +4,15 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * An IPv4 or IPv6 address as a value — spec §24.3.
+ * An IPv4 or IPv6 address, used by the network policy.
  *
- * <p>Stored as two longs rather than a byte array, because records must hold only immutable
- * components (§23 rule 1) and an array is neither immutable nor sensibly comparable. IPv4
- * addresses live in the low 32 bits of {@link #low()}.
+ * <p>Stored as two {@code long}s rather than a byte array, because records in this code base hold
+ * only immutable values, and arrays are neither immutable nor compared by content. An IPv4 address
+ * is in the low 32 bits of {@link #low()}.
  *
- * <p>oillamp compares addresses rather than only host names because a public name that resolves
- * into the company intranet must still be refused (§18.3). That check is only trustworthy if
- * the comparison itself is exact, which is why this is a tested value type and not string work.
- *
- * <p>Deliberately <b>package-private</b>: a parsed v4/v6 address for the policy engine.
+ * <p>The policy compares addresses, not just names, so that a public name that resolves into a
+ * private network is still refused. That only works if address comparison is exact, which is why
+ * this is its own tested type instead of string handling.
  */
 record IpAddress(long high, long low, boolean ipv6) implements Comparable<IpAddress> {
 
@@ -31,7 +29,7 @@ record IpAddress(long high, long low, boolean ipv6) implements Comparable<IpAddr
 
     public int bitLength() { return ipv6 ? 128 : 32; }
 
-    /** Parses a literal address. Returns empty for host names — the caller then resolves. */
+    /** Parses a literal address. Returns empty for a host name, which the caller must resolve. */
     public static Optional<IpAddress> parse(String text) {
         String value = text.trim();
         if (value.startsWith("[") && value.endsWith("]"))

@@ -3,19 +3,15 @@ package dev.oillamp;
 import sprouts.Tuple;
 
 /**
- * The command that opens a window onto the sandbox desktop — spec §15.
+ * Builds the command that opens a viewer window onto the sandbox desktop.
  *
- * <p>One profile in v1, TigerVNC's {@code vncviewer}, because it is the viewer that takes a Unix
- * socket path directly (confirmed by spike S8) and therefore needs no TCP port anywhere — which
- * is what keeps {@code --network=none} on the container true rather than nearly true.
+ * <p>The viewer is TigerVNC's {@code vncviewer}, because it can connect to a Unix socket path
+ * directly, so no TCP port is needed anywhere.
  *
- * <p>Every option here exists to close something off. {@code -RemoteResize=0} stops the viewer
- * from changing the desktop size the recording was started at; {@code -SendPrimary=0} stops a
- * stray X selection on the host from being pushed into the sandbox; the clipboard pair is the
- * one-way default of D-23, spelled out rather than left to the viewer's own defaults.
- *
- * <p>Deliberately <b>package-private</b>: the viewer profile table, the counterpart to
- * {@link Terminals}. A second viewer is a row here, not an API change.
+ * <p>Each option closes something off. {@code -RemoteResize=0} stops the viewer from changing the
+ * desktop size. {@code -SendPrimary=0} stops your X text selection from being sent into the
+ * sandbox. The two clipboard options follow {@code viewer.clipboard} explicitly instead of relying
+ * on the viewer's own defaults.
  */
 final class Viewers {
 
@@ -27,8 +23,8 @@ final class Viewers {
     /**
      * The argv that opens the desktop.
      *
-     * @param viewOnly the user watches without being able to type — {@code oillamp view
-     *                 --view-only}, or {@code viewer.view_only} in the configuration
+     * @param viewOnly the user watches without being able to type ({@code oillamp view
+     *                 --view-only}, or {@code viewer.view_only} in the configuration)
      */
     public static Tuple<String> argv(LampLayout layout, LampConfig config, boolean viewOnly) {
         LampConfig.Viewer viewer = config.viewer();
@@ -45,7 +41,7 @@ final class Viewers {
         return argv.add(layout.vncSocket().toString());
     }
 
-    /** The window title oillamp would like, where the viewer lets it be set (§15, spike S14). */
+    /** The window title oillamp would like. Not used yet: wayvnc's desktop name has not been set up. */
     public static String titleFor(String lampName) { return "oillamp · " + lampName; }
 
     private static String flag(boolean on) { return on ? "1" : "0"; }

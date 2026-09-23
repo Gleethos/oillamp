@@ -3,16 +3,10 @@ package dev.oillamp;
 import sprouts.Tuple;
 
 /**
- * What the shell saw when it looked at a candidate lamp directory.
+ * What a directory contained when oillamp looked at it. {@link Filesystem#list} produces it and
+ * {@link LampClassifier} decides what it means, so the classifier can be tested without a disk.
  *
- * <p>Passing the listing as a value — rather than letting the classifier read the disk — is what
- * lets every awkward case ("exists but unreadable", "has a stray .DS_Store", "has a lamp.json
- * from the future") be a unit test.
- *
- * @param entries at most a handful of names, enough to show the user what is in the way
- *
- * <p>Deliberately <b>package-private</b>: an intermediate result on the way to classifying a
- * directory.
+ * @param entries the names in the directory, sorted
  */
 record DirListing(boolean exists, boolean readable, Tuple<String> entries) {
 

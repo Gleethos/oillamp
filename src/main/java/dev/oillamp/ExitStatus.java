@@ -1,13 +1,10 @@
 package dev.oillamp;
 
 /**
- * The process exit codes oillamp promises — spec §27.5.
+ * The process exit codes. Scripts depend on them, so a code's meaning never changes: {@code 4}
+ * always means "that lamp is already running".
  *
- * <p>Scripts and CI wrap this tool, so the codes are a contract: {@code 4} always means
- * "that lamp is already running", never "some other error".
- *
- * <p>Deliberately <b>public</b>: a caller should be able to act on how the process ended by name
- * rather than by remembering that 3 means "prerequisites missing".
+ * <p>Public so that a caller can act on how the process ended by name rather than by number.
  */
 public enum ExitStatus {
     /** Success, or a session that ended cleanly. */

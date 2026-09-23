@@ -13,12 +13,12 @@ import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
- *  M4, the supervisor — spec §10.6, §10.7, §17.3, §25.1, §26.5.
+ *  A whole session, run by the supervisor.
  *
  *  <p>These scenarios run a whole session. The container is simulated, but nothing else is: the
  *  relays bind real Unix sockets, the simulated terminal really connects through the primary
  *  relay, and the session really shuts down because that connection closed. That matters here
- *  more than anywhere else in this project — the supervisor's entire job is what happens between
+ *  more than anywhere else in this project: the supervisor's entire job is what happens between
  *  processes, and a test that stubbed the sockets out would be testing the stub.
  */
 @Timeout(value = 90, unit = TimeUnit.SECONDS)
@@ -72,8 +72,8 @@ class SupervisingASessionSpec extends Specification {
     def 'Closing that terminal window ends the session and takes the sandbox with it'() {
         reportInfo """
             The window oillamp opened *is* the session. When the user closes it, everything the
-            session created has to go — the container, the sockets, the
-            session file — or the next `oillamp at` on this lamp meets a name clash and a lock it
+            session created has to go (the container, the sockets, the
+            session file), or the next `oillamp at` on this lamp meets a name clash and a lock it
             cannot explain.
 
             The simulated terminal here connects through the real relay and then closes, exactly
@@ -99,7 +99,7 @@ class SupervisingASessionSpec extends Specification {
     def 'The user is told what is running, where it is, and every way to end it'() {
         reportInfo """
             Two windows have just appeared and a container is running that the user cannot see
-            into. This is the answer to "what is going on?" — including the two things that are
+            into. This is the answer to "what is going on?", including the two things that are
             easy to miss: that the agent can see exactly one directory of the lamp, and that
             there are three different ways to end the session.
         """
@@ -130,7 +130,7 @@ class SupervisingASessionSpec extends Specification {
     def 'A viewer that will not open is a warning; the session carries on without it'() {
         reportInfo """
             The viewer's lifetime is deliberately independent of the session's, and this is why. A
-            session with no view of the desktop is degraded, not broken — the shell still works,
+            session with no view of the desktop is degraded, not broken: the shell still works,
             the agent is still running, the recording is still being made. Ending it would throw
             away working state over a window the user can reopen with `oillamp view`.
         """
@@ -232,12 +232,11 @@ class SupervisingASessionSpec extends Specification {
 
     def 'The terminal oillamp was started from goes on reporting the health of the sandbox'() {
         reportInfo """
-            The user asked for this too, and it closes the gap M3 left open. The sockets were
-            checked once, at startup; a desktop that died an hour into a session looked - from
-            any cheaper check - exactly like one that was fine.
+            The user asked for this too. Checking the sockets only at startup is not enough: a
+            desktop that died an hour into a session would look fine to any cheaper check.
 
-            So the session keeps opening all three sockets while it runs - the desktop, the shell
-            and, since M5, the egress proxy - and keeps saying so in the terminal it was started
+            So the session keeps opening all three sockets while it runs (the desktop, the shell
+            and the egress proxy) and keeps saying so in the terminal it was started
             from. Connecting is the only check that distinguishes a server from a file with the
             right name, which is the whole lesson of OIL-SANDBOX-004.
         """

@@ -3,13 +3,11 @@ package dev.oillamp;
 import sprouts.Tuple;
 
 /**
- * What {@code /etc/subuid} and {@code /etc/subgid} say about this user — spec §11.2.
+ * What {@code /etc/subuid} and {@code /etc/subgid} say about this user.
  *
- * <p>Rootless podman needs a block of subordinate ids to map container users onto. oillamp needs
- * at least 65536 of them, because the sandbox uses two container users and the infra user must
- * land on an id the agent cannot become (D-14, NFR-06).
- *
- * <p>Deliberately <b>package-private</b>: parsed {@code /etc/subuid} and {@code /etc/subgid}.
+ * <p>Rootless podman maps every container user other than the agent onto the user's block of
+ * subordinate ids. oillamp needs a block of at least 65536, a full container id space. Container
+ * root and the infra user (uid 1001) both land in this block, on ids that own nothing on the host.
  */
 sealed interface SubIdFacts {
 
@@ -18,10 +16,10 @@ sealed interface SubIdFacts {
 
     /**
      * No usable range. Carries every range already allocated to <em>anyone</em>, because the
-     * new one has to avoid all of them — see {@link SubIdAllocator}.
+     * new one has to avoid all of them; see {@link SubIdAllocator}.
      */
     record Missing(Tuple<IdRange> allocatedUidRanges, Tuple<IdRange> allocatedGidRanges) implements SubIdFacts {}
 
-    /** The minimum block size rootless podman needs for a full container id space. */
+    /** The smallest block of subordinate ids oillamp accepts: one full container id space. */
     int REQUIRED_SIZE = 65536;
 }

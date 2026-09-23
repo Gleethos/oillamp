@@ -10,19 +10,15 @@ import com.fasterxml.jackson.dataformat.toml.TomlMapper;
 import sprouts.Tuple;
 
 /**
- * Turns configuration files into a validated {@link LampConfig} — spec §20.1.
+ * Turns configuration files into a validated {@link LampConfig}.
  *
- * <p>The pipeline is: parse each file to a tree, merge the trees in precedence order, then read
- * the merged tree against the schema. Reading never throws; it accumulates. Only at the very end
- * does the loader decide whether what it collected is fatal.
+ * <p>Each file is parsed into a tree, the trees are merged ({@link ConfigTree}), and the merged
+ * tree is read setting by setting ({@link ConfigSection}). Reading collects problems instead of
+ * throwing; only at the end are they judged. It is given the files' text, not their paths, so it
+ * can be tested without files.
  *
- * <p>Pure on purpose: the shell reads the bytes, this decides what they mean. That is what makes
- * "an unknown key, a bad CIDR and a duplicate forward produce exactly three located problems"
- * a unit test rather than a manual experiment.
- *
- * <p>Deliberately <b>package-private</b>: the precedence merge — global then lamp, tables merged
- * key-by-key, arrays replaced wholesale — is a rule we may yet need to revisit. Nothing outside
- * should depend on it.
+ * <p>Every setting and its default is listed in {@code docs/ARCHITECTURE.md}, "Configuration
+ * reference".
  */
 final class ConfigLoader {
 
@@ -33,7 +29,7 @@ final class ConfigLoader {
     /**
      * Reads, merges and validates configuration.
      *
-     * @param sources the files in precedence order; oillamp's built-in defaults are implicit (§20.1)
+     * @param sources the files, global first and the lamp's last; built-in defaults apply beneath both
      */
     public static Result<LampConfig> load(Tuple<ConfigSource> sources) {
         Tuple<Problem> parseProblems = Tuple.of(Problem.class);
@@ -138,7 +134,7 @@ final class ConfigLoader {
         s.allowOnly("profile", "command");
         Tuple<String> command = s.strings("command", Tuple.of(String.class));
         if (!command.isEmpty()) {
-            // A custom command overrides the profile entirely (§20.2), but it has to be usable.
+            // A custom command replaces the profile entirely, so it must contain {cmd}.
             if (!command.any(token -> token.contains(Terminals.COMMAND_PLACEHOLDER)))
                 s.invalid("command", String.join(" ", command),
                           "the template must contain {cmd}, which expands to the ssh command line");
@@ -295,7 +291,7 @@ final class ConfigLoader {
     private static Optional<LampConfig.Llm> readLlm(ConfigSection s, Tuple<Forward> forwards) {
         s.allowOnly("forward", "base_path", "api_key_env", "api_key_file", "models", "provider_name");
         String forward = s.string("forward", "");
-        if (forward.isBlank()) return Optional.empty();          // no LLM preconfiguration (§19.5)
+        if (forward.isBlank()) return Optional.empty();          // no LLM configured
         boolean known = forwards.any(f -> f.name().equals(forward));
         if (!known) {
             s.invalid("forward", "\"" + forward + "\"",

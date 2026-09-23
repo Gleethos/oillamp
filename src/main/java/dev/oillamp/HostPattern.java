@@ -3,14 +3,11 @@ package dev.oillamp;
 import java.util.Locale;
 
 /**
- * A host name pattern in a network rule — spec §18.3.
+ * A host name pattern in a network rule's {@code hosts} list.
  *
- * <p>Only three forms exist, and a wildcard deliberately does <em>not</em> match the apex:
- * {@code *.example.com} covers {@code docs.example.com} but not {@code example.com}. Allowing
- * a rule to quietly mean more than it says is exactly the kind of surprise a sandbox must not have.
- *
- * <p>Deliberately <b>package-private</b>: host matching for policy rules, including wildcards. The
- * pattern syntax is documented in {@code oillamp.toml}; the matcher is not.
+ * <p>There are three forms: an exact name, {@code *.example.com}, and {@code *}. The wildcard form
+ * does not match the bare domain: {@code *.example.com} matches {@code docs.example.com} but not
+ * {@code example.com}. A rule should not quietly cover more than it says.
  */
 sealed interface HostPattern {
 
@@ -25,7 +22,7 @@ sealed interface HostPattern {
         return new Exact(value);
     }
 
-    /** Host names are case-insensitive and a trailing dot means the same name (§18.3). */
+    /** Lower-cases a host name and removes trailing dots, which do not change its meaning. */
     static String normalise(String host) {
         String value = host.trim().toLowerCase(Locale.ROOT);
         while (value.endsWith(".")) value = value.substring(0, value.length() - 1);

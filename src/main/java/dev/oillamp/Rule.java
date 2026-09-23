@@ -3,17 +3,15 @@ package dev.oillamp;
 import sprouts.Tuple;
 
 /**
- * One line of the egress policy — spec §18.3.
+ * One {@code [[network.rules]]} entry of the network policy.
  *
- * <p>All criteria present in a rule must match (AND); a rule with no criteria matches everything.
- * Rules are evaluated top to bottom and the first match wins, which is why the shipped default
- * config tells users to put allow-exceptions <em>above</em> the deny rule (§20.2).
+ * <p>Every criterion the rule lists must match. A criterion it does not list is ignored, and a
+ * rule with no criteria matches everything. Rules are checked from top to bottom and the first
+ * match wins, which is why allow rules for internal services go above the shipped deny rule.
  *
- * <p>The {@code label} is required because it is what the user sees: it appears in the network
- * log and in the {@code 403} body the agent receives, so the agent can report <em>why</em>
- * something failed instead of guessing (§18.2).
- *
- * <p>Deliberately <b>package-private</b>: one {@code [[network.rules]]} entry.
+ * <p>The {@code label} is required because users see it: it appears in the network log and in
+ * the body of the {@code 403} the agent receives, so the agent can report why a connection was
+ * refused.
  */
 record Rule(String label, Decision action,
                    Tuple<HostPattern> hosts, Tuple<PortRange> ports, Tuple<Cidr> cidrs) {

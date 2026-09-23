@@ -6,41 +6,37 @@ import java.util.Optional;
 
 
 /**
- * Decides whether the sandbox desktop gets hardware rendering — spec §14.3 (D-24).
+ * Decides whether the sandbox desktop is drawn by the host's graphics card ({@code gles2}) or by
+ * the processor ({@code pixman}).
  *
- * <p>The guiding rule is that a GPU is welcome but must never stop a session. In {@code auto},
- * every condition that is not met simply means software rendering, with the reason stated. Only
- * {@code on} turns an unmet condition into an error, because there the user asked explicitly.
+ * <p>A GPU must never stop a session. With {@code display.gpu = "auto"}, every unmet condition
+ * means software rendering, with the reason printed. Only {@code "on"} turns an unmet condition
+ * into an error, because the user asked for the GPU explicitly.
  *
- * <p>The conditions are conservative on purpose: a render node has to exist, the user has to be
- * in its group, the driver has to be one of the open Mesa drivers known to work headless, and
- * the OCI runtime has to be crun — because passing the host's render group into the container
- * needs {@code --group-add keep-groups}, which only crun implements (§13.1).
- *
- * <p>Deliberately <b>package-private</b>: GPU selection is D-24's "auto, and never block the
- * session" policy. The fallback behaviour is what is promised; this class is how it is decided
- * today.
+ * <p>The conditions: a render node exists, the user is in the group that owns it, its driver is
+ * one of the open-source Mesa drivers known to work without a monitor, and podman uses crun,
+ * because passing the host's render group into the container needs
+ * {@code --group-add keep-groups}, which only crun supports.
  */
 final class Gpu {
 
     private Gpu() {}
 
-    /** The outcome, including why — the reason is printed at startup and written to ready.json. */
+    /** The decision, including the reason, which is printed at startup. */
     public sealed interface Decision {
         record Hardware(GpuFacts.RenderNode node) implements Decision {}
         /**
          * Software rendering, and why.
          *
-         * @param remedy what the user would have to do about it, when there is something — "you
-         *               are not in the render group" is a fact; the {@code usermod} line that
-         *               fixes it is what they actually wanted to be told
+         * @param remedy what the user can do about it, if anything, such as the {@code usermod}
+         *               command that adds them to the render group
          */
         record Software(String reason, Tuple<Problem.Fix> remedy) implements Decision {
             Software(String reason) { this(reason, Tuple.of(Problem.Fix.class)); }
         }
         record Refused(Problem problem) implements Decision {}
 
-        /** The wlroots renderer this decision implies (§13.4). */
+        /** The renderer name sway is started with: {@code gles2} for the GPU, {@code pixman} for software. */
         default String renderer() {
             return this instanceof Hardware ? "gles2" : "pixman";
         }
@@ -77,7 +73,7 @@ final class Gpu {
                 obstacle.map(Obstacle::remedy).orElse(Tuple.of(Problem.Fix.class)));
     }
 
-    /** Why the GPU is not being used, and — where there is one — what to do about it. */
+    /** Why the GPU is not being used, and what to do about it, if anything. */
     private record Obstacle(String reason, Tuple<Problem.Fix> remedy) {
         static Obstacle of(String reason) { return new Obstacle(reason, Tuple.of(Problem.Fix.class)); }
         static Obstacle of(String reason, Problem.Fix... fixes) {
@@ -98,10 +94,9 @@ final class Gpu {
                 return Optional.of(Obstacle.of(node.path() + " is driven by " + node.driver()
                                  + ", which is not one of the open Mesa drivers oillamp trusts headless"));
             if (!user.isInGroup(node.owningGroup()))
-                // The one obstacle with a one-line answer, and the one oillamp will not carry out
-                // itself: it needs root, it changes the user's account rather than this lamp, and
-                // the new group only reaches processes started after a fresh login — so doing it
-                // silently would still leave this session on software rendering.
+                // oillamp prints this fix but does not run it: it needs root, it changes the
+                // user's account rather than the lamp, and the new group only applies after the
+                // user logs in again, so this session would stay on software rendering anyway.
                 return Optional.of(Obstacle.of(
                         "you are not in the '" + node.owningGroup() + "' group that owns " + node.path(),
                         Problem.Fix.run("run this on this machine, in your own terminal, then log out "
@@ -113,12 +108,8 @@ final class Gpu {
     }
 
     /**
-     * The startup line: the reason, and the command that answers it where there is one.
-     *
-     * <p>Separate from {@link #noteFor} because the reason on its own is a dead end. "You are not
-     * in the 'render' group" tells a user what is wrong and leaves them to work out that the
-     * answer is one {@code usermod} and a fresh login — which is exactly the question that came
-     * back the first time somebody read this line.
+     * The line printed at startup when the GPU is not used: the reason, followed by the command
+     * that fixes it when there is one. The reason alone would leave the user to work out the fix.
      */
     public static Optional<String> noteLine(Decision decision) {
         return noteFor(decision).map(note -> note.whatHappened()

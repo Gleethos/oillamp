@@ -7,36 +7,34 @@ import java.util.Optional;
 import sprouts.Tuple;
 
 /**
- * Plans Phase B: turning a directory into a working lamp — spec §10.5.
+ * Plans the lamp phase: turning a directory into a working lamp. Also plans {@code oillamp remove}
+ * and {@code oillamp recordings --prune}.
  *
- * <p>Split into two passes, because the second depends on the result of the first: keys have to
- * exist before {@code authorized_keys} and {@code known_hosts} can contain them. Rather than let
- * a step compute its own content at execution time — which would make {@code --dry-run} a lie —
- * the shell runs {@link #planSkeleton}, reads the generated public keys, and then runs
- * {@link #planSession}. Both plans stay fully described up front.
+ * <p>The lamp is planned in two passes, because the second needs the result of the first: the SSH
+ * keys must exist before {@code authorized_keys} and {@code known_hosts} can contain them.
+ * {@link LampPhase} runs {@link #planSkeleton}, reads the new public keys, then runs
+ * {@link #planSession}. The alternative, a step that computes its content while running, would
+ * mean a dry run could not show that content.
  *
- * <p>The ownership rules of §9.2 are expressed here and nowhere else. They are what makes
- * NFR-06 true: the recordings directory and the infra socket directory belong to container uid
- * 1001, so the agent — which is uid 1000 — can read its own recordings but cannot alter them.
- *
- * <p>Deliberately <b>package-private</b>: it plans the lamp skeleton and the per-session files.
- * Users see the result as {@code --dry-run} output, which is the contract worth keeping.
+ * <p>The ownership of the lamp's directories is decided here. The recordings directory and the
+ * infra socket directory are given to container uid 1001, so the agent (uid 1000) can read its
+ * recordings but cannot change them.
  */
 final class LampPlanner {
 
     private LampPlanner() {}
 
-    /** The container's infra user, which owns everything the agent must not be able to modify (D-14). */
+    /** The container's infra user, which owns everything the agent must not be able to change. */
     public static final int INFRA_UID = 1001;
     public static final int INFRA_GID = 1001;
 
     /**
-     * Everything Phase B needs to know, gathered by the shell.
+     * Everything the lamp phase needs to know, gathered by {@link LampPhase}.
      *
      * @param state              what is at the lamp path
      * @param newAgentId         a freshly generated id, used only if the lamp does not exist yet
      * @param initRequested      the user passed {@code --init}, accepting a non-empty directory
-     * @param leftoverContainer  a container from a previous, crashed session (§10.4)
+     * @param leftoverContainer  a container left by a previous session that crashed
      * @param sessionMetaExists  a stale {@code session.json} from a crashed session
      */
     public record Inputs(
@@ -56,9 +54,9 @@ final class LampPlanner {
     /**
      * Creates or repairs the lamp's directories, identity, keys and runtime directory.
      *
-     * <p>Every write that could destroy something the user or the agent owns uses
-     * {@link Step.WritePolicy#IF_ABSENT}: re-running {@code oillamp at} on an existing lamp must
-     * never overwrite an edited {@code oillamp.toml} or anything in the agent's home (FR-21).
+     * <p>Every file the user or the agent may have edited is written with
+     * {@link Step.WritePolicy#IF_ABSENT}, so running {@code oillamp at} again never overwrites an
+     * edited {@code oillamp.toml} or anything in the agent's home.
      */
     public static Result<Plan> planSkeleton(Inputs inputs) {
         LampLayout layout = inputs.layout();
@@ -82,7 +80,7 @@ final class LampPlanner {
         Tuple<Problem> warnings = Tuple.of(Problem.class);
         Tuple<Step> steps = Tuple.of(Step.class);
 
-        // ── clean up after a session that never got to shut down (§10.4, FR-08) ────────────
+        // ── clean up after a session that crashed without shutting down ────────────────────
         if (inputs.leftoverContainer().isPresent()) {
             steps = steps.add(new Step.RemoveContainer(inputs.leftoverContainer().get(),
                     "left over from a session that did not shut down"));
@@ -125,7 +123,7 @@ final class LampPlanner {
         steps = steps.add(new Step.CreateDirectory(layout.imageDir(), PosixMode.PUBLIC_DIR));
         steps = steps.add(new Step.CreateDirectory(layout.logsDir(), PosixMode.PUBLIC_DIR));
 
-        // ── sockets: three directories, three owners (§9.2) ───────────────────────────────
+        // ── sockets: host/ and agent/ belong to the user, infra/ to the infra user ─────────
         steps = steps.add(new Step.CreateDirectory(layout.socketsDir(), PosixMode.PUBLIC_DIR));
         steps = steps.add(new Step.CreateDirectory(layout.hostSocketsDir(), PosixMode.PUBLIC_DIR));
         steps = steps.add(new Step.CreateDirectory(layout.agentSocketsDir(), PosixMode.PUBLIC_DIR));
@@ -134,7 +132,7 @@ final class LampPlanner {
         steps = steps.add(new Step.ChownForContainer(layout.infraSocketsDir(),
                 INFRA_UID, INFRA_GID, PosixMode.PUBLIC_DIR));
 
-        // ── recordings: writable only by the infra user, so the agent cannot tamper (NFR-06) ─
+        // ── recordings: writable only by the infra user, so the agent cannot change them ───
         steps = steps.add(new Step.CreateDirectory(layout.recordingsDir(), PosixMode.PUBLIC_DIR));
         steps = steps.add(new Step.ChownForContainer(layout.recordingsDir(),
                 INFRA_UID, INFRA_GID, PosixMode.PUBLIC_DIR));
@@ -149,17 +147,17 @@ final class LampPlanner {
                   + " days / " + inputs.config().recording().maxTotalGb() + " GB"));
         }
 
-        // ── the agent's world: created once, never overwritten afterwards (§19.1) ──────────
+        // ── the agent directory: created once, never overwritten afterwards ────────────────
         steps = steps.add(new Step.CreateDirectory(layout.agentDir(), PosixMode.PUBLIC_DIR));
         steps = steps.add(new Step.CreateDirectory(layout.workspace(), PosixMode.PUBLIC_DIR));
         steps = steps.add(new Step.CreateDirectory(layout.libs(), PosixMode.PUBLIC_DIR));
         steps = steps.add(new Step.CreateDirectory(layout.screenshots(), PosixMode.PUBLIC_DIR));
-        // The one file in the agent's home that oillamp puts there and then never touches again.
-        // Without it `ssh <lamp> 'some command'` runs in a shell that has read no profile at all.
+        // Written once and then left to the agent. Without it, `ssh <lamp> 'some command'` runs in
+        // a shell that has read no profile, so it has no proxy settings, display or `sdk`.
         steps = steps.add(new Step.WriteFile(layout.agentBashrc(), Templates.agentBashrc(),
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.IF_ABSENT));
 
-        // ── the short runtime dir, so socket paths stay under the 107-byte limit (D-25) ────
+        // ── the short runtime directory, so socket paths stay under the 107-byte limit ─────
         steps = steps.add(new Step.CreateDirectory(layout.runtimeDir(), PosixMode.PRIVATE_DIR));
         steps = steps.add(new Step.CreateDirectory(layout.runDir(), PosixMode.PRIVATE_DIR));
         steps = steps.add(new Step.CreateSymlink(layout.shortSockets(), layout.socketsDir()));
@@ -168,13 +166,12 @@ final class LampPlanner {
     }
 
     /**
-     * What {@code oillamp remove} found in a lamp directory that belongs to oillamp.
+     * What {@code oillamp remove} found in a lamp directory.
      *
-     * <p>Found rather than derived, because the commonest reason to be removing a lamp by command
-     * is that removing it by hand went wrong: {@code rm -rf} deletes {@code lamp.json} and then
-     * stops on the sockets it has no permission over, and what is left can no longer say which
-     * lamp it was. {@code agentDirs} is therefore a list of what is actually on disk — usually
-     * one, occasionally none, and more than one if a lamp directory was copied.
+     * <p>This is what is actually on disk, not derived from the lamp's identity, because the most
+     * common reason to run {@code remove} is that {@code rm -rf} already deleted {@code lamp.json}
+     * before failing. {@code agentDirs} is usually one directory, sometimes none, and more than one
+     * if a lamp directory was copied.
      *
      * @param runtimeDir empty when the lamp's identity is gone, since the runtime directory is
      *                   named after it
@@ -182,12 +179,8 @@ final class LampPlanner {
     record Removal(Path root, Tuple<Path> agentDirs, Optional<Path> runtimeDir) {}
 
     /**
-     * The recordings {@code oillamp recordings --prune} deletes — spec §16, §28.
-     *
-     * <p>The same {@link Retention} decision the next session would make anyway, brought forward
-     * to now. A user who wants the disk back today should not have to start a sandbox to get it,
-     * and running the same function in both places is what stops the two from drifting into
-     * disagreeing about what "keep 14 days" means.
+     * The plan for {@code oillamp recordings --prune}: delete the recordings {@link Retention}
+     * selected. It is the same decision the next session start would make, done now.
      */
     public static Plan planPrune(Tuple<RecordingFile> doomed, LampConfig.Recording policy) {
         if (doomed.isEmpty()) return Plan.of(LampEvent.Phase.LAMP, Tuple.of(Step.class));
@@ -202,14 +195,12 @@ final class LampPlanner {
     /**
      * Everything {@code oillamp remove} deletes, in the order it deletes it.
      *
-     * <p>Named paths rather than "the directory". The lamp directory is the user's — they chose
-     * where it went and what it was called, and notes or scripts of their own may sit beside
-     * {@code oillamp.toml}. What oillamp created is therefore what oillamp removes; the root
-     * survives unless removal leaves it empty, where keeping it would be litter.
+     * <p>Only what oillamp created is removed. The user may keep their own files beside
+     * {@code oillamp.toml}, so the lamp directory itself is only removed if it ends up empty
+     * ({@code Commands.remove} does that).
      *
-     * <p>The agent's home goes last. If podman is unavailable and the state directory cannot be
-     * fully deleted, the run stops there — with the agent's work still on disk rather than half
-     * gone.
+     * <p>The agent's home goes last. If the state directory cannot be fully deleted, for example
+     * because podman is missing, the run stops there, with the agent's work still intact.
      */
     public static Plan planRemoval(Removal found) {
         Tuple<Step> steps = Tuple.of(Step.class);
@@ -234,8 +225,8 @@ final class LampPlanner {
      *
      * @param clientPublicKey the generated client public key, so sshd will accept our connection
      * @param hostPublicKey   the generated host public key, pinned so the user is never prompted
-     * @param runtimeEnv      the rendered environment (§20.3)
-     * @param agentGuide      the generated guide the agent reads as {@code ~/AGENTS.md} (§19.3)
+     * @param runtimeEnv      the contents of {@code runtime.env}
+     * @param agentGuide      the guide the agent reads as {@code ~/AGENTS.md}
      */
     public static Result<Plan> planSession(LampLayout layout,
                                            String clientPublicKey,
@@ -247,14 +238,13 @@ final class LampPlanner {
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
         steps = steps.add(new Step.WriteFile(layout.authorizedKeys(), clientPublicKey.trim() + "\n",
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
-        // sshd insists on a private host key; the copy is readable by container uid 1000 = this user.
+        // sshd requires its host key to be private (0600). Container uid 1000 is this user, so it can read the copy.
         steps = steps.add(new Step.CopyFile(layout.hostKey(), layout.sshdHostKey(), PosixMode.PRIVATE_FILE));
         steps = steps.add(new Step.WriteFile(layout.agentGuide(), agentGuide,
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
-        // And the same text where the banner says to look for it. §19.3 specified a symlink into
-        // /oillamp/session, but that is a container path: on the host — where the user reads this
-        // directory — it would dangle. A real file resolves on both sides, and it is rewritten
-        // each session because it describes *this* session's configuration.
+        // The same text as ~/AGENTS.md, where the login banner says to look. A real file rather
+        // than a symlink to /oillamp/session, which would be a broken link on the host. Rewritten
+        // every session because it describes this session's configuration.
         steps = steps.add(new Step.WriteFile(layout.agentsMd(), agentGuide,
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
 

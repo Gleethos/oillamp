@@ -5,24 +5,20 @@ import java.nio.file.Path;
 import sprouts.Tuple;
 
 /**
- * Decides whether a directory may be used as a lamp — spec FR-03.
+ * Refuses paths that must never become a lamp: {@code /}, the user's home directory itself, and
+ * system directories such as {@code /etc} or {@code /usr}.
  *
- * <p>A lamp <em>owns</em> its directory: it writes state into it and mounts part of it into the
- * container as the agent's home. Pointing that at {@code /etc}, or at the user's home directory
- * itself, would hand the agent the very files the sandbox exists to protect — so those are
- * refused outright, before anything is created.
+ * <p>A lamp writes state into its directory and mounts part of it into the container. Doing that
+ * to a system directory or to the whole home directory would give the agent exactly the files the
+ * sandbox exists to protect.
  *
- * <p>The refusal is deliberately not configurable. A flag to override it would be used exactly
- * once, by someone in a hurry, on the wrong directory.
- *
- * <p>Deliberately <b>package-private</b>: the refusals of FR-03 — that you may not turn {@code /}
- * or your home directory into a lamp. The refusal is the promise; the list is data that will grow.
+ * <p>There is deliberately no option to override this. It would only ever be used by mistake.
  */
 final class LampPaths {
 
     private LampPaths() {}
 
-    /** System directories a lamp may never live in or under (FR-03). */
+    /** System directories a lamp may never be in or under. */
     private static final Tuple<String> FORBIDDEN_PREFIXES = Tuple.of(String.class,
             "/bin", "/boot", "/dev", "/etc", "/lib", "/proc", "/run", "/sbin", "/sys", "/usr", "/var");
 
@@ -48,7 +44,7 @@ final class LampPaths {
 
         String text = path.toString();
         for (String prefix : FORBIDDEN_PREFIXES) {
-            // "/lib" must also catch "/lib64" and "/libexec" (spec writes it as /lib*).
+            // "/lib" must also catch "/lib64" and "/libexec".
             if (text.equals(prefix) || text.startsWith(prefix + "/")
                     || (prefix.equals("/lib") && text.matches("/lib[^/]*(/.*)?")))
                 return Result.err(Problems.lampForbiddenPath(path, "is inside the system directory " + prefix));

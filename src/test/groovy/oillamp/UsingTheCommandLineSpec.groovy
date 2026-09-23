@@ -81,7 +81,8 @@ class UsingTheCommandLineSpec extends Specification {
             tell "I did something wrong" from "this tool is broken".
 
             An unexpected failure therefore becomes a normal problem, with a code, the advice to
-            re-run with --debug, and the trace kept as evidence rather than printed raw.
+            re-run with --verbose, and the start of the trace kept as evidence rather than printed
+            raw.
         """
         given: 'a machine whose id lookup returns something impossible'
             sandbox.machine { it.generatedAgentId('NOT A VALID ID') }
@@ -95,7 +96,7 @@ class UsingTheCommandLineSpec extends Specification {
             !outcome.console().contains('\tat dev.oillamp')
 
         and: 'with the advice that makes a useful bug report'
-            outcome.errors().first().fixes().any { it.description().contains('--debug') }
+            outcome.errors().first().fixes().any { it.description().contains('--verbose') }
     }
 
     def 'Commands that need a running session say which lamp has none'() {

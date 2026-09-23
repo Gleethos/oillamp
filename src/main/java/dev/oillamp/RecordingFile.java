@@ -6,15 +6,13 @@ import java.time.Instant;
 import java.util.Optional;
 
 /**
- * One screen recording on disk, as the shell found it.
+ * One screen recording file ({@code .mkv}) and what its timestamps say.
  *
- * <p>Deliberately <b>package-private</b>: one {@code .mkv} and what is known about it.
- *
- * @param startedAt  when the recorder opened the file. Its creation time where the filesystem
- *                   keeps one, and otherwise the session in its name, which starts a few seconds
- *                   earlier — the sandbox has to come up before there is a screen to record.
- * @param recordedAt when the recording <em>stopped</em> — the file's modification time, because
- *                   wf-recorder writes to it until it is interrupted.
+ * @param startedAt  when recording began: the file's creation time where the filesystem records
+ *                   one, otherwise the session start encoded in the file name (a few seconds
+ *                   earlier, because the sandbox starts before the recorder does)
+ * @param recordedAt when recording stopped: the file's last modification time, because
+ *                   wf-recorder writes to the file until it is stopped
  */
 record RecordingFile(Path path, Instant startedAt, Instant recordedAt, long sizeBytes) {
 
@@ -30,11 +28,9 @@ record RecordingFile(Path path, Instant startedAt, Instant recordedAt, long size
     }
 
     /**
-     * How long it ran — from when the recorder opened the file to when it last wrote to it.
+     * How long the recording ran.
      *
-     * <p>Empty for a file whose timestamps disagree about the order of events. A copied or
-     * restored file can arrive with a creation time after its modification time, and inventing a
-     * negative duration for it would be worse than admitting the file cannot say.
+     * <p>Empty when the start is after the end, which happens with a copied or restored file.
      */
     public Optional<Duration> duration() {
         Duration ran = Duration.between(startedAt, recordedAt);

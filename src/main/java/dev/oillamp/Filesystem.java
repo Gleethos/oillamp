@@ -15,19 +15,14 @@ import java.util.stream.Stream;
 import sprouts.Tuple;
 
 /**
- * Filesystem operations for the lamp directory — spec §26.2.
+ * File operations on the lamp directory.
  *
- * <p>Unlike the rest of the host adapters, these run against the real filesystem even in tests.
- * The lamp's isolation story is made of permission bits, ownership and symlinks (§9.2); a
- * simulated filesystem that approximated those would let a bug in exactly the place it matters most.
+ * <p>These use the real filesystem even in tests, unlike the rest of oillamp's effects, which go
+ * through {@link Machine}. The lamp's isolation depends on real permission bits, ownership and
+ * symlinks, and a simulated filesystem could hide bugs in exactly those.
  *
- * <p>Writes are atomic — a temporary file in the same directory, then an atomic rename — so an
- * interrupted run can never leave a half-written {@code lamp.json} or {@code runtime.env} behind
- * for the next run to misread (NFR-02).
- *
- * <p>Deliberately <b>package-private</b>: the POSIX operations the layout needs — modes, ownership,
- * symlinks. It is on the effects allowlist, and nothing outside should be able to invoke them at
- * all.
+ * <p>Files are written atomically: to a temporary file in the same directory, then renamed. An
+ * interrupted run cannot leave a half-written {@code lamp.json} or {@code runtime.env} behind.
  */
 final class Filesystem {
 
@@ -49,11 +44,8 @@ final class Filesystem {
     }
 
     /**
-     * The same, for content that is not text.
-     *
-     * <p>Needed because the sandbox image carries a PNG. Writing that through the text path would
-     * put it through a charset encoder and corrupt it, and the symptom would be a desktop with no
-     * wallpaper rather than anything that mentions encoding.
+     * The same for binary content, such as the wallpaper PNG in the image files. Writing it as text
+     * would corrupt it.
      */
     public static void writeBytes(Path path, byte[] content, PosixMode mode) throws IOException {
         Path parent = path.getParent();
@@ -85,9 +77,8 @@ final class Filesystem {
     }
 
     /**
-     * Points {@code link} at {@code target}, replacing a link that points elsewhere.
-     * The short runtime directory is recreated per session, so a stale link from a crashed
-     * session must not survive into the next one (D-25).
+     * Points {@code link} at {@code target}, replacing anything else at that path, such as a link
+     * left by a crashed session that points somewhere else.
      */
     public static void createSymlink(Path link, Path target) throws IOException {
         if (Files.isSymbolicLink(link)) {
@@ -122,13 +113,11 @@ final class Filesystem {
     /**
      * Deletes a tree as far as this user is allowed to, and reports what survived.
      *
-     * <p>Deliberately does not throw on the first refusal. Part of a lamp belongs to a container
-     * uid, and stopping at the first {@code Permission denied} would leave the caller unable to
-     * say <em>which</em> paths need {@code podman unshare} — which is the only useful thing to
-     * tell a user in that situation.
+     * <p>It does not stop at the first refusal, so the caller can tell the user which paths could
+     * not be deleted (usually files owned by the infra user).
      *
-     * <p>Symlinks are deleted, never followed: the runtime directory holds one pointing back into
-     * the lamp (D-25), and following it would delete the target's contents through the link.
+     * <p>Symlinks are deleted, never followed. The runtime directory holds a link into the lamp, and
+     * following it would delete the lamp's contents.
      */
     public static Tuple<Path> deleteTree(Path root) {
         Tuple<Path> survivors = Tuple.of(Path.class);
@@ -149,15 +138,12 @@ final class Filesystem {
     }
 
     /**
-     * Every {@code .mkv} in a recordings directory, oldest first.
+     * Every {@code .mkv} file in a recordings directory, sorted by name (which is by time).
      *
-     * <p>Two ends of one life, and the gap between them is the point: the file is created when
-     * wf-recorder opens it and written to until it is interrupted, so its own timestamps say how
-     * long it ran. Taking both here is what lets a listing show a duration without opening the
-     * file or shelling out to ffprobe — neither of which oillamp requires of the host.
+     * <p>The file is created when recording starts and written until it stops, so its creation and
+     * modification times give its duration without opening it or needing {@code ffprobe}.
      *
-     * @return what is there; empty when the directory does not exist or cannot be read, because
-     *         "no recordings" and "not readable" lead to the same, harmless, listing
+     * @return the recordings; empty when the directory does not exist or cannot be read
      */
     public static Tuple<RecordingFile> listRecordings(Path directory) {
         Tuple<RecordingFile> found = Tuple.of(RecordingFile.class);
@@ -177,12 +163,10 @@ final class Filesystem {
     }
 
     /**
-     * When the recording began, from the best source this filesystem offers.
-     *
-     * <p>Creation time is the truthful answer, but not every filesystem keeps one: where it does
-     * not, the JDK hands back the modification time, which would make every recording zero
-     * seconds long. The session in the name is the fallback — a few seconds early, because the
-     * sandbox has to start before there is a screen to record, but never wrong by more than that.
+     * When the recording began: the file's creation time where the filesystem keeps one. Where it
+     * does not, Java returns the modification time instead, which would make every recording zero
+     * seconds long, so the session start in the file name is used. That is a few seconds early,
+     * because the sandbox starts before the recorder.
      */
     private static Instant startOf(Path file, BasicFileAttributes attributes) {
         Instant created = attributes.creationTime().toInstant();
@@ -194,7 +178,7 @@ final class Filesystem {
                            .orElse(created);
     }
 
-    /** Looks at a candidate lamp directory, producing the value {@code LampClassifier} decides on. */
+    /** Lists a directory for {@link LampClassifier}. */
     public static DirListing list(Path path) {
         if (!Files.exists(path)) return DirListing.missing();
         if (!Files.isDirectory(path) || !Files.isReadable(path))

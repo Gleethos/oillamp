@@ -2,19 +2,16 @@ package dev.oillamp;
 
 
 /**
- * A fixed tunnel from inside the sandbox to one host-reachable endpoint — spec §18.5 (D-13).
+ * One {@code [[network.forwards]]} entry: a fixed tunnel from {@code 127.0.0.1:<port>} inside the
+ * sandbox to one address the host can reach, such as a company LLM service.
  *
- * <p>Forwards are the deliberate, visible exception to the egress policy: the agent's tools
- * expect a plain base URL for the company LLM, and routing that through an HTTP proxy policy
- * would be both fragile and pointless. Because they bypass the policy, they are named, listed
- * in the agent guide, and logged like everything else.
- *
- * <p>Deliberately <b>package-private</b>: one entry of {@code [[network.forwards]]}. Part of the
- * config model.
+ * <p>Forwards bypass the network policy on purpose. Agent tools expect a plain base URL, and the
+ * target is one the user chose. Because they bypass the policy, they are named in the
+ * configuration, listed in the agent guide and logged like proxy connections.
  */
 record Forward(String name, int port, HostAndPort target) {
 
-    /** The in-container port the egress proxy occupies — a forward may not take it (§18.5). */
+    /** The port the egress proxy listens on inside the sandbox. A forward may not use it. */
     public static final int PROXY_PORT = 3128;
 
     public Forward {

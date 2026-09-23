@@ -2,15 +2,13 @@ package dev.oillamp;
 
 
 /**
- * Whether unprivileged user namespaces actually work — spec §11.2, {@code OIL-PODMAN-003/004}.
+ * Whether rootless podman can create user namespaces on this host, found by running
+ * {@code podman unshare true}.
  *
- * <p>Deliberately a <em>functional</em> check ({@code podman unshare true}) rather than a version
- * comparison: on Ubuntu 23.10 and newer, an AppArmor profile can block user namespaces on a
- * perfectly modern podman, and only running it reveals that.
- *
- * <p>Deliberately <b>package-private</b>: whether unprivileged user namespaces work, and whether
- * AppArmor is why not — the single most likely reason oillamp fails to start on a current Ubuntu
- * (§11.2).
+ * <p>This is tested by running the command rather than by checking versions, because on Ubuntu
+ * 23.10 and newer an AppArmor setting can block user namespaces even for an up-to-date podman.
+ * That is the most likely reason oillamp fails to start on a current Ubuntu, so {@link Fails}
+ * records whether AppArmor is the cause ({@code OIL-PODMAN-004}) or not ({@code OIL-PODMAN-003}).
  */
 sealed interface UsernsFacts {
     record Works() implements UsernsFacts {}

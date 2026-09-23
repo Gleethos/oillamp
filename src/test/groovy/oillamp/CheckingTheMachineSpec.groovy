@@ -96,8 +96,8 @@ class CheckingTheMachineSpec extends Specification {
             them one run at a time - fix, re-run, discover the next - is how a five minute setup
             becomes an afternoon.
 
-            Section 27.1 of the design builds this in: independent checks are *combined* rather
-            than short-circuited.
+            So independent checks are *combined*: every one runs, and all their problems are
+            reported together.
 
             Run with --no-install, because that is when oillamp has to *report* rather than fix:
             with installing allowed, the first two of these become steps in a plan instead.
@@ -154,9 +154,9 @@ class CheckingTheMachineSpec extends Specification {
     def 'crun is installed alongside podman, because Ubuntu would otherwise use runc'() {
         reportInfo """
             Found on the first real-hardware run, which no simulation would have caught: Ubuntu
-            24.04 ships podman 4.9.3 with **runc**, not crun. GPU passthrough needs crun, because
-            only it supports the `--keep-groups` that carries the host's render group into the
-            container (section 15.3).
+            24.04 ships podman 4.9.3 with **runc**, not crun. Using the GPU in the sandbox needs
+            crun, because only crun supports `--group-add keep-groups`, which carries the host's
+            `render` group into the container.
 
             The failure mode is what makes this worth a scenario rather than a comment. Nothing
             breaks. The desktop simply renders in software, quietly, on the *default* setting
@@ -183,8 +183,8 @@ class CheckingTheMachineSpec extends Specification {
 
     def 'slirp4netns is installed, because rootless podman cannot build an image without it'() {
         reportInfo """
-            The second finding from driving real podman, and a good example of why section 33
-            insists on spikes. The error is not subtle - `podman run` fails outright with
+            The second finding from running real podman, and an example of why the spike tests
+            exist. The error is not subtle - `podman run` fails outright with
 
                 could not find slirp4netns, the network namespace can't be configured
 
@@ -194,9 +194,8 @@ class CheckingTheMachineSpec extends Specification {
             The subtlety is *where* it bites. The sandbox is started with no network interfaces at
             all, and so genuinely needs no networking support from podman; every scenario about
             running the container would have passed. Building the image is the step that needs a
-            network, because that
-            is where apt-get runs. So this would have surfaced as "M3 works on my machine" and
-            then failed on the first user who had never built the image before.
+            network, because that is where apt-get runs. So it would have worked on the developer's
+            machine, where the image was already built, and failed for every new user.
         """
         given: 'a machine with podman but no rootless networking backend'
             sandbox.machine { it.withoutPackages('slirp4netns') }
@@ -223,7 +222,7 @@ class CheckingTheMachineSpec extends Specification {
             it gets its own problem code and its own ordered remedies. Note the third remedy is
             deliberately last and explains the trade-off: turning the sysctl off weakens a
             system-wide protection, not just oillamp's sandbox, so oillamp will never do it by
-            itself (section 11.2).
+            itself.
         """
         given: 'a modern Ubuntu whose AppArmor policy blocks unprivileged user namespaces'
             sandbox.machine { it.userNamespacesBlockedByAppArmor() }
@@ -331,10 +330,10 @@ class CheckingTheMachineSpec extends Specification {
 
     def 'A Linux without apt is told what to install by hand rather than being abandoned'() {
         reportInfo """
-            oillamp knows how to install packages with one tool only, `apt`, which is Debian's and
-            Ubuntu's. Nothing else about oillamp On Fedora or Arch the right answer is therefore not "unsupported"
-            - it is "here is the list, install it yourself and I will work". The problem text
-            carries the package list for exactly that reason.
+            oillamp can only install packages with `apt`, the package manager of Debian and
+            Ubuntu. Nothing else in oillamp depends on the distribution. So on Fedora or Arch the
+            answer is not "unsupported" but "here is the list; install it yourself and oillamp
+            will work". The problem carries the package list for that reason.
         """
         given: 'a Fedora machine'
             sandbox.machine { it.fedora('42') }

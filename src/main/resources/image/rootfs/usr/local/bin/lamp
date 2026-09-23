@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lamp — drive the sandbox desktop from a shell. Design spec §19.4, decision D-27.
+# lamp: drive the sandbox desktop from a shell.
 #
 # This is deliberately a shell script and deliberately thin. An agent that needs something this
 # does not do should call grim/wtype/wlrctl directly rather than wait for us to add a subcommand,
@@ -87,8 +87,7 @@ cmd_key() {
 
 cmd_wait_stable() {
     need grim
-    # Deciseconds throughout, so this needs no `bc` — which is not installed, and a desktop helper
-    # that depends on an arbitrary-precision calculator to count to ten deserves what it gets.
+    # Counted in tenths of a second, so plain shell arithmetic is enough.
     local timeout_ds=$(( ${1:-10} * 10 )) interval_ds=5 elapsed_ds=0 a b
     a=$(mktemp /tmp/lamp-stable-XXXXXX.png); b=$(mktemp /tmp/lamp-stable-XXXXXX.png)
     trap 'rm -f "$a" "$b"' RETURN
@@ -112,8 +111,8 @@ cmd_info() {
     printf 'output     HEADLESS-1\n'
     printf 'screenshots %s\n' "$SCREENSHOT_DIR"
     # No window list: sway's IPC socket is mode 0700 and owned by `lamp`, so the agent cannot
-    # ask it anything. That is deliberate (§16) — reaching the IPC socket would mean being able
-    # to run commands as the user that owns the recording. Take a screenshot instead.
+    # ask it anything. That is deliberate: reaching that socket would let the agent run commands as
+    # the user that owns the recording. Take a screenshot instead.
     printf '\nTo see what is on screen, use `lamp screenshot`: the window list is not available\n'
     printf 'to you, because sway'"'"'s control socket belongs to another user.\n'
 }
@@ -130,7 +129,7 @@ lamp — drive this sandbox's desktop.
   lamp type "some text"                             type text
   lamp key ctrl+shift+t                             press a key combination
   lamp wait-stable [SECONDS]                        block until the screen stops changing
-  lamp info                                         size, renderer, open windows
+  lamp info                                         size, renderer, screenshot directory
 
 This is a thin wrapper, not a gate. It runs grim, slurp, wtype and wlrctl, all of which are
 installed here and which you may call directly whenever lamp does not do what you need:

@@ -6,7 +6,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * The image resources — design spec §15.2 and Appendices A–E.
+ * Static checks of the files the sandbox image is built from ({@code src/main/resources/image}).
  *
  * <p>These files are shipped as resources and only ever executed inside a container, which means
  * a typo in one of them surfaces as a container that dies during startup with a message nobody
@@ -15,15 +15,14 @@ import java.nio.file.Path
  * not parse, a file the Containerfile copies but nobody wrote, a reference to something a design
  * decision removed.
  *
- * <p>They do not and cannot check that the image *works* — that is what the spikes and M3's own
- * integration scenarios are for.
+ * <p>They cannot check that the image works; the spike tests do that.
  */
 class TheSandboxImageSpec extends Specification {
 
     static final Path IMAGE = Path.of('src/main/resources/image')
 
     def 'every shell script in the image parses'() {
-        given: """
+        reportInfo """
             `bash -n` is the cheapest possible check and catches the mistake that actually happens
             when editing a 150-line entrypoint: an unclosed quote or a missing `fi` twenty lines
             from where it was typed. Inside a container that appears as pid 1 exiting immediately,
@@ -64,11 +63,11 @@ class TheSandboxImageSpec extends Specification {
     }
 
     def 'the image carries no trace of the Java desktop helper that was replaced by a shell script'() {
-        given: """
-            D-27 dropped oillamp-rfb and the lamp-helper jar: an agent can drive the desktop with
-            the ordinary Wayland tools, and a helper it cannot read is worse than a script it can.
-            Appendix A still showed the jar being built into the image when these resources were
-            written, so this scenario exists to make sure the sketch was not copied faithfully.
+        reportInfo """
+            An earlier design had a Java desktop helper (`oillamp-rfb`, `lamp-helper`). It was
+            replaced by the `lamp` shell script: the agent can drive the desktop with the ordinary
+            Wayland tools, and a script it can read is better than a program it cannot. This makes
+            sure no trace of the old helper was copied into the image files.
         """
         expect: 'no file in the image mentions either, text or otherwise'
             allImageFiles.every { file ->
@@ -93,7 +92,7 @@ class TheSandboxImageSpec extends Specification {
     }
 
     def 'the compositor config binds no key to running a command'() {
-        given: """
+        reportInfo """
             The sharpest edge in the whole image. sway runs as `lamp`, the user that owns the
             recording and the VNC server; the agent can type into the desktop. A single
             `bindsym … exec …` would therefore hand the agent a way to run commands as `lamp` and
@@ -116,8 +115,8 @@ class TheSandboxImageSpec extends Specification {
     }
 
     def 'sshd is configured so that a shell cannot become a tunnel out'() {
-        given: """
-            §14 puts every outbound byte through the egress proxy. SSH into the sandbox is a hole
+        reportInfo """
+            Every outbound connection from the sandbox goes through the egress proxy. SSH into the sandbox is a hole
             straight through that if forwarding is left on: `ssh -L` would reach anything the
             container can, and the proxy would never see it. These five options are not hardening
             extras, they are what makes the network policy mean anything.
@@ -140,8 +139,8 @@ class TheSandboxImageSpec extends Specification {
     }
 
     def 'the agent shell is told where the proxy is, in every form a tool might read'() {
-        given: """
-            There is no DNS in the sandbox (§14). A tool that does not honour proxy variables
+        reportInfo """
+            There is no DNS in the sandbox. A tool that does not honour proxy variables
             simply fails, so the ones that do must find them already set - and they disagree about
             capitalisation, which is why both spellings are exported rather than one.
         """
@@ -161,12 +160,12 @@ class TheSandboxImageSpec extends Specification {
             profile.contains('-Djava.library.path=$HOME/libs')
     }
 
-    def 'the agent harnesses are installed into the image, because the sandbox cannot fetch them'() {
-        given: """
-            The sandbox has no network of its own (FR-40), so an agent cannot install its own
-            harness once it is in there - `npm install` and `pi install` both need a network that
-            does not exist. Whatever the agent is meant to have must therefore already be in the
-            image, which is why the build installs it and why the default is not empty.
+    def 'the agent harnesses are installed into the image, so they are there from the first session'() {
+        reportInfo """
+            The harnesses are installed when the image is built, so the agent has them the moment
+            it logs in, without waiting for downloads. (They could also be installed later through
+            the egress proxy.) That is why the build installs them and why the default is not
+            empty.
 
             The friendly names a user writes in oillamp.toml are not package names, and the
             mapping between them is the part that rots: a project renames, a scope changes, and
@@ -184,7 +183,7 @@ class TheSandboxImageSpec extends Specification {
     }
 
     def 'nothing about the agent tooling can fail the image build'() {
-        given: """
+        reportInfo """
             The user was explicit about this, and they are right: a harness is a convenience, while
             the desktop, the shell, the recording and ssh are the product. Losing all of them
             because a registry was briefly unreachable would be a bad trade made automatically.
@@ -204,7 +203,7 @@ class TheSandboxImageSpec extends Specification {
     }
 
     def 'the pi extension is put where a bind-mounted home cannot hide it'() {
-        given: """
+        reportInfo """
             pi reads its extensions from its agent directory, which lives in the agent's home -
             and that home is a bind mount from the lamp, so anything the image writes there at
             build time is invisible the moment the container starts. This is the same class of
@@ -236,7 +235,7 @@ class TheSandboxImageSpec extends Specification {
     }
 
     def 'sdkman is installed where it can be written to, which is not where it is built'() {
-        given: """
+        reportInfo """
             SDKMAN is how a JVM project gets the JDK, Groovy or Gradle it actually asks for, and
             it is the only way to get one in here: there is no sudo, no apt and a read-only root
             filesystem, so the usual answers are all unavailable.

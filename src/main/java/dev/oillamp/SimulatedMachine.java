@@ -13,17 +13,13 @@ import java.util.TreeMap;
 import sprouts.Tuple;
 
 /**
- * A machine described rather than owned — the seam that lets scenarios run the real command-line
- * entry point against "Ubuntu without podman" or "Fedora" or "no display".
+ * A {@link Machine} described by a test, such as "Ubuntu without podman", "Fedora" or "no display".
+ * Tests build one with {@link Machine#simulated()}.
  *
- * <p>It answers with genuine command output — real {@code /etc/os-release} text, real
- * {@code podman info} JSON, real {@code dpkg-query} lines — so the production parsers are what
- * runs. A simulation that returned pre-parsed facts would quietly stop testing the half of the
- * code most likely to break when a tool changes its output.
- *
- * <p>Deliberately <b>package-private</b>: reached only through {@link Machine#simulated()}. The
- * builder on {@code Machine.Simulation} is the API a scenario writes against; this is what it
- * constructs.
+ * <p>It answers with realistic command output (real {@code /etc/os-release} text, real
+ * {@code podman info} JSON, real {@code dpkg-query} lines), so oillamp's real parsers are tested.
+ * It also imitates the container well enough for a whole session to run: see
+ * {@link #startSimulatedSandbox}.
  */
 final class SimulatedMachine implements Machine {
 
@@ -52,11 +48,8 @@ final class SimulatedMachine implements Machine {
     /**
      * The sockets the simulated container is listening on, and whether it is still up.
      *
-     * <p>Real sockets, not files. The relays of §17.3 are the part of a session that has no pure
-     * core to test — they bind, accept and copy bytes — so a simulation that answered "a socket
-     * is a file that exists" would leave the one class the session's lifetime depends on with no
-     * scenario over it at all. Binding for real costs a few lines here and makes every session
-     * scenario an actual test of the relay.
+     * <p>These are real sockets, not files, so that session scenarios really test {@link Relay},
+     * which binds sockets and copies bytes and has no pure part that could be tested otherwise.
      */
     private final java.util.Map<String, java.nio.channels.ServerSocketChannel> listening =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -85,7 +78,7 @@ final class SimulatedMachine implements Machine {
      *
      * <p>Standing still is what makes session ids, file names and retention decisions repeatable.
      * But a supervisor is the one part of oillamp whose job includes waiting, and a timeout that
-     * can never be reached cannot be tested at all — so a scenario about waiting can ask for time
+     * can never be reached cannot be tested at all, so a scenario about waiting can ask for time
      * to pass, and only those scenarios pay for it.
      */
     @Override public Instant now() {
@@ -126,21 +119,14 @@ final class SimulatedMachine implements Machine {
     }
 
     /**
-     * Models what the <em>container</em> does on startup, not what oillamp does.
+     * Imitates what the container's entrypoint does on {@code podman run}: binds the VNC and SSH
+     * sockets and writes {@code ready.json} for the session.
      *
-     * <p>The real entrypoint starts sway, wayvnc and the ssh listener and then writes
-     * {@code ready.json} into the mounted sockets directory (§16). Nothing else tells the host it
-     * is ready, so a simulation that skipped this would leave every {@code oillamp at} scenario
-     * waiting for a file that never arrives.
+     * <p>The socket directory is taken from the {@code --volume} argument oillamp actually passed,
+     * so if oillamp forgot the mount, the simulation fails as the real container would.
      *
-     * <p>Note where the path comes from: the {@code --volume} argument oillamp actually passed. A
-     * simulation that wrote to a path of its own choosing would keep working if oillamp forgot the
-     * mount; this one fails exactly as the real sandbox would, because the container would have
-     * nowhere to write either.
-     *
-     * <p>It deliberately does not simulate the desktop, the VNC server or the recording. Those are
-     * what the spikes of §33 are for — a simulation can only ever replay what we already believe,
-     * and believing sway works is not the same as knowing it.
+     * <p>It does not simulate the desktop, the VNC server or the recording. The spike tests check
+     * those against the real tools.
      */
     private Outcome startSimulatedSandbox(Command command) {
         Optional<Path> sockets = mountedHostPath(command, "/oillamp/sockets");
@@ -150,7 +136,7 @@ final class SimulatedMachine implements Machine {
                   + "no --volume was mounted at /oillamp/sockets\n", Duration.ofMillis(30));
         // Same reasoning as the sockets mount: the session id comes from the runtime.env the host
         // actually wrote, so a host that stops writing it fails here exactly as the real
-        // entrypoint does — it refuses to start without OILLAMP_SESSION.
+        // entrypoint does: it refuses to start without OILLAMP_SESSION.
         Optional<String> session = simulatedSessionId(command);
         if (session.isEmpty())
             return new Outcome.Finished(70, "",
@@ -159,11 +145,9 @@ final class SimulatedMachine implements Machine {
             Path infra = sockets.get().resolve("infra");
             java.nio.file.Files.createDirectories(infra);
             java.nio.file.Files.createDirectories(sockets.get().resolve("agent"));
-            // Bound through the short path of D-25, not through the lamp. A lamp lives where the
-            // user keeps their projects and its path is easily over the kernel's 107-byte cap on
-            // a socket address, which is the entire reason the runtime directory and its symlink
-            // exist. Binding here the way the container does means a broken symlink fails in the
-            // simulation exactly as it would on a desktop.
+            // Bound through the short runtime-directory path, not through the lamp, because lamp
+            // paths are often longer than the 107-byte limit on socket paths. A broken symlink
+            // therefore fails here as it would on a real machine.
             Path shortSockets = shortSocketsDirectory(command).orElse(sockets.get());
             // The sockets before the readiness file, in that order, because that is the promise
             // ready.json makes: both servers are already accepting connections.
@@ -180,7 +164,7 @@ final class SimulatedMachine implements Machine {
     }
 
     /**
-     * {@code $XDG_RUNTIME_DIR/oillamp/<agentId>/sockets} — the short path the host connects on.
+     * {@code $XDG_RUNTIME_DIR/oillamp/<agentId>/sockets}: the short path the host connects on.
      *
      * <p>Taken from the container's own name rather than from a field, so that a simulation can
      * never bind somewhere the host would not look: if oillamp stopped passing {@code --name},
@@ -201,7 +185,7 @@ final class SimulatedMachine implements Machine {
      * Starts listening where the container's server would.
      *
      * <p>A socket named by {@link Simulation#endpointRefusingConnections} is created as an
-     * ordinary file instead, and nothing binds it — which is precisely the failure that got this
+     * ordinary file instead, and nothing binds it, which is precisely the failure that got this
      * simulation written: wayvnc could not take a path the previous session had left behind, so
      * the file was there and no server was.
      */
@@ -310,13 +294,13 @@ final class SimulatedMachine implements Machine {
     }
 
     /**
-     * Models connecting to a Unix socket — the check that tells a listening server apart from a
-     * file with the right name (§16).
+     * Imitates connecting to a Unix socket, the check that tells a listening server apart from a
+     * leftover file with the right name.
      *
      * <p>In simulation a socket "answers" when the file is there, which is enough to catch the
      * host forgetting to create one or clean one up. {@link Simulation#endpointRefusingConnections}
-     * models the other case, where the file exists and nothing is behind it — the shape of the
-     * failure that let a session with a dead VNC server report itself healthy.
+     * models the other case, where the file exists and nothing is listening, which once let a
+     * session with a dead VNC server report itself healthy.
      */
     private Outcome simulatedConnect(Command command) {
         Optional<Path> socket = unixConnectTarget(command);
@@ -342,7 +326,7 @@ final class SimulatedMachine implements Machine {
      *
      * <p>It appears in two shapes, and both matter. The readiness check passes it as its own
      * argument ({@code socat -u /dev/null UNIX-CONNECT:/path}), while the terminal's ssh command
-     * carries it inside one ({@code -o ProxyCommand=socat - UNIX-CONNECT:/path}) — which is how
+     * carries it inside one ({@code -o ProxyCommand=socat - UNIX-CONNECT:/path}), which is how
      * a shell reaches the sandbox, and therefore the one a simulated session has to find.
      */
     private static Optional<Path> unixConnectTarget(Command command) {
@@ -390,15 +374,12 @@ final class SimulatedMachine implements Machine {
     }
 
     /**
-     * Opens a simulated window — and, if it is a shell, really connects it to the session.
+     * Opens a simulated window. If its command line connects to a Unix socket, as the terminal's
+     * ssh does to the primary relay, the window really connects to it.
      *
-     * <p>This is where a simulated session stops being a mime. The terminal oillamp opens runs
-     * {@code ssh} through {@code socat} to the primary relay socket, so the simulated window
-     * looks for that socket in the argv it was given and connects to it for real. The whole of
-     * §17.3 and §25.1 then runs as it would on a desktop: the relay accepts, the supervisor
-     * reaches {@code Running}, and when the window closes a second later the session shuts down
-     * because the terminal closed — which is the behaviour FR-06 promises and the one thing no
-     * amount of unit testing can establish on its own.
+     * <p>So a simulated session runs as a real one would: the relay accepts, the supervisor reaches
+     * {@code Running}, and when the window closes the session shuts down because the terminal was
+     * closed.
      */
     @Override public Window launch(Command command, Window.Stdio stdio) {
         if (refusedWindows.contains(command.executable()))
@@ -424,7 +405,7 @@ final class SimulatedMachine implements Machine {
                                 java.net.UnixDomainSocketAddress.of(connectTo.get())));
                     } catch (java.io.IOException refused) {
                         // A window that cannot reach the session is one the user sees open and
-                        // close again — which is exactly what the supervisor has to notice.
+                        // close again, which is exactly what the supervisor has to notice.
                     }
                 }
                 try {
@@ -672,7 +653,7 @@ final class SimulatedMachine implements Machine {
 
             // A machine that has never run this lamp has neither. `podman image exists` and
             // `podman container exists` report absence with a non-zero exit, not with output, so
-            // the default "any known executable succeeds" would have said both were present — and
+            // the default "any known executable succeeds" would have said both were present, and
             // oillamp would have skipped the build and then started a container from nothing.
             script("podman image exists", "", 1);
             script("podman container exists", "", 1);

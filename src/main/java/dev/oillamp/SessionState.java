@@ -3,19 +3,15 @@ package dev.oillamp;
 import java.time.Instant;
 
 /**
- * Where a session has got to — spec §10.6, §24.5.
+ * Where a session has got to.
  *
- * <p>A session is not "started" or "stopped"; it passes through states that differ in what is
- * true of the world, and the difference matters. In {@code AwaitingTerminal} the container is up
- * but nobody is in it yet, so a terminal that never appears has to end the session rather than
- * leave a sandbox running with no one watching. In {@code Running} the opposite holds: the
- * terminal closing is the user saying they are done.
+ * <p>The states differ in what an event means. In {@code AwaitingTerminal} the container is up but
+ * nobody is connected, so a terminal that never connects must end the session. In {@code Running},
+ * the terminal closing is the user saying they are finished.
  *
- * <p>The state is owned by one thread (§26.5) and only ever replaced, never mutated, which is
- * what allows every transition to be decided by a pure function — see {@link SessionMachine}.
- *
- * <p>Deliberately <b>package-private</b>: how the supervisor tracks a session. What a user sees
- * of it is {@link LampEvent.SessionStatus}, which is public and is a rendering of this.
+ * <p>Only the supervisor's event loop changes the state, and only by replacing it with a new value.
+ * {@link SessionMachine} decides each change. Users see a description of it as
+ * {@link LampEvent.SessionStatus}.
  */
 sealed interface SessionState {
 
@@ -28,31 +24,27 @@ sealed interface SessionState {
     /** The user's shell is connected. {@code extraShells} counts {@code oillamp shell} sessions. */
     record Running(Instant since, ReadyInfo ready, int extraShells) implements SessionState {}
 
-    /** The shutdown sequence of §10.7 is under way; further events are ignored. */
+    /** The shutdown sequence is running; further events are ignored. */
     record ShuttingDown(Instant since, ShutdownReason reason) implements SessionState {}
 
     /** Final. Carries the exit code the process will leave with. */
     record Stopped(ShutdownReason reason, ExitStatus exit) implements SessionState {}
 
     /**
-     * Why a session is ending — spec §24.5.
-     *
-     * <p>This is the whole input to two decisions: the exit code (§27.5) and what the closing
-     * summary tells the user. Keeping them derived from one value is what stops a session that
-     * failed from exiting 0 because some other branch of the shutdown path forgot.
+     * Why a session is ending. Both the exit code and the closing summary are derived from it, so
+     * they cannot disagree.
      */
     sealed interface ShutdownReason {
 
-        /** The user closed the terminal window oillamp opened. The ordinary way to finish (FR-06). */
+        /** The user closed the terminal window oillamp opened. The ordinary way to finish. */
         record TerminalClosed() implements ShutdownReason {}
 
         /**
          * Ctrl-C, SIGTERM or SIGHUP.
          *
-         * <p>{@code wasRunning} is carried here rather than looked up later because §27.5 draws
-         * its line exactly there: interrupting a session that was <em>working</em> is a normal
-         * way to end it and exits 0, while interrupting one that never got going is a failed
-         * start and exits 130.
+         * <p>{@code wasRunning} is recorded when the interrupt happens, because it decides the exit
+         * code: interrupting a working session is a normal way to end it (0), interrupting one that
+         * never reached {@code Running} is a failed start (130).
          */
         record UserInterrupt(String signal, boolean wasRunning) implements ShutdownReason {}
 
@@ -65,7 +57,7 @@ sealed interface SessionState {
         /** The session never came up. Carries the problem that already explained why. */
         record StartupFailed(Problem problem) implements ShutdownReason {}
 
-        /** The exit code of §27.5 that this reason produces. */
+        /** The process exit code for this reason. */
         default ExitStatus exitStatus() {
             return switch (this) {
                 case TerminalClosed ignored -> ExitStatus.SUCCESS;
@@ -116,13 +108,11 @@ sealed interface SessionState {
     }
 
     /**
-     * When the session entered this state — not when the session began.
+     * When the session entered this state, not when the session began.
      *
-     * <p>That distinction is what the two startup timeouts are measured against: "the terminal
-     * has not connected for 60 seconds" means sixty seconds since the terminal was asked to
-     * open, and would be a different and much weaker statement if it counted from the moment
-     * {@code oillamp at} was typed. The session's own start is held by the supervisor, which is
-     * what the uptime and the closing summary are computed from.
+     * <p>The terminal timeout counts from here: "not connected for 60 seconds" means 60 seconds
+     * since the terminal was asked to open. The session's own start time is kept by the supervisor
+     * and used for the uptime.
      */
     default java.util.Optional<Instant> enteredAt() {
         return switch (this) {

@@ -1,4 +1,5 @@
-# Every login shell in the sandbox starts here — design spec Appendix E.
+# The environment of every shell in the sandbox: login shells read it through /etc/profile, and
+# other bash shells through ~/.bashrc.
 #
 # This is where the agent's environment is made to tell the truth: there is no DNS and no route,
 # so any tool that does not honour the proxy variables will fail, and the ones that do must find
@@ -7,13 +8,13 @@
 # Read more than once, on purpose, and it has to survive that.
 #
 # /etc/profile reads this in a login shell; ~/.bashrc reads it in every other kind, which is what
-# gives `ssh <lamp> 'some command'` the same environment as the terminal. Those nest — `ssh <lamp>
-# 'bash -l'` reads it twice, in two processes — and the obvious guard, "if already done, return",
-# is wrong: Debian's /etc/profile *resets* PATH before this file runs, so skipping the second read
-# leaves a login shell with neither ~/.local/bin nor any SDKMAN candidate on it. That was measured
-# here, not reasoned about.
+# gives `ssh <lamp> 'some command'` the same environment as the terminal. The two can nest:
+# `ssh <lamp> 'bash -l'` reads it twice, in two processes. The obvious guard, "if already done,
+# return", is wrong: Debian's /etc/profile resets PATH before this file runs, so skipping the
+# second read leaves a login shell with neither ~/.local/bin nor any SDKMAN candidate on its PATH.
+# That was observed in a real sandbox.
 #
-# So nothing is skipped. Instead the two variables that accumulate — PATH and LD_LIBRARY_PATH —
+# So nothing is skipped. Instead the two variables that accumulate, PATH and LD_LIBRARY_PATH,
 # check themselves first, and SDKMAN is sourced only where `sdk` is not already defined.
 oillamp_prepend() {   # $1 = the variable's current value, $2 = the entry to put in front of it
     case ":$1:" in
@@ -44,19 +45,19 @@ export NO_PROXY=localhost,127.0.0.1,::1 no_proxy=localhost,127.0.0.1,::1
 export NODE_USE_ENV_PROXY=1
 
 # ~/libs is on both paths so that System.loadLibrary finds what the agent put there, with no
-# extra flags — the agent guide promises this.
+# extra flags, as the agent guide promises.
 export LD_LIBRARY_PATH="$(oillamp_prepend "${LD_LIBRARY_PATH:-}" "$HOME/libs")"
 export JAVA_TOOL_OPTIONS="-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=${OILLAMP_PROXY_PORT:-3128} -Dhttp.nonProxyHosts=localhost|127.0.0.1 -Djava.library.path=$HOME/libs"
 export PATH="$(oillamp_prepend "$PATH" "$HOME/.local/bin")"
 
 # Debian marks its Python installation externally-managed (PEP 668), so a plain `pip install`
-# refuses to do anything — and the container's root filesystem is read-only, so the escape hatch
+# refuses to do anything, and the container's root filesystem is read-only, so the escape hatch
 # of installing system-wide would fail too. Together these send pip into ~/.local, which is the
 # agent's own home and therefore both writable and kept between sessions. An agent that makes a
 # virtualenv has to `unset PIP_USER`, which the agent guide says.
 export PIP_USER=1 PIP_BREAK_SYSTEM_PACKAGES=1
 
-# SDKMAN, for the JDK, Groovy, Gradle or Maven version a project actually asks for — none of which
+# SDKMAN, for the JDK, Groovy, Gradle or Maven version a project actually asks for, none of which
 # can be apt-installed in here. The copy that matters is the one in the agent's home, put there by
 # the entrypoint, because that is the only writable and persistent place: `sdk install java 21`
 # lands under ~/.sdkman and is still there next session.
@@ -72,7 +73,7 @@ if [ -n "${BASH_VERSION:-}" ] && [ -r "$SDKMAN_DIR/bin/sdkman-init.sh" ] \
 fi
 
 # Asked, not assumed. This line used to state "network via policy proxy" unconditionally, and
-# said so just as loudly in a sandbox where nothing was listening on the proxy port at all — so
+# said so just as loudly in a sandbox where nothing was listening on the proxy port at all, so
 # the agent read "you have network", tried, and failed for reasons the banner had denied.
 oillamp_network_state() {
     if (exec 3<>"/dev/tcp/127.0.0.1/${OILLAMP_PROXY_PORT:-3128}") 2>/dev/null; then

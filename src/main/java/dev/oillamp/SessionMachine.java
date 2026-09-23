@@ -6,30 +6,27 @@ import java.time.Instant;
 import sprouts.Tuple;
 
 /**
- * The rules a session follows, as a pure function — spec §25.1 (normative), §10.6.
+ * The rules a running session follows, as a pure function from (state, event, time) to the next
+ * state and a list of actions. The full table is in {@code docs/ARCHITECTURE.md}, "The running
+ * session".
  *
- * <p>Every way a session can end is decided here and nowhere else: the terminal closing, a
- * container dying, Ctrl-C, {@code oillamp stop}, a window that never opened. That is worth
- * insisting on, because the alternative — each producer deciding for itself what a disconnection
- * means — is how a tool ends up leaving a container running after its terminal closed, or exiting
- * 0 after the sandbox died under it.
+ * <p>Every way a session can end is decided here and nowhere else: the terminal closing, the
+ * container dying, Ctrl-C, {@code oillamp stop}, a window that never opened. If each part of the
+ * supervisor decided for itself what a disconnection means, it would be easy to leave a container
+ * running after its terminal closed, or to exit 0 after the sandbox died.
  *
- * <p>Being a function of {@code (state, event, now)} with no I/O in it means the whole table can
- * be checked in milliseconds, including the combinations that are awkward to produce for real: a
- * container exiting during startup, two shells attached when the terminal closes, a stop arriving
+ * <p>Because there is no I/O here, tests can check awkward combinations quickly: a container
+ * exiting during startup, two extra shells attached when the terminal closes, a stop arriving
  * while the session is already shutting down.
- *
- * <p>Deliberately <b>package-private</b>: the transition table of §25.1. It is normative as a
- * <em>table</em>; this class is only where it is written down in Java.
  */
 record SessionMachine(Settings settings) {
 
     /**
-     * The three things the table needs that are not in the state.
+     * The three settings the rules need that are not part of the state.
      *
-     * @param terminalTimeout how long a terminal window has to connect before the session is
-     *                        given up on — §10.6 puts it at 60 seconds
-     * @param openViewer      {@code viewer.open_on_start}, minus {@code --no-viewer}
+     * @param terminalTimeout how long the terminal window has to connect before the session is
+     *                        given up ({@code timeouts.terminal_connect_seconds}, 60 by default)
+     * @param openViewer      {@code viewer.open_on_start}, unless {@code --no-viewer} was given
      * @param viewOnly        {@code viewer.view_only}: the user watches but cannot type
      */
     record Settings(Duration terminalTimeout, boolean openViewer, boolean viewOnly) {
@@ -53,14 +50,13 @@ record SessionMachine(Settings settings) {
     }
 
     /**
-     * The transition table of §25.1, in the order that table gives.
+     * Decides what an event means in the current state.
      *
-     * <p>The order matters in one place. A container exiting is listed twice: once for
-     * {@code Starting}, where it means the sandbox never came up, and once for the later states,
-     * where it means a working session lost its sandbox. Those are different failures with
-     * different exit codes, so the more specific row is taken first.
+     * <p>A container exiting means different things by state: during {@code Starting} the sandbox
+     * never came up (startup failed); later, a working session lost its sandbox (container died).
+     * Both exit with code 5 but are described differently.
      *
-     * @param now when this event happened — the only clock the machine has, so that timeouts can
+     * @param now when this event happened. It is the only clock the machine has, so that timeouts can
      *            be decided without the machine being allowed to ask the time itself
      */
     Transition step(SessionState state, SessionEvent event, Instant now) {
@@ -70,7 +66,7 @@ record SessionMachine(Settings settings) {
         if (state instanceof SessionState.ShuttingDown shuttingDown)
             return event instanceof SessionEvent.ShutdownCompleted completed
                     ? finish(shuttingDown, completed)
-                    : Transition.stay(state);   // §25.1: anything else during shutdown is ignored
+                    : Transition.stay(state);   // anything else during shutdown is ignored
 
         return switch (event) {
             case SessionEvent.ActionFailed failed -> actionFailed(state, failed, now);
@@ -104,7 +100,7 @@ record SessionMachine(Settings settings) {
 
             case SessionEvent.Tick ignored -> tick(state, now);
 
-            // Anything else is an event that no longer applies — a shell disconnecting while the
+            // Anything else is an event that no longer applies, such as a shell disconnecting while the
             // session is still starting, a second readiness report. Ignored on purpose.
             case SessionEvent ignored -> Transition.stay(state);
         };
@@ -113,9 +109,8 @@ record SessionMachine(Settings settings) {
     // ─── the rows ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * The sandbox answered, so both windows open now — and the terminal oillamp was launched from
-     * is left alone. It goes on showing what the session is doing, which is where the user looks
-     * when something needs explaining.
+     * The sandbox is ready, so both windows open now. The terminal oillamp was started from is left
+     * alone; it keeps showing what the session is doing.
      */
     private Transition started(SessionEvent.ContainerReady ready, Instant now) {
         Tuple<SessionAction> actions = Tuple.of(SessionAction.class,
@@ -143,10 +138,10 @@ record SessionMachine(Settings settings) {
     }
 
     /**
-     * §25.1 draws the line between the two windows here, and it is the right line. The viewer is
-     * how the user watches; losing it costs them the view of a session that is otherwise fine,
-     * and they can open another with {@code oillamp view}. The terminal <em>is</em> the session —
-     * if it cannot open, nobody is in the sandbox and nothing will ever end it.
+     * A window could not be opened. A missing viewer only costs the user their view of a session
+     * that otherwise works, and {@code oillamp view} can open another, so it is a warning. A missing
+     * terminal means nobody is in the sandbox and nothing would ever end the session, so the session
+     * is shut down.
      */
     private Transition actionFailed(SessionState state, SessionEvent.ActionFailed failed, Instant now) {
         if (failed.action() instanceof SessionAction.LaunchTerminal)
@@ -165,13 +160,12 @@ record SessionMachine(Settings settings) {
 
     /**
      * Every path into shutdown goes through here, so the extra shells are always closed and the
-     * sequence of §10.7 is always begun exactly once.
+     * shutdown sequence is always started exactly once.
      */
     private Transition shutDown(SessionState state, Instant now, SessionState.ShutdownReason reason) {
         Tuple<SessionAction> actions = Tuple.of(SessionAction.class);
-        // A session that failed to start must say why before it tidies itself away. The reason
-        // is already a Problem, with its evidence and its fixes; leaving it inside the shutdown
-        // reason would exit 5 in silence, which is the failure mode this tool exists to avoid.
+        // A session that failed to start must say why before shutting down. Without this the
+        // problem stays inside the shutdown reason and oillamp exits 5 without explanation.
         if (reason instanceof SessionState.ShutdownReason.StartupFailed failed)
             actions = actions.add(new SessionAction.Announce(new LampEvent.Failure(failed.problem())));
         if (state.extraShells() > 0) actions = actions.add(new SessionAction.CloseShells());
@@ -180,9 +174,8 @@ record SessionMachine(Settings settings) {
     }
 
     private Transition finish(SessionState.ShuttingDown state, SessionEvent.ShutdownCompleted done) {
-        // A shutdown that could not tidy up does not turn a good session into a failed one, but
-        // it must not be silent either: the problems are reported and the exit code stays the
-        // session's own, so a script keeps reading the session's outcome rather than the tidying.
+        // Cleanup problems are reported as warnings, but do not change the exit code: that still
+        // describes how the session itself ended.
         ExitStatus exit = state.reason().exitStatus();
         Tuple<SessionAction> actions = Tuple.of(SessionAction.class);
         for (Problem problem : done.problems())

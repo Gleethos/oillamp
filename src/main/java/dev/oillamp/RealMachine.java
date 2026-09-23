@@ -19,23 +19,19 @@ import sprouts.Pair;
 import sprouts.Tuple;
 
 /**
- * The {@link Machine} that really is this computer — spec §26.1/§26.2.
+ * The {@link Machine} that really is this computer. Obtained with {@link Machine#real()}.
  *
  * <p>Two rules hold for every command run here:
  * <ul>
- *   <li><b>Never a shell.</b> The argv is passed straight to {@link ProcessBuilder}, so nothing a
- *       configuration value contains can become a second command.</li>
- *   <li><b>Always a timeout.</b> On expiry the process <em>and its descendants</em> are destroyed,
- *       because a hung {@code podman} that left children behind would otherwise outlive oillamp
- *       and keep the lamp locked (NFR-02).</li>
+ *   <li><b>Never a shell.</b> The argument list goes straight to {@link ProcessBuilder}, so nothing
+ *       inside a configuration value can become a second command.</li>
+ *   <li><b>Always a timeout.</b> When it expires, the process and all its child processes are
+ *       killed, so a hung {@code podman} cannot leave processes behind.</li>
  * </ul>
- *
- * <p>Deliberately <b>package-private</b>: reached only through {@link Machine#real()}. Nobody
- * outside can name the real implementation, and that is exactly what keeps the seam a seam.
  */
 final class RealMachine implements Machine {
 
-    /** Output beyond this is dropped, keeping the tail; a runaway build must not exhaust memory. */
+    /** Output beyond this many bytes is dropped (the start is kept), so a very noisy build cannot exhaust memory. */
     private static final int MAX_CAPTURED_BYTES = 4 * 1024 * 1024;
 
     private final SecureRandom random = new SecureRandom();
@@ -56,8 +52,8 @@ final class RealMachine implements Machine {
     }
 
     @Override public boolean isInteractive() {
-        // Since JDK 22 a Console is always returned even when redirected, so the null check of
-        // older code is not enough - ask the console whether it really is a terminal.
+        // Since JDK 22, System.console() returns a Console even when output is redirected, so
+        // ask whether it really is a terminal.
         return Optional.ofNullable(System.console()).filter(java.io.Console::isTerminal).isPresent();
     }
 
@@ -104,12 +100,11 @@ final class RealMachine implements Machine {
     /**
      * The argv to actually run, with a shielded command wrapped in {@code setsid}.
      *
-     * <p>{@code --wait} is not optional: plain {@code setsid} forks when it is already a process
-     * group leader and returns 0 immediately, which would report every shutdown command as having
-     * succeeded whatever it did. With it, setsid waits and passes the real exit status back.
+     * <p>{@code --wait} is required: without it, {@code setsid} may fork and return 0 at once, so
+     * every shutdown command would appear to succeed. With it, setsid waits and returns the
+     * command's real exit code.
      *
-     * <p>If {@code setsid} is somehow missing the command still runs, just unshielded — losing the
-     * ability to stop a container because a util-linux binary is absent would be the worse trade.
+     * <p>If {@code setsid} is missing, the command runs unshielded rather than not at all.
      */
     private List<String> shield(Command command) {
         List<String> argv = asList(command.argv());
@@ -126,11 +121,9 @@ final class RealMachine implements Machine {
     /**
      * Starts a window and leaves it running.
      *
-     * <p>Two differences from {@link #run} matter. There is no timeout, because the thing being
-     * started is a window the user will close when they are done with it. And its output is kept
-     * in memory rather than discarded, because the one moment a viewer's output is worth having
-     * is when the window is gone a second after it opened — which is exactly when nobody was
-     * looking at it.
+     * <p>Unlike {@link #run}, there is no timeout: the user closes the window when they are done.
+     * The window's output is kept in memory, because when a window closes straight after opening,
+     * its output is the only explanation.
      */
     @Override public Window launch(Command command, Window.Stdio stdio) {
         ProcessBuilder builder = new ProcessBuilder(asList(command.argv()));
@@ -140,9 +133,8 @@ final class RealMachine implements Machine {
         if (stdio == Window.Stdio.TERMINAL) {
             builder.inheritIO();
         } else {
-            // Nothing may be read from the user's terminal by a window running beside it: a
-            // detached process that inherited stdin would compete with oillamp for every
-            // keystroke, and the one that lost would be whichever the user was actually typing at.
+            // A window must not read from the user's terminal, or it would compete with oillamp
+            // for keystrokes.
             builder.redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")));
         }
         Process process;
@@ -159,7 +151,7 @@ final class RealMachine implements Machine {
         return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
     }
 
-    /** A started process, seen through the four questions a window has to answer. */
+    /** A started process, as a {@link Machine.Window}. */
     private static final class ProcessWindow implements Window {
 
         private final Process process;
@@ -196,8 +188,8 @@ final class RealMachine implements Machine {
         }
 
         /**
-         * Asks politely, then insists. A terminal emulator that ignores SIGTERM would otherwise
-         * keep a session's window on screen after the session it belonged to has ended.
+         * Sends SIGTERM, then kills the process if it is still there after two seconds, so a
+         * window does not stay open after its session ended.
          */
         @Override public void close() {
             if (!process.isAlive()) return;
@@ -259,7 +251,7 @@ final class RealMachine implements Machine {
         });
     }
 
-    /** Kills descendants first, so a child cannot be re-parented and survive. */
+    /** Kills the child processes first, so none can survive by being re-parented. */
     private static void destroyTree(Process process) {
         process.descendants().forEach(ProcessHandle::destroyForcibly);
         process.destroyForcibly();

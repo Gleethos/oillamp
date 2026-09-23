@@ -1,14 +1,11 @@
 package dev.oillamp;
 
 /**
- * {@code viewer.clipboard} — which way the clipboard flows between host and sandbox (D-23).
+ * The {@code viewer.clipboard} setting: which way the clipboard may flow between your desktop and
+ * the sandbox.
  *
- * <p>The default is one-way on purpose: pasting <em>into</em> the sandbox is useful, while
- * copying <em>out</em> of it is where content the agent produced could leak onto the host
- * clipboard unnoticed.
- *
- * <p>Deliberately <b>package-private</b>: one configuration value (D-23). Public would make every
- * future clipboard direction a breaking change.
+ * <p>The default, {@link #TO_AGENT}, is one-way on purpose. Pasting into the sandbox is useful.
+ * Copying out of it is how content the agent produced could reach your clipboard unnoticed.
  */
 enum ClipboardMode {
     TO_AGENT, BOTH, NONE;

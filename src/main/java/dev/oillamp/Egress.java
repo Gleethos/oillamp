@@ -28,31 +28,23 @@ import java.util.concurrent.atomic.AtomicLong;
 import sprouts.Tuple;
 
 /**
- * The only way out of the sandbox — spec §18, §26.4.
+ * The egress proxy: the sandbox's only way out to the network, plus the configured forwards.
  *
- * <p>The container runs with {@code --network=none}: no route, no DNS, no interface but loopback.
- * Everything an agent reaches, it reaches by asking this. Inside the sandbox a socat bridge
- * listens on {@code 127.0.0.1:3128} and forwards to a Unix socket; on this side of that socket,
- * oillamp speaks HTTP proxy, decides with {@link Policy}, resolves on the <em>host</em>, and
- * connects on the agent's behalf. Anything that ignores the proxy variables simply has no
- * network, which is the intended failure and the reason the design is fail-closed.
+ * <p>The container runs with {@code --network=none}: no route, no DNS, only a loopback interface.
+ * Inside it, a socat relay listens on {@code 127.0.0.1:3128} and forwards each connection to a
+ * Unix socket. On the host side of that socket, this class speaks HTTP proxy, asks {@link Policy}
+ * whether the connection is allowed, resolves the name on the host, and connects on the agent's
+ * behalf. A program that ignores the proxy variables has no network at all.
  *
- * <p>This is also where "allow by default" stops being a risk worth arguing about. The shipped
- * policy lets the open web through and denies loopback, link-local, RFC 1918, CGNAT and IPv6 ULA
- * — evaluated against every resolved address, so a public name pointed at the machine's own
- * network is caught by the address rather than trusted by the name. The agent gets to install its
- * packages; the host and the intranet behind it stay out of reach.
+ * <p>TLS is never intercepted. A {@code CONNECT} tunnel is copied byte for byte, so oillamp sees the
+ * host name, the port and the resolved address, never the content.
  *
- * <p>No TLS is intercepted. A {@code CONNECT} tunnel is copied byte for byte, so oillamp sees the
- * host name and the address it resolved to, never the content — which is the most that can be
- * logged without becoming a man in the middle of the user's own traffic.
- *
- * <p>Deliberately <b>package-private</b>: on the effects allowlist. It binds sockets, resolves
- * names and moves bytes; the promise made to users is the policy language, not this.
+ * <p>How requests are handled and logged is described in {@code docs/ARCHITECTURE.md},
+ * "The network".
  */
 final class Egress implements AutoCloseable {
 
-    /** §18.2. A request head larger than this is a client that is not speaking HTTP to a proxy. */
+    /** A request head larger than this is not a proxy request. */
     private static final int HEADER_LIMIT = 64 * 1024;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration RESOLVE_TIMEOUT = Duration.ofSeconds(5);
@@ -66,9 +58,8 @@ final class Egress implements AutoCloseable {
     }
 
     /**
-     * One connection, as the network log records it — §18.7.
-     *
-     * <p>Host name, address, decision, rule and byte counts. Not content: see the class comment.
+     * One connection, as written to the network log: host, port, resolved address, decision,
+     * deciding rule, byte counts and duration. Never content.
      */
     record Journey(Instant at, String channel, String method, String host, int port,
                   Optional<IpAddress> address, Decision decision, String rule,
@@ -113,10 +104,9 @@ final class Egress implements AutoCloseable {
     /**
      * Starts the proxy and every configured forward.
      *
-     * <p>The proxy socket is 0666 rather than 0600: it lives in {@code sockets/host/}, which is
-     * bind-mounted into the container so that the {@code lamp} user's socat bridge can reach it.
-     * That is the whole point of the directory — and the reason the policy is enforced here, on
-     * the host, rather than by anything inside the sandbox that the agent might reach.
+     * <p>The sockets are mode 0666 rather than 0600, because the socat relay inside the container
+     * runs as the infra user, a different uid. They are still private to this user on the host,
+     * because the enclosing {@code .oillamp} directory is 0700.
      */
     static Result<Egress> open(LampLayout layout, LampConfig config, SessionId session,
                                Listener listener) {
@@ -143,9 +133,8 @@ final class Egress implements AutoCloseable {
         Result<ServerSocketChannel> bound = Relay.bind(socket);
         if (bound instanceof Result.Ok<ServerSocketChannel>) {
             try {
-                // Relay.bind leaves it 0600, which is right for the host-only sockets it was
-                // written for and wrong here: the bridge inside the container runs as `lamp`, a
-                // different uid, and 0600 would leave the sandbox with a proxy it cannot open.
+                // Relay.bind makes the socket 0600. The relay inside the container runs as the
+                // infra user, a different uid, so it needs 0666 to connect.
                 Filesystem.setMode(socket, PosixMode.SHARED_SOCKET);
             } catch (IOException e) {
                 return Result.err(Problems.cannotListen(socket, Problems.reason(e)));
@@ -167,9 +156,8 @@ final class Egress implements AutoCloseable {
                     if (!closing) listener.trouble(Problems.cannotListen(Path.of(name), Problems.reason(e)));
                     return;
                 }
-                // A limit rather than a queue: 512 concurrent connections is far past anything a
-                // build does, and a sandbox that opens more is looping. Refusing is information;
-                // growing threads until the host suffers is not.
+                // 512 open connections is far more than any build needs; a sandbox opening more is
+                // probably stuck in a loop. Close extra connections instead of growing without limit.
                 if (open.get() >= MAX_CONNECTIONS) {
                     closeQuietly(client);
                     continue;
@@ -189,7 +177,7 @@ final class Egress implements AutoCloseable {
         });
     }
 
-    // ─── the proxy (§18.2) ─────────────────────────────────────────────────────────────────
+    // ─── the proxy ─────────────────────────────────────────────────────────────────────────
 
     private void handleProxy(SocketChannel client) {
         Instant started = Instant.now();
@@ -212,9 +200,9 @@ final class Egress implements AutoCloseable {
     }
 
     /**
-     * {@code CONNECT host:port} — the path almost everything real takes, because almost everything
-     * real is HTTPS. Policy, resolve, connect, {@code 200}, then bytes in both directions until
-     * one side stops. Nothing in the tunnel is read.
+     * {@code CONNECT host:port}, used for HTTPS and therefore most real traffic: resolve, check the
+     * policy, connect, answer {@code 200}, then copy bytes both ways until one side closes. Nothing
+     * in the tunnel is read.
      */
     private void tunnel(InputStream in, OutputStream out,
                         Head head, Instant started) throws IOException {
@@ -261,9 +249,9 @@ final class Egress implements AutoCloseable {
     /**
      * An absolute-form request ({@code GET http://host/path}), forwarded in origin form.
      *
-     * <p>Plain HTTP, which in practice means apt and the occasional redirect. One request per
-     * connection in v1: {@code Connection: close} goes out and the response is streamed straight
-     * back, so there is no keep-alive state to get wrong.
+     * <p>Plain HTTP, which in practice means apt and some redirects. One request per connection:
+     * {@code Connection: close} is sent and the response is streamed back, so there is no
+     * keep-alive to manage.
      */
     private void forwardHttp(InputStream in, OutputStream out, Head head, Instant started)
             throws IOException {
@@ -305,14 +293,13 @@ final class Egress implements AutoCloseable {
         }
     }
 
-    // ─── forwards (§18.5) ──────────────────────────────────────────────────────────────────
+    // ─── forwards ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * One fixed target, not subject to the policy — an explicit, visible exception (§18.5).
+     * One connection to a forward's fixed target, without a policy check.
      *
-     * <p>The host resolves and connects, so the host's own VPN and intranet routing apply. That
-     * is the point of a forward: it is how a user deliberately hands the sandbox one internal
-     * service without opening the intranet to it.
+     * <p>The host resolves the name and connects, so the host's VPN and routing apply. This is how
+     * a user gives the sandbox one internal service without opening the rest of their network.
      */
     private void handleForward(SocketChannel client, Forward forward) {
         Instant started = Instant.now();
@@ -345,7 +332,7 @@ final class Egress implements AutoCloseable {
     /** Resolved addresses in resolver order, or a failure. Resolution happens on the host. */
     private record Resolution(Tuple<IpAddress> addresses, boolean failed) {
 
-        /** The address the verdict allowed, falling back to the first — they agree in practice. */
+        /** The address the verdict allowed, or the first address if the verdict has none. */
         InetAddress pick(Policy.Verdict verdict) throws IOException {
             IpAddress chosen = verdict.address().orElseGet(addresses::first);
             return InetAddress.getByName(chosen.text());
@@ -355,9 +342,8 @@ final class Egress implements AutoCloseable {
     /**
      * Resolves on the host, with a deadline.
      *
-     * <p>A deadline because {@code getAllByName} has none of its own: a resolver that stops
-     * answering would otherwise hold the agent's connection open for as long as the OS felt like
-     * it, which the agent experiences as a hang rather than an error.
+     * <p>{@code getAllByName} has no timeout of its own, and a resolver that stops answering would
+     * make the agent's connection hang instead of failing.
      */
     private Resolution resolve(String host) {
         Optional<IpAddress> literal = IpAddress.parse(host);
@@ -456,10 +442,9 @@ final class Egress implements AutoCloseable {
                      + "Content-Type: text/plain; charset=utf-8\r\n"
                      + "Content-Length: " + bytes.length + "\r\n"
                      + "Connection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
-        // One write, not two. The body of a 403 is the sentence naming the rule that refused —
-        // the whole reason the agent gets a message instead of a dropped connection — and sending
-        // it separately from the head lets a client that reads once, as plenty do, see the status
-        // and none of the reason. Cost: one array copy on a path that is about to close anyway.
+        // Head and body in one write. The body of a 403 names the rule that refused the
+        // connection, and some clients read only once; written separately, they could see the
+        // status without the reason.
         byte[] whole = new byte[head.length + bytes.length];
         System.arraycopy(head, 0, whole, 0, head.length);
         System.arraycopy(bytes, 0, whole, head.length, bytes.length);
@@ -496,9 +481,8 @@ final class Egress implements AutoCloseable {
     /**
      * Reads the request head, one byte at a time, up to the blank line.
      *
-     * <p>Byte at a time on purpose. A buffered read would swallow the start of the tunnelled
-     * payload into a buffer the tunnel never looks at, and the symptom of that is a TLS handshake
-     * that hangs for reasons nothing in the logs explains.
+     * <p>One byte at a time on purpose. A buffered read could also consume the first bytes of the
+     * tunnelled data, which the tunnel would then never forward, and the TLS handshake would hang.
      */
     private static Optional<Head> readHead(InputStream in) throws IOException {
         StringBuilder head = new StringBuilder();
@@ -554,8 +538,8 @@ final class Egress implements AutoCloseable {
         }
         if (target.startsWith("https://"))
             return bad("an https:// URL must be sent as CONNECT, not as an absolute-form request");
-        // §18.2: an origin-form request means something is talking to the proxy as if it were the
-        // origin server. Saying so is more use than a generic 400.
+        // A request like "GET /path" means a client is treating the proxy as a web server.
+        // Say so, rather than answering with a bare 400.
         return bad("this is oillamp's egress proxy, not a web server — "
                  + "set HTTP_PROXY/HTTPS_PROXY (they are already set in a login shell)");
     }
@@ -569,13 +553,12 @@ final class Egress implements AutoCloseable {
         }
     }
 
-    // ─── the journal (§18.7) ───────────────────────────────────────────────────────────────
+    // ─── the network log ───────────────────────────────────────────────────────────────────
 
     /**
      * One writer thread behind a queue, so a slow disk never delays a connection.
      *
-     * <p>The log is evidence about a session that has usually already moved on, so a line lost to
-     * a full queue is worth less than a connection held up waiting to write it.
+     * <p>If the queue is full, the line is dropped rather than delaying the connection.
      */
     private static final class Journal implements AutoCloseable {
 
@@ -630,7 +613,7 @@ final class Egress implements AutoCloseable {
 
     // ─── lifecycle ─────────────────────────────────────────────────────────────────────────
 
-    /** Whether the proxy is answering — asked by the session's health check, like the relays. */
+    /** Whether the proxy socket accepts connections. Used by the session's health check. */
     static boolean answers(Path socket) { return Relay.answers(socket); }
 
     @Override public void close() {
@@ -651,7 +634,7 @@ final class Egress implements AutoCloseable {
         try {
             closeable.close();
         } catch (Exception ignored) {
-            // Best effort by definition — the process is releasing these anyway.
+            // Best effort by definition; the process is releasing these anyway.
         }
     }
 }

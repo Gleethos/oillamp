@@ -6,14 +6,10 @@ import java.util.function.Consumer;
 
 
 /**
- * What every command needs: somewhere to send events, and the switches the user set.
+ * What every command needs: where to send events, and the options from the command line.
  *
- * <p>oillamp never prints directly. Everything it has to say becomes a {@link LampEvent}, which
- * the CLI renders, the log records and — later — the Swing front end displays (NFR-08). That is
- * also why a scenario can assert on what the user was told without parsing console text.
- *
- * <p>Deliberately <b>package-private</b>: the ambient state one run carries around — a convenience
- * for the imperative shell, not a concept any user has.
+ * <p>oillamp never prints directly. Everything it has to say becomes a {@link LampEvent}, which the
+ * console renders and tests can inspect.
  */
 final class Context {
 
@@ -29,11 +25,13 @@ final class Context {
     }
 
     /**
-     * The switches from the command line and configuration.
+     * The options from the command line.
      *
-     * @param dryRun      print the complete plan and change nothing (FR-12)
-     * @param autoInstall may oillamp install host packages? ({@code --no-install} turns it off)
-     * @param init        accept a non-empty directory as a new lamp (FR-02)
+     * @param debug       {@code --debug}; currently has no effect beyond turning on {@code verbose}
+     * @param dryRun      {@code --dry-run}: print the complete plan and change nothing
+     * @param autoInstall whether oillamp may install host packages; {@code --no-install} turns it off
+     * @param init        {@code --init}: accept a non-empty directory as a new lamp
+     * @param openViewer  false with {@code --no-viewer}
      */
     public record Options(boolean verbose, boolean debug, boolean dryRun,
                           boolean autoInstall, boolean init, boolean openViewer) {

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# SDKMAN, so that a JVM toolchain is one command away — spec §15.2.
+# Installs SDKMAN, so that any JVM toolchain is one command away inside the sandbox.
 #
 # The image ships one JDK. A lot of JVM work needs a different one, or a second one beside it, or
-# a Groovy, a Gradle or a Maven that does not match what Debian packages — and none of that can be
+# a Groovy, a Gradle or a Maven that does not match what Debian packages. None of that can be
 # apt-installed in here, because the root filesystem is read-only and there is no sudo. SDKMAN
 # installs into a directory instead, which is exactly the shape this sandbox can accommodate.
 #

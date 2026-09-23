@@ -2,14 +2,11 @@ package dev.oillamp;
 
 
 /**
- * The files oillamp writes into a new lamp for the <em>user</em> to read and edit — spec §20.2.
+ * The text of files oillamp generates: the commented {@code oillamp.toml}, the lamp's
+ * {@code README.txt}, the agent's {@code .bashrc} and the bash completion script.
  *
- * <p>Held as text blocks rather than classpath resources so that the pure core stays free of I/O
- * (§22) and so that a scenario can assert the shipped template and the built-in defaults agree.
- * A commented template that has drifted from the real defaults is worse than no template at all.
- *
- * <p>Deliberately <b>package-private</b>: the text of generated files. All of it is meant to be
- * edited freely.
+ * <p>They are Java text blocks rather than resource files, so no file needs to be read to produce
+ * them.
  */
 final class Templates {
 
@@ -18,8 +15,9 @@ final class Templates {
     /**
      * The commented configuration written into a new lamp.
      *
-     * <p>Every value here must parse to exactly {@code ConfigDefaults.lampConfig()} — a scenario
-     * checks it, so this file can be trusted as documentation.
+     * <p>Every value here must match {@link ConfigDefaults#lampConfig()}. A scenario in
+     * {@code ConfiguringALampSpec} checks this, because many users read this file as the
+     * documentation of the settings.
      */
     public static String defaultConfig() {
         return """
@@ -45,12 +43,11 @@ final class Templates {
             # command = ["myterm", "--title", "{title}", "--", "{cmd}"]   # custom terminal; overrides profile
 
             # Records the sandbox desktop to .oillamp/recordings/<session>.mkv, so you can watch
-            # back what an agent actually did. Off by default: it is a continuous screen recording
-            # of everything in the sandbox, and that is not something to switch on for somebody.
-            # Turn it on per lamp when you want an audit trail. Cost when on is small — wf-recorder
-            # only emits frames when the screen changes, so an idle desktop writes almost nothing.
-            # The agent cannot read, stop or tamper with the recording: it is written by the `lamp`
-            # user, outside the agent's home. `oillamp recordings <lamp>` lists them.
+            # what an agent did. Off by default: it is a continuous recording of the screen, which
+            # should be switched on deliberately. The recording runs at max_fps frames per second.
+            # The agent can read the recording but cannot stop, change or delete it: it is written
+            # by the sandbox's `lamp` user, outside the agent's home.
+            # `oillamp recordings <lamp>` lists them.
             [recording]
             enabled        = false    # true to record the desktop for the whole session
             codec          = "libx264" # wf-recorder codec; "h264_vaapi" when a GPU is in use
@@ -124,24 +121,13 @@ final class Templates {
     }
 
     /**
-     * The agent's {@code ~/.bashrc} — one line of work and six of explanation.
-     *
-     * <p>Written {@code IF_ABSENT}, because from the moment it exists it is the agent's file. The
-     * reason it exists at all is that {@code /etc/profile} is read by login shells only: the
-     * terminal oillamp opens gets one, and {@code ssh <lamp> 'some command'} does not. Without
-     * this, the same command behaves differently depending on how the shell was started, which is
-     * the kind of difference an agent cannot diagnose and will report as "the network is broken".
-     */
-    /**
      * The bash completion script, printed by {@code oillamp completion bash}.
      *
-     * <p>Printed rather than installed. oillamp ships as one file that is never installed
-     * anywhere, so there is no package step that could drop a script into the directory bash
-     * reads at startup. Printing it lets the user decide: evaluate it for this shell only, or
-     * add one line to their own startup file.
+     * <p>Printed rather than installed, because oillamp itself is never installed anywhere. The user
+     * decides whether to evaluate it in one shell or add it to their startup file.
      *
-     * <p>It completes directories for the commands that take one, because every one of those
-     * takes a lamp directory and nothing else.
+     * <p>After the command name it completes directories, because every command that takes an
+     * argument takes a lamp directory.
      */
     public static String bashCompletion() {
         return """
@@ -183,6 +169,14 @@ final class Templates {
             """;
     }
 
+    /**
+     * The agent's {@code ~/.bashrc}.
+     *
+     * <p>{@code /etc/profile} is read only by login shells. The terminal oillamp opens gets one;
+     * {@code ssh <lamp> 'some command'} does not, so without this file a scripted command would run
+     * with no proxy settings, no display and no {@code sdk}. Written only if absent, because after
+     * that it belongs to the agent.
+     */
     public static String agentBashrc() {
         return """
             # Written by oillamp when this lamp was created, and never again: from here on it is
@@ -196,7 +190,7 @@ final class Templates {
             """;
     }
 
-    /** A short note so that someone finding this directory in six months knows what it is. */
+    /** The lamp's {@code README.txt}, so that someone who finds the directory later knows what it is. */
     public static String readme(LampLayout layout) {
         return """
             This directory is an oillamp lamp: one sandboxed Linux machine with its own desktop,

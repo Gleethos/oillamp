@@ -11,15 +11,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import sprouts.Tuple;
 
 /**
- * Works out what is at a lamp path — spec §24.1.
- *
- * <p>The shell reads the directory and {@code lamp.json}; this decides what they mean. The
- * distinction that matters for the user is between "empty, so I will set it up", "an existing
- * lamp, so I will reuse the agent's home", and "your files, so I will not touch this" (FR-02).
- *
- * <p>Deliberately <b>package-private</b>: it decides whether a directory is empty, already a lamp,
- * or someone else's. The rules are tuned from experience — see §36.2 — so they must stay
- * changeable.
+ * Decides what is at a lamp path: nothing, an empty directory, an existing lamp, someone else's
+ * files, or a damaged lamp. The caller reads the directory listing and {@code lamp.json}; this class
+ * only interprets them.
  */
 final class LampClassifier {
 
@@ -28,12 +22,9 @@ final class LampClassifier {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /**
-     * Entries that do not make a directory "someone else's".
-     *
-     * <p>Two groups: droppings left by editors and file managers, and the lamp's own
-     * user-facing files. Writing {@code oillamp.toml} before the first run — configuring the
-     * sandbox and then starting it — is a perfectly ordinary thing to do, and being refused
-     * for it would be baffling.
+     * Entries that do not make a directory count as someone else's: files that editors and file
+     * managers leave behind, and the lamp's own {@code oillamp.toml} and {@code README.txt}. Writing
+     * {@code oillamp.toml} before the first run is a normal way to configure a new lamp.
      */
     private static final Tuple<String> IGNORED_ENTRIES = Tuple.of(String.class,
             ".DS_Store", ".directory", "Thumbs.db", ".keep", ".gitkeep",
@@ -87,7 +78,7 @@ final class LampClassifier {
                         : Optional.of(Instant.parse(lastSession.asText())));
     }
 
-    /** Renders the identity file back out — the inverse of {@link #parse}. */
+    /** Writes {@code lamp.json} as text; the reverse of {@link #parse}. */
     public static String render(LampMeta meta) {
         StringBuilder out = new StringBuilder("{\n");
         out.append("  \"schemaVersion\": ").append(meta.schemaVersion()).append(",\n");
