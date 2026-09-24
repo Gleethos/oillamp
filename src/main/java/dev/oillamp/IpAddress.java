@@ -27,13 +27,39 @@ record IpAddress(long high, long low, boolean ipv6) implements Comparable<IpAddr
 
     public int bitLength() { return ipv6 ? 128 : 32; }
 
+    /// `0.0.0.0` or `::`: no particular address, which the operating system treats as this machine.
+    public boolean isUnspecified() { return high == 0L && low == 0L; }
+
     /// Parses a literal address. Returns empty for a host name, which the caller must resolve.
+    ///
+    /// An IPv4 address written in IPv6 notation (`::ffff:7f00:1` or `::ffff:127.0.0.1`, an
+    /// "IPv4-mapped" address) is returned as the IPv4 address it stands for. The operating system
+    /// connects to it as IPv4, so the policy has to judge it as IPv4. Judged as IPv6 it matched no
+    /// deny rule, and the agent could reach the host's loopback through it.
     public static Optional<IpAddress> parse(String text) {
         String value = text.trim();
         if (value.startsWith("[") && value.endsWith("]"))
             value = value.substring(1, value.length() - 1);
         if (value.isEmpty()) return Optional.empty();
-        return value.indexOf(':') >= 0 ? parseV6(value) : parseV4(value);
+        return value.indexOf(':') >= 0 ? parseV6(value).map(IpAddress::unmapped) : parseV4(value);
+    }
+
+    /// The IPv4 address inside an IPv4-mapped IPv6 address (`::ffff:0:0/96`), or this address.
+    private IpAddress unmapped() {
+        return ipv6 && high == 0L && (low >>> 32) == 0xFFFFL
+                ? new IpAddress(0L, low & 0xFFFFFFFFL, false)
+                : this;
+    }
+
+    /// The address as the bytes a socket connects to: 4 for IPv4, 16 for IPv6.
+    public byte[] toBytes() {
+        byte[] bytes = new byte[ipv6 ? 16 : 4];
+        for (int i = 0; i < bytes.length; i++) {
+            int fromEnd = bytes.length - 1 - i;
+            long source = fromEnd < 8 ? low : high;
+            bytes[i] = (byte) (source >>> ((fromEnd % 8) * 8));
+        }
+        return bytes;
     }
 
     private static Optional<IpAddress> parseV4(String text) {
@@ -51,6 +77,16 @@ record IpAddress(long high, long low, boolean ipv6) implements Comparable<IpAddr
     }
 
     private static Optional<IpAddress> parseV6(String text) {
+        // The last 32 bits may be written as an IPv4 address, as in ::ffff:127.0.0.1. Rewrite them
+        // as two hexadecimal groups so the rest of the parser sees one notation.
+        int lastColon = text.lastIndexOf(':');
+        if (text.indexOf('.', lastColon) >= 0) {
+            Optional<IpAddress> tail = parseV4(text.substring(lastColon + 1));
+            if (tail.isEmpty()) return Optional.empty();
+            long v4 = tail.get().low();
+            text = text.substring(0, lastColon + 1)
+                 + Long.toHexString(v4 >>> 16) + ":" + Long.toHexString(v4 & 0xFFFF);
+        }
         String head = text;
         String tail = "";
         int doubleColon = text.indexOf("::");

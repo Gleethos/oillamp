@@ -743,8 +743,14 @@ name is refused by where it points.
 The shipped default is `default = "allow"` with two deny rules. The first, *"Eden AI only through
 its EU endpoint"*, denies the host `api.edenai.run` (see [Eden AI, only in the
 EU](#eden-ai-only-in-the-eu)). The second, *"block private, internal and loopback ranges"*, denies `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` (carrier-
-grade NAT, often used by VPNs), `127.0.0.0/8`, `169.254.0.0/16`, `0.0.0.0/8`, `::1/128`,
+grade NAT, often used by VPNs), `127.0.0.0/8`, `169.254.0.0/16`, `0.0.0.0/8`, `::1/128`, `::/128`,
 `fc00::/7` and `fe80::/10`. To allow an internal service, add an `allow` rule *above* it.
+
+Two things hold whatever the rules say. An IPv4 address written in IPv6 notation, such as
+`::ffff:7f00:1` (which is `127.0.0.1`), is judged as the IPv4 address it stands for, because that is
+where the connection goes. And `0.0.0.0` and `::`, which Linux treats as "this machine", are always
+refused. The proxy then connects to exactly the address the policy judged, never to a name or a
+text form that could be read differently.
 
 ### Eden AI, only in the EU
 

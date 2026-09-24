@@ -82,7 +82,7 @@ final class Templates {
             action = "deny"
             cidrs  = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
                       "127.0.0.0/8", "169.254.0.0/16", "0.0.0.0/8",
-                      "::1/128", "fc00::/7", "fe80::/10"]
+                      "::1/128", "::/128", "fc00::/7", "fe80::/10"]
 
             # Example: allow-list mode — set default = "deny" above and list what is allowed:
             # [[network.rules]]

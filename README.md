@@ -712,7 +712,7 @@ label  = "block private, internal and loopback ranges"
 action = "deny"
 cidrs  = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
           "127.0.0.0/8", "169.254.0.0/16", "0.0.0.0/8",
-          "::1/128", "fc00::/7", "fe80::/10"]
+          "::1/128", "::/128", "fc00::/7", "fe80::/10"]
 ```
 
 Rules are checked from top to bottom and the first match wins. The shipped configuration contains

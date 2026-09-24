@@ -326,9 +326,13 @@ final class Egress implements AutoCloseable {
     private record Resolution(Tuple<IpAddress> addresses, boolean failed) {
 
         /// The address the verdict allowed, or the first address if the verdict has none.
+        ///
+        /// Built from the address's bytes, never parsed from text again, so the connection goes to
+        /// exactly the address the policy judged. Parsing text a second time would let Java's idea
+        /// of the address differ from the policy's.
         InetAddress pick(Policy.Verdict verdict) throws IOException {
             IpAddress chosen = verdict.address().orElseGet(addresses::first);
-            return InetAddress.getByName(chosen.text());
+            return InetAddress.getByAddress(chosen.toBytes());
         }
     }
 

@@ -28,6 +28,9 @@ final class Policy {
 
         /// What the agent is told, in the one sentence it will paste into its report.
         public String explain(String host, int port) {
+            if (rule.equals(UNSPECIFIED))
+                return "oillamp: connection to " + host + ":" + port + " denied: it is "
+                     + UNSPECIFIED + ", and no rule can allow it";
             return "oillamp: connection to " + host + ":" + port + " denied by rule \""
                  + rule + "\" in oillamp.toml";
         }
@@ -54,7 +57,16 @@ final class Policy {
         return first;
     }
 
+    /// The label used when the address is `0.0.0.0` or `::`, which no rule can allow.
+    static final String UNSPECIFIED = "the unspecified address, which means this machine";
+
     private static Verdict decideOne(NetworkPolicy policy, String host, int port, IpAddress address) {
+        // Linux connects to the unspecified address as if it were this machine. It is never a
+        // destination on the internet, so it is refused whatever the configuration says. A lamp
+        // whose oillamp.toml was written before this address was added to the shipped deny rule
+        // is protected as well.
+        if (address.isUnspecified())
+            return new Verdict(Decision.DENY, UNSPECIFIED, Optional.of(address));
         for (Rule rule : policy.rules())
             if (matches(rule, host, port, address))
                 return new Verdict(rule.action(), rule.label(), Optional.of(address));

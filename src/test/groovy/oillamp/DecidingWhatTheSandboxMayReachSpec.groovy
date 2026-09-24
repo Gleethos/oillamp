@@ -34,6 +34,8 @@ import java.util.concurrent.TimeUnit
 @Timeout(value = 120, unit = TimeUnit.SECONDS)
 class DecidingWhatTheSandboxMayReachSpec extends Specification {
 
+    static final String PRIVATE_RANGES = 'block private, internal and loopback ranges'
+
     @TempDir Path tmp
     @Subject Sandbox sandbox
 
@@ -200,6 +202,17 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             """.stripIndent())
     }
 
+    /** A lamp whose only rule allows every address, as a hand-written policy might. */
+    private void givenALampAllowingEverything() {
+        sandbox.givenConfig(sandbox.lampPath(), """
+            schema_version = 1
+
+            [[network.rules]]
+            label  = "anything goes"
+            action = "allow"
+            """.stripIndent())
+    }
+
     def 'CONNECT opens a tunnel that oillamp carries without reading'() {
         reportInfo """
             Most real traffic uses CONNECT, because it is HTTPS: npm, pip, cargo, git over HTTPS
@@ -249,11 +262,73 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             requestsSeen.isEmpty()
     }
 
+    def 'The host and its network stay out of reach however the address is written: #target'() {
+        reportInfo """
+            An address can be written many ways. 127.0.0.1 is also `::ffff:7f00:1` (the same
+            address in IPv6 notation), and `::` means "this machine" to the operating system. A
+            policy that compared only one spelling would let the others through to whatever the
+            user runs on their own machine, which is the one thing the sandbox exists to prevent.
+
+            So every spelling is turned into one form before the policy looks at it, and the
+            proxy connects to exactly the address the policy approved.
+        """
+        given: 'a server listening on every address of this machine, as sshd does'
+            var port = givenAnOriginServer('hello from the internet', '::')
+            startASession()
+
+        when:
+            var answer = tunnelThrough(port, "GET / HTTP/1.1\r\n\r\n", target)
+
+        then: 'the proxy refuses, saying why'
+            answer.contains('403')
+            answer.contains(reason)
+            !answer.contains('200 Connection Established')
+
+        and: 'nothing reached the server'
+            requestsSeen.isEmpty()
+
+        where:
+            target                     | reason
+            '127.0.0.1'                | PRIVATE_RANGES
+            '[::1]'                    | PRIVATE_RANGES
+            '[::ffff:7f00:1]'          | PRIVATE_RANGES
+            '[::ffff:127.0.0.1]'       | PRIVATE_RANGES
+            '[0:0:0:0:0:ffff:7f00:1]'  | PRIVATE_RANGES
+            '127.1'                    | PRIVATE_RANGES
+            '2130706433'               | PRIVATE_RANGES
+            'localhost.'               | PRIVATE_RANGES
+            '[::ffff:192.168.1.1]'     | PRIVATE_RANGES
+            '[::ffff:a00:1]'           | PRIVATE_RANGES
+            '[::]'                     | 'the unspecified address, which means this machine'
+            '0.0.0.0'                  | 'the unspecified address, which means this machine'
+    }
+
+    def 'A lamp configured before the unspecified address was blocked still cannot reach the host through it'() {
+        reportInfo """
+            Every lamp keeps its own copy of the network rules in oillamp.toml, written when the
+            lamp was created. A rule added to the shipped list later never reaches those copies.
+            The unspecified address, `::` or `0.0.0.0`, means "this machine" to Linux and is never
+            a real destination, so it is refused even when the lamp's own rules would allow it.
+        """
+        given: 'a lamp whose rules allow everything'
+            var port = givenAnOriginServer('hello from the internet', '::')
+            givenALampAllowingEverything()
+            startASession()
+
+        when:
+            var answer = tunnelThrough(port, "GET / HTTP/1.1\r\n\r\n", '[::]')
+
+        then:
+            answer.contains('403')
+            answer.contains('no rule can allow it')
+            requestsSeen.isEmpty()
+    }
+
     // ─── the world on the other side of the proxy ──────────────────────────────────────────
 
     /** A real HTTP server on loopback, standing in for somewhere out on the web. */
-    private int givenAnOriginServer(String body = 'hello from the internet') {
-        origin = new ServerSocket(0, 8, InetAddress.getByName('127.0.0.1'))
+    private int givenAnOriginServer(String body = 'hello from the internet', String bindTo = '127.0.0.1') {
+        origin = new ServerSocket(0, 8, InetAddress.getByName(bindTo))
         Thread.startVirtualThread {
             while (!origin.isClosed()) {
                 try {
@@ -313,10 +388,10 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
      *  <p>Written as one exchange on one channel because that is what a tunnel is: the same
      *  connection, carrying something oillamp has agreed not to interpret.
      */
-    private String tunnelThrough(int port, String throughTheTunnel) {
+    private String tunnelThrough(int port, String throughTheTunnel, String host = 'localhost') {
         var address = UnixDomainSocketAddress.of(proxySocket())
         try (var channel = SocketChannel.open(address)) {
-            write(channel, "CONNECT localhost:${port} HTTP/1.1\r\nHost: localhost:${port}\r\n\r\n")
+            write(channel, "CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n\r\n")
             var opening = readSome(channel)
             // A refusal is a whole response and then a close, so it has to be read to the end:
             // a single read can return the head with the body still in flight, and the body is
