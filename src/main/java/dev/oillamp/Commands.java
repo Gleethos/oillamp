@@ -440,7 +440,7 @@ final class Commands {
         for (String key : Tuple.of(String.class, "state", "detail", "lamp", "session", "container",
                                             "desktop", "renderer", "uptime", "shells", "viewer"))
             answer.values().get(key).ifPresent(value ->
-                    out.append(pad(key)).append(value).append('\n'));
+                    out.append(pad(key, 12)).append(value).append('\n'));
         context.emit(new LampEvent.Answer(out.toString().stripTrailing()));
         return ExitStatus.SUCCESS;
     }
@@ -455,9 +455,10 @@ final class Commands {
             return ExitStatus.ERROR;
         }
         Tuple<RunningSandbox> running = runningSandboxesIn(outcome.output());
-        StringBuilder rows = new StringBuilder(column("CONTAINER") + column("STATE") + "LAMP");
+        StringBuilder rows = new StringBuilder(pad("CONTAINER", 22) + pad("STATE", 22) + "LAMP");
         for (RunningSandbox sandbox : running)
-            rows.append('\n').append(column(sandbox.name())).append(column(sandbox.state())).append(sandbox.lamp());
+            rows.append('\n').append(pad(sandbox.name(), 22)).append(pad(sandbox.state(), 22))
+                .append(sandbox.lamp());
         context.emit(new LampEvent.Answer(running.isEmpty()
                 ? "no oillamp sandboxes are running on this host"
                 : rows.toString()));
@@ -563,6 +564,8 @@ final class Commands {
                   .append(describeSize(total)).append(" in total").toString();
     }
 
+    /// `text` followed by spaces up to `width`, for the columns of `status`, `list` and
+    /// `recordings`.
     private static String pad(String text, int width) {
         return text.length() >= width ? text : text + " ".repeat(width - text.length());
     }
@@ -652,18 +655,6 @@ final class Commands {
                 ? "the sandbox left by the previous session has been removed"
                 : "removed what the previous session left behind; its sandbox was already gone");
         return ExitStatus.SUCCESS;
-    }
-
-    /// The label column of `status`.
-    private static String pad(String label) { return padTo(label, 12); }
-
-    /// The wider columns of `list`, which hold container names and paths.
-    private static String column(String value) { return padTo(value, 22); }
-
-    private static String padTo(String text, int width) {
-        StringBuilder out = new StringBuilder(text);
-        while (out.length() < width) out.append(' ');
-        return out.toString();
     }
 
     /// `oillamp config <dir> check`: validate the lamp's configuration without changing anything.
