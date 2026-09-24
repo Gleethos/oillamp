@@ -434,6 +434,7 @@ The image is built from `src/main/resources/image/`:
 | `rootfs/etc/oillamp/sway/config` | Compositor settings. No key binding runs a command. |
 | `rootfs/etc/ssh/ssh_config.d/50-oillamp-proxy.conf` | Sends outbound SSH (`git@github.com:…`) through the egress proxy. |
 | `rootfs/usr/share/oillamp/wallpaper.png` | The desktop background. |
+| `rootfs/usr/share/oillamp/wallpaper.svg` | The drawing the background is rendered from. After changing it, render it again with `inkscape wallpaper.svg --export-type=png --export-filename=wallpaper.png`. |
 
 At build time, Gradle writes a `MANIFEST` listing every file with its mode (`755` or `644`), so
 that `ImageResources` can find the files inside the jar and extract them with the right
