@@ -100,6 +100,10 @@ final class Invocation {
             if (misplaced.isPresent())
                 return misused(console, sink, version, command,
                         "`oillamp " + command + "` does not take " + misplaced.get());
+            if (NEEDS_A_LAMP.contains(command) && rest.isEmpty())
+                return missingDirectory(console, sink, version, command);
+            if (ONE_LAMP_ONLY.contains(command) && rest.size() > 1)
+                return oneLampOnly(console, sink, version, command, rest);
             int allowed = MOST_ARGUMENTS.getOrDefault(command, Integer.MAX_VALUE);
             if (rest.size() > allowed && allowed == 0)
                 return misused(console, sink, version, command,
@@ -134,18 +138,14 @@ final class Invocation {
 
         return switch (command) {
             case "doctor" -> {
-                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "doctor", rest);
                 console.banner(version, rest.isEmpty() ? "" : rest.get(0));
                 yield commands.doctor(rest.isEmpty() ? Optional.empty() : Optional.of(Path.of(rest.get(0))));
             }
             case "at" -> {
-                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "at");
-                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "at", rest);
                 console.banner(version, rest.get(0));
                 yield commands.at(Path.of(rest.get(0)));
             }
             case "config" -> {
-                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "config");
                 Path lamp = Path.of(rest.get(0));
                 String action = rest.size() > 1 ? rest.get(1) : "check";
                 yield switch (action) {
@@ -165,44 +165,23 @@ final class Invocation {
             }
             // These four talk to a running session through its control socket. None of them
             // sets anything up.
-            case "view" -> {
-                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "view");
-                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "view", rest);
-                yield commands.view(Path.of(rest.get(0)), viewOnly);
-            }
-            case "shell" -> {
-                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "shell");
-                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "shell", rest);
-                yield commands.shell(Path.of(rest.get(0)));
-            }
-            case "stop" -> {
-                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "stop");
-                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "stop", rest);
-                yield commands.stop(Path.of(rest.get(0)));
-            }
-            case "status" -> {
-                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "status");
-                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "status", rest);
-                yield commands.status(Path.of(rest.get(0)));
-            }
+            case "view"   -> commands.view(Path.of(rest.get(0)), viewOnly);
+            case "shell"  -> commands.shell(Path.of(rest.get(0)));
+            case "stop"   -> commands.stop(Path.of(rest.get(0)));
+            case "status" -> commands.status(Path.of(rest.get(0)));
             case "list" -> commands.list();
 
             // Not one of the four above: it talks to no session, and refuses if one answers.
             // The one command that takes several lamps, since a pattern like `test*` is the
             // natural way to clean up after experiments.
             case "remove" -> {
-                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "remove");
                 console.banner(version, rest.size() == 1 ? rest.get(0) : rest.size() + " lamps");
                 Tuple<Path> lamps = Tuple.of(Path.class);
                 for (String lamp : rest) lamps = lamps.add(Path.of(lamp));
                 yield commands.remove(lamps, confirmed);
             }
 
-            case "recordings" -> {
-                if (rest.isEmpty()) yield missingDirectory(console, sink, version, "recordings");
-                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "recordings", rest);
-                yield commands.recordings(Path.of(rest.get(0)), open, prune);
-            }
+            case "recordings" -> commands.recordings(Path.of(rest.get(0)), open, prune);
 
             case "completion" -> {
                 String shell = rest.isEmpty() ? "bash" : rest.get(0);
@@ -258,7 +237,16 @@ final class Invocation {
             java.util.Map.entry("about",      java.util.Set.of()),
             java.util.Map.entry("guide",      java.util.Set.of()));
 
-    /// How many arguments may follow the command, for those not checked by their own case below.
+    /// The commands that take a lamp directory and cannot do without it.
+    private static final java.util.Set<String> NEEDS_A_LAMP = java.util.Set.of(
+            "at", "view", "shell", "stop", "status", "recordings", "config", "remove");
+
+    /// The commands that work on one lamp. `remove` takes several, since a pattern such as
+    /// `test*` is the natural way to clean up after experiments.
+    private static final java.util.Set<String> ONE_LAMP_ONLY = java.util.Set.of(
+            "at", "view", "shell", "stop", "status", "recordings", "doctor");
+
+    /// How many arguments may follow the other commands.
     private static final java.util.Map<String, Integer> MOST_ARGUMENTS = java.util.Map.of(
             "config", 2, "completion", 1,
             "list", 0, "version", 0, "help", 0, "about", 0, "guide", 0);
