@@ -19,6 +19,9 @@ final class HostPhase {
     }
 
     /// The facts and the outcome, so the caller can reuse the facts without probing a third time.
+    ///
+    /// Nothing in the result has been reported yet, warnings included: the caller reports it,
+    /// once, whichever way the phase went.
     public record Outcome(HostFacts facts, Result<Plan> result) {
         public boolean succeeded() { return result.isOk(); }
     }
@@ -48,16 +51,15 @@ final class HostPhase {
         Plan plan = ((Result.Ok<Plan>) planned).value();
         describe(facts);
 
-        if (plan.isEmpty()) {
-            context.report(planned.warnings());
+        if (plan.isEmpty())
             return new Outcome(facts, planned);
-        }
 
         Result<Plan> executed = new StepRunner(machine, context).run(plan);
         if (executed instanceof Result.Err<Plan> failure)
             return new Outcome(facts, failure);
+        Plan done = ((Result.Ok<Plan>) executed).value();
         if (context.options().dryRun())
-            return new Outcome(facts, executed);
+            return new Outcome(facts, Result.ok(done, planned.warnings().addAll(executed.warnings())));
 
         // Re-probe: the machine is not the one we planned against any more.
         HostFacts after = HostProbe.probe(machine, requirements, lampPathHint);
@@ -65,8 +67,8 @@ final class HostPhase {
         if (verified instanceof Result.Err<Plan> failure)
             return new Outcome(after, Result.err(failure.problems()));
         describe(after);
-        context.report(verified.warnings());
-        return new Outcome(after, verified);
+        return new Outcome(after, Result.ok(((Result.Ok<Plan>) verified).value(),
+                                            verified.warnings().addAll(executed.warnings())));
     }
 
     private void describe(HostFacts facts) {

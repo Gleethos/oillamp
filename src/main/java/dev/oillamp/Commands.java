@@ -53,6 +53,7 @@ final class Commands {
             context.report(host.result().problems());
             return HostPhase.exitStatusFor(host.result().problems());
         }
+        context.report(host.result().warnings());
 
         Result<LampPhase.Prepared> lamp = new LampPhase(machine, context).prepare(lampPath, host.facts());
         if (lamp instanceof Result.Err<LampPhase.Prepared> failure) {
