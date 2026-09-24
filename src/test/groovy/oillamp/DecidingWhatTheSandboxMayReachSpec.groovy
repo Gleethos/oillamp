@@ -274,6 +274,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
         where:
             why                             | request                                                   | explanation
             'CONNECT without a port'        | 'CONNECT example.test HTTP/1.1\r\n\r\n'                  | 'CONNECT needs host:port'
+            'CONNECT to IPv6 without a port'| 'CONNECT [::1] HTTP/1.1\r\n\r\n'                         | 'CONNECT needs host:port'
             'a port that is not a number'   | 'CONNECT example.test:https HTTP/1.1\r\n\r\n'            | 'not a number'
             'a port out of range'           | 'GET http://example.test:70000/ HTTP/1.1\r\n\r\n'        | 'not a number'
             'an https URL without CONNECT'  | 'GET https://example.test/ HTTP/1.1\r\n\r\n'             | 'must be sent as CONNECT'
@@ -319,6 +320,30 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             'an escape in the host'   | 'GET http://127.0.0.1\u001B[2J:PORT/ HTTP/1.1\r\n\r\n'              | 'not a valid host'
             'an escape in a CONNECT'  | 'CONNECT \u001B[2J127.0.0.1:PORT HTTP/1.1\r\n\r\n'                  | 'not a valid host'
             'a bare carriage return'  | 'GET http://ex\rample.test:PORT/ HTTP/1.1\r\n\r\n'                  | 'not a valid host'
+    }
+
+    def 'A plain HTTP address written in IPv6 is understood, with or without a port: #url'() {
+        reportInfo """
+            An IPv6 address in a URL is written in brackets, `http://[2001:db8::1]/`, because it
+            is full of colons itself. The proxy used to look for the port after the last colon,
+            which without a port is one inside the brackets, and answered that the port was not a
+            number. The request is now read as the address in the brackets, on port 80 unless
+            another follows them, and judged by the policy like any other.
+        """
+        given:
+            var port = givenAnOriginServer('hello from the internet', '::')
+            startASession()
+
+        when:
+            var answer = askTheProxy("GET ${url.replace('PORT', port.toString())} HTTP/1.1\r\n\r\n")
+
+        then: 'the policy decided, rather than the parser refusing'
+            answer.status == 403
+            answer.body.contains(PRIVATE_RANGES)
+            answer.body.contains(":${url.contains('PORT') ? port : 80} ")
+
+        where:
+            url << ['http://[::1]/', 'http://[::1]', 'http://[::1]:PORT/x', 'http://[::ffff:127.0.0.1]/']
     }
 
     def 'A name that does not resolve is reported as that, not as a denial'() {

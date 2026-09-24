@@ -517,7 +517,8 @@ final class Egress implements AutoCloseable {
 
         if (method.equals("CONNECT")) {
             int colon = target.lastIndexOf(':');
-            if (colon < 0) return bad("CONNECT needs host:port, got '" + target + "'");
+            if (colon < 0 || colon < target.lastIndexOf(']'))
+                return bad("CONNECT needs host:port, got '" + target + "'");
             Optional<Integer> port = port(target.substring(colon + 1));
             if (port.isEmpty()) return bad("CONNECT has a port that is not a number");
             if (!HOST.matcher(target.substring(0, colon)).matches())
@@ -530,7 +531,9 @@ final class Egress implements AutoCloseable {
             int slash = rest.indexOf('/');
             String authority = slash < 0 ? rest : rest.substring(0, slash);
             String path = slash < 0 ? "/" : rest.substring(slash);
+            // An IPv6 address is in brackets and full of colons, so its port can only follow "]".
             int colon = authority.lastIndexOf(':');
+            if (colon < authority.lastIndexOf(']')) colon = -1;
             String host = colon < 0 ? authority : authority.substring(0, colon);
             Optional<Integer> port = colon < 0 ? Optional.of(80)
                                                : port(authority.substring(colon + 1));
