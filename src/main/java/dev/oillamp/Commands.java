@@ -242,7 +242,7 @@ final class Commands {
     /// not a lamp, or is still running, nothing is removed and each problem is reported.
     public ExitStatus remove(Tuple<Path> lampPaths, boolean confirmed) {
         java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
-        for (Path lampPath : lampPaths) roots.add(lampPath.toAbsolutePath().normalize());
+        for (Path lampPath : lampPaths) roots.add(LampPhase.resolve(machine, lampPath));
 
         Tuple<LampPlanner.Removal> removals = Tuple.of(LampPlanner.Removal.class);
         Tuple<Problem> refusals = Tuple.of(Problem.class);
@@ -606,7 +606,7 @@ final class Commands {
     /// Finds a lamp's paths without creating or changing anything. Used by `view`,
     /// `shell`, `stop`, `status` and `recordings`.
     private Result<LampLayout> layoutOf(Path lampPath) {
-        Path root = lampPath.toAbsolutePath().normalize();
+        Path root = LampPhase.resolve(machine, lampPath);
         LampState state = LampClassifier.classify(root, Filesystem.list(root),
                 Filesystem.readString(root.resolve(".oillamp").resolve("lamp.json")));
         if (!(state instanceof LampState.Existing existing))

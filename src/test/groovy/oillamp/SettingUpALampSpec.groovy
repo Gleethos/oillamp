@@ -288,6 +288,61 @@ class SettingUpALampSpec extends Specification {
             !Files.exists(agentHome)
     }
 
+    def 'A lamp reached through a symbolic link is the same lamp to every command'() {
+        reportInfo """
+            Lamps are often reached through a link, for example ~/lamps pointing at a larger disk.
+            `oillamp at` follows the link, and labels the sandbox's container with the lamp's real
+            path. `oillamp remove` asks podman for a container with that label, because it is the
+            only thing left to ask once lamp.json is gone. It used to ask with the path as typed,
+            the link, which never matched, so a running sandbox's home could be deleted from
+            under it.
+        """
+        given: 'a lamp on another disk, reached through a link'
+            var real = Files.createDirectories(sandbox.home.resolve('big-disk/feature-x'))
+            var link = sandbox.lampPath()
+            Files.createDirectories(link.parent)
+            Files.createSymbolicLink(link, real)
+            sandbox.oillamp.run('at', link.toString())
+            Files.delete(real.resolve('.oillamp/lamp.json'))
+
+        and: 'its sandbox still running, labelled with the real path as `at` labels it'
+            sandbox.machine { it.commandSucceeding('podman ps', """
+                [{"Names":["oillamp-y62b5ihg"],"State":"running",
+                  "Labels":{"oillamp.agent-id":"y62b5ihg","oillamp.lamp":"${real.toRealPath()}"}}]
+            """) }
+
+        when: 'the user removes it by the path they know'
+            var outcome = sandbox.oillamp.run('remove', link.toString(), '--yes')
+
+        then: 'the running sandbox is found, and nothing is removed'
+            outcome.status() == ExitStatus.LAMP_BUSY
+            outcome.errors().first().whatHappened().contains('oillamp-y62b5ihg')
+            Files.exists(real.resolve('oillamp.toml'))
+    }
+
+    def 'A link to a directory that does not exist yet makes the lamp where it points'() {
+        reportInfo """
+            A user who makes the link first, `ln -s /mnt/big/feature-x ~/lamps/feature-x`, and
+            then runs `oillamp at ~/lamps/feature-x` means the lamp to live on the big disk. The
+            link cannot be followed yet, because what it points to does not exist, and oillamp
+            used to try to create a directory where the link already was, and report that as a
+            bug in itself.
+        """
+        given: 'a link to a directory that does not exist yet'
+            var real = sandbox.home.resolve('big-disk/feature-x')
+            var link = sandbox.lampPath()
+            Files.createDirectories(link.parent)
+            Files.createSymbolicLink(link, real)
+
+        when:
+            var outcome = sandbox.oillamp.run('at', link.toString())
+
+        then: 'the lamp is made where the link points'
+            outcome.status() == ExitStatus.SUCCESS
+            Files.exists(real.resolve('oillamp.toml'))
+            Files.isSymbolicLink(link)
+    }
+
     def 'Several lamps are removed at once, and only if every one of them can be'() {
         reportInfo """
             Lamps made for experiments pile up, and the natural way to clean them up is a shell

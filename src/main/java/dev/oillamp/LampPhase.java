@@ -2,7 +2,6 @@ package dev.oillamp;
 
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Optional;
 
@@ -34,7 +33,7 @@ final class LampPhase {
                            Gpu.Decision gpu, LampState state) {}
 
     public Result<Prepared> prepare(Path requestedPath, HostFacts host) {
-        Path resolved = resolve(requestedPath);
+        Path resolved = resolve(machine, requestedPath);
 
         Result<Path> validated = LampPaths.validate(resolved, host.user());
         if (validated instanceof Result.Err<Path> failure) return Result.err(failure.problems());
@@ -212,15 +211,32 @@ final class LampPhase {
 
     /// Makes the path absolute and resolves symlinks _before_ validation, so a link
     /// pointing into a system directory cannot get past the refusal in [LampPaths].
-    private Path resolve(Path requested) {
-        Path absolute = requested.isAbsolute()
+    ///
+    /// Every command that names a lamp uses this, so a lamp reached through a link is the same
+    /// lamp to all of them. `at` labels the container with this path, and `remove` looks for
+    /// the container by that label.
+    static Path resolve(Machine machine, Path requested) {
+        Path absolute = (requested.isAbsolute()
                 ? requested
                 : machine.environmentVariable("PWD").map(Path::of).orElse(Path.of(""))
-                        .resolve(requested);
+                        .resolve(requested)).toAbsolutePath();
+        // A link whose target does not exist yet, as after `ln -s /mnt/big/x ~/lamps/x`: the user
+        // means the lamp to be made where it points, so follow it by hand.
+        for (int hops = 0; hops < 40 && Files.isSymbolicLink(absolute) && !Files.exists(absolute); hops++) {
+            try {
+                absolute = absolute.resolveSibling(Files.readSymbolicLink(absolute));
+            } catch (IOException unreadable) {
+                break;
+            }
+        }
         try {
-            return Files.exists(absolute, LinkOption.NOFOLLOW_LINKS)
-                    ? absolute.toRealPath().normalize()
-                    : absolute.normalize();
+            if (Files.exists(absolute)) return absolute.toRealPath().normalize();
+            // Not there yet: resolve what does exist, so a link further up the path counts too.
+            Path parent = absolute.normalize().getParent();
+            Path name = absolute.normalize().getFileName();
+            if (parent != null && name != null && Files.exists(parent))
+                return parent.toRealPath().resolve(name);
+            return absolute.normalize();
         } catch (IOException e) {
             return absolute.normalize();
         }
