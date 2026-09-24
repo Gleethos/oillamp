@@ -240,6 +240,73 @@ class TheSessionCommandsSpec extends Specification {
             containerStillThere << [true, false]
     }
 
+    def 'A connection to the control socket that never says anything does not shut out the others'() {
+        reportInfo """
+            The session answered its control socket one connection at a time, and waited for
+            each to send its request for as long as it took. One that never sent anything, such
+            as an `oillamp status` suspended with Ctrl-Z at the wrong moment, left `stop`,
+            `status`, `view` and `shell` waiting behind it for the rest of the session. Each
+            connection now has its own thread, and a few seconds to say what it wants.
+        """
+        given:
+            var lamp = sandbox.lampPath()
+            startASession(lamp)
+            var silent = java.nio.channels.SocketChannel.open(UnixDomainSocketAddress.of(controlSocket(lamp)))
+
+        when:
+            var started = System.nanoTime()
+            var outcome = sandbox.oillamp.run('status', lamp.toString())
+
+        then: 'status is answered straight away'
+            outcome.status() == ExitStatus.SUCCESS
+            Duration.ofNanos(System.nanoTime() - started) < Duration.ofSeconds(3)
+
+        and: 'the silent connection is closed once its time is up'
+            silent.configureBlocking(true)
+            silent.read(java.nio.ByteBuffer.allocate(16)) == -1
+
+        cleanup:
+            silent?.close()
+    }
+
+    def 'A session that accepts a connection but never answers is reported, not waited on forever'() {
+        reportInfo """
+            A supervisor that is frozen, stopped with Ctrl-Z or stuck, still has its socket, and
+            the kernel still accepts connections to it. `status` and `stop` then waited for an
+            answer that never came, with no way to tell the user anything. They now give up after
+            a few seconds and say the session did not answer.
+        """
+        given: 'a control socket that accepts connections and never answers them'
+            var lamp = sandbox.lampPath()
+            var socket = leftBehindByAKilledSupervisor(lamp)
+            Files.delete(socket)
+            var frozen = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
+            frozen.bind(UnixDomainSocketAddress.of(socket))
+
+        when:
+            var started = System.nanoTime()
+            var outcome = sandbox.oillamp.run(command, lamp.toString())
+
+        then: 'the user is told the session did not answer'
+            outcome.reported('OIL-SESSION-002')
+            Duration.ofNanos(System.nanoTime() - started) < Duration.ofSeconds(20)
+
+        and: 'nothing of a session that may still be alive is removed'
+            Files.exists(socket)
+            Files.exists(lamp.resolve('.oillamp/session.json'))
+
+        cleanup:
+            frozen?.close()
+
+        where:
+            command << ['status', 'stop']
+    }
+
+    private static Path controlSocket(Path lamp) {
+        var sessionJson = Files.readString(lamp.resolve('.oillamp/session.json'))
+        Path.of((sessionJson =~ /"controlSocket": "([^"]+)"/)[0][1] as String)
+    }
+
     /**
      *  Runs a session to its end, then puts back what a supervisor killed with `kill -9` would
      *  have left: its control socket file with nothing listening, and `session.json`.

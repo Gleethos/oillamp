@@ -8,6 +8,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Optional;
 
 import com.fasterxml.jackson.core.JacksonException;
@@ -151,18 +152,30 @@ final class Control {
             });
         }
 
+        /// Each connection gets its own thread, so one that is slow to send its request does not
+        /// hold up the others.
         private void acceptLoop(Handler handler) {
             while (channel.isOpen()) {
-                try (SocketChannel client = channel.accept()) {
-                    String line = readLine(client);
-                    Reply reply = Request.parse(line)
-                            .map(handler::handle)
-                            .orElseGet(() -> Reply.failed("that is not a control request"));
-                    write(client, reply.render() + "\n");
+                SocketChannel client;
+                try {
+                    client = channel.accept();
                 } catch (IOException e) {
                     if (closing) return;
-                    // A malformed or abandoned connection must not end the session.
+                    continue;
                 }
+                Thread.ofVirtual().name("oillamp-control-request").start(() -> serve(client, handler));
+            }
+        }
+
+        private static void serve(SocketChannel client, Handler handler) {
+            try (client) {
+                String line = within(REQUEST_TIME, client, () -> readLine(client));
+                Reply reply = Request.parse(line)
+                        .map(handler::handle)
+                        .orElseGet(() -> Reply.failed("that is not a control request"));
+                write(client, reply.render() + "\n");
+            } catch (IOException e) {
+                // A malformed, abandoned or silent connection must not end the session.
             }
         }
 
@@ -192,7 +205,7 @@ final class Control {
         try (SocketChannel channel = SocketChannel.open(UnixDomainSocketAddress.of(socket))) {
             write(channel, request.render() + "\n");
             channel.shutdownOutput();
-            Reply reply = Reply.parse(readLine(channel));
+            Reply reply = Reply.parse(within(ANSWER_TIME, channel, () -> readLine(channel)));
             return reply.succeeded() ? Result.ok(reply)
                               : Result.err(Problems.sessionRefused(lamp, command, reply.error()));
         } catch (IOException e) {
@@ -201,6 +214,42 @@ final class Control {
     }
 
     // ─── reading and writing one line ──────────────────────────────────────────────────────
+
+    /// How long the session waits for a connection to send its request. Every oillamp command
+    /// sends it at once; this only ends connections that never will.
+    private static final Duration REQUEST_TIME = Duration.ofSeconds(5);
+    /// How long a command waits for the session's answer. Every request is answered at once, so a
+    /// session that takes longer is frozen or stuck.
+    private static final Duration ANSWER_TIME = Duration.ofSeconds(5);
+
+    private interface Exchange<T> {
+        T run() throws IOException;
+    }
+
+    /// Runs `exchange`, closing the channel if it takes longer than `limit`. A blocking read on a
+    /// channel has no timeout of its own; closing the channel ends it with an exception.
+    private static <T> T within(Duration limit, SocketChannel channel, Exchange<T> exchange)
+            throws IOException {
+        var expired = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread deadline = Thread.ofVirtual().name("oillamp-control-deadline").start(() -> {
+            try {
+                Thread.sleep(limit);
+                expired.set(true);
+                channel.close();
+            } catch (InterruptedException | IOException finishedInTime) {
+                // Nothing to end.
+            }
+        });
+        try {
+            return exchange.run();
+        } catch (IOException e) {
+            if (expired.get())
+                throw new IOException("nothing came back within " + limit.toSeconds() + " seconds", e);
+            throw e;
+        } finally {
+            deadline.interrupt();
+        }
+    }
 
     private static String readLine(SocketChannel channel) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(64 * 1024);

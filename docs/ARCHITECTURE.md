@@ -624,7 +624,8 @@ startup failed → 5.
   a health line every 30 seconds.
 - **Relay threads.** One accept loop per relay socket, and two virtual threads per connection
   (one per direction).
-- **Control socket thread.** Answers one request per connection.
+- **Control socket threads.** One accept loop, and one thread per connection, which answers its
+  one request. A connection that sends nothing for 5 s is closed, so it cannot hold up the rest.
 - **Egress threads.** One accept loop per proxy or forward socket, one thread per connection, and
   a single writer thread for the network log.
 - **Shutdown thread.** Runs the shutdown sequence so the event loop stays responsive.
@@ -676,6 +677,11 @@ A missing socket means no session is running (`OIL-SESSION-001`). A socket that 
 means a supervisor died without cleaning up (`OIL-SESSION-002`); `oillamp stop` then removes the
 container, the dead socket and `session.json`. A session that answers `{"ok":false,…}`, for example
 to `shell` while it is shutting down, is alive and has refused (`OIL-SESSION-003`).
+
+Every request is answered at once, so the asking command waits at most 5 s. A socket that accepts
+the connection but answers nothing within that time belongs to a supervisor that is frozen or
+stuck; that is also `OIL-SESSION-002`, but `stop` then removes nothing, because the process
+listening on the socket is still alive.
 
 ### The windows
 
