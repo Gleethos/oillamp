@@ -64,7 +64,7 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
             beginning.
 
             On Linux every file is owned by a *number*, and every running process has one. Names
-            like "dnepp" or "root" are a convenience layered on top; the kernel only ever compares
+            like "myUsrName" or "root" are a convenience layered on top; the kernel only ever compares
             numbers. A container can be given its own, private set of those numbers, together with
             a translation table saying which private number corresponds to which real one. That
             table is what decides, in the end, which files the programs inside a container may

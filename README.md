@@ -328,10 +328,10 @@ The numbers 165536 and 166536 are not invented by podman. They come from a file 
 
 ```
 $ grep $USER /etc/subuid
-dnepp:165536:65536
+myUsrName:165536:65536
 ```
 
-This line says: *the user `dnepp` may use the 65536 user ids starting at 165536.* These are
+This line says: *the user `myUsrName` may use the 65536 user ids starting at 165536.* These are
 **subordinate user ids**: a block of numbers given to your account for exactly this purpose. They
 belong to no real user and no login, and own no file anywhere unless one of your containers creates
 it.
@@ -358,7 +358,7 @@ podman run --rm --userns=keep-id:uid=1000,gid=1000 --user 0:0 -v /tmp/out:/out \
 
 # Now look at who owns them on your machine
 stat -c '%n  %u (%U)' /tmp/out/*
-#   /tmp/out/by-agent   1001 (dnepp)      ← you
+#   /tmp/out/by-agent   1001 (myUsrName)      ← you
 #   /tmp/out/by-root  165536 (UNKNOWN)    ← nobody at all
 ```
 
@@ -813,7 +813,7 @@ membership only applies to programs started after you log in again:
 ```
 [lamp]    · you are not in the 'render' group that owns /dev/dri/renderD128
            run this on this machine, in your own terminal, then log out and back in — a new group only reaches processes started after a fresh login:
-               sudo usermod -aG render dnepp
+               sudo usermod -aG render myUsrName
 ```
 
 oillamp does not run that command itself. It changes your account rather than the lamp, it needs
