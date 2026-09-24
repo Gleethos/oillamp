@@ -1054,10 +1054,11 @@ Contents: `OILLAMP_SESSION`, `OILLAMP_AGENT_ID`, `OILLAMP_LAMP_NAME`,
 | `OIL-PKG-001` | Required host packages are missing. |
 | `OIL-PKG-002` | sudo cannot be used (needs a password and there is no terminal, or not installed). |
 | `OIL-PKG-003` | `apt-get install` failed. |
-| `OIL-PODMAN-001` | podman too old, or did not answer. |
+| `OIL-PODMAN-001` | podman too old. |
 | `OIL-PODMAN-002` | podman is not rootless. |
 | `OIL-PODMAN-003` | `podman unshare true` fails. |
 | `OIL-PODMAN-004` | Ubuntu's AppArmor restriction on user namespaces blocks podman. |
+| `OIL-PODMAN-005` | podman is installed but did not answer when asked for its version. |
 | `OIL-LAMP-001` | The lamp's path cannot be mounted by podman (it contains a colon). |
 | `OIL-LAMP-002` | Directory is not empty and not a lamp (use `--init` to proceed anyway). |
 | `OIL-LAMP-003` | Refused path: `/`, your home directory, or a system directory. |

@@ -33,6 +33,7 @@ final class Problems {
     public static final Code PODMAN_NOT_ROOTLESS   = new Code("OIL-PODMAN-002");
     public static final Code PODMAN_USERNS_BROKEN  = new Code("OIL-PODMAN-003");
     public static final Code PODMAN_APPARMOR       = new Code("OIL-PODMAN-004");
+    public static final Code PODMAN_UNUSABLE       = new Code("OIL-PODMAN-005");
     public static final Code LAMP_INVALID_PATH     = new Code("OIL-LAMP-001");
     public static final Code LAMP_NOT_EMPTY        = new Code("OIL-LAMP-002");
     public static final Code LAMP_FORBIDDEN_PATH   = new Code("OIL-LAMP-003");
@@ -177,7 +178,7 @@ final class Problems {
 
     /// The package is installed but the program did not answer — a broken or shadowed install.
     static Problem podmanUnusable(String detail) {
-        return error(PODMAN_TOO_OLD, "Podman is installed but did not respond",
+        return error(PODMAN_UNUSABLE, "Podman is installed but did not respond",
                 detail,
                 "oillamp asks podman for its version and configuration before using it; a podman "
               + "that cannot answer cannot run the sandbox either")
@@ -187,7 +188,7 @@ final class Problems {
     }
 
     public static Problem podmanTooOld(String found, String required) {
-        return error(PODMAN_TOO_OLD, "Podman too old or not found",
+        return error(PODMAN_TOO_OLD, "Podman too old",
                 "found podman " + found + ", but oillamp needs at least " + required,
                 "older versions lack the rootless user-namespace and keep-id mapping options "
               + "the sandbox relies on")

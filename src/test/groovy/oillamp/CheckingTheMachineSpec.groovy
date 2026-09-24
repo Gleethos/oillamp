@@ -248,6 +248,29 @@ class CheckingTheMachineSpec extends Specification {
             problem.fixes().last().command().get().contains('apparmor_restrict_unprivileged_userns=0')
     }
 
+    def 'A podman that is installed but does not answer is told apart from one that is too old'() {
+        reportInfo """
+            oillamp asks podman for its version before anything else. A podman that fails to
+            answer, often a stale copy earlier on PATH or a broken configuration file, used to be
+            reported under the same code as one that is too old, and a user looking the code up
+            would go off to upgrade a podman that is new enough. It has its own code now, and the
+            fixes for it: see what podman says, and check which podman is on PATH.
+        """
+        given: 'podman is installed, but asking it for its version fails'
+            sandbox.machine { it.commandFailing('podman version', 125,
+                    'Error: cannot parse configuration file containers.conf') }
+
+        when:
+            var outcome = sandbox.oillamp.run('doctor')
+
+        then:
+            outcome.reported('OIL-PODMAN-005')
+            !outcome.reported('OIL-PODMAN-001')
+            var problem = outcome.errors().find { it.code().value() == 'OIL-PODMAN-005' }
+            problem.title().contains('did not respond')
+            problem.fixes().any { it.description().contains('PATH') }
+    }
+
     def 'Checking the machine works without a display, because that is what it is for'() {
         reportInfo """
             `oillamp at` opens two windows, so it refuses to run without a graphical session.
