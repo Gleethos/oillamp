@@ -3,12 +3,36 @@
        screen with, and every glow fades out well inside the edges, so there is no seam at any
        screen size. Light comes from the flame, top left of the lamp. -->
   <defs>
+    <!-- Bell-shaped and in many small steps, so the glow's slope never changes suddenly and
+         flattens to nothing at its edge. A gradient with a few stops shows each stop as a ring
+         on a large screen. -->
     <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
-                    gradientTransform="translate(232 250) scale(330 300)">
-      <stop offset="0" stop-color="#ffc56b" stop-opacity="0.34"/>
-      <stop offset="0.35" stop-color="#f0a040" stop-opacity="0.13"/>
-      <stop offset="0.7" stop-color="#d98a2b" stop-opacity="0.04"/>
-      <stop offset="1" stop-color="#d98a2b" stop-opacity="0"/>
+                    gradientTransform="translate(232 250) scale(390 350)">
+      <stop offset="0.000" stop-color="#ffc56b" stop-opacity="0.3400"/>
+      <stop offset="0.042" stop-color="#fcc167" stop-opacity="0.3364"/>
+      <stop offset="0.083" stop-color="#fabd62" stop-opacity="0.3257"/>
+      <stop offset="0.125" stop-color="#f7b95e" stop-opacity="0.3085"/>
+      <stop offset="0.167" stop-color="#f4b559" stop-opacity="0.2860"/>
+      <stop offset="0.208" stop-color="#f2b155" stop-opacity="0.2593"/>
+      <stop offset="0.250" stop-color="#efac50" stop-opacity="0.2298"/>
+      <stop offset="0.292" stop-color="#eda84c" stop-opacity="0.1991"/>
+      <stop offset="0.333" stop-color="#eaa447" stop-opacity="0.1685"/>
+      <stop offset="0.375" stop-color="#e7a043" stop-opacity="0.1391"/>
+      <stop offset="0.417" stop-color="#e59c3f" stop-opacity="0.1120"/>
+      <stop offset="0.458" stop-color="#e2983a" stop-opacity="0.0878"/>
+      <stop offset="0.500" stop-color="#df9436" stop-opacity="0.0669"/>
+      <stop offset="0.542" stop-color="#dd9031" stop-opacity="0.0495"/>
+      <stop offset="0.583" stop-color="#da8c2d" stop-opacity="0.0354"/>
+      <stop offset="0.625" stop-color="#d98a2b" stop-opacity="0.0245"/>
+      <stop offset="0.667" stop-color="#d98a2b" stop-opacity="0.0162"/>
+      <stop offset="0.708" stop-color="#d98a2b" stop-opacity="0.0103"/>
+      <stop offset="0.750" stop-color="#d98a2b" stop-opacity="0.0061"/>
+      <stop offset="0.792" stop-color="#d98a2b" stop-opacity="0.0034"/>
+      <stop offset="0.833" stop-color="#d98a2b" stop-opacity="0.0017"/>
+      <stop offset="0.875" stop-color="#d98a2b" stop-opacity="0.0007"/>
+      <stop offset="0.917" stop-color="#d98a2b" stop-opacity="0.0003"/>
+      <stop offset="0.958" stop-color="#d98a2b" stop-opacity="0.0000"/>
+      <stop offset="1.000" stop-color="#d98a2b" stop-opacity="0.0000"/>
     </radialGradient>
     <radialGradient id="pool" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse"
                     gradientTransform="translate(330 432) scale(330 26)">
@@ -74,21 +98,13 @@
     <filter id="soften" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur stdDeviation="1.2"/>
     </filter>
-    <!-- Fine grain inside the glow only, so its gradient does not show as rings on the screen. -->
-    <filter id="grain" x="0" y="0" width="100%" height="100%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7" result="noise"/>
-      <feColorMatrix in="noise" type="matrix"
-                     values="0 0 0 0 1  0 0 0 0 0.8  0 0 0 0 0.5  0 0 0 0.6 -0.3" result="specks"/>
-      <feComposite in="specks" in2="SourceGraphic" operator="in" result="grainy"/>
-      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="grainy"/></feMerge>
-    </filter>
   </defs>
 
   <rect width="1200" height="700" fill="#1f2430"/>
 
   <g transform="translate(138 70)">
     <!-- the light the flame throws: into the room, and onto the surface the lamp stands on -->
-    <rect x="-138" y="-70" width="1200" height="700" fill="url(#glow)" filter="url(#grain)"/>
+    <rect x="-138" y="-70" width="1200" height="700" fill="url(#glow)"/>
     <rect x="-138" y="-70" width="1200" height="700" fill="url(#pool)"/>
     <rect x="-138" y="-70" width="1200" height="700" fill="url(#shadow)"/>
 
