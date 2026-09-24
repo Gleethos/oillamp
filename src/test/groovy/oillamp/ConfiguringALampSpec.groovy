@@ -446,4 +446,94 @@ class ConfiguringALampSpec extends Specification {
             outcome.reported('OIL-CONFIG-004')
             outcome.console().contains('.config/oillamp/config.toml')
     }
+
+    def 'A value in the sandbox\'s settings file stays a value, whatever characters it holds'() {
+        reportInfo """
+            runtime.env is run with `source` by the container's first process, as container
+            root, and by every shell of the agent. A value that closed its quotes could therefore
+            run a command. Values come from the lamp's directory name and from the host's
+            environment, so both are tried here with quotes, `\$(...)` and spaces, and the file is
+            sourced by bash exactly as the entrypoint does it.
+        """
+        given: 'a lamp whose name, and a key from the host, both look like shell code'
+            var marker = tmp.resolve('ran')
+            var hostile = "it's \$(touch ran)"
+            var key = "k'\$(touch ran)\"`touch ran`"
+            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', key) }
+            var lamp = sandbox.lampPath(hostile)
+
+        when:
+            sandbox.oillamp.run('at', lamp.toString())
+            var sourced = new ProcessBuilder('bash', '-c',
+                    'set -a; . "$1"; set +a; printf "%s\\n%s\\n" "$OILLAMP_LAMP_NAME" "$EDENAI_API_KEY"',
+                    'bash', lamp.resolve('.oillamp/session/runtime.env').toString())
+                    .directory(tmp.toFile()).redirectErrorStream(true).start()
+            var values = sourced.inputStream.text.readLines()
+
+        then: 'bash reads back exactly the values oillamp was given'
+            sourced.waitFor() == 0
+            values == [hostile, key]
+
+        and: 'and nothing in them ran'
+            !Files.exists(marker)
+    }
+
+    def 'A host value with a line break is refused rather than written into the settings file'() {
+        reportInfo """
+            Quoting cannot make a line break safe in a file that is read line by line with
+            `source`, and no real key contains one. So a value with a line break stops the
+            session from starting, with a problem that names the variable and not its value.
+        """
+        given:
+            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', 'first-line\ntouch /tmp/pwned') }
+            var lamp = sandbox.lampPath()
+
+        when:
+            var outcome = sandbox.oillamp.run('at', lamp.toString())
+
+        then: 'the session does not start'
+            outcome.status() != ExitStatus.SUCCESS
+            outcome.console().contains('EDENAI_API_KEY')
+            outcome.console().contains('line break')
+
+        and: 'the value itself is not printed'
+            !outcome.console().contains('first-line')
+
+        and: 'and no settings file holding it was written'
+            !Files.exists(lamp.resolve('.oillamp/session/runtime.env'))
+    }
+
+    def 'The sandbox is told where its language model is, when a forward is set up for one'() {
+        reportInfo """
+            `[llm]` names the forward that leads to the team's language model. The sandbox gets the
+            model's address as it looks from inside, on the forward's port, together with the
+            models and the provider name, so the agent's tools can be pointed at it.
+        """
+        given:
+            var lamp = sandbox.lampPath()
+            sandbox.givenConfig(lamp, '''
+                schema_version = 1
+
+                [[network.forwards]]
+                name   = "llm"
+                port   = 8000
+                target = "llm.corp.example.com:8000"
+
+                [llm]
+                forward       = "llm"
+                base_path     = "/v1"
+                models        = ["coder-large", "coder-small"]
+                provider_name = "corp"
+            '''.stripIndent())
+
+        when:
+            sandbox.oillamp.run('at', lamp.toString())
+            var runtimeEnv = Files.readString(lamp.resolve('.oillamp/session/runtime.env'))
+
+        then:
+            runtimeEnv.contains("OILLAMP_LLM_BASE_URL='http://127.0.0.1:8000/v1'")
+            runtimeEnv.contains("OILLAMP_LLM_MODELS='coder-large,coder-small'")
+            runtimeEnv.contains("OILLAMP_LLM_PROVIDER='corp'")
+            runtimeEnv.contains("OILLAMP_FORWARDS='llm:8000'")
+    }
 }
