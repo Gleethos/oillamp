@@ -43,6 +43,7 @@ final class Problems {
     public static final Code LAMP_NOT_REMOVED      = new Code("OIL-LAMP-008");
     public static final Code NO_SUCH_RECORDING     = new Code("OIL-LAMP-009");
     public static final Code RECORDING_NOT_OPENED  = new Code("OIL-LAMP-010");
+    public static final Code LAMP_TAMPERED         = new Code("OIL-LAMP-011");
     public static final Code LOCK_BUSY             = new Code("OIL-LOCK-001");
     public static final Code LOCK_RECOVERED        = new Code("OIL-LOCK-002");
     public static final Code CONFIG_UNPARSEABLE    = new Code("OIL-CONFIG-001");
@@ -283,6 +284,22 @@ final class Problems {
                 reason,
                 "oillamp stores the lamp's identity, keys, logs and recordings there")
             .withEvidence(new Evidence.File(root, reason));
+    }
+
+    public static Problem lampSocketDirReplaced(Path directory, String pointsTo) {
+        return error(LAMP_TAMPERED, "A socket directory of this lamp was replaced by a link",
+                directory + " should be a directory oillamp made, but it is a symbolic link to "
+              + pointsTo,
+                "this directory is attached to the sandbox and handed to its infrastructure user; "
+              + "following the link would do both to " + pointsTo + ". oillamp never makes this "
+              + "link, so it was most likely made from inside the sandbox by an older version "
+              + "of oillamp that let the agent rearrange these directories")
+            .withEvidence(new Evidence.File(directory, "symbolic link to " + pointsTo))
+            .withFix(Fix.run("remove the link (this removes only the link, not what it points to), "
+                           + "then run oillamp again, which recreates the directory",
+                             "rm " + directory))
+            .withFix(Fix.of("check " + pointsTo + " is as you expect, and look at what the agent "
+                          + "in this lamp was doing"));
     }
 
     public static Problem lockBusy(Path root, long supervisorPid, String startedAt) {

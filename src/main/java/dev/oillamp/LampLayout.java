@@ -70,7 +70,9 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path imageDir()      { return stateDir().resolve("image"); }
     public Path imageContext()  { return imageDir().resolve("context"); }
 
-    /// Mounted at `/oillamp/sockets`. `host/` and `agent/` belong to the user, `infra/` to the infra user.
+    /// `host/` and `agent/` belong to the user, `infra/` to the infra user. Each of the three is
+    /// mounted on its own under `/oillamp/sockets`; this parent is never mounted, because the
+    /// agent runs as the user who owns it and could rearrange what is inside.
     public Path socketsDir()       { return stateDir().resolve("sockets"); }
     public Path hostSocketsDir()   { return socketsDir().resolve("host"); }
     public Path infraSocketsDir()  { return socketsDir().resolve("infra"); }

@@ -492,6 +492,74 @@ class SettingUpALampSpec extends Specification {
             system.errors().first().whatHappened().contains('/etc')
     }
 
+    def 'The agent cannot rearrange the socket directories the desktop and the network depend on'() {
+        reportInfo """
+            The container reaches the host through Unix sockets in three directories: host/ holds
+            the network proxy, agent/ the agent's ssh listener, and infra/ the desktop the human
+            watches. infra/ belongs to the sandbox's infrastructure user, so the agent cannot
+            touch what is inside it.
+
+            The agent runs as the lamp owner's own user id, though. Their shared parent directory
+            belongs to that user, so if it were attached to the container, the agent could move
+            infra/ aside and put its own desktop in its place, or a link pointing anywhere on the
+            host. So each of the three is attached on its own, which the agent cannot move, and
+            host/ is attached read-only, since the sandbox only ever connects to it.
+        """
+        when: 'the user asks what oillamp would run'
+            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run', '--verbose')
+            var podmanRun = outcome.stepDetails().find { it.startsWith('podman run') }
+
+        then:
+            podmanRun != null
+
+        and: 'each socket directory is attached on its own, and host/ read-only'
+            podmanRun.contains('.oillamp/sockets/host:/oillamp/sockets/host:ro')
+            podmanRun.contains('.oillamp/sockets/agent:/oillamp/sockets/agent')
+            podmanRun.contains('.oillamp/sockets/infra:/oillamp/sockets/infra')
+
+        and: 'their parent is not attached at all'
+            !podmanRun.contains('.oillamp/sockets:/oillamp/sockets')
+    }
+
+    def 'A lamp whose socket directory was replaced by a link is refused, and the link is not followed'() {
+        reportInfo """
+            Before each socket directory was attached on its own, the agent could replace one with
+            a symbolic link to any directory of the user's, such as their home or ~/.ssh. The next
+            session would then have handed that directory to the infrastructure user, and attached
+            it to the container.
+
+            A lamp in that state must not start. oillamp refuses, names the link and where it
+            points, and says how to remove it, without touching either.
+        """
+        given: 'a lamp that has run before'
+            var lamp = sandbox.lampPath()
+            sandbox.oillamp.run('at', lamp.toString())
+
+        and: 'whose infra/ directory the agent moved aside and replaced with a link to the user\'s home'
+            var infra = lamp.resolve('.oillamp/sockets/infra')
+            Files.move(infra, lamp.resolve('.oillamp/sockets/moved-away'))
+            Files.createSymbolicLink(infra, sandbox.home)
+
+        when:
+            var outcome = sandbox.oillamp.run('at', lamp.toString())
+
+        then: 'oillamp refuses, saying what it found'
+            outcome.status() != ExitStatus.SUCCESS
+            outcome.reported('OIL-LAMP-011')
+            outcome.errors().first().whatHappened().contains(infra.toString())
+            outcome.errors().first().whatHappened().contains(sandbox.home.toString())
+
+        and: 'nothing was handed to the infrastructure user and no sandbox was started'
+            !outcome.stepKinds().contains('ChownForContainer')
+            !outcome.stepKinds().contains('RunContainer')
+
+        and: 'the link is still there for the user to look at'
+            Files.isSymbolicLink(infra)
+
+        cleanup: 'the link, which the temporary directory\'s own cleanup would otherwise follow'
+            Files.deleteIfExists(infra)
+    }
+
     def 'A lamp on a filesystem that cannot hold Unix sockets is refused before anything is created'() {
         reportInfo """
             Every channel between this machine and the sandbox - the shell, the desktop picture,

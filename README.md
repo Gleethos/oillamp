@@ -557,7 +557,9 @@ podman run --detach --name oillamp-v4elchzj \
     --memory 16g --cpus 15 --pids-limit 8192 \    # resource limits
     --label oillamp.agent-id=v4elchzj ... \       # so oillamp can find its containers again
     --volume <lamp>/.oillamp/session:/oillamp/session:ro \
-    --volume <lamp>/.oillamp/sockets:/oillamp/sockets \
+    --volume <lamp>/.oillamp/sockets/host:/oillamp/sockets/host:ro \   # the proxy sockets
+    --volume <lamp>/.oillamp/sockets/agent:/oillamp/sockets/agent \
+    --volume <lamp>/.oillamp/sockets/infra:/oillamp/sockets/infra \   # the desktop; the infra user's
     --volume <lamp>/.oillamp/recordings:/oillamp/recordings \
     --volume <lamp>/agent-lamp-v4elchzj:/home/agent \
     localhost/oillamp/sandbox:0a6f7ffa4c89ca64
@@ -576,6 +578,13 @@ itself put at `/home/agent` when it was built is therefore *hidden* at run time,
 attached directory. This is a real trap, and it is why SDKMAN and pi's settings are installed into
 `/usr/local/share/oillamp/` during the build and copied into the agent's home when a session
 starts.
+
+The three socket directories are attached one by one, and their parent `.oillamp/sockets` is not
+attached at all. The agent is uid 1000, which is you, and the parent belongs to you. If it were
+attached, the agent could move the infrastructure user's `infra/` aside, even without being able
+to change anything inside it, and put its own desktop there for your viewer to show. A directory
+that is itself attached cannot be moved from inside the container. `oillamp at` also refuses a
+lamp in which one of these directories has been replaced by a symbolic link.
 
 There is no podman flag that removes capabilities. Container root keeps the default capabilities
 it needs to create the users' runtime directories and switch users, and the container's first

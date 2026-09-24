@@ -343,8 +343,8 @@ output are removed before it is shown.
 │   │   ├── ssh_host_ed25519_key a copy of the host key for sshd (0600)
 │   │   └── agent-guide.md       the same text as ~/AGENTS.md
 │   ├── image/context/           the image build files, extracted from the jar before a build
-│   ├── sockets/                 mounted read-write at /oillamp/sockets
-│   │   ├── host/                you;        proxy.sock and fwd-*.sock (the supervisor binds them)
+│   ├── sockets/                 not mounted itself; each directory below is, on its own
+│   │   ├── host/                you;        proxy.sock and fwd-*.sock (the supervisor binds them); read-only in the container
 │   │   ├── infra/               infra user; vnc.sock and ready.json
 │   │   └── agent/               you;        ssh.sock (sshd's listener)
 │   ├── recordings/              infra user; <session>.mkv; mounted at /oillamp/recordings
@@ -468,7 +468,9 @@ podman run --detach --name oillamp-<id>
     --memory 16g --cpus <n> --pids-limit 8192
     --label oillamp.agent-id=<id> --label oillamp.lamp=<lamp path> --label oillamp.session=<session>
     --volume <lamp>/.oillamp/session:/oillamp/session:ro
-    --volume <lamp>/.oillamp/sockets:/oillamp/sockets
+    --volume <lamp>/.oillamp/sockets/host:/oillamp/sockets/host:ro
+    --volume <lamp>/.oillamp/sockets/agent:/oillamp/sockets/agent
+    --volume <lamp>/.oillamp/sockets/infra:/oillamp/sockets/infra
     --volume <lamp>/.oillamp/recordings:/oillamp/recordings
     --volume <lamp>/agent-lamp-<id>:/home/agent
     [--device /dev/dri/renderD128 --group-add keep-groups]    only when the GPU is used
@@ -476,6 +478,13 @@ podman run --detach --name oillamp-<id>
 ```
 
 Things to know about these flags:
+
+- **The three socket directories are mounted one by one, never their parent.** The agent runs as
+  your user id, and `sockets/` belongs to you, so if it were mounted the agent could move the
+  infra user's `infra/` aside and serve its own desktop in its place, or leave a symbolic link
+  there for the next session to follow. A directory that is itself a mount point cannot be moved
+  from inside the container. `host/` is read-only because the sandbox only connects to the sockets
+  in it. `oillamp at` refuses a lamp in which any of these directories is a symbolic link.
 
 - **Capabilities are not dropped by a podman flag.** Container root starts with podman's default
   set of capabilities, which it needs to create directories for each user and switch users. The

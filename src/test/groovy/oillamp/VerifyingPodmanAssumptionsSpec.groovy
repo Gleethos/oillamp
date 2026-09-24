@@ -216,6 +216,48 @@ class VerifyingPodmanAssumptionsSpec extends Specification {
             listener.destroyForcibly()
     }
 
+    def 'The agent cannot move a socket directory that is attached on its own, and still reaches the proxy'() {
+        reportInfo """
+            The agent runs as the lamp owner's user id, so it owns the directory that holds the
+            three socket directories. If that directory were attached, the agent could move the
+            infrastructure user's directory aside and put a link or its own desktop in its place.
+            oillamp therefore attaches each socket directory on its own. This checks the three
+            things that relies on: a directory that is its own mount point cannot be moved from
+            inside, the read-only one cannot be written, and a socket on a read-only mount can
+            still be connected to, which is how the sandbox reaches the proxy.
+        """
+        given: 'the host listening on a socket in the host directory'
+            var host = Files.createDirectories(scratch.resolve('sockets/host'))
+            var infra = Files.createDirectories(scratch.resolve('sockets/infra'))
+            var socket = host.resolve('proxy.sock')
+            var listener = new ProcessBuilder('socat', "UNIX-LISTEN:$socket,fork".toString(),
+                                              'SYSTEM:echo HELLO-FROM-HOST')
+                    .redirectErrorStream(true).start()
+            waitForFile(socket)
+
+        when: 'the agent, in a read-only container with each directory attached on its own, tries'
+            var result = Spike.run('podman', 'run', '--rm', '--network=none', '--read-only',
+                    '--userns=keep-id:uid=1000,gid=1000', '--user', '1000:1000',
+                    '-v', "$host:/oillamp/sockets/host:ro".toString(),
+                    '-v', "$infra:/oillamp/sockets/infra".toString(),
+                    '-v', '/usr:/hostusr:ro',
+                    Spike.BASE_IMAGE, 'sh', '-c',
+                    'mv /oillamp/sockets/infra /oillamp/sockets/moved && echo MOVED; '
+                  + 'touch /oillamp/sockets/host/planted && echo WROTE; '
+                  + "${Spike.borrowedSocat('-T5', '-', 'UNIX-CONNECT:/oillamp/sockets/host/proxy.sock').join(' ')}")
+
+        then: 'the socket directory stays where it is, and the read-only one takes nothing'
+            !result.out.contains('MOVED')
+            !result.out.contains('WROTE')
+            !Files.exists(host.resolve('planted'))
+
+        and: 'but the proxy socket on the read-only mount still answers'
+            result.out.contains('HELLO-FROM-HOST')
+
+        cleanup:
+            listener?.destroyForcibly()
+    }
+
     private static void waitForFile(Path path, int attempts = 50) {
         for (int i = 0; i < attempts && !Files.exists(path); i++) Thread.sleep(100)
     }

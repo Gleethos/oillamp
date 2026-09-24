@@ -123,11 +123,12 @@ final class SimulatedMachine implements Machine {
     /// It does not simulate the desktop, the VNC server or the recording. The spike tests check
     /// those against the real tools.
     private Outcome startSimulatedSandbox(Command command) {
-        Optional<Path> sockets = mountedHostPath(command, "/oillamp/sockets");
-        if (sockets.isEmpty())
+        Optional<Path> infraMount = mountedHostPath(command, "/oillamp/sockets/infra");
+        Optional<Path> agentMount = mountedHostPath(command, "/oillamp/sockets/agent");
+        if (infraMount.isEmpty() || agentMount.isEmpty())
             return new Outcome.Finished(125, "",
-                    "Error: the sandbox has nowhere to report readiness — "
-                  + "no --volume was mounted at /oillamp/sockets\n", Duration.ofMillis(30));
+                    "Error: the sandbox has nowhere to report readiness — no --volume was mounted "
+                  + "at /oillamp/sockets/infra and /oillamp/sockets/agent\n", Duration.ofMillis(30));
         // Same reasoning as the sockets mount: the session id comes from the runtime.env the host
         // actually wrote, so a host that stops writing it fails here exactly as the real
         // entrypoint does: it refuses to start without OILLAMP_SESSION.
@@ -136,13 +137,14 @@ final class SimulatedMachine implements Machine {
             return new Outcome.Finished(70, "",
                     "[entrypoint] runtime.env is missing OILLAMP_SESSION\n", Duration.ofMillis(30));
         try {
-            Path infra = sockets.get().resolve("infra");
+            Path infra = infraMount.get();
             java.nio.file.Files.createDirectories(infra);
-            java.nio.file.Files.createDirectories(sockets.get().resolve("agent"));
+            java.nio.file.Files.createDirectories(agentMount.get());
             // Bound through the short runtime-directory path, not through the lamp, because lamp
             // paths are often longer than the 107-byte limit on socket paths. A broken symlink
             // therefore fails here as it would on a real machine.
-            Path shortSockets = shortSocketsDirectory(command).orElse(sockets.get());
+            Path shortSockets = shortSocketsDirectory(command)
+                    .orElseGet(() -> infra.resolveSibling("."));
             // The sockets before the readiness file, in that order, because that is the promise
             // ready.json makes: both servers are already accepting connections.
             bind(shortSockets.resolve("infra").resolve("vnc.sock"));

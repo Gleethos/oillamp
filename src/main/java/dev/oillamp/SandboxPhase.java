@@ -117,7 +117,13 @@ final class SandboxPhase {
 
         argv = argv.addAll(Tuple.of(String.class,
                 "--volume", layout.sessionDir() + ":/oillamp/session:ro",
-                "--volume", layout.socketsDir() + ":/oillamp/sockets",
+                // Each socket directory on its own, never their parent. The parent belongs to the
+                // user the agent runs as, so attached, it would let the agent move infra/ aside and
+                // serve its own desktop, or leave a link for the host to follow. host/ is read-only:
+                // the sandbox only connects to the proxy sockets in it.
+                "--volume", layout.hostSocketsDir() + ":/oillamp/sockets/host:ro",
+                "--volume", layout.agentSocketsDir() + ":/oillamp/sockets/agent",
+                "--volume", layout.infraSocketsDir() + ":/oillamp/sockets/infra",
                 "--volume", layout.recordingsDir() + ":/oillamp/recordings",
                 "--volume", layout.agentDir() + ":/home/agent"));
 

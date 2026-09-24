@@ -287,7 +287,8 @@ final class StepRunner {
     /// podman's user namespace, where uid 1001 means the container's infra user, and podman
     /// translates it to the right subordinate id on the host.
     private Result<Step> chownForContainer(Step.ChownForContainer step) {
-        Tuple<String> argv = Tuple.of(String.class, "podman", "unshare", "chown",
+        // -h: if the path is a link, change the link, never what it points to.
+        Tuple<String> argv = Tuple.of(String.class, "podman", "unshare", "chown", "-h",
                 step.containerUid() + ":" + step.containerGid(), step.path().toString());
         Machine.Outcome outcome = run("podman", Duration.ofSeconds(30), argv);
         if (!outcome.succeeded())

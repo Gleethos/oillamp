@@ -57,6 +57,9 @@ final class LampPhase {
         Path runtimeDir = host.xdgRuntimeDir().orElse(Path.of("/run/user/" + host.user().uid()));
         LampLayout layout = new LampLayout(root, agentId, runtimeDir);
 
+        Optional<Problem> replaced = aSocketDirectoryReplacedByALink(layout);
+        if (replaced.isPresent()) return Result.err(replaced.get());
+
         Result<LampConfig> configuration = loadConfiguration(layout, host);
         if (configuration instanceof Result.Err<LampConfig> failure) return Result.err(failure.problems());
         LampConfig config = ((Result.Ok<LampConfig>) configuration).value();
@@ -186,6 +189,26 @@ final class LampPhase {
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
+
+    /// The socket directories are attached to the container and one is handed to the infra user.
+    /// Each must be a real directory: a link would carry both to wherever it points.
+    ///
+    /// Older versions attached their shared parent, which the agent owns, so the agent could
+    /// replace one with a link to any directory of the user's. Such a lamp is refused.
+    private static Optional<Problem> aSocketDirectoryReplacedByALink(LampLayout layout) {
+        for (Path directory : java.util.List.of(layout.socketsDir(), layout.hostSocketsDir(),
+                                                layout.agentSocketsDir(), layout.infraSocketsDir())) {
+            if (!Files.isSymbolicLink(directory)) continue;
+            String target;
+            try {
+                target = Files.readSymbolicLink(directory).toString();
+            } catch (IOException e) {
+                target = "somewhere that cannot be read (" + Problems.reason(e) + ")";
+            }
+            return Optional.of(Problems.lampSocketDirReplaced(directory, target));
+        }
+        return Optional.empty();
+    }
 
     /// Makes the path absolute and resolves symlinks _before_ validation, so a link
     /// pointing into a system directory cannot get past the refusal in [LampPaths].

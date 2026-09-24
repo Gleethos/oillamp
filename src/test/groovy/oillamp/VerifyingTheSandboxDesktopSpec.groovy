@@ -126,7 +126,9 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
                     '--userns=keep-id:uid=1000,gid=1000',
                     '--tmpfs', '/run:rw,mode=755', '--tmpfs', '/tmp:rw',
                     '-v', "${lamp.resolve('session')}:/oillamp/session:ro".toString(),
-                    '-v', "${lamp.resolve('sockets')}:/oillamp/sockets".toString(),
+                    '-v', "${lamp.resolve('sockets/host')}:/oillamp/sockets/host:ro".toString(),
+                    '-v', "${lamp.resolve('sockets/agent')}:/oillamp/sockets/agent".toString(),
+                    '-v', "${lamp.resolve('sockets/infra')}:/oillamp/sockets/infra".toString(),
                     '-v', "${lamp.resolve('recordings')}:/oillamp/recordings".toString(),
                     '-v', "${agentHome}:/home/agent".toString(),
                     IMAGE)
@@ -460,7 +462,9 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
                     '--userns=keep-id:uid=1000,gid=1000',
                     '--tmpfs', '/run:rw,mode=755', '--tmpfs', '/tmp:rw',
                     '-v', "${lamp.resolve('session')}:/oillamp/session:ro".toString(),
-                    '-v', "${lamp.resolve('sockets')}:/oillamp/sockets".toString(),
+                    '-v', "${lamp.resolve('sockets/host')}:/oillamp/sockets/host:ro".toString(),
+                    '-v', "${lamp.resolve('sockets/agent')}:/oillamp/sockets/agent".toString(),
+                    '-v', "${lamp.resolve('sockets/infra')}:/oillamp/sockets/infra".toString(),
                     '-v', "${lamp.resolve('recordings')}:/oillamp/recordings".toString(),
                     '-v', "${agentHome}:/home/agent".toString(),
                     IMAGE)
