@@ -138,12 +138,13 @@ final class Templates {
             # For this shell only:      eval "$(oillamp completion bash)"
             # For every future shell:   echo 'eval "$(oillamp completion bash)"' >> ~/.bashrc
             _oillamp() {
-                local commands='at view shell stop status list remove recordings doctor config guide about version help'
-                local previous="${COMP_WORDS[COMP_CWORD-1]}"
+                local commands='at view shell stop status list remove recordings doctor config completion guide about version help'
                 local current="${COMP_WORDS[COMP_CWORD]}"
+                local before=""
+                [ "$COMP_CWORD" -ge 2 ] && before="${COMP_WORDS[COMP_CWORD-2]}"
 
-                # The word right after `config` is what to do with it, not a path.
-                if [ "$previous" = config ]; then
+                # `oillamp config <dir> check`: the lamp comes first, then what to do with it.
+                if [ "$before" = config ]; then
                     COMPREPLY=($(compgen -W 'check show-effective path' -- "$current"))
                     return
                 fi

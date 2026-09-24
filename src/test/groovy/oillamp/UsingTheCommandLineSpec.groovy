@@ -178,4 +178,76 @@ class UsingTheCommandLineSpec extends Specification {
             coloured.console().contains('\u001B[')
             !plain.console().contains('\u001B[')
     }
+
+    def 'Checking a lamp whose configuration is broken says what is wrong, and exits as a usage error'() {
+        reportInfo """
+            `oillamp doctor <dir>` checks the machine and then the lamp's configuration. A mistake
+            in oillamp.toml is the user's to fix, so it is reported with the file and key, and the
+            exit code is 2, the same as for any other usage error, so a script can tell it apart
+            from a machine that cannot run sandboxes (3).
+        """
+        given:
+            sandbox.givenConfig(sandbox.lampPath(), """
+                schema_version = 1
+
+                [display]
+                size = "huge"
+                """.stripIndent())
+
+        when:
+            var outcome = sandbox.oillamp.run('doctor', sandbox.lampPath().toString())
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().any { it.code().value().startsWith('OIL-CONFIG-') }
+            outcome.console().contains('size')
+    }
+
+    def 'config path prints where the lamp\'s configuration lives'() {
+        when:
+            var outcome = sandbox.oillamp.run('config', sandbox.lampPath().toString(), 'path')
+
+        then:
+            outcome.status() == ExitStatus.SUCCESS
+            outcome.console().trim().endsWith(sandbox.lampPath().resolve('oillamp.toml').toString())
+    }
+
+    def 'The completion script is only the script, and completes what oillamp accepts'() {
+        reportInfo """
+            `eval "\$(oillamp completion bash)"` runs whatever oillamp prints, so the output must
+            be the script and nothing else: no banner, no colour. And the completions must match
+            the command line oillamp parses. In `oillamp config <dir> check`, the directory comes
+            first, so the word after `config` is a path and the one after that is the action.
+        """
+        when:
+            var outcome = sandbox.oillamp.run('completion', 'bash')
+
+        then: 'nothing but the script is printed'
+            outcome.status() == ExitStatus.SUCCESS
+            !outcome.console().contains('🪔')
+            !outcome.console().contains('\u001B[')
+
+        and: 'bash accepts it and completes commands, options and config actions'
+            var script = tmp.resolve('completion.bash')
+            Files.writeString(script, outcome.console())
+            complete(script, 'oillamp', 'sta').containsAll(['status'])
+            complete(script, 'oillamp', 'at', '/x', '--dry').containsAll(['--dry-run'])
+            !complete(script, 'oillamp', 'config', '').contains('check')
+            complete(script, 'oillamp', 'config', '/x', '').containsAll(['check', 'show-effective', 'path'])
+    }
+
+    /** What bash offers for the last word, using the completion script oillamp printed. */
+    private static List<String> complete(Path script, String... words) {
+        var program = """
+            source '${script}'
+            COMP_WORDS=(${words.collect { "'" + it + "'" }.join(' ')})
+            COMP_CWORD=${words.length - 1}
+            _oillamp
+            printf '%s\\n' "\${COMPREPLY[@]}"
+            """.stripIndent()
+        var process = new ProcessBuilder('bash', '-c', program).redirectErrorStream(true).start()
+        var output = process.inputStream.text
+        assert process.waitFor() == 0 : output
+        output.readLines().findAll { !it.isBlank() }
+    }
 }
