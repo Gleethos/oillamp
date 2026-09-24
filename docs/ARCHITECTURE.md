@@ -628,8 +628,11 @@ startup failed → 5.
 - **Egress threads.** One accept loop per proxy or forward socket, one thread per connection, and
   a single writer thread for the network log.
 - **Shutdown thread.** Runs the shutdown sequence so the event loop stays responsive.
-- **JVM shutdown hook.** On Ctrl-C or SIGTERM it posts `Interrupted` and waits up to 30 s for the
-  state to become `Stopped`. If that does not happen, it runs the shutdown sequence itself.
+- **JVM shutdown hook.** On Ctrl-C or SIGTERM it posts `Interrupted` and waits for the state to
+  become `Stopped`, for as long as the shutdown sequence may take: `timeouts.stop_seconds` plus
+  a minute. If the sequence never began in that time, it runs it itself. If it began but has not
+  finished, it does not start it a second time; that would force-remove the container in the
+  middle of the first `podman stop`, while the recording is being finished.
 
 Before the supervisor exists, `Commands.at` holds a shutdown hook of its own. A Ctrl-C while the
 image builds or the desktop comes up removes the container that run started, and so does a start

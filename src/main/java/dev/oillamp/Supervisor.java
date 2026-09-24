@@ -38,6 +38,9 @@ final class Supervisor {
     /// How often a health line is printed in the terminal oillamp was started from. Changes, such as
     /// a socket that stops answering, are reported immediately, not at the next health line.
     private static final Duration HEARTBEAT = Duration.ofSeconds(30);
+    /// How much longer than `timeouts.stop_seconds` `podman stop` itself may take.
+    private static final Duration STOP_GRACE = Duration.ofSeconds(15);
+    private static final Duration REMOVE_TIMEOUT = Duration.ofSeconds(30);
 
     /// How a signal is described in the closing summary. The JVM runs the same shutdown hook for all
     /// three, so it cannot say which one it was.
@@ -58,7 +61,7 @@ final class Supervisor {
     /// container watcher, the control socket, the shutdown sequence and the JVM's shutdown hook.
     ///
     /// It is `volatile` so that those threads see the latest value. Without it, the shutdown
-    /// hook could keep seeing an old state and wait its full 30 seconds after the session had
+    /// hook could keep seeing an old state and wait its full time after the session had
     /// already ended.
     private volatile SessionState state;
     private volatile Instant sessionStarted;
@@ -374,12 +377,12 @@ final class Supervisor {
         Machine.Outcome stopped = machine.run(Machine.Command
                 .of("podman", "stop", "--time", String.valueOf(stopTimeout.toSeconds()),
                     sandbox.container().value())
-                .withTimeout(stopTimeout.plusSeconds(15)).labelled("podman stop").shieldedFromSignals());
+                .withTimeout(stopTimeout.plus(STOP_GRACE)).labelled("podman stop").shieldedFromSignals());
 
         // 3. Remove it either way, so the next session does not find the name taken.
         Machine.Outcome removed = machine.run(Machine.Command
                 .of("podman", "rm", "-f", sandbox.container().value())
-                .withTimeout(Duration.ofSeconds(30)).labelled("podman rm").shieldedFromSignals());
+                .withTimeout(REMOVE_TIMEOUT).labelled("podman rm").shieldedFromSignals());
 
         // What matters is whether the container is gone. `podman stop` failing and then
         // `podman rm -f` succeeding is a complete shutdown, not an error.
@@ -645,17 +648,29 @@ final class Supervisor {
         @Override public void trouble(Problem problem) { context.emit(new LampEvent.Warning(problem)); }
     }
 
-    /// Runs on Ctrl-C, SIGTERM or SIGHUP: asks for a clean shutdown and waits up to 30 seconds for it.
+    /// Runs on Ctrl-C, SIGTERM or SIGHUP: asks for a clean shutdown and waits for it.
     ///
     /// SIGHUP is what the terminal oillamp was started from sends when it is closed. That terminal
     /// is where the session reports what it is doing, so closing it ends the session.
+    ///
+    /// The JVM exits as soon as this returns, so it waits as long as the shutdown sequence may
+    /// take: `podman stop` gets `timeouts.stop_seconds` and 15 seconds more, `podman rm` 30.
+    /// Returning earlier would leave the container running, or cut a recording short.
     private void onSignal() {
         post(new SessionEvent.Interrupted(SIGNALLED));
-        Instant deadline = Instant.now().plusSeconds(30);
+        Instant deadline = Instant.now().plus(longestShutdown());
         while (!state.isFinal() && Instant.now().isBefore(deadline)) sleep(Duration.ofMillis(100));
-        // Last resort: the loop did not get there, so run the sequence directly. It is idempotent.
-        if (!state.isFinal())
+        // Last resort: the event loop never began the sequence, so run it here. Once begun, it is
+        // not started a second time: its `podman rm -f` would kill the container in the middle
+        // of the first one's `podman stop`, while the recording is being finished.
+        if (!state.isFinal() && shuttingDown.compareAndSet(false, true))
             shutDown(new SessionState.ShutdownReason.UserInterrupt(SIGNALLED, false));
+    }
+
+    /// The longest the shutdown sequence can take, with a margin for everything besides podman.
+    private Duration longestShutdown() {
+        return prepared.config().timeouts().stop().plus(STOP_GRACE).plus(REMOVE_TIMEOUT)
+                       .plusSeconds(15);
     }
 
     // ─── the control socket ────────────────────────────────────────────────────────────────
