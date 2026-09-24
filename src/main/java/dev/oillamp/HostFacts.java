@@ -14,7 +14,8 @@ import sprouts.ValueSet;
 record HostFacts(
     OsRelease os,
     UserInfo user,
-    Optional<Path> xdgRuntimeDir,
+    // $XDG_RUNTIME_DIR, or where it would be; see HostProbe.runtimeDirectory.
+    Path runtimeDirectory,
     GraphicalSession session,
     // Only the packages oillamp requires, not everything on the system.
     ValueSet<String> installedPackages,

@@ -53,8 +53,7 @@ final class LampPhase {
             case LampState.Unreadable ignored -> generateAgentId();
         };
 
-        Path runtimeDir = host.xdgRuntimeDir().orElse(Path.of("/run/user/" + host.user().uid()));
-        LampLayout layout = new LampLayout(root, agentId, runtimeDir);
+        LampLayout layout = new LampLayout(root, agentId, host.runtimeDirectory());
 
         Optional<Problem> replaced = aSocketDirectoryReplacedByALink(layout);
         if (replaced.isPresent()) return Result.err(replaced.get());

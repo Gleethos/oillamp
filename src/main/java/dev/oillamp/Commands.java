@@ -598,15 +598,9 @@ final class Commands {
         if (!(state instanceof LampState.Existing existing))
             return Result.err(Problems.lampNotWritable(root,
                     "this is not an oillamp lamp — run `oillamp at " + lampPath + "` to make one"));
-        return Result.ok(new LampLayout(root, existing.meta().agentId(), runtimeDirectory()));
+        return Result.ok(new LampLayout(root, existing.meta().agentId(), HostProbe.runtimeDirectory(machine)));
     }
 
-    private Path runtimeDirectory() {
-        return machine.environmentVariable("XDG_RUNTIME_DIR")
-                .map(Path::of)
-                .orElseGet(() -> Path.of("/run/user/" + machine.run(Machine.Command.of("id", "-u"))
-                        .output().strip()));
-    }
 
     /// No supervisor answered. Either nothing is running, or a supervisor was killed without
     /// cleaning up. In that case its container, its control socket and `session.json` are left

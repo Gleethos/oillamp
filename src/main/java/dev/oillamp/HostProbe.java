@@ -32,7 +32,7 @@ final class HostProbe {
         return new HostFacts(
                 os,
                 user,
-                machine.environmentVariable("XDG_RUNTIME_DIR").map(Path::of),
+                runtimeDirectory(machine, user.uid()),
                 probeSession(machine),
                 probeInstalledPackages(machine, requirements),
                 probeSubIds(machine, user),
@@ -71,6 +71,17 @@ final class HostProbe {
             return value;
         }
         return fallback;
+    }
+
+    /// Where the short socket paths of every lamp go: `$XDG_RUNTIME_DIR`, or `/run/user/<uid>`,
+    /// its usual value, where it is not set, as under `sudo -i` or in a cron job.
+    static Path runtimeDirectory(Machine machine) {
+        return runtimeDirectory(machine, firstInteger(machine, 1000, "id", "-u"));
+    }
+
+    private static Path runtimeDirectory(Machine machine, int uid) {
+        return machine.environmentVariable("XDG_RUNTIME_DIR").map(Path::of)
+                .orElse(Path.of("/run/user/" + uid));
     }
 
     private static UserInfo probeUser(Machine machine) {
