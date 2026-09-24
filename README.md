@@ -856,7 +856,7 @@ sandbox without `ping` or a process viewer feels broken rather than minimal.
 
 **The desktop:** `sway`, `xwayland` (so X11 applications, including Java Swing, still work),
 `wayvnc`, `wf-recorder`, `grim` and `slurp` (screenshots), `wtype` and `wlrctl` (keyboard and mouse
-input), `foot` (a terminal emulator), Mesa graphics drivers and fonts.
+input), `foot` (a terminal emulator), Mesa graphics drivers and fonts, including one for emoji.
 
 **Development tools:** `git`, `build-essential`, `cmake`, `gdb`, `strace`, `ripgrep`, `jq`,
 Python 3, Node.js, Firefox ESR and a Temurin JDK.

@@ -58,7 +58,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       sway xwayland x11-xserver-utils x11-utils wayvnc wf-recorder grim slurp wtype python3 \
       foot dbus dbus-x11 at-spi2-core xdg-utils \
       mesa-utils libgl1-mesa-dri libegl1 libgles2 \
-      fonts-dejavu fonts-liberation2 adwaita-icon-theme \
+      fonts-dejavu fonts-liberation2 fonts-noto-color-emoji adwaita-icon-theme \
       openssh-server socat catatonit \
  && (apt-get install -y --no-install-recommends wlrctl || echo "wlrctl unavailable: lamp click/move/scroll will not work") \
  && rm -rf /var/lib/apt/lists/*
