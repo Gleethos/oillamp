@@ -27,8 +27,9 @@ import sprouts.Tuple;
 ///   killed, so a hung `podman` cannot leave processes behind.
 final class RealMachine implements Machine {
 
-    /// Output beyond this many bytes is dropped (the start is kept), so a very noisy build cannot exhaust memory.
-    private static final int MAX_CAPTURED_BYTES = 4 * 1024 * 1024;
+    /// At most this many characters of a command's output are kept, so a very noisy build cannot
+    /// exhaust memory. See [Captured] for which ones.
+    private static final int MAX_CAPTURED_CHARS = 4 * 1024 * 1024;
 
     private final SecureRandom random = new SecureRandom();
 
@@ -73,8 +74,8 @@ final class RealMachine implements Machine {
 
         // Drain both pipes on their own virtual threads: a process that fills its stderr buffer
         // while we wait on stdout would deadlock.
-        StringBuilder out = new StringBuilder();
-        StringBuilder err = new StringBuilder();
+        Captured out = new Captured();
+        Captured err = new Captured();
         Thread outReader = drain(process.getInputStream(), out, eachLine);
         Thread errReader = drain(process.getErrorStream(), err, eachLine);
 
@@ -151,7 +152,7 @@ final class RealMachine implements Machine {
     private static final class ProcessWindow implements Window {
 
         private final Process process;
-        private final StringBuilder said = new StringBuilder();
+        private final Captured said = new Captured();
 
         private ProcessWindow(Process process, Stdio stdio) {
             this.process = process;
@@ -230,14 +231,14 @@ final class RealMachine implements Machine {
 
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
 
-    private static Thread drain(InputStream stream, StringBuilder sink) {
+    private static Thread drain(InputStream stream, Captured sink) {
         return drain(stream, sink, line -> { });
     }
 
     /// Reads a process's output into `sink`, and passes each complete line to
     /// `eachLine` as it arrives. A carriage return also ends a line, because progress output
     /// often rewrites one line with `\r`.
-    private static Thread drain(InputStream stream, StringBuilder sink,
+    private static Thread drain(InputStream stream, Captured sink,
                                 java.util.function.Consumer<String> eachLine) {
         return Thread.ofVirtual().start(() -> {
             StringBuilder line = new StringBuilder();
@@ -245,9 +246,7 @@ final class RealMachine implements Machine {
                 char[] buffer = new char[8192];
                 int read;
                 while ((read = reader.read(buffer)) >= 0) {
-                    synchronized (sink) {
-                        if (sink.length() < MAX_CAPTURED_BYTES) sink.append(buffer, 0, read);
-                    }
+                    sink.append(buffer, read);
                     for (int i = 0; i < read; i++) {
                         char c = buffer[i];
                         if (c == '\n' || c == '\r') {
@@ -263,6 +262,46 @@ final class RealMachine implements Machine {
                 throw new UncheckedIOException(e);
             }
         });
+    }
+
+    /// A command's output, kept within [#MAX_CAPTURED_CHARS]: its first quarter, and then the
+    /// latest output, with what came between left out.
+    ///
+    /// The end matters most, because that is where a failing command says why, and it is what
+    /// problems quote. The start says what the command set out to do.
+    private static final class Captured {
+
+        private static final int HEAD = MAX_CAPTURED_CHARS / 4;
+        private static final int TAIL = MAX_CAPTURED_CHARS - HEAD;
+
+        private final StringBuilder head = new StringBuilder();
+        private final java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>();
+        private int tailLength;
+        private long leftOut;
+
+        synchronized void append(char[] chars, int count) {
+            int intoHead = Math.min(count, HEAD - head.length());
+            head.append(chars, 0, intoHead);
+            if (intoHead == count) return;
+            String chunk = new String(chars, intoHead, count - intoHead);
+            tail.addLast(chunk);
+            tailLength += chunk.length();
+            while (tailLength > TAIL) {
+                String oldest = tail.removeFirst();
+                int excess = tailLength - TAIL;
+                int dropped = Math.min(excess, oldest.length());
+                if (dropped < oldest.length()) tail.addFirst(oldest.substring(dropped));
+                tailLength -= dropped;
+                leftOut += dropped;
+            }
+        }
+
+        @Override public synchronized String toString() {
+            StringBuilder out = new StringBuilder(head.length() + tailLength + 64).append(head);
+            if (leftOut > 0) out.append("\n[… ").append(leftOut).append(" characters left out …]\n");
+            for (String chunk : tail) out.append(chunk);
+            return out.toString();
+        }
     }
 
     /// Kills the child processes first, so none can survive by being re-parented.
