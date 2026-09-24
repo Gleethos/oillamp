@@ -46,7 +46,7 @@ final class Egress implements AutoCloseable {
     private static final int HEADER_LIMIT = 64 * 1024;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration RESOLVE_TIMEOUT = Duration.ofSeconds(5);
-    private static final int MAX_CONNECTIONS = 512;
+    private static final int MAX_CONNECTIONS = Relay.ACCEPT_QUEUE;
     private static final int BUFFER_BYTES = 64 * 1024;
     /// The rule name logged for a host name that could not be resolved.
     private static final String UNRESOLVED = "unresolved";

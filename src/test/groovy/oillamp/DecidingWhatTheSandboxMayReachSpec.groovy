@@ -180,6 +180,38 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
         event instanceof LampEvent.Info && event.text().startsWith('denied ')
     }
 
+    def 'A burst of connections is answered, not turned away at the door'() {
+        reportInfo """
+            A build opens many connections at once: a package manager fetching dependencies in
+            parallel, a browser loading a page. They all arrive at the proxy's socket in the same
+            instant. The kernel holds new connections in a queue until the proxy accepts them, and
+            that queue was 50 long, the default. The 51st connection in a burst was refused
+            outright, and the agent saw a network error that no rule explained.
+        """
+        given:
+            var port = givenAnOriginServer()
+            startASession()
+
+        when: 'three hundred requests arrive at the same moment, and none of them tries twice'
+            var answers = new CopyOnWriteArrayList<Integer>()
+            var failures = new CopyOnWriteArrayList<String>()
+            var requests = (1..300).collect { i ->
+                Thread.startVirtualThread {
+                    try {
+                        answers << askTheProxy("GET http://127.0.0.1:${port}/${i} HTTP/1.1\r\n\r\n").status
+                    } catch (IOException refused) {
+                        failures << refused.message
+                    }
+                }
+            }
+            requests*.join()
+
+        then: 'every one of them got an answer from the proxy'
+            failures.isEmpty()
+            answers.size() == 300
+            answers.every { it == 403 }
+    }
+
     def 'Every connection is written to the session network log'() {
         reportInfo """
             Every connection is written to `.oillamp/logs/network-<session>.jsonl`, one JSON object

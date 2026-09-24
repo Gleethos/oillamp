@@ -31,6 +31,11 @@ final class Relay implements AutoCloseable {
 
     private static final int BUFFER_BYTES = 64 * 1024;
 
+    /// How many connections the kernel holds for a socket until they are accepted. The default is
+    /// 50, and a build that opens more than that through the proxy at once had the rest refused.
+    /// The same as the proxy's own limit on open connections.
+    static final int ACCEPT_QUEUE = 512;
+
     /// What the supervisor is told, as it happens. Every method is called from a relay thread.
     interface Listener {
         void connected();
@@ -82,7 +87,7 @@ final class Relay implements AutoCloseable {
             if (parent != null) Files.createDirectories(parent);
             Files.deleteIfExists(socket);
             ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
-            server.bind(UnixDomainSocketAddress.of(socket));
+            server.bind(UnixDomainSocketAddress.of(socket), ACCEPT_QUEUE);
             // 0600 at once: only this user may connect to the session's relays and control socket.
             Filesystem.setMode(socket, PosixMode.PRIVATE_FILE);
             return Result.ok(server);
