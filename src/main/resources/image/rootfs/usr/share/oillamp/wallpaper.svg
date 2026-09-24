@@ -31,10 +31,20 @@
       <stop offset="0" stop-color="#c88f3d"/>
       <stop offset="1" stop-color="#5a3713"/>
     </linearGradient>
-    <linearGradient id="lid" x1="460" y1="280" x2="540" y2="315" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f6d690"/>
-      <stop offset="0.5" stop-color="#cf9642"/>
-      <stop offset="1" stop-color="#7c4d1b"/>
+    <!-- For the round, turned parts (lid, knob, foot): lit on the side facing the flame and
+         darkening around the curve away from it. -->
+    <linearGradient id="turned" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b98238"/>
+      <stop offset="0.22" stop-color="#f5d892"/>
+      <stop offset="0.5" stop-color="#c89040"/>
+      <stop offset="0.85" stop-color="#704619"/>
+      <stop offset="1" stop-color="#4e2f10"/>
+    </linearGradient>
+    <linearGradient id="turnedDark" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8a5a24"/>
+      <stop offset="0.22" stop-color="#c99447"/>
+      <stop offset="0.6" stop-color="#7a4d1c"/>
+      <stop offset="1" stop-color="#3e250c"/>
     </linearGradient>
     <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#fff3d0" stop-opacity="0.75"/>
@@ -88,10 +98,15 @@
     <path d="M606 334 C648 322 680 334 682 358"
           fill="none" stroke="#f3cf7e" stroke-opacity="0.35" stroke-width="3" stroke-linecap="round"/>
 
-    <!-- foot -->
-    <path d="M462 398 L450 424 C470 432 530 432 550 424 L538 398 Z" fill="url(#brassDark)"/>
-    <ellipse cx="500" cy="425" rx="58" ry="8" fill="#6a4217"/>
-    <path d="M444 425 C466 420 534 420 556 425" fill="none" stroke="#e8bb66" stroke-opacity="0.5" stroke-width="2"/>
+    <!-- foot: a narrow waist under the body, flaring out to a ring that stands on the surface -->
+    <path d="M466 404 C472 410 478 412 478 416 C478 421 460 424 446 427 L446 432
+             C470 438 530 438 554 432 L554 427 C540 424 522 421 522 416 C522 412 528 410 534 404 Z"
+          fill="url(#turned)"/>
+    <path d="M446 432 C470 438 530 438 554 432 L554 434 C530 440 470 440 446 434 Z" fill="url(#turnedDark)"/>
+    <path d="M447 427.5 C470 432.5 530 432.5 553 427.5" fill="none" stroke="#fbe3a6" stroke-opacity="0.55"
+          stroke-width="1.2"/>
+    <!-- the shadow the body casts onto the top of the waist -->
+    <ellipse cx="500" cy="410" rx="30" ry="4" fill="#24160a" opacity="0.5" filter="url(#soften)"/>
 
     <!-- body and spout in one piece -->
     <path d="M226 300
@@ -113,10 +128,22 @@
     <!-- a thin band around the body -->
     <path d="M388 374 C440 390 566 390 622 368" fill="none" stroke="#4a2d10" stroke-opacity="0.4" stroke-width="1.5"/>
 
-    <!-- lid and knob -->
-    <path d="M458 318 C462 292 538 292 542 318 Z" fill="url(#lid)"/>
-    <ellipse cx="500" cy="318" rx="44" ry="4" fill="#6b4318" opacity="0.8"/>
-    <circle cx="500" cy="286" r="9" fill="url(#lid)"/>
+    <!-- the opening in the top of the body, with a raised collar the lid sits in -->
+    <ellipse cx="500" cy="318" rx="47" ry="6.5" fill="url(#turnedDark)"/>
+    <ellipse cx="500" cy="317.5" rx="44" ry="5" fill="#3e250c"/>
+
+    <!-- lid: a low dome with a lip, a short neck and a knob, all one turned piece -->
+    <path d="M459 317 C460 301 478 293 500 293 C522 293 540 301 541 317 C528 321.5 472 321.5 459 317 Z"
+          fill="url(#turned)"/>
+    <path d="M457 316.5 C472 321.5 528 321.5 543 316.5 L543 319 C528 324.5 472 324.5 457 319 Z"
+          fill="url(#turnedDark)"/>
+    <path d="M466 309 C469 302 478 297 488 295.5" fill="none" stroke="#fff4d6" stroke-opacity="0.6"
+          stroke-width="2.5" stroke-linecap="round" filter="url(#soften)"/>
+    <path d="M495.5 294 C497 291 497 289 495.5 286.5 L504.5 286.5 C503 289 503 291 504.5 294 Z"
+          fill="url(#turnedDark)"/>
+    <path d="M500 268 C503 274 510 278 510 282.5 C510 286.5 505.5 288 500 288 C494.5 288 490 286.5 490 282.5
+             C490 278 497 274 500 268 Z" fill="url(#turned)"/>
+    <ellipse cx="495.5" cy="280.5" rx="1.8" ry="3.2" fill="#fff4d6" opacity="0.7"/>
 
     <!-- wick -->
     <path d="M229 300 L233 284 L239 286 L237 302 Z" fill="#2a1d12"/>
