@@ -67,9 +67,16 @@ if [ ! -x "$unpacked/runtime/bin/java" ]; then
         exit 70
     }
     mkdir -p "$(dirname "$unpacked")"
-    # A losing race is not an error: it means another oillamp finished unpacking first, and what
-    # it unpacked is identical to this, because the directory name contains the fingerprint.
-    mv "$staging" "$unpacked" 2>/dev/null || true
+    # A directory for this build without a Java runtime in it is damaged: an unpack cut short, or
+    # a cache tidied by hand. Nothing can be running from it, so it is replaced.
+    if [ -e "$unpacked" ] && [ ! -x "$unpacked/runtime/bin/java" ]; then
+        rm -rf "$unpacked"
+    fi
+    # -T: rename onto that exact name, or fail. Without it, mv moves the copy *inside* a
+    # directory that already exists by then. A losing race is not an error: it means another
+    # oillamp finished unpacking first, and what it unpacked is identical to this, because the
+    # directory name contains the fingerprint.
+    mv -T "$staging" "$unpacked" 2>/dev/null || true
     trap - EXIT INT TERM
     rm -rf "$staging"
     [ -x "$unpacked/runtime/bin/java" ] || {
