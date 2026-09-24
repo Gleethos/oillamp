@@ -42,6 +42,7 @@ final class SimulatedMachine implements Machine {
     private final Duration terminalStaysOpen;
     private final boolean terminalConnects;
     private final Duration stopsAfterClosingTheShell;
+    private final Optional<Duration> sandboxDiesAfter;
     private final RealMachine realMachine = new RealMachine();
 
     /// The sockets the simulated container is listening on, and whether it is still up.
@@ -51,6 +52,8 @@ final class SimulatedMachine implements Machine {
     private final java.util.Map<String, java.nio.channels.ServerSocketChannel> listening =
             new java.util.concurrent.ConcurrentHashMap<>();
     private volatile boolean containerRunning;
+    /// The exit code of a simulated container that exited on its own and has not been removed.
+    private volatile Optional<Integer> containerExitedWith = Optional.empty();
 
     private SimulatedMachine(Builder builder) {
         this.passThrough = java.util.Set.copyOf(builder.passThrough);
@@ -59,6 +62,7 @@ final class SimulatedMachine implements Machine {
         this.terminalStaysOpen = builder.terminalStaysOpen;
         this.terminalConnects = builder.terminalConnects;
         this.stopsAfterClosingTheShell = builder.stopsAfterClosingTheShell;
+        this.sandboxDiesAfter = builder.sandboxDiesAfter;
         this.operatingSystemName = builder.operatingSystemName;
         this.systemFiles = Map.copyOf(builder.systemFiles);
         this.environment = Map.copyOf(builder.environment);
@@ -110,7 +114,8 @@ final class SimulatedMachine implements Machine {
         // Absence is a non-zero exit. The simulated container exists from `podman run` until
         // `podman stop` or `podman rm`, so a scenario can tell whether one was left behind.
         if (commandLine.startsWith("podman container exists"))
-            return new Outcome.Finished(containerRunning ? 0 : 1, "", "", Duration.ofMillis(5));
+            return new Outcome.Finished(containerRunning || containerExitedWith.isPresent() ? 0 : 1,
+                    "", "", Duration.ofMillis(5));
         if (commandLine.startsWith("podman unshare rm ")) return simulatedUnshareRemove(command);
         if (commandLine.contains("UNIX-CONNECT:")) return simulatedConnect(command);
         if (!executables.containsKey(command.executable()))
@@ -160,6 +165,18 @@ final class SimulatedMachine implements Machine {
             return new Outcome.Finished(125, "", "Error: " + e.getMessage() + "\n", Duration.ofMillis(30));
         }
         containerRunning = true;
+        containerExitedWith = Optional.empty();
+        sandboxDiesAfter.ifPresent(delay -> Thread.ofVirtual().name("simulated-sandbox-death").start(() -> {
+            try {
+                Thread.sleep(delay);
+            } catch (InterruptedException e) {
+                return;
+            }
+            if (!containerRunning) return;
+            closeListeningSockets();
+            containerExitedWith = Optional.of(70);
+            containerRunning = false;
+        }));
         return new Outcome.Finished(0, "simulated-container-id\n", "", Duration.ofMillis(120));
     }
 
@@ -222,6 +239,12 @@ final class SimulatedMachine implements Machine {
     /// `podman stop` and `podman rm`: the container and its sockets are gone.
     private Outcome stopSimulatedSandbox() {
         containerRunning = false;
+        containerExitedWith = Optional.empty();
+        closeListeningSockets();
+        return new Outcome.Finished(0, "simulated-container-id\n", "", Duration.ofMillis(40));
+    }
+
+    private void closeListeningSockets() {
         for (java.nio.channels.ServerSocketChannel server : listening.values()) {
             try {
                 server.close();
@@ -230,7 +253,6 @@ final class SimulatedMachine implements Machine {
             }
         }
         listening.clear();
-        return new Outcome.Finished(0, "simulated-container-id\n", "", Duration.ofMillis(40));
     }
 
     /// Answers the two questions the supervisor asks about a container it is watching.
@@ -243,6 +265,10 @@ final class SimulatedMachine implements Machine {
         Tuple<String> argv = command.argv();
         for (int i = 0; i < argv.size() - 1; i++)
             if (argv.get(i).equals("--format")) format = argv.get(i + 1);
+        if (containerExitedWith.isPresent()) {
+            String answer = format.contains("ExitCode") ? containerExitedWith.get().toString() : "false";
+            return new Outcome.Finished(0, answer + "\n", "", Duration.ofMillis(5));
+        }
         if (!containerRunning)
             return new Outcome.Finished(125, "",
                     "Error: no such container\n", Duration.ofMillis(5));
@@ -490,6 +516,7 @@ final class SimulatedMachine implements Machine {
         /// How long the simulated user waits after closing the shell window before running
         /// `oillamp stop`. Long enough for the session to report the window closing first.
         private Duration stopsAfterClosingTheShell = Duration.ofMillis(200);
+        private Optional<Duration> sandboxDiesAfter = Optional.empty();
 
         private Instant clock = Instant.parse("2026-09-22T14:15:03Z");
         private boolean clockRuns = false;
@@ -589,6 +616,8 @@ final class SimulatedMachine implements Machine {
         public void terminalStaysOpen(Duration duration) { this.terminalStaysOpen = duration; }
         public void terminalNeverConnects() { this.terminalConnects = false; }
         public void stopsAfterClosingTheShell(Duration duration) { this.stopsAfterClosingTheShell = duration; }
+
+        public void sandboxDiesAfter(Duration duration) { this.sandboxDiesAfter = Optional.of(duration); }
 
         public void passThrough(Tuple<String> executables) {
             for (String executable : executables) {

@@ -269,6 +269,76 @@ class SupervisingASessionSpec extends Specification {
             outcome.console().contains('oillamp status ')
     }
 
+    def 'A sandbox that dies during a session ends it, says so, and leaves nothing behind'() {
+        reportInfo """
+            The container's first process stops the sandbox when a part the human depends on
+            dies: the compositor, the desktop server, the recorder or a network bridge. The user
+            would otherwise go on typing into a shell attached to a desktop nobody can see. The
+            supervisor notices within seconds, ends the session with its own exit code, names the
+            sandbox's exit code, and still cleans up everything the session made.
+        """
+        given: 'a sandbox that exits a second after it started, while the shell is still open'
+            sandbox.machine {
+                it.windowsStayOpenFor(Duration.ofSeconds(60))
+                  .sandboxDiesAfter(Duration.ofSeconds(1))
+            }
+
+        when:
+            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+
+        then: 'the session ends as failed, not as a normal stop'
+            outcome.status() == ExitStatus.SESSION_FAILED
+
+        and: 'the summary says why, with the sandbox\'s own exit code'
+            outcome.console().contains('the sandbox container exited (code 70)')
+
+        and: 'and the container and the session\'s files were still cleaned up'
+            outcome.console().contains('(removed)')
+            !java.nio.file.Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
+    }
+
+    def 'A second connection to the shell window\'s socket is refused, and the session goes on'() {
+        reportInfo """
+            The socket the terminal window connects through accepts exactly one connection per
+            session, because that connection is what tells oillamp the user's shell is up. The
+            socket is outside anything the sandbox can see, so a second connection is a mistake
+            on the host, such as a copied ssh command. It is refused with a warning that points to
+            `oillamp shell`, and the session carries on.
+        """
+        given: 'a session whose shell window stays open'
+            sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(60)) }
+            var reported = new java.util.concurrent.CopyOnWriteArrayList<LampEvent>()
+            var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
+            var session = Thread.start { oillamp.run('at', sandbox.lampPath().toString()) }
+            waitUntil { reported.any { it instanceof LampEvent.Summary && it.title() == 'your session is up' } }
+
+        when: 'something else connects to the shell window\'s socket'
+            var primary = java.nio.file.Files.list(sandbox.runtime.resolve('oillamp')).toList().first()
+                                                 .resolve('run/ssh-primary.sock')
+            java.nio.channels.SocketChannel.open(java.net.UnixDomainSocketAddress.of(primary)).close()
+
+        then: 'it is refused with a warning naming the command to use instead'
+            waitUntil { reported.any { it instanceof LampEvent.Warning && it.problem().code().value() == 'OIL-SSH-002' } }
+            reported.find { it instanceof LampEvent.Warning && it.problem().code().value() == 'OIL-SSH-002' }
+                    .problem().toString().contains('oillamp shell')
+
+        and: 'the session is still running'
+            session.alive
+
+        cleanup:
+            sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            session?.join(20_000)
+    }
+
+    private static void waitUntil(Closure<Boolean> condition) {
+        var deadline = System.currentTimeMillis() + 30_000
+        while (System.currentTimeMillis() < deadline) {
+            if (condition()) return
+            Thread.sleep(50)
+        }
+        throw new AssertionError("the session never got there: ${condition}" as Object)
+    }
+
     def 'A second Ctrl-C during shutdown does not turn a clean session into a bug report'() {
         reportInfo """
             Found on real hardware. Shutting down takes a moment - the container has to stop and,

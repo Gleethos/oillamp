@@ -349,6 +349,13 @@ public interface Machine {
             return this;
         }
 
+        /// The simulated sandbox exits on its own, with the entrypoint's failure code 70, this long
+        /// after it started, as it does when a critical process such as the compositor dies.
+        public Simulation sandboxDiesAfter(java.time.Duration duration) {
+            builder.sandboxDiesAfter(duration);
+            return this;
+        }
+
         /// How long the simulated user leaves the session running after closing its shell window,
         /// before they end it with `oillamp stop`.
         public Simulation userStopsTheSessionAfter(java.time.Duration duration) {
