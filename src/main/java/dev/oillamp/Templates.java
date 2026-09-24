@@ -138,7 +138,7 @@ final class Templates {
             # For this shell only:      eval "$(oillamp completion bash)"
             # For every future shell:   echo 'eval "$(oillamp completion bash)"' >> ~/.bashrc
             _oillamp() {
-                local commands='at view shell stop status list remove recordings doctor config version help'
+                local commands='at view shell stop status list remove recordings doctor config guide about version help'
                 local previous="${COMP_WORDS[COMP_CWORD-1]}"
                 local current="${COMP_WORDS[COMP_CWORD]}"
 

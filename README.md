@@ -152,6 +152,8 @@ oillamp status <dir>            # what a running session is doing
 oillamp list                    # every oillamp sandbox running on this machine
 oillamp recordings <dir>        # list screen recordings, if recording is on
 oillamp config <dir> check      # validate the lamp's configuration
+oillamp guide                   # a first session, step by step, in the terminal
+oillamp about                   # why oillamp exists, and what it is built from
 ```
 
 ### 2.7 Tab completion

@@ -45,7 +45,7 @@ The fast test suite has 98 scenarios and passes. The spikes pass on the developm
 | `oillamp recordings <dir> [--open <session>] [--prune]` | Works. |
 | `oillamp config <dir> check \| show-effective \| path` | Works. Reads the global file and the lamp's, as `at` does. |
 | `oillamp completion bash` | Works. |
-| `oillamp version`, `oillamp help` | Work. |
+| `oillamp version`, `oillamp help`, `oillamp guide`, `oillamp about` | Work. |
 | `--verbose` | Works. |
 | `--debug` | Accepted. Currently the same as `--verbose`. |
 | `--no-color` | Works, as does the `NO_COLOR` environment variable. |

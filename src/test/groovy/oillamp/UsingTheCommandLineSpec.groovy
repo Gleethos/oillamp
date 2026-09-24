@@ -74,6 +74,37 @@ class UsingTheCommandLineSpec extends Specification {
             outcome.console().contains('oillamp 0.1.0')
     }
 
+    def 'Someone new can learn what oillamp is for, and how to use it, from oillamp itself'() {
+        reportInfo """
+            `help` lists the commands, which is enough once you know what they are for. `about`
+            and `guide` are for the moment before that. Like `help`, they need no machine and
+            no lamp, and change nothing.
+        """
+        when: 'the user asks what oillamp is'
+            var about = sandbox.oillamp.run('about')
+
+        then: 'they learn why it exists and what it is built from'
+            about.status() == ExitStatus.SUCCESS
+            about.console().contains('WHY IT EXISTS')
+            about.console().contains('podman')
+            about.console().contains('oillamp 0.1.0')
+
+        when: 'and how to get going'
+            var guide = sandbox.oillamp.run('guide')
+
+        then: 'they get the steps in the order they need them, from checking the machine to deleting the lamp'
+            guide.status() == ExitStatus.SUCCESS
+            var steps = ['oillamp doctor', 'oillamp at ~/lamps/first', 'oillamp stop ~/lamps/first',
+                         'oillamp remove ~/lamps/first --yes'].collect { guide.console().indexOf(it) }
+            steps.every { it >= 0 }
+            steps == steps.sort(false)
+
+        and: 'the command list sends newcomers to both'
+            var help = sandbox.oillamp.run('help')
+            help.console().contains('oillamp guide')
+            help.console().contains('oillamp about')
+    }
+
     def 'A bug inside oillamp still reaches the user as something they can report'() {
         reportInfo """
             No bare stack traces on the console, ever. That has to hold even for a genuine bug,

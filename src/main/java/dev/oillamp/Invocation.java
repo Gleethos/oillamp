@@ -96,6 +96,14 @@ final class Invocation {
             sink.accept(new LampEvent.Answer(usage()));
             return ExitStatus.SUCCESS;
         }
+        if (command.equals("about")) {
+            sink.accept(new LampEvent.Answer(Handbook.about(version)));
+            return ExitStatus.SUCCESS;
+        }
+        if (command.equals("guide")) {
+            sink.accept(new LampEvent.Answer(Handbook.guide()));
+            return ExitStatus.SUCCESS;
+        }
 
         Context context = new Context(sink, options, version);
         Commands commands = new Commands(machine, context);
@@ -232,6 +240,9 @@ final class Invocation {
         return """
             oillamp [--verbose] [--debug] [--no-color] <command>
 
+            New here? `oillamp guide` walks through a first session; `oillamp about` says what
+            oillamp is for and what it is built from.
+
               at <dir> [--init] [--dry-run] [--no-install] [--no-viewer]
                     Set up (if needed) and run a session. Stays in the foreground until it ends.
               view <dir> [--view-only]
@@ -259,6 +270,10 @@ final class Invocation {
                     Check the host, and the lamp if one is given. Changes nothing.
               config <dir> (check | show-effective | path)
                     Validate the configuration, print it, or print its path.
+              guide
+                    A first session, step by step.
+              about
+                    Why oillamp exists, and what it is built from.
               version
               help
             """;
