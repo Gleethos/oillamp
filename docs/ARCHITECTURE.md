@@ -431,7 +431,8 @@ The image is built from `src/main/resources/image/`:
 | `rootfs/usr/local/bin/lamp` | The desktop helper the agent uses: `lamp screenshot`, `click`, `type`, … |
 | `rootfs/etc/profile.d/oillamp.sh` | The agent's shell environment: proxy variables, display, library paths, SDKMAN, prompt, banner. |
 | `rootfs/etc/oillamp/sshd_config` | sshd settings: key login only, every kind of forwarding off. |
-| `rootfs/etc/oillamp/sway/config` | Compositor settings. No key binding runs a command. |
+| `rootfs/etc/oillamp/sway/config` | Compositor settings, including the window frames' colours. No key binding runs a command. |
+| `rootfs/etc/xdg/foot/foot.ini` | The terminal's font, padding and colours, the same palette as the wallpaper and the window frames. |
 | `rootfs/etc/ssh/ssh_config.d/50-oillamp-proxy.conf` | Sends outbound SSH (`git@github.com:…`) through the egress proxy. |
 | `rootfs/usr/share/oillamp/wallpaper.png` | The desktop background. |
 | `rootfs/usr/share/oillamp/wallpaper.svg` | The drawing the background is rendered from. After changing it, render it again with `inkscape wallpaper.svg --export-type=png --export-filename=wallpaper.png`. |

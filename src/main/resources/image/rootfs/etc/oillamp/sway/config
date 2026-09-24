@@ -22,6 +22,20 @@ xwayland force
 # A border wide enough to grab with the mouse: a floating window resizes by dragging it.
 default_border normal 4
 default_floating_border normal 4
+
+# Window frames in the wallpaper's colours: slate for everything at rest, and the lamp's brass
+# only around the window that has the keyboard, so it is obvious where typing goes. The terminal
+# (/etc/xdg/foot/foot.ini) uses the same palette.
+#   slate #1f2430, frame #2a303c, focused title #343b4a, muted text #8e97ab, brass #c8913f
+font pango:DejaVu Sans 10
+titlebar_padding 10 4
+#                       border  title   text    split   frame
+client.focused          #c8913f #343b4a #f3dfb0 #f3cf7e #c8913f
+client.focused_inactive #2a303c #2a303c #8e97ab #2a303c #2a303c
+client.unfocused        #2a303c #252a35 #8e97ab #2a303c #2a303c
+client.urgent           #e0703a #e0703a #1f2430 #e0703a #e0703a
+client.placeholder      #1f2430 #1f2430 #8e97ab #1f2430 #1f2430
+client.background       #1f2430
 # Super+drag moves any floating window, Super+right-drag resizes it. A mouse binding, not a command.
 floating_modifier Mod4 normal
 focus_follows_mouse no
