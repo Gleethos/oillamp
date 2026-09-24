@@ -36,7 +36,14 @@ final class Invocation {
         boolean openPending = false;
         boolean prune = false;
         List<String> positional = new ArrayList<>();
+        // Every option other than the four that apply to all commands, as it is spelt in usage(),
+        // so that a command given one it does not take can refuse it.
+        List<String> commandOptions = new ArrayList<>();
         for (String argument : arguments) {
+            String option = argument.startsWith("--open=") ? "--open"
+                          : argument.equals("-y") ? "--yes" : argument;
+            if (OPTIONS_OF.values().stream().anyMatch(taken -> taken.contains(option)))
+                commandOptions.add(option);
             switch (argument) {
                 case "--verbose", "-v" -> options = options.withVerbose(true);
                 case "--debug"         -> options = options.withDebug(true).withVerbose(true);
@@ -86,6 +93,23 @@ final class Invocation {
 
         String command = positional.get(0);
         List<String> rest = positional.subList(1, positional.size());
+
+        if (OPTIONS_OF.containsKey(command)) {
+            Optional<String> misplaced = commandOptions.stream()
+                    .filter(option -> !OPTIONS_OF.get(command).contains(option)).findFirst();
+            if (misplaced.isPresent())
+                return misused(console, sink, version, command,
+                        "`oillamp " + command + "` does not take " + misplaced.get());
+            int allowed = MOST_ARGUMENTS.getOrDefault(command, Integer.MAX_VALUE);
+            if (rest.size() > allowed && allowed == 0)
+                return misused(console, sink, version, command,
+                        "`oillamp " + command + "` takes no arguments, but was given "
+                      + String.join(" ", rest));
+            if (rest.size() > allowed)
+                return misused(console, sink, version, command,
+                        "`oillamp " + command + "` was given more than it takes, starting with '"
+                      + rest.get(allowed) + "'");
+        }
 
         if (command.equals("version")) {
             sink.accept(new LampEvent.Answer(
@@ -212,6 +236,45 @@ final class Invocation {
                 yield ExitStatus.USAGE;
             }
         };
+    }
+
+    /// The options each command takes, besides `--verbose`, `--debug` and `--no-color`, which
+    /// every command takes. `doctor` and `config` change nothing anyway, so they accept the two
+    /// options that promise that.
+    private static final java.util.Map<String, java.util.Set<String>> OPTIONS_OF = java.util.Map.ofEntries(
+            java.util.Map.entry("at",         java.util.Set.of("--init", "--dry-run", "--no-install", "--no-viewer")),
+            java.util.Map.entry("view",       java.util.Set.of("--view-only")),
+            java.util.Map.entry("remove",     java.util.Set.of("--yes", "--dry-run")),
+            java.util.Map.entry("recordings", java.util.Set.of("--open", "--prune", "--dry-run")),
+            java.util.Map.entry("doctor",     java.util.Set.of("--dry-run", "--no-install")),
+            java.util.Map.entry("config",     java.util.Set.of("--dry-run", "--no-install")),
+            java.util.Map.entry("shell",      java.util.Set.of()),
+            java.util.Map.entry("stop",       java.util.Set.of()),
+            java.util.Map.entry("status",     java.util.Set.of()),
+            java.util.Map.entry("list",       java.util.Set.of()),
+            java.util.Map.entry("completion", java.util.Set.of()),
+            java.util.Map.entry("version",    java.util.Set.of()),
+            java.util.Map.entry("help",       java.util.Set.of()),
+            java.util.Map.entry("about",      java.util.Set.of()),
+            java.util.Map.entry("guide",      java.util.Set.of()));
+
+    /// How many arguments may follow the command, for those not checked by their own case below.
+    private static final java.util.Map<String, Integer> MOST_ARGUMENTS = java.util.Map.of(
+            "config", 2, "completion", 1,
+            "list", 0, "version", 0, "help", 0, "about", 0, "guide", 0);
+
+    private static ExitStatus misused(ConsoleRenderer console, Consumer<LampEvent> sink,
+                                      String version, String command, String what) {
+        console.banner(version, "");
+        sink.accept(new LampEvent.Failure(Problems.usage(what, usageOf(command))));
+        return ExitStatus.USAGE;
+    }
+
+    /// The line of [#usage] that describes `command`, such as `oillamp stop <dir>`.
+    static String usageOf(String command) {
+        return usage().lines().map(String::strip)
+                .filter(line -> line.equals(command) || line.startsWith(command + " "))
+                .findFirst().map(line -> "oillamp " + line).orElse(usage());
     }
 
     private static ExitStatus missingDirectory(ConsoleRenderer console, Consumer<LampEvent> sink,

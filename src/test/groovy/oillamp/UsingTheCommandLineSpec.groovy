@@ -56,6 +56,52 @@ class UsingTheCommandLineSpec extends Specification {
             option.errors().first().whatHappened().contains('--fix-everything')
     }
 
+    def 'An option or argument the command does not take is refused, not ignored: oillamp #line'() {
+        reportInfo """
+            Each option means something to only some commands, and the others used to ignore
+            it. That is worst when the option is a safety: `oillamp stop <dir> --dry-run` stopped
+            the session, because only `at`, `remove` and `recordings` know what a dry run is.
+            It also hides a misunderstanding, as with `oillamp at <dir> --view-only`, which opened
+            an ordinary viewer. So an option the command does not take, or an argument too many,
+            is a usage error, and the message shows what the command does take.
+        """
+        given:
+            var lamp = sandbox.lampPath().toString()
+
+        when:
+            var outcome = sandbox.oillamp.run(*line.replace('LAMP', lamp).split(' '))
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().first().whatHappened().contains(complaint)
+            outcome.console().contains(usage)
+
+        where:
+            line                               | complaint                        | usage
+            'stop LAMP --dry-run'              | "`oillamp stop` does not take --dry-run" | 'oillamp stop <dir>'
+            'status LAMP --yes'                | "`oillamp status` does not take --yes"   | 'oillamp status <dir>'
+            'at LAMP --view-only'              | "`oillamp at` does not take --view-only" | 'oillamp at <dir> [--init]'
+            'view LAMP --prune'                | "`oillamp view` does not take --prune"   | 'oillamp view <dir> [--view-only]'
+            'list --open 20260101-120000'      | "`oillamp list` does not take --open"    | 'oillamp list'
+            'list LAMP'                        | "`oillamp list` takes no arguments"      | 'oillamp list'
+            'version extra'                    | "`oillamp version` takes no arguments"   | 'oillamp version'
+            'config LAMP path extra'           | "'extra'"                                | 'oillamp config <dir> (check | show-effective | path)'
+            'completion bash zsh'              | "'zsh'"                                  | 'oillamp completion bash'
+    }
+
+    def 'The options a command does take are still accepted: oillamp #line'() {
+        when:
+            var outcome = sandbox.oillamp.run(*line.replace('LAMP', sandbox.lampPath().toString()).split(' '))
+
+        then:
+            outcome.status() != ExitStatus.USAGE || !outcome.errors().any { it.whatHappened().contains('does not take') }
+
+        where:
+            line << ['--verbose doctor', 'doctor --dry-run', 'at LAMP --dry-run --init --no-viewer --no-install',
+                     'remove LAMP --dry-run', 'recordings LAMP --prune --dry-run', '--no-color list',
+                     'config LAMP check', 'completion bash']
+    }
+
     def 'Asking to set up a lamp without saying where is a usage error, not a crash'() {
         when:
             var outcome = sandbox.oillamp.run('at')
@@ -234,6 +280,13 @@ class UsingTheCommandLineSpec extends Specification {
             complete(script, 'oillamp', 'at', '/x', '--dry').containsAll(['--dry-run'])
             !complete(script, 'oillamp', 'config', '').contains('check')
             complete(script, 'oillamp', 'config', '/x', '').containsAll(['check', 'show-effective', 'path'])
+
+        and: 'it offers each command only the options that command takes'
+            complete(script, 'oillamp', 'stop', '/x', '--d') == ['--debug']
+            complete(script, 'oillamp', 'view', '/x', '--v').containsAll(['--view-only', '--verbose'])
+            !complete(script, 'oillamp', 'at', '/x', '--').contains('--yes')
+            complete(script, 'oillamp', 'completion', '') == ['bash']
+            complete(script, 'oillamp', 'list', '').isEmpty()
     }
 
     /** What bash offers for the last word, using the completion script oillamp printed. */

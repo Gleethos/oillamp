@@ -129,8 +129,9 @@ final class Templates {
     /// Printed rather than installed, because oillamp itself is never installed anywhere. The user
     /// decides whether to evaluate it in one shell or add it to their startup file.
     ///
-    /// After the command name it completes directories, because every command that takes an
-    /// argument takes a lamp directory.
+    /// After the command name it completes directories, because every command that takes a
+    /// directory argument takes a lamp directory. Options are offered only to the commands that
+    /// take them, the same ones [Invocation] accepts.
     public static String bashCompletion() {
         return """
             # oillamp bash completion.
@@ -149,24 +150,33 @@ final class Templates {
                     return
                 fi
 
+                # The first word that is a command is the command; the words after it are lamps.
+                local command="" word
+                for word in "${COMP_WORDS[@]:1:COMP_CWORD-1}"; do
+                    case " $commands " in *" $word "*) command=$word; break ;; esac
+                done
+
+                # Only the options this command takes, as `oillamp help` lists them.
                 case "$current" in
                     -*)
-                        COMPREPLY=($(compgen -W '--verbose --debug --no-color --dry-run \
-                            --no-install --init --no-viewer --view-only --yes --open --prune' \
-                            -- "$current"))
+                        local options='--verbose --debug --no-color'
+                        case "$command" in
+                            at)            options="$options --init --dry-run --no-install --no-viewer" ;;
+                            view)          options="$options --view-only" ;;
+                            remove)        options="$options --yes --dry-run" ;;
+                            recordings)    options="$options --open --prune --dry-run" ;;
+                            doctor|config) options="$options --dry-run --no-install" ;;
+                        esac
+                        COMPREPLY=($(compgen -W "$options" -- "$current"))
                         return ;;
                 esac
 
-                # The first word is the command; everything after it is a lamp directory.
-                local seen=0 word
-                for word in "${COMP_WORDS[@]:1:COMP_CWORD-1}"; do
-                    case " $commands " in *" $word "*) seen=1; break ;; esac
-                done
-                if [ "$seen" = 0 ]; then
-                    COMPREPLY=($(compgen -W "$commands" -- "$current"))
-                else
-                    COMPREPLY=($(compgen -d -- "$current"))
-                fi
+                case "$command" in
+                    "")                              COMPREPLY=($(compgen -W "$commands" -- "$current")) ;;
+                    completion)                      COMPREPLY=($(compgen -W bash -- "$current")) ;;
+                    list|version|help|about|guide)   COMPREPLY=() ;;
+                    *)                               COMPREPLY=($(compgen -d -- "$current")) ;;
+                esac
             }
             complete -F _oillamp oillamp
             """;
