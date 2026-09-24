@@ -524,6 +524,7 @@ final class SimulatedMachine implements Machine {
         }
         public void groups(Tuple<String> groups) { this.groups = groups; }
         public void runtimeDirectory(Path path) { environment.put("XDG_RUNTIME_DIR", path.toString()); }
+        public void environmentVariable(String name, String value) { environment.put(name, value); }
         public void processors(int count) { this.processors = count; }
         public void session(String waylandDisplay, String x11Display, String desktop) {
             environment.put("WAYLAND_DISPLAY", waylandDisplay);

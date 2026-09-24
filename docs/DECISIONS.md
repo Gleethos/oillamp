@@ -327,6 +327,16 @@ into `/usr/local/share/oillamp/`, and copied into the agent's home at session st
 SDKMAN must be writable. A failure to install one of them only prints a warning: the desktop, shell
 and SSH are the product, the harnesses are a convenience. *(added during implementation)*
 
+### Eden AI is used only through its EU endpoint
+
+Both harnesses are set up to reach Eden AI only through `https://api.eu.edenai.run/v3`, and to offer
+only the models served there. The shipped network policy also refuses the global endpoint,
+`api.edenai.run`. That rule is an ordinary one in `oillamp.toml`, so a lamp can remove it.
+
+*Why:* the team requires its model traffic to stay in the EU. Setting only the environment would
+depend on every tool honouring it, and on the host not overriding it; the rule makes the requirement
+hold for anything in the sandbox, and a refused request names the rule. *(added on 2026-09-24)*
+
 ### One environment for every kind of shell
 
 oillamp writes `~/.bashrc` (once) that reads `/etc/profile.d/oillamp.sh`.

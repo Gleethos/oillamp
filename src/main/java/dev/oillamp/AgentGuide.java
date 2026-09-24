@@ -173,11 +173,26 @@ final class AgentGuide {
                .append("you log in:\n\n");
             for (String tool : config.agentTools().install())
                 out.append("- `").append(tool).append("`\n");
-            out.append("\n`pi` has the Eden AI provider extension already installed — it is listed in\n")
-               .append("`~/.pi/agent/settings.json` with its clone under `~/.pi/agent/git/`. It needs\n")
-               .append("`EDENAI_API_KEY`, which is set here only if the human had it set on the host.\n")
-               .append("`pi install` works through the proxy, and what it writes lands in your home,\n")
-               .append("so it lasts beyond this session.\n\n");
+            out.append("\n`pi` and `opencode` can use Eden AI as their model provider. It needs\n")
+               .append("`EDENAI_API_KEY`, which is set here only if the human had it set on the host.\n\n")
+               .append("Eden AI is used **only through its EU endpoint**, `https://api.eu.edenai.run/v3`,\n")
+               .append("and only models served in the EU are offered. `EDENAI_BASE_URL` and\n")
+               .append("`EDENAI_EU_ONLY` are set for that; do not change them.")
+               .append(refusesEdenAiOutsideTheEu(config)
+                       ? " The global endpoint,\n`api.edenai.run`, is refused by the network policy."
+                       : "")
+               .append(" If a model you were asked\nto use is not offered, say so rather than looking ")
+               .append("for a way around this.\n\n");
+            if (config.agentTools().install().contains("pi"))
+                out.append("- `pi` has the Eden AI provider extension already installed — it is listed in\n")
+               .append("  `~/.pi/agent/settings.json` with its clone under `~/.pi/agent/git/`.\n")
+               .append("  `pi install` works through the proxy, and what it writes lands in your home,\n")
+               .append("  so it lasts beyond this session.\n");
+            if (config.agentTools().install().contains("opencode"))
+                out.append("- `opencode` reads its Eden AI settings from the file `OPENCODE_CONFIG` names.\n")
+               .append("  Its list of Eden AI models is the one the EU endpoint offered when this\n")
+               .append("  sandbox's image was built.\n");
+            out.append('\n');
         }
 
         config.llmForward().ifPresent(forward -> out
@@ -206,5 +221,15 @@ final class AgentGuide {
             rest.
             """);
         return out.toString();
+    }
+
+    /// Whether the lamp's network policy refuses Eden AI's global endpoint. It does by default, but
+    /// a lamp's own list of rules replaces the default one, so the guide only claims it when true.
+    private static boolean refusesEdenAiOutsideTheEu(LampConfig config) {
+        for (Rule rule : config.network().rules())
+            if (rule.action() == Decision.DENY && rule.cidrs().isEmpty() && rule.ports().isEmpty())
+                for (HostPattern host : rule.hosts())
+                    if (host.matches("api.edenai.run")) return true;
+        return false;
     }
 }

@@ -208,9 +208,9 @@ class ConfiguringALampSpec extends Specification {
             outcome.console().contains('clipboard to-agent')
             outcome.console().contains('memory 16g')
 
-        and: 'including the shipped policy: the open web, minus one rule that blocks the intranet'
+        and: 'including the shipped policy: the open web, minus Eden AI outside the EU and the intranet'
             outcome.console().contains('default allow')
-            outcome.console().contains('1 rule')
+            outcome.console().contains('2 rule')
 
         and: 'the file itself is not readable by anyone but the user, since it is the sandbox policy'
             java.nio.file.attribute.PosixFilePermissions.toString(
@@ -367,6 +367,61 @@ class ConfiguringALampSpec extends Specification {
             checked.status() == ExitStatus.USAGE
             checked.reported('OIL-CONFIG-004')
             checked.console().contains('"floating" or "tiling"')
+    }
+
+    def 'Eden AI is only reached through its EU endpoint, whatever the host says'() {
+        reportInfo """
+            The team's model traffic has to stay in the EU. Inside the sandbox, pi and opencode
+            are set up to use Eden AI's EU endpoint and nothing else. From the outside, two
+            things could undo that: the user's own `EDENAI_BASE_URL`, if it were copied in, and a
+            tool that ignores those settings. So the endpoint variables are never copied from the
+            host, and the shipped network policy refuses the global endpoint by name.
+
+            The API key is still copied, since the harnesses cannot work without it.
+        """
+        given: 'a user whose own environment points Eden AI at its global endpoint'
+            sandbox.machine {
+                it.environmentVariable('EDENAI_API_KEY', 'a-key')
+                  .environmentVariable('EDENAI_BASE_URL', 'https://api.edenai.run/v3')
+                  .environmentVariable('EDENAI_EU_ONLY', '')
+            }
+            var lamp = sandbox.lampPath()
+
+        when:
+            sandbox.oillamp.run('at', lamp.toString())
+            var runtimeEnv = Files.readString(lamp.resolve('.oillamp/session/runtime.env'))
+            var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
+                                            .findFirst().orElseThrow()
+            var guide = Files.readString(agentHome.resolve('AGENTS.md'))
+
+        then: 'the key reaches the sandbox, the endpoint does not'
+            runtimeEnv.contains("EDENAI_API_KEY='a-key'")
+            !runtimeEnv.contains('EDENAI_BASE_URL')
+
+        and: 'the new lamp\'s policy refuses the global endpoint, in a rule the user can see and remove'
+            var toml = Files.readString(lamp.resolve('oillamp.toml'))
+            toml.contains('label  = "Eden AI only through its EU endpoint"')
+            toml.contains('hosts  = ["api.edenai.run"]')
+
+        and: 'the agent is told, so it does not go looking for a way around it'
+            guide.contains('only through its EU endpoint')
+            guide.contains('`api.edenai.run`, is refused by the network policy')
+
+        when: 'a lamp lists its own rules and leaves that one out'
+            sandbox.givenConfig(lamp, '''
+                schema_version = 1
+
+                [[network.rules]]
+                label  = "block private, internal and loopback ranges"
+                action = "deny"
+                cidrs  = ["10.0.0.0/8"]
+            '''.stripIndent())
+            sandbox.oillamp.run('at', lamp.toString())
+            guide = Files.readString(agentHome.resolve('AGENTS.md'))
+
+        then: 'the guide no longer claims the policy refuses it'
+            guide.contains('only through its EU endpoint')
+            !guide.contains('is refused by the network policy')
     }
 
     def 'Checking a configuration judges the same settings a session would use'() {

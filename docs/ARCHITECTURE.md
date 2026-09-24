@@ -425,6 +425,7 @@ The image is built from `src/main/resources/image/`:
 | `build/install-node.sh` | Installs Node.js from NodeSource (Debian's version is too old for the agent harnesses). |
 | `build/install-sdkman.sh` | Installs SDKMAN into `/usr/local/share/oillamp/sdkman`, with prompts turned off. |
 | `build/install-agent-tools.sh` | Installs `opencode` and `pi` with npm, and pi's Eden AI extension into `/usr/local/share/oillamp/pi`. Never fails the build. |
+| `build/write-opencode-config.mjs` | Writes opencode's configuration, `/usr/local/share/oillamp/opencode/opencode.json`: Eden AI through its EU endpoint, with the models that endpoint lists. Run by `install-agent-tools.sh`. |
 | `rootfs/usr/local/lib/oillamp/entrypoint` | The container's first process. Described below. |
 | `rootfs/usr/local/bin/lamp` | The desktop helper the agent uses: `lamp screenshot`, `click`, `type`, … |
 | `rootfs/etc/profile.d/oillamp.sh` | The agent's shell environment: proxy variables, display, library paths, SDKMAN, prompt, banner. |
@@ -739,10 +740,31 @@ Deciding per address, not per name, is what makes the default safe. Anyone can p
 at `127.0.0.1` or a private address. Because the shipped deny rule lists address ranges, such a
 name is refused by where it points.
 
-The shipped default is `default = "allow"` with one rule, *"block private, internal and loopback
-ranges"*, that denies `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` (carrier-
+The shipped default is `default = "allow"` with two deny rules. The first, *"Eden AI only through
+its EU endpoint"*, denies the host `api.edenai.run` (see [Eden AI, only in the
+EU](#eden-ai-only-in-the-eu)). The second, *"block private, internal and loopback ranges"*, denies `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` (carrier-
 grade NAT, often used by VPNs), `127.0.0.0/8`, `169.254.0.0/16`, `0.0.0.0/8`, `::1/128`,
 `fc00::/7` and `fe80::/10`. To allow an internal service, add an `allow` rule *above* it.
+
+### Eden AI, only in the EU
+
+Both harnesses reach Eden AI only through its EU endpoint, `https://api.eu.edenai.run/v3`, which
+only serves models hosted in the EU. Three things make that so:
+
+- **pi.** Its Eden AI extension reads `EDENAI_BASE_URL` and `EDENAI_EU_ONLY`.
+  `/etc/profile.d/oillamp.sh` sets them in every shell, after reading `runtime.env`, and oillamp
+  never copies them from the host. So a host that points `EDENAI_BASE_URL` elsewhere changes
+  nothing in the sandbox. With `EDENAI_EU_ONLY` set, pi offers only the EU models.
+- **opencode.** It knows Eden AI already, but only the global endpoint, and it offers a model list
+  from its own catalog, most of which the EU endpoint does not serve. While the image is built,
+  `build/write-opencode-config.mjs` writes `/usr/local/share/oillamp/opencode/opencode.json`. That
+  file sets the EU endpoint and replaces the model list with the one the EU endpoint gives.
+  `OPENCODE_CONFIG` points opencode at it. The list is as fresh as the image; if it could not be
+  fetched during the build, opencode still uses the EU endpoint and keeps its own list.
+- **The network policy.** The shipped rule *"Eden AI only through its EU endpoint"* refuses
+  `api.edenai.run`, for any tool that ignores those settings. It is an ordinary rule: removing it
+  from `oillamp.toml` allows the global endpoint again. A lamp that lists its own rules and does
+  not include it has no such rule, as for any other shipped rule.
 
 ### Forwards
 
@@ -935,7 +957,7 @@ STATUS.md.
 | `network.default` | `"allow"` | decision when no rule matches | yes |
 | `network.log_allowed` | true | write allowed connections to the network log | yes |
 | `network.console_denied` | true | print denials in your terminal | yes |
-| `[[network.rules]]` | one deny rule | see [The policy](#the-policy-policyjava) | yes |
+| `[[network.rules]]` | two deny rules | see [The policy](#the-policy-policyjava) | yes |
 | `[[network.forwards]]` | none | see [Forwards](#forwards) | yes |
 | `llm.forward` | `""` | name of a forward; sets `OILLAMP_LLM_BASE_URL`, `OILLAMP_LLM_MODELS`, `OILLAMP_LLM_PROVIDER` | yes |
 | `llm.base_path` | `"/v1"` | appended to the forward's URL | yes |
@@ -957,9 +979,10 @@ STATUS.md.
 prints the file's path. `check` and `show-effective` merge the global file and the lamp's, as
 `oillamp at` does (`LampPhase.configurationFiles`).
 
-Environment variables `EDENAI_API_KEY`, `EDENAI_BASE_URL`, `EDENAI_EU_ONLY` and
-`EDENAI_MAX_TOKENS` are copied from your environment into the sandbox when set
-(`RuntimeEnv.INHERITED_FROM_HOST`). Their values are never logged.
+Environment variables `EDENAI_API_KEY` and `EDENAI_MAX_TOKENS` are copied from your environment
+into the sandbox when set (`RuntimeEnv.INHERITED_FROM_HOST`). Their values are never logged.
+`EDENAI_BASE_URL` and `EDENAI_EU_ONLY` are not copied: the sandbox sets them itself, so that Eden
+AI is only used through its EU endpoint (see [Eden AI, only in the EU](#eden-ai-only-in-the-eu)).
 
 ### `runtime.env`
 
@@ -971,8 +994,8 @@ sorted so the file is stable.
 Contents: `OILLAMP_SESSION`, `OILLAMP_AGENT_ID`, `OILLAMP_LAMP_NAME`,
 `OILLAMP_DISPLAY_WIDTH/HEIGHT/SCALE`, `OILLAMP_RENDERER`, `OILLAMP_VNC_MAX_FPS`,
 `OILLAMP_RECORDING_ENABLED/CODEC/CRF/MAX_FPS`, `OILLAMP_PROXY_PORT`, `OILLAMP_FORWARDS`
-(`name:port name:port`), the LLM variables when configured, and the inherited `EDENAI_*`
-variables.
+(`name:port name:port`), the LLM variables when configured, and `EDENAI_API_KEY` and
+`EDENAI_MAX_TOKENS` when they are set on the host.
 
 ---
 

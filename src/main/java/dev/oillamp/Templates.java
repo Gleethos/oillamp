@@ -64,12 +64,18 @@ final class Templates {
             log_allowed    = true
             console_denied = true
 
-            # Rules are evaluated top to bottom; the first match wins. Put allow-exceptions ABOVE the deny rule.
+            # Rules are evaluated top to bottom; the first match wins. Put allow-exceptions ABOVE the deny rules.
             # [[network.rules]]
             # label  = "internal maven mirror"
             # action = "allow"
             # hosts  = ["nexus.corp.example.com"]
             # ports  = [443]
+
+            # Eden AI is only used through its EU endpoint, api.eu.edenai.run. Remove this rule to allow the global one.
+            [[network.rules]]
+            label  = "Eden AI only through its EU endpoint"
+            action = "deny"
+            hosts  = ["api.edenai.run"]
 
             [[network.rules]]
             label  = "block private, internal and loopback ranges"

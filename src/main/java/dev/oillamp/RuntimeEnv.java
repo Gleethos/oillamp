@@ -41,9 +41,10 @@ final class RuntimeEnv {
     ///
     /// The agent can read everything in `runtime.env`; that is the point, since its harness
     /// needs these keys. It is also why this is a short, explicit list rather than the whole host
-    /// environment.
+    /// environment. `EDENAI_BASE_URL` and `EDENAI_EU_ONLY` are not on it: the sandbox sets those
+    /// itself, so that Eden AI is only ever reached through its EU endpoint.
     public static final Tuple<String> INHERITED_FROM_HOST = Tuple.of(String.class,
-            "EDENAI_API_KEY", "EDENAI_BASE_URL", "EDENAI_EU_ONLY", "EDENAI_MAX_TOKENS");
+            "EDENAI_API_KEY", "EDENAI_MAX_TOKENS");
 
     /// The variables for this session.
     ///

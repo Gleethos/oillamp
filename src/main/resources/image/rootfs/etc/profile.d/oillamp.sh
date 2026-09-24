@@ -44,6 +44,16 @@ export http_proxy=$HTTP_PROXY https_proxy=$HTTPS_PROXY
 export NO_PROXY=localhost,127.0.0.1,::1 no_proxy=localhost,127.0.0.1,::1
 export NODE_USE_ENV_PROXY=1
 
+# Eden AI, only through its EU endpoint. pi's Eden AI extension reads these two; EU_ONLY also has
+# it offer only the models served in the EU. opencode reads its Eden AI endpoint and model list
+# from the file OPENCODE_CONFIG names, written when the image was built. Set after runtime.env,
+# and never copied from the host, so a host that points EDENAI_BASE_URL elsewhere changes nothing
+# here. The network policy's rule "Eden AI only through its EU endpoint" refuses the global
+# endpoint as well, for anything that ignores these settings.
+export EDENAI_BASE_URL=https://api.eu.edenai.run/v3 EDENAI_EU_ONLY=1
+[ -r /usr/local/share/oillamp/opencode/opencode.json ] \
+    && export OPENCODE_CONFIG=/usr/local/share/oillamp/opencode/opencode.json
+
 # ~/libs goes on LD_LIBRARY_PATH so that System.loadLibrary finds what the agent put there, with
 # no extra flags, as the agent guide promises. Java builds java.library.path from LD_LIBRARY_PATH
 # followed by the system directories. Do not set -Djava.library.path as well: it would replace

@@ -288,6 +288,12 @@ public interface Machine {
             return this;
         }
 
+        /// An environment variable set in the user's own environment, where oillamp starts.
+        public Simulation environmentVariable(String name, String value) {
+            builder.environmentVariable(name, value);
+            return this;
+        }
+
         public Simulation processors(int count) {
             builder.processors(count);
             return this;

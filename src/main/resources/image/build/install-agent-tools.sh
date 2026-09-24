@@ -18,6 +18,10 @@ PI_DIR=/usr/local/share/oillamp/pi
 # also works inside the sandbox, through the egress proxy.)
 PI_EXTENSIONS_DEFAULT="git:github.com/edenai/pi-edenai"
 
+# opencode's configuration, read through OPENCODE_CONFIG (set in /etc/profile.d/oillamp.sh). It
+# is kept out of the agent's home for the same reason as pi's directory, and is read in place.
+OPENCODE_CONFIG_FILE=/usr/local/share/oillamp/opencode/opencode.json
+
 specifier_for() {
     case "$1" in
         # Verified against the registry: `pi` is the binary, the package is scoped.
@@ -55,11 +59,23 @@ install_pi_extensions() {
     chmod -R a+rX "$PI_DIR" 2>/dev/null || true
 }
 
+# Both harnesses use Eden AI only through its EU endpoint. pi's extension is told so by the
+# environment (/etc/profile.d/oillamp.sh); opencode needs a configuration file.
+write_opencode_config() {
+    command -v opencode >/dev/null 2>&1 || { echo "opencode is not installed; no configuration to write"; return 0; }
+    if node "$(dirname "$0")/write-opencode-config.mjs" "$OPENCODE_CONFIG_FILE"; then
+        chmod -R a+rX "$(dirname "$OPENCODE_CONFIG_FILE")" 2>/dev/null || true
+    else
+        echo "WARNING: could not configure opencode for Eden AI's EU endpoint — opencode works without it" >&2
+    fi
+}
+
 main() {
     [ $# -gt 0 ] || { echo "no agent tools requested"; return 0; }
     install_tools "$@"
     # shellcheck disable=SC2086
     install_pi_extensions ${PI_EXTENSIONS:-$PI_EXTENSIONS_DEFAULT}
+    write_opencode_config
 }
 
 # Never fatal: `|| true` at the top level, so the layer that runs this always succeeds.

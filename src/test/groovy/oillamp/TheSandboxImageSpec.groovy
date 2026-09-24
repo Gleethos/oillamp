@@ -284,6 +284,42 @@ class TheSandboxImageSpec extends Specification {
             entrypoint.contains('seed_pi_agent_dir || true')
     }
 
+    def 'both harnesses are sent to Eden AI\'s EU endpoint, and offered only its models'() {
+        reportInfo """
+            pi's Eden AI extension reads its endpoint from EDENAI_BASE_URL and, with
+            EDENAI_EU_ONLY, offers only the models served in the EU. The profile sets both after
+            reading runtime.env, so nothing from the host can change them.
+
+            opencode has Eden AI built in, but pointed at the global endpoint and with a model
+            list mostly made of models the EU endpoint does not serve. The build writes a
+            configuration file that changes both, and the profile names it in OPENCODE_CONFIG.
+            That file is written from the EU endpoint's own model list, and only EU models are
+            kept from it.
+        """
+        when:
+            var profile = Files.readString(IMAGE.resolve('rootfs/etc/profile.d/oillamp.sh'))
+            var installer = Files.readString(IMAGE.resolve('build/install-agent-tools.sh'))
+            var writer = Files.readString(IMAGE.resolve('build/write-opencode-config.mjs'))
+
+        then: 'pi is told the EU endpoint, after the session\'s own variables are read'
+            profile.contains('export EDENAI_BASE_URL=https://api.eu.edenai.run/v3 EDENAI_EU_ONLY=1')
+            profile.indexOf('EDENAI_BASE_URL=') > profile.indexOf('runtime.env && set +a')
+
+        and: 'opencode is given its configuration, which the build writes'
+            profile.contains('export OPENCODE_CONFIG=/usr/local/share/oillamp/opencode/opencode.json')
+            installer.contains('OPENCODE_CONFIG_FILE=/usr/local/share/oillamp/opencode/opencode.json')
+            installer.contains('write-opencode-config.mjs')
+
+        and: 'that configuration uses the EU endpoint and keeps only EU models'
+            writer.contains('const EU_BASE_URL = "https://api.eu.edenai.run/v3"')
+            writer.contains('baseURL: EU_BASE_URL')
+            writer.contains('region?.code?.toLowerCase() === "eu"')
+            writer.contains('provider.whitelist')
+
+        and: 'and if it cannot be written, the build goes on'
+            installer.contains('could not configure opencode')
+    }
+
     def 'sdkman is installed where it can be written to, which is not where it is built'() {
         reportInfo """
             SDKMAN is how a JVM project gets the JDK, Groovy or Gradle it actually asks for, and

@@ -9,10 +9,23 @@ import sprouts.Tuple;
 record NetworkPolicy(Decision defaultDecision, Tuple<Rule> rules,
                             boolean logAllowed, boolean consoleDenied) {
 
-    /// The default policy: allow the internet, deny private networks and the host's own loopback.
-    /// Users add allow rules for internal services above the deny rule.
+    /// The default policy: allow the internet, except Eden AI's global endpoint, private networks
+    /// and the host's own loopback. Users add allow rules for internal services above the deny
+    /// rules.
     public static NetworkPolicy shippedDefault() {
-        return new NetworkPolicy(Decision.ALLOW, Tuple.of(Rule.class, blockPrivateRanges()), true, true);
+        return new NetworkPolicy(Decision.ALLOW,
+                Tuple.of(Rule.class, edenAiOnlyInTheEu(), blockPrivateRanges()), true, true);
+    }
+
+    public static final String EDEN_AI_RULE_LABEL = "Eden AI only through its EU endpoint";
+
+    /// Refuses Eden AI's global endpoint, so that Eden AI is only reached through
+    /// `api.eu.edenai.run`. The harnesses are set up to use that endpoint already; this rule
+    /// covers anything that ignores their settings, and says why in the refusal.
+    public static Rule edenAiOnlyInTheEu() {
+        return new Rule(EDEN_AI_RULE_LABEL, Decision.DENY,
+                Tuple.of(HostPattern.class, HostPattern.parse("api.edenai.run")),
+                Tuple.of(PortRange.class), Tuple.of(Cidr.class));
     }
 
     public static final String DEFAULT_DENY_RULE_LABEL = "block private, internal and loopback ranges";

@@ -164,6 +164,7 @@ design prepared was needed.
 | A `.mkv` from wf-recorder is playable after the container stops | confirmed |
 | Passing the GPU with `--device` and `--group-add keep-groups` works | confirmed (needs crun and the `render` group) |
 | The npm package names for `pi` and `opencode`, and pi's extension install | confirmed: `@earendil-works/pi-coding-agent`, `opencode-ai`; the Eden AI extension installs only via `git:`, not `npm:` |
+| pi and opencode reach Eden AI only through its EU endpoint | confirmed in a real sandbox, with the host pointing `EDENAI_BASE_URL` at the global endpoint: both answered through `api.eu.edenai.run`, offered its 270 models, and the proxy refused `api.edenai.run` |
 | Terminal argument templates | confirmed only for the terminals on the development machine |
 | wayvnc can set the viewer's window title | not checked; cosmetic |
 
