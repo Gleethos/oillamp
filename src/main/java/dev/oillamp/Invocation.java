@@ -60,8 +60,9 @@ final class Invocation {
                         sink.accept(new LampEvent.Failure(Problems.usage(
                                 "'" + argument + "' is not an option oillamp knows", usage())));
                         return ExitStatus.USAGE;
+                    } else {
+                        positional.add(argument);
                     }
-                    positional.add(argument);
                 }
             }
         }
@@ -101,11 +102,13 @@ final class Invocation {
 
         return switch (command) {
             case "doctor" -> {
+                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "doctor", rest);
                 console.banner(version, rest.isEmpty() ? "" : rest.get(0));
                 yield commands.doctor(rest.isEmpty() ? Optional.empty() : Optional.of(Path.of(rest.get(0))));
             }
             case "at" -> {
                 if (rest.isEmpty()) yield missingDirectory(console, sink, version, "at");
+                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "at", rest);
                 console.banner(version, rest.get(0));
                 yield commands.at(Path.of(rest.get(0)));
             }
@@ -132,31 +135,40 @@ final class Invocation {
             // sets anything up.
             case "view" -> {
                 if (rest.isEmpty()) yield missingDirectory(console, sink, version, "view");
+                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "view", rest);
                 yield commands.view(Path.of(rest.get(0)), viewOnly);
             }
             case "shell" -> {
                 if (rest.isEmpty()) yield missingDirectory(console, sink, version, "shell");
+                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "shell", rest);
                 yield commands.shell(Path.of(rest.get(0)));
             }
             case "stop" -> {
                 if (rest.isEmpty()) yield missingDirectory(console, sink, version, "stop");
+                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "stop", rest);
                 yield commands.stop(Path.of(rest.get(0)));
             }
             case "status" -> {
                 if (rest.isEmpty()) yield missingDirectory(console, sink, version, "status");
+                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "status", rest);
                 yield commands.status(Path.of(rest.get(0)));
             }
             case "list" -> commands.list();
 
             // Not one of the four above: it talks to no session, and refuses if one answers.
+            // The one command that takes several lamps, since a pattern like `test*` is the
+            // natural way to clean up after experiments.
             case "remove" -> {
                 if (rest.isEmpty()) yield missingDirectory(console, sink, version, "remove");
-                console.banner(version, rest.get(0));
-                yield commands.remove(Path.of(rest.get(0)), confirmed);
+                console.banner(version, rest.size() == 1 ? rest.get(0) : rest.size() + " lamps");
+                Tuple<Path> lamps = Tuple.of(Path.class);
+                for (String lamp : rest) lamps = lamps.add(Path.of(lamp));
+                yield commands.remove(lamps, confirmed);
             }
 
             case "recordings" -> {
                 if (rest.isEmpty()) yield missingDirectory(console, sink, version, "recordings");
+                if (rest.size() > 1) yield oneLampOnly(console, sink, version, "recordings", rest);
                 yield commands.recordings(Path.of(rest.get(0)), open, prune);
             }
 
@@ -203,6 +215,19 @@ final class Invocation {
         return ExitStatus.USAGE;
     }
 
+    /// A command that works on one lamp was given several directories. Usually a shell pattern
+    /// such as `test*` expanded to more than one; acting on the first and ignoring the rest would
+    /// look as if it had done them all.
+    private static ExitStatus oneLampOnly(ConsoleRenderer console, Consumer<LampEvent> sink,
+                                          String version, String command, List<String> given) {
+        console.banner(version, "");
+        sink.accept(new LampEvent.Failure(Problems.usage(
+                "`oillamp " + command + "` works on one lamp, but was given " + given.size()
+              + " directories (" + String.join(", ", given) + "); run it once for each",
+                "oillamp " + command + " <dir>")));
+        return ExitStatus.USAGE;
+    }
+
     static String usage() {
         return """
             oillamp [--verbose] [--debug] [--no-color] <command>
@@ -219,10 +244,11 @@ final class Invocation {
                     What a running session is doing.
               list
                     Every oillamp sandbox running on this host.
-              remove <dir> --yes
-                    Delete a lamp: the agent's home, the state, the config. Without --yes it
-                    only says what would go. Needed because parts of a lamp belong to the
-                    sandbox's own users and `rm -rf` cannot remove them.
+              remove <dir>... --yes
+                    Delete one or more lamps: the agent's home, the state, the config. Without
+                    --yes it only says what would go. Every lamp is checked first; if any cannot
+                    be removed, none is. Needed because parts of a lamp belong to the sandbox's
+                    own users and `rm -rf` cannot remove them.
               recordings <dir> [--open <session>] [--prune]
                     List this lamp's screen recordings. --open plays one, --prune
                     applies the configured retention now instead of at the next start.

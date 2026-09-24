@@ -602,6 +602,16 @@ while a sandbox is running. It deletes only what oillamp created, so your own no
 `oillamp.toml` survive, unless removing oillamp's files leaves the directory empty, in which case
 the directory is removed too. It also works on a lamp you already tried to delete with `rm -rf`.
 
+It takes several lamps at once, so a pattern works:
+
+```sh
+oillamp remove ~/lamps/test* --yes
+```
+
+Every lamp is checked first. If any directory the pattern matched is not a lamp, or a lamp is still
+running, nothing is removed and oillamp says which one is the problem. The other commands work on
+one lamp each and refuse a list of them, rather than acting on the first and ignoring the rest.
+
 ### 6.5 What this does not protect against
 
 Knowing the limits is part of owning the tool.

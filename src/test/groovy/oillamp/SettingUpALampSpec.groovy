@@ -288,6 +288,71 @@ class SettingUpALampSpec extends Specification {
             !Files.exists(agentHome)
     }
 
+    def 'Several lamps are removed at once, and only if every one of them can be'() {
+        reportInfo """
+            Lamps made for experiments pile up, and the natural way to clean them up is a shell
+            pattern: `oillamp remove ~/lamps/test* --yes`. The shell expands that into several
+            directories. oillamp used to act on the first and ignore the rest without a word, so
+            the user had to run it again for each.
+
+            Now `remove` takes them all. A pattern may match more than was meant, so every
+            directory is checked before anything is deleted: if any is not a lamp, or is still
+            running, nothing is removed and each problem is named. Without --yes it lists what
+            would go for each lamp, and the command it suggests names all of them.
+        """
+        given: 'two lamps, and a directory beside them that the pattern also matches'
+            var first = sandbox.lampPath('test1')
+            var second = sandbox.lampPath('test2')
+            var notALamp = Files.createDirectories(sandbox.lampPath('test-notes'))
+            sandbox.oillamp.run('at', first.toString())
+            sandbox.oillamp.run('at', second.toString())
+
+        when: 'the pattern catches the directory that is not a lamp'
+            var refused = sandbox.oillamp.run('remove', first.toString(), notALamp.toString(),
+                                              second.toString(), '--yes')
+
+        then: 'nothing is removed, and the directory at fault is named'
+            refused.status() == ExitStatus.USAGE
+            refused.errors().first().whatHappened().contains('test-notes')
+            refused.console().contains('Nothing has been removed')
+            Files.exists(first.resolve('oillamp.toml'))
+            Files.exists(second.resolve('oillamp.toml'))
+
+        when: 'only the lamps are named, without --yes'
+            var asked = sandbox.oillamp.run('remove', first.toString(), second.toString())
+
+        then: 'it lists both, and offers one command that removes both'
+            asked.status() == ExitStatus.USAGE
+            asked.console().contains(first.toString())
+            asked.console().contains(second.toString())
+            asked.console().contains("oillamp remove ${first} ${second} --yes")
+            Files.exists(first.resolve('oillamp.toml'))
+
+        when: 'the user confirms'
+            var removed = sandbox.oillamp.run('remove', first.toString(), second.toString(), '--yes')
+
+        then: 'both are gone'
+            removed.status() == ExitStatus.SUCCESS
+            !Files.exists(first)
+            !Files.exists(second)
+            removed.console().contains('All 2 lamps were removed')
+    }
+
+    def 'A command that works on one lamp refuses several, rather than quietly using the first'() {
+        reportInfo """
+            `oillamp stop ~/lamps/test*` looks as if it stops every matching lamp. Stopping the
+            first and ignoring the rest would leave the user believing the others were stopped.
+            So every command that takes one lamp says it was given several, and names them.
+        """
+        when:
+            var outcome = sandbox.oillamp.run('stop', sandbox.lampPath('test1').toString(),
+                                              sandbox.lampPath('test2').toString())
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().first().whatHappened().contains('works on one lamp, but was given 2')
+    }
+
     def 'A lamp whose sandbox is still up is not removed out from under it'() {
         reportInfo """
             Deleting the agent's home while a container has it mounted would leave the session

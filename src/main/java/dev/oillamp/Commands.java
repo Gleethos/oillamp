@@ -187,7 +187,7 @@ final class Commands {
         return cleanUpAfterACrashedSession(lampPath, reply.problems());
     }
 
-    /// `oillamp remove <dir>`: delete a lamp.
+    /// `oillamp remove <dir>...`: delete one lamp or several.
     ///
     /// A lamp cannot be deleted with `rm -rf`: the infra sockets and the recordings belong
     /// to the infra user, which is a subordinate id on the host that the lamp's owner cannot delete
@@ -198,8 +198,73 @@ final class Commands {
     ///
     /// It requires `--yes`, because it deletes the agent's home and all its work, and there
     /// is no interactive prompt. Without `--yes` it lists what would be deleted and exits 2.
-    public ExitStatus remove(Path lampPath, boolean confirmed) {
-        Path root = lampPath.toAbsolutePath().normalize();
+    ///
+    /// Several lamps are usually named by a shell pattern such as `test*`, which may match more
+    /// than the user meant. So every one is checked before anything is deleted: if any of them is
+    /// not a lamp, or is still running, nothing is removed and each problem is reported.
+    public ExitStatus remove(Tuple<Path> lampPaths, boolean confirmed) {
+        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
+        for (Path lampPath : lampPaths) roots.add(lampPath.toAbsolutePath().normalize());
+
+        Tuple<LampPlanner.Removal> removals = Tuple.of(LampPlanner.Removal.class);
+        Tuple<Problem> refusals = Tuple.of(Problem.class);
+        boolean anyInUse = false;
+        for (Path root : roots) {
+            Result<LampPlanner.Removal> examined = examineForRemoval(root);
+            if (examined instanceof Result.Ok<LampPlanner.Removal> ok) removals = removals.add(ok.value());
+            else refusals = refusals.addAll(examined.problems());
+            anyInUse |= examined.problems().stream().anyMatch(p -> p.code().equals(Problems.LAMP_STILL_RUNNING));
+        }
+        if (!refusals.isEmpty()) {
+            context.report(refusals);
+            if (roots.size() > 1)
+                context.emit(new LampEvent.Answer("Nothing has been removed: " + refusals.size() + " of the "
+                        + roots.size() + " directories cannot be. Name only the lamps to remove."));
+            // A lamp in use is worth its own exit code: stopping it is all it takes to retry.
+            return anyInUse ? ExitStatus.LAMP_BUSY : ExitStatus.USAGE;
+        }
+
+        boolean several = removals.size() > 1;
+        for (LampPlanner.Removal found : removals)
+            context.emit(new LampEvent.Answer((several ? "── " + found.root() + "\n\n" : "")
+                    + describeWhatWouldGo(found)));
+        if (!confirmed && !context.options().dryRun()) {
+            StringBuilder command = new StringBuilder("oillamp remove");
+            for (LampPlanner.Removal found : removals) command.append(' ').append(found.root());
+            context.emit(new LampEvent.Answer("Nothing has been removed. To go ahead"
+                    + (several ? " and delete all " + removals.size() + " lamps" : "") + ":\n\n  "
+                    + command + " --yes"));
+            return ExitStatus.USAGE;
+        }
+
+        // Every lamp was checked above and the user confirmed them all, so one that fails to
+        // delete does not stop the others.
+        Tuple<Problem> failures = Tuple.of(Problem.class);
+        int removed = 0;
+        for (LampPlanner.Removal found : removals) {
+            Result<Plan> done = new StepRunner(machine, context).run(LampPlanner.planRemoval(found));
+            if (done instanceof Result.Err<Plan> failure) {
+                context.report(failure.problems());
+                failures = failures.addAll(failure.problems());
+                continue;
+            }
+            context.report(done.warnings());
+            if (context.options().dryRun()) continue;
+            removed++;
+            // The rest of the sentence names the directory, so it needs no prefix for several.
+            context.ok("remove", "the lamp is gone" + removeTheRootIfEmpty(found.root()));
+        }
+        if (several && !context.options().dryRun())
+            context.emit(new LampEvent.Answer(removed == removals.size()
+                    ? "All " + removed + " lamps were removed."
+                    : removed + " of " + removals.size() + " lamps were removed; the others are "
+                      + "reported above."));
+        return failures.isEmpty() ? ExitStatus.SUCCESS : exitStatusFor(failures);
+    }
+
+    /// What `remove` would delete for one lamp, or why it must not: the directory holds nothing
+    /// of oillamp's, or the lamp is still running.
+    private Result<LampPlanner.Removal> examineForRemoval(Path root) {
         DirListing listing = Filesystem.list(root);
         Tuple<Path> agentDirs = Tuple.of(Path.class);
         for (String entry : listing.entries())
@@ -208,43 +273,21 @@ final class Commands {
         boolean anythingOfOurs = !agentDirs.isEmpty()
                 || Filesystem.exists(LampLayout.stateDirOf(root))
                 || Filesystem.exists(LampLayout.configOf(root));
-        if (!anythingOfOurs) {
-            context.report(Tuple.of(Problem.class, Problems.lampNotWritable(root,
-                    "this is not an oillamp lamp — there is nothing of oillamp's in " + root)));
-            return ExitStatus.USAGE;
-        }
+        if (!anythingOfOurs)
+            return Result.err(Problems.lampNotWritable(root,
+                    "this is not an oillamp lamp — there is nothing of oillamp's in " + root));
 
         // A lamp half-deleted by hand may have lost lamp.json, and with it the agent id that names
         // the container and the runtime directory. Everything else can still be removed.
-        Optional<LampLayout> layout = layoutOf(lampPath) instanceof Result.Ok<LampLayout> ok
+        Optional<LampLayout> layout = layoutOf(root) instanceof Result.Ok<LampLayout> ok
                 ? Optional.of(ok.value())
                 : Optional.empty();
 
         Optional<String> inUse = whatIsStillRunning(root, layout);
-        if (inUse.isPresent()) {
-            context.report(Tuple.of(Problem.class, Problems.lampStillRunning(root, inUse.get())));
-            return ExitStatus.LAMP_BUSY;
-        }
+        if (inUse.isPresent())
+            return Result.err(Problems.lampStillRunning(root, inUse.get()));
 
-        LampPlanner.Removal found = new LampPlanner.Removal(root, agentDirs,
-                layout.map(LampLayout::runtimeDir));
-        context.emit(new LampEvent.Answer(describeWhatWouldGo(found)));
-        if (!confirmed && !context.options().dryRun()) {
-            context.emit(new LampEvent.Answer("Nothing has been removed. To go ahead:\n\n"
-                    + "  oillamp remove " + root + " --yes"));
-            return ExitStatus.USAGE;
-        }
-
-        Result<Plan> done = new StepRunner(machine, context).run(LampPlanner.planRemoval(found));
-        if (done instanceof Result.Err<Plan> failure) {
-            context.report(failure.problems());
-            return exitStatusFor(failure.problems());
-        }
-        context.report(done.warnings());
-        if (context.options().dryRun()) return ExitStatus.SUCCESS;
-
-        context.ok("remove", "the lamp is gone" + removeTheRootIfEmpty(root));
-        return ExitStatus.SUCCESS;
+        return Result.ok(new LampPlanner.Removal(root, agentDirs, layout.map(LampLayout::runtimeDir)));
     }
 
     /// What is still running for this lamp, if anything: a container, a supervisor that answers, or
