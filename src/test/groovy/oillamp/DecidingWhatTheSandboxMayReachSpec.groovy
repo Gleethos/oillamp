@@ -42,6 +42,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
     final List<LampEvent> reported = new CopyOnWriteArrayList<>()
     final List<String> requestsSeen = new CopyOnWriteArrayList<>()
     Thread session
+    volatile OilLamp.Outcome finished
     ServerSocket origin
 
     def setup() {
@@ -131,6 +132,52 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
                                        it.text().contains('denied') } }
             reported.find { it instanceof LampEvent.Info && it.text().contains('denied') }
                     .text().contains('block private, internal and loopback ranges')
+    }
+
+    def 'Every denial reaches the session\'s record, even when many arrive at once'() {
+        reportInfo """
+            Everything oillamp says is kept in the outcome of the command as well as printed. During
+            a session it is said from many threads at once: each proxied connection, each shell,
+            the health check and the control socket have their own. An agent retrying a blocked
+            address in parallel produces many denials in the same instant, and a record that
+            could not be added to from several threads at once would lose some of them, or fail
+            inside the thread that was reporting.
+        """
+        given:
+            var port = givenAnOriginServer()
+            startASession()
+
+        when: 'three hundred denied requests arrive at the same moment'
+            var requests = (1..300).collect { i ->
+                Thread.startVirtualThread { askPersistently("GET http://127.0.0.1:${port}/${i} HTTP/1.1\r\n\r\n") }
+            }
+            requests*.join()
+            waitUntil { reported.count { isDenial(it) } == 300 }
+
+        and: 'the session ends'
+            sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            session.join(30_000)
+
+        then: 'the outcome holds every one of them'
+            finished != null
+            finished.events().count { isDenial(it) } == 300
+    }
+
+    /** Asks again while the proxy's queue of waiting connections is full, as a patient client would. */
+    private void askPersistently(String request) {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                askTheProxy(request)
+                return
+            } catch (IOException full) {
+                if (attempt >= 100) throw full
+                Thread.sleep(20)
+            }
+        }
+    }
+
+    private static boolean isDenial(LampEvent event) {
+        event instanceof LampEvent.Info && event.text().startsWith('denied ')
     }
 
     def 'Every connection is written to the session network log'() {
@@ -456,7 +503,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
     private void startASession() {
         sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(60)) }
         var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
-        session = Thread.start { oillamp.run('at', sandbox.lampPath().toString()) }
+        session = Thread.start { finished = oillamp.run('at', sandbox.lampPath().toString()) }
         waitUntil { reported.any { it instanceof LampEvent.Summary &&
                                    it.title() == 'your session is up' } }
     }

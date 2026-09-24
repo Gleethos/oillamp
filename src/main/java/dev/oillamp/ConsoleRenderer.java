@@ -30,6 +30,7 @@ final class ConsoleRenderer {
     /// returned a modified copy, which nobody used, so `--verbose` had no effect.
     private boolean verbose;
     private boolean echoToTerminal = true;
+    private boolean keepText = true;
 
     // ─── the live activity line ─────────────────────────────────────────────────────────────
     //
@@ -116,6 +117,10 @@ final class ConsoleRenderer {
     }
 
     public String text() { return captured.toString(); }
+
+    /// Prints without keeping a copy. For `main`, where nobody reads [#text()] and a session
+    /// that runs for days would otherwise hold everything it ever printed.
+    void forgetText() { keepText = false; }
 
     /// `--no-color`: no colour codes, even on a terminal.
     void withoutColour() { colour = false; }
@@ -264,7 +269,7 @@ final class ConsoleRenderer {
 
     private void line(String text) {
         synchronized (terminal) {
-            captured.append(text).append('\n');
+            if (keepText) captured.append(text).append('\n');
             if (!echoToTerminal) return;
             clearActivityLine();
             System.out.println(text);

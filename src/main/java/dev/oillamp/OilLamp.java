@@ -24,19 +24,23 @@ public final class OilLamp {
 
     private final Machine machine;
     private final List<Consumer<LampEvent>> listeners;
+    /// Whether [Outcome] carries every event and the console text. Only `main` turns it off: it
+    /// needs nothing but the exit code, and a session can run for days.
+    private final boolean remember;
 
-    private OilLamp(Machine machine, List<Consumer<LampEvent>> listeners) {
+    private OilLamp(Machine machine, List<Consumer<LampEvent>> listeners, boolean remember) {
         this.machine = machine;
         this.listeners = listeners;
+        this.remember = remember;
     }
 
     public static OilLamp on(Machine machine) {
-        return new OilLamp(machine, List.of());
+        return new OilLamp(machine, List.of(), true);
     }
 
     /// The command-line entry point.
     public static void main(String[] argv) {
-        System.exit(on(Machine.real()).run(argv).status().code());
+        System.exit(new OilLamp(Machine.real(), List.of(), false).run(argv).status().code());
     }
 
     /// Watches everything oillamp does, as it happens.
@@ -46,19 +50,25 @@ public final class OilLamp {
     public OilLamp observedBy(Consumer<LampEvent> listener) {
         List<Consumer<LampEvent>> extended = new ArrayList<>(listeners);
         extended.add(listener);
-        return new OilLamp(machine, List.copyOf(extended));
+        return new OilLamp(machine, List.copyOf(extended), remember);
     }
 
     /// Runs one command, exactly as it would be typed.
     ///
     /// @param argv for example `"at", "/home/me/lamps/x", "--dry-run"`
     public Outcome run(String... argv) {
+        // A session reports from many threads at once: the event loop, the health check, every
+        // proxied connection, every shell and the control socket. So the record is added to
+        // under a lock, and each event is recorded, printed and passed on in one piece.
         List<LampEvent> recorded = new ArrayList<>();
         ConsoleRenderer console = ConsoleRenderer.forMachine(machine);
+        if (!remember) console.forgetText();
         Consumer<LampEvent> sink = event -> {
-            recorded.add(event);
-            console.render(event);
-            for (Consumer<LampEvent> listener : listeners) listener.accept(event);
+            synchronized (recorded) {
+                if (remember) recorded.add(event);
+                console.render(event);
+                for (Consumer<LampEvent> listener : listeners) listener.accept(event);
+            }
         };
         ExitStatus status;
         try {
@@ -69,7 +79,9 @@ public final class OilLamp {
             sink.accept(new LampEvent.Failure(Problems.crash(failure)));
             status = ExitStatus.ERROR;
         }
-        return new Outcome(status, Tuple.of(LampEvent.class, recorded), console.text());
+        synchronized (recorded) {
+            return new Outcome(status, Tuple.of(LampEvent.class, recorded), console.text());
+        }
     }
 
     /// What happened: the exit code, everything oillamp said, and the console text it produced.
