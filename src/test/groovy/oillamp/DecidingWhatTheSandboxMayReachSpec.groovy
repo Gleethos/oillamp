@@ -255,6 +255,133 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             answer.body.contains('HTTP_PROXY')
     }
 
+    def 'A request the proxy cannot serve is answered with what is wrong with it: #why'() {
+        reportInfo """
+            A client that sends something the proxy cannot act on gets a 400 whose body says
+            what was wrong, rather than a closed connection or a bare status. The agent reads that
+            sentence; a silent failure would leave it guessing whether the network is down.
+        """
+        given:
+            startASession()
+
+        when:
+            var answer = askTheProxy(request)
+
+        then:
+            answer.status == 400
+            answer.body.contains(explanation)
+
+        where:
+            why                             | request                                                   | explanation
+            'CONNECT without a port'        | 'CONNECT example.test HTTP/1.1\r\n\r\n'                  | 'CONNECT needs host:port'
+            'a port that is not a number'   | 'CONNECT example.test:https HTTP/1.1\r\n\r\n'            | 'not a number'
+            'a port out of range'           | 'GET http://example.test:70000/ HTTP/1.1\r\n\r\n'        | 'not a number'
+            'an https URL without CONNECT'  | 'GET https://example.test/ HTTP/1.1\r\n\r\n'             | 'must be sent as CONNECT'
+            'a request line with no version'| 'GET http://example.test/\r\n\r\n'                       | 'malformed request line'
+    }
+
+    def 'A name that does not resolve is reported as that, not as a denial'() {
+        reportInfo """
+            The proxy resolves names on the host. A name that does not exist gets a 502 saying it
+            could not be resolved. It is logged, but not printed as "denied", because no rule
+            refused it, and a denial would send the user looking for a rule to change.
+        """
+        given:
+            startASession()
+
+        when: 'a name in the .invalid domain, which is reserved never to resolve'
+            var answer = tunnelThrough(443, '', 'no-such-host.invalid')
+
+        then: 'the agent is told the name could not be resolved'
+            answer.contains('502')
+            answer.contains('cannot resolve no-such-host.invalid')
+
+        and: 'it is logged'
+            waitUntil { Files.exists(networkLog()) && Files.readString(networkLog()).contains('no-such-host.invalid') }
+            Files.readString(networkLog()).contains('"rule":"unresolved"')
+
+        and: 'but not printed as a denial'
+            !reported.any { isDenial(it) }
+    }
+
+    def 'A rule applies only to the ports it names'() {
+        reportInfo """
+            Every criterion a rule lists must match. An allow rule for one service on one port
+            says nothing about the other ports of the same machine, so a connection to another
+            port falls through to the rules below it, here the one that blocks loopback.
+        """
+        given: 'a lamp that allows the test server on its own port only'
+            var port = givenAnOriginServer()
+            givenALampAllowing(port)
+            var otherPort = new ServerSocket(0).withCloseable { it.localPort }
+            startASession()
+
+        when:
+            var allowed = askTheProxy("GET http://127.0.0.1:${port}/ HTTP/1.1\r\n\r\n")
+            var elsewhere = askTheProxy("GET http://127.0.0.1:${otherPort}/ HTTP/1.1\r\n\r\n")
+
+        then: 'the named port is reached'
+            allowed.status == 200
+
+        and: 'another port on the same address is not'
+            elsewhere.status == 403
+            elsewhere.body.contains(PRIVATE_RANGES)
+    }
+
+    def 'With the default set to deny, only what a rule allows gets through'() {
+        reportInfo """
+            `default = "deny"` turns the policy into an allow list: a connection no rule matches
+            is refused, and the refusal names the default, not a rule, so the user knows to add
+            one rather than change one.
+        """
+        given: 'a lamp that denies by default and has no rules'
+            sandbox.givenConfig(sandbox.lampPath(), """
+                schema_version = 1
+
+                [network]
+                default = "deny"
+                rules   = []
+                """.stripIndent())
+            startASession()
+
+        when: 'the agent asks for a public address, written as a number so no name has to resolve'
+            var answer = tunnelThrough(443, '', '192.0.2.10')
+
+        then: 'it is refused by the default'
+            answer.contains('403')
+            answer.contains('denied by rule "(default)"')
+    }
+
+    def 'A forward carries bytes to its one fixed target, and is logged'() {
+        reportInfo """
+            A forward gives the sandbox one internal service, such as a company language model,
+            without opening the rest of the network. It bypasses the policy, because its target is
+            fixed in oillamp.toml, which the agent cannot edit. The host connects on the agent's
+            behalf, so the host's VPN applies, and every connection is logged like any other.
+        """
+        given: 'a lamp with a forward to the test server'
+            var port = givenAnOriginServer('hello from the company model')
+            sandbox.givenConfig(sandbox.lampPath(), """
+                schema_version = 1
+
+                [[network.forwards]]
+                name   = "llm"
+                port   = 8000
+                target = "127.0.0.1:${port}"
+                """.stripIndent())
+            startASession()
+
+        when: 'something in the sandbox connects to the forward'
+            var answer = throughTheForward('llm', "GET /v1/models HTTP/1.1\r\nHost: llm\r\n\r\n")
+
+        then: 'it reaches the target, although the target is on the host\'s loopback'
+            answer.contains('hello from the company model')
+            requestsSeen.any { it.startsWith('GET /v1/models ') }
+
+        and: 'and the connection is logged as the forward\'s'
+            waitUntil { Files.exists(networkLog()) && Files.readString(networkLog()).contains('forward:llm') }
+    }
+
     /**
      *  A lamp whose policy allows the scenario's own server.
      *
@@ -479,6 +606,15 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             if (!opening.contains('200')) return opening + readAll(channel)
             write(channel, throughTheTunnel)
             opening + readAll(channel)
+        }
+    }
+
+    /** Speaks through a forward's socket, as the socat bridge inside the container does. */
+    private String throughTheForward(String name, String request) {
+        var socket = proxySocket().resolveSibling("fwd-${name}.sock")
+        try (var channel = SocketChannel.open(UnixDomainSocketAddress.of(socket))) {
+            write(channel, request)
+            readAll(channel)
         }
     }
 
