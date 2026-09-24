@@ -718,6 +718,7 @@ It understands:
 | `GET http://host/path` (absolute form, plain HTTP) | policy check → connect → forward the request in normal form with hop-by-hop headers removed and `Connection: close` → stream the answer back |
 | `GET /path` (normal form) | `400` explaining that this is a proxy |
 | `GET https://…` | `400`: HTTPS must use `CONNECT` |
+| a method that is not a plain word, or a host that is not a name or an address | `400`, before anything is printed or logged, so the agent cannot put terminal escape sequences on the user's screen or break a line of the network log |
 | denied | `403`, with a body such as `oillamp: connection to 10.0.0.1:5432 denied by rule "block private, internal and loopback ranges" in oillamp.toml` |
 | name does not resolve | `502` |
 | cannot connect in 10 s | `504` for `CONNECT`, `502` for plain HTTP |

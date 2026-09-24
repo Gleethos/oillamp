@@ -280,6 +280,47 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             'a request line with no version'| 'GET http://example.test/\r\n\r\n'                       | 'malformed request line'
     }
 
+    def 'The agent cannot write to the user\'s terminal or break the network log through a request: #part'() {
+        reportInfo """
+            A denial is printed in the terminal oillamp was started from, and every request is
+            written to the network log. Both used to take the request's method and host exactly as
+            the agent sent them. A method made of terminal escape sequences, aimed at a denied
+            address, was printed raw, so the agent could clear the user's screen, rewrite what
+            they had read, or on some terminals set their clipboard. A quote or a line break in
+            it turned the log line into something no JSON reader accepts. Neither is a real method
+            or a real host name, so the proxy now refuses them like any other malformed request.
+        """
+        given:
+            var port = givenAnOriginServer()
+            startASession()
+
+        when:
+            var answer = askTheProxy(request.replace('PORT', port.toString()))
+
+        then: 'the agent is told the request is malformed'
+            answer.status == 400
+            answer.body.contains(explanation)
+
+        and: 'nothing reached the server'
+            requestsSeen.isEmpty()
+
+        and: 'nothing the user sees carries a control character'
+            reported.every { !(it.toString() =~ /[\u0000-\u0008\u000B-\u001F\u007F]/) }
+
+        and: 'every line of the network log is JSON, up to an ordinary denial asked for afterwards'
+            askTheProxy("GET http://localhost:${port}/marker HTTP/1.1\r\n\r\n")
+            waitUntil { Files.exists(networkLog()) && Files.readString(networkLog()).contains('"host":"localhost"') }
+            Files.readAllLines(networkLog()).every { new groovy.json.JsonSlurper().parseText(it) != null }
+
+        where:
+            part                    | request                                                             | explanation
+            'an escape in the method' | '\u001B]52;c;cm0gLXJmIH4=\u0007\u001B[2J http://127.0.0.1:PORT/ HTTP/1.1\r\n\r\n' | 'not a valid method'
+            'a quote in the method'   | 'GET"} http://127.0.0.1:PORT/ HTTP/1.1\r\n\r\n'                     | 'not a valid method'
+            'an escape in the host'   | 'GET http://127.0.0.1\u001B[2J:PORT/ HTTP/1.1\r\n\r\n'              | 'not a valid host'
+            'an escape in a CONNECT'  | 'CONNECT \u001B[2J127.0.0.1:PORT HTTP/1.1\r\n\r\n'                  | 'not a valid host'
+            'a bare carriage return'  | 'GET http://ex\rample.test:PORT/ HTTP/1.1\r\n\r\n'                  | 'not a valid host'
+    }
+
     def 'A name that does not resolve is reported as that, not as a denial'() {
         reportInfo """
             The proxy resolves names on the host. A name that does not exist gets a 502 saying it

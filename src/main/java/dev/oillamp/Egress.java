@@ -25,6 +25,9 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import sprouts.Tuple;
 
 /// The egress proxy: the sandbox's only way out to the network, plus the configured forwards.
@@ -50,6 +53,7 @@ final class Egress implements AutoCloseable {
     private static final int BUFFER_BYTES = 64 * 1024;
     /// The rule name logged for a host name that could not be resolved.
     private static final String UNRESOLVED = "unresolved";
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     /// What the supervisor is told as it happens. Called from connection threads.
     interface Listener {
@@ -64,22 +68,19 @@ final class Egress implements AutoCloseable {
                   long bytesUp, long bytesDown, Duration took) {
 
         String toJson() {
-            return "{\"ts\":\"" + at + "\",\"channel\":\"" + channel + "\",\"method\":\"" + method
-                 + "\",\"host\":\"" + escape(host) + "\",\"port\":" + port
-                 + ",\"address\":" + address.map(a -> "\"" + a.text() + "\"").orElse("null")
-                 + ",\"decision\":\"" + decision.configName() + "\",\"rule\":\"" + escape(rule)
-                 + "\",\"bytesUp\":" + bytesUp + ",\"bytesDown\":" + bytesDown
-                 + ",\"ms\":" + took.toMillis() + "}";
+            ObjectNode line = JSON.createObjectNode()
+                .put("ts", at.toString()).put("channel", channel).put("method", method)
+                .put("host", host).put("port", port)
+                .put("address", address.map(IpAddress::text).orElse(null))
+                .put("decision", decision.configName()).put("rule", rule)
+                .put("bytesUp", bytesUp).put("bytesDown", bytesDown).put("ms", took.toMillis());
+            return line.toString();
         }
 
         String describe() {
             return method + " " + host + ":" + port
                  + address.map(a -> " (" + a.text() + ")").orElse("")
                  + " — " + decision.configName() + " by rule \"" + rule + "\"";
-        }
-
-        private static String escape(String text) {
-            return text.replace("\\", "\\\\").replace("\"", "\\\"");
         }
     }
 
@@ -507,6 +508,10 @@ final class Egress implements AutoCloseable {
         if (parts.length < 3) return bad("malformed request line");
         String method = parts[0];
         String target = parts[1];
+        // What the proxy prints and logs comes from these two, so only what a real client
+        // sends gets further: a method is a plain word, a host a name or an address.
+        if (!METHOD.matcher(method).matches())
+            return bad("the request line starts with something that is not a valid method");
         List<String> headers = new ArrayList<>(lines.subList(1, lines.size()));
         headers.removeIf(String::isBlank);
 
@@ -515,6 +520,8 @@ final class Egress implements AutoCloseable {
             if (colon < 0) return bad("CONNECT needs host:port, got '" + target + "'");
             Optional<Integer> port = port(target.substring(colon + 1));
             if (port.isEmpty()) return bad("CONNECT has a port that is not a number");
+            if (!HOST.matcher(target.substring(0, colon)).matches())
+                return bad("that is not a valid host to connect to");
             return new Head(method, HostPattern.normalise(target.substring(0, colon)),
                             port.get(), target, headers, Optional.empty());
         }
@@ -528,6 +535,8 @@ final class Egress implements AutoCloseable {
             Optional<Integer> port = colon < 0 ? Optional.of(80)
                                                : port(authority.substring(colon + 1));
             if (port.isEmpty()) return bad("the request URL has a port that is not a number");
+            if (!HOST.matcher(host).matches())
+                return bad("the host in the request URL is not a valid host name or address");
             return new Head(method, HostPattern.normalise(host), port.get(), path,
                             headers, Optional.empty());
         }
@@ -538,6 +547,13 @@ final class Egress implements AutoCloseable {
         return bad("this is oillamp's egress proxy, not a web server — "
                  + "set HTTP_PROXY/HTTPS_PROXY (they are already set in a login shell)");
     }
+
+    /// An HTTP method: letters, digits and the few symbols the standard allows in a token.
+    private static final java.util.regex.Pattern METHOD =
+            java.util.regex.Pattern.compile("[A-Za-z0-9!#$%&'*+.^_`|~-]{1,32}");
+    /// A host name, an IPv4 address, or an IPv6 address in brackets.
+    private static final java.util.regex.Pattern HOST =
+            java.util.regex.Pattern.compile("[A-Za-z0-9._-]{1,253}|\\[[0-9A-Fa-f:.]{2,45}\\]");
 
     private static Optional<Integer> port(String text) {
         try {
@@ -568,8 +584,8 @@ final class Egress implements AutoCloseable {
         void write(Journey journey) { lines.offer(journey.toJson()); }
 
         void write(String note) {
-            lines.offer("{\"ts\":\"" + Instant.now() + "\",\"channel\":\"proxy\",\"note\":\""
-                      + Journey.escape(note) + "\"}");
+            lines.offer(JSON.createObjectNode().put("ts", Instant.now().toString())
+                            .put("channel", "proxy").put("note", note).toString());
         }
 
         private void drain() {
