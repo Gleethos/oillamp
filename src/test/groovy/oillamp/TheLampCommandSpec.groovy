@@ -214,4 +214,30 @@ class TheLampCommandSpec extends Specification {
             result.output.contains('teleport')
             result.output.contains('lamp help')
     }
+
+    def 'a missing or malformed value is explained, not left to bash: lamp #line'() {
+        reportInfo """
+            The agent reads what lamp says and tries again, so an error must say what to write
+            instead. A missing value used to stop bash with "unbound variable", and a
+            wait-stable time that was not a whole number with an arithmetic error.
+        """
+        when:
+            var result = runLamp(*line.split(' '))
+
+        then:
+            result.status != 0
+            result.output.contains(explanation)
+            !result.output.contains('unbound variable')
+            !result.output.contains('syntax error')
+
+        and: 'nothing was captured'
+            result.calls.isEmpty()
+
+        where:
+            line                   | explanation
+            'screenshot --region'  | '--region takes X,Y,W,H'
+            'screenshot --out'     | '--out takes the file to write'
+            'wait-stable soon'     | 'wait-stable takes a whole number of seconds'
+            'wait-stable 2.5'      | 'wait-stable takes a whole number of seconds'
+    }
 }

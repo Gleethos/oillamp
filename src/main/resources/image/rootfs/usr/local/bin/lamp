@@ -43,8 +43,10 @@ cmd_screenshot() {
     local region='' output=''
     while [ $# -gt 0 ]; do
         case "$1" in
-            --region) region="$2"; shift 2 ;;
-            --out)    output="$2"; shift 2 ;;
+            --region) [ $# -ge 2 ] || die "--region takes X,Y,W,H (for example 0,0,800,600)"
+                      region="$2"; shift 2 ;;
+            --out)    [ $# -ge 2 ] || die "--out takes the file to write, for example --out /tmp/shot.png"
+                      output="$2"; shift 2 ;;
             *)        die "unknown option for screenshot: $1" ;;
         esac
     done
@@ -104,6 +106,7 @@ cmd_key() {
 
 cmd_wait_stable() {
     need grim
+    [[ "${1:-10}" =~ ^[0-9]+$ ]] || die "wait-stable takes a whole number of seconds, for example lamp wait-stable 10"
     # Counted in tenths of a second, so plain shell arithmetic is enough.
     local timeout_ds=$(( ${1:-10} * 10 )) interval_ds=5 elapsed_ds=0 a b
     a=$(mktemp /tmp/lamp-stable-XXXXXX.png); b=$(mktemp /tmp/lamp-stable-XXXXXX.png)
