@@ -631,6 +631,11 @@ startup failed → 5.
 - **JVM shutdown hook.** On Ctrl-C or SIGTERM it posts `Interrupted` and waits up to 30 s for the
   state to become `Stopped`. If that does not happen, it runs the shutdown sequence itself.
 
+Before the supervisor exists, `Commands.at` holds a shutdown hook of its own. A Ctrl-C while the
+image builds or the desktop comes up removes the container that run started, and so does a start
+that fails. The supervisor's hook replaces it once the session is up. Without this, a container
+started by an interrupted or failed run kept running with nothing watching it.
+
 ### Shutdown sequence
 
 `Supervisor.shutDown` runs every step even if an earlier one failed:

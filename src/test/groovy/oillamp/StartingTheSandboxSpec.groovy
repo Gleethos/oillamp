@@ -94,6 +94,33 @@ class StartingTheSandboxSpec extends Specification {
             !outcome.console().contains('vncviewer')
     }
 
+    def 'A sandbox that fails to start is removed, not left running with nobody watching it'() {
+        reportInfo """
+            Once `podman run` has succeeded, a container is running in the background with the
+            agent's desktop in it, using memory and processors, and recording if recording is on.
+            If the start then fails, because the desktop never answers or the wait runs out,
+            oillamp reports the problem and exits. Before, the container stayed behind, with no
+            session watching it, until the next `oillamp at` or `oillamp stop` on that lamp.
+            The user had every reason to believe nothing was running.
+        """
+        given: 'a sandbox whose desktop never answers'
+            sandbox.machine { it.endpointRefusingConnections('vnc.sock') }
+
+        when:
+            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+
+        then: 'the start fails'
+            outcome.status() != ExitStatus.SUCCESS
+            outcome.reported('OIL-SANDBOX-004')
+
+        and: 'and the container it had started is removed before oillamp exits'
+            var kinds = outcome.stepKinds().toList()
+            kinds.lastIndexOf('RemoveContainer') > kinds.indexOf('CheckEndpoints')
+
+        and: 'the user is told'
+            outcome.console().contains('removed the sandbox that did not start')
+    }
+
     def 'The readiness file from the previous session is not mistaken for this one'() {
         reportInfo """
             The sockets directory survives the container, so on every session after the first

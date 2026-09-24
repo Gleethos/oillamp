@@ -110,7 +110,7 @@ final class StepRunner {
                 case Step.AddSubIds s -> addSubIds(s);
                 case Step.PodmanMigrate ignored -> podman(step, "system", "migrate");
                 case Step.ChownForContainer s -> chownForContainer(s);
-                case Step.RemoveContainer s -> podman(step, "rm", "-f", s.name().value());
+                case Step.RemoveContainer s -> removeContainer(s);
                 case Step.DeleteContainerOwnedFiles s -> deleteContainerOwnedFiles(s);
                 case Step.ExtractImageContext s -> extractImageContext(s);
                 case Step.BuildImage s -> buildImage(s);
@@ -331,6 +331,18 @@ final class StepRunner {
                 : outcome.errorOutput().strip().isBlank()
                     ? "it is owned by another user"
                     : outcome.errorOutput().strip()));
+    }
+
+    /// Shielded from Ctrl-C, because it is the cleanup a Ctrl-C asks for: a second press must
+    /// not be what leaves the container behind.
+    private Result<Step> removeContainer(Step.RemoveContainer step) {
+        Tuple<String> argv = Tuple.of(String.class, "podman", "rm", "-f", step.name().value());
+        context.emit(new LampEvent.Output("podman", "$ " + String.join(" ", argv)));
+        Machine.Outcome outcome = machine.run(Machine.Command.of(argv).withTimeout(Duration.ofMinutes(2))
+                .labelled("podman").shieldedFromSignals());
+        if (outcome.succeeded()) return Result.ok(step);
+        return Result.err(Problems.internal("podman rm -f " + step.name().value(),
+                outcome.errorOutput().trim()).withEvidence(evidenceOf(outcome, argv)));
     }
 
     private Result<Step> podman(Step step, String... arguments) {

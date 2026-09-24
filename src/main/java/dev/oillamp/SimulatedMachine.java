@@ -107,6 +107,10 @@ final class SimulatedMachine implements Machine {
         if (commandLine.startsWith("podman stop ") || commandLine.startsWith("podman rm "))
             return stopSimulatedSandbox();
         if (commandLine.startsWith("podman container inspect")) return inspectSimulatedSandbox(command);
+        // Absence is a non-zero exit. The simulated container exists from `podman run` until
+        // `podman stop` or `podman rm`, so a scenario can tell whether one was left behind.
+        if (commandLine.startsWith("podman container exists"))
+            return new Outcome.Finished(containerRunning ? 0 : 1, "", "", Duration.ofMillis(5));
         if (commandLine.startsWith("podman unshare rm ")) return simulatedUnshareRemove(command);
         if (commandLine.contains("UNIX-CONNECT:")) return simulatedConnect(command);
         if (!executables.containsKey(command.executable()))
@@ -650,12 +654,11 @@ final class SimulatedMachine implements Machine {
                         Duration.ofMillis(20)));
             }, () -> { });
 
-            // A machine that has never run this lamp has neither. `podman image exists` and
-            // `podman container exists` report absence with a non-zero exit, not with output, so
-            // the default "any known executable succeeds" would have said both were present, and
-            // oillamp would have skipped the build and then started a container from nothing.
+            // A machine that has never run this lamp has no image. `podman image exists` reports
+            // absence with a non-zero exit, not with output, so the default "any known executable
+            // succeeds" would have said it was present, and oillamp would have skipped the build.
+            // `podman container exists` is answered from the simulated container instead.
             script("podman image exists", "", 1);
-            script("podman container exists", "", 1);
 
             script("stat -f -c %T", filesystemType + "\n");
             return new SimulatedMachine(this);

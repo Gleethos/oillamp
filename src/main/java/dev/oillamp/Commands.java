@@ -92,6 +92,16 @@ final class Commands {
         }
 
         LampLock held = lock.get();
+        // Until the supervisor takes over, nothing else would remove a container this run started:
+        // not a failed start, and not a Ctrl-C while the image builds or the desktop comes up.
+        ContainerName container = prepared.layout().containerName();
+        java.util.concurrent.atomic.AtomicBoolean interrupted = new java.util.concurrent.atomic.AtomicBoolean();
+        Thread abandon = new Thread(() -> {
+            interrupted.set(true);
+            context.info("session", "interrupted while the sandbox was starting — removing it");
+            removeUnfinishedSandbox(container, "interrupted while the sandbox was starting");
+        }, "oillamp-abandon-start");
+        Runtime.getRuntime().addShutdownHook(abandon);
         try {
             context.ok("lamp", "ready — agent " + prepared.layout().agentId()
                     + ", desktop " + prepared.config().display().size()
@@ -100,11 +110,15 @@ final class Commands {
             Result<SandboxPhase.Running> sandbox =
                     new SandboxPhase(machine, context).start(prepared, host.facts());
             if (sandbox instanceof Result.Err<SandboxPhase.Running> failure) {
+                // After a Ctrl-C the start fails because the hook removed the container. Saying
+                // "the sandbox stopped while starting up" would blame the sandbox for the user's
+                // own interrupt.
+                if (interrupted.get()) return ExitStatus.INTERRUPTED;
                 context.report(failure.problems());
+                removeUnfinishedSandbox(container, "it did not start");
                 return ExitStatus.ERROR;
             }
             context.report(sandbox.warnings());
-            if (context.options().dryRun()) return ExitStatus.SUCCESS;
 
             SandboxPhase.Running running = ((Result.Ok<SandboxPhase.Running>) sandbox).value();
             context.ok("session", "sandbox running — container " + running.container());
@@ -112,15 +126,39 @@ final class Commands {
             context.ok("session", "desktop and shell both answering — "
                     + "oillamp connected to each socket before handing it over");
 
-            // From here `at` does not return until the session is over.
+            // From here `at` does not return until the session is over, and the supervisor
+            // removes the container however the session ends.
+            stopWatching(abandon);
             return new Supervisor(machine, context, host.facts(), prepared, running).run();
         } finally {
+            stopWatching(abandon);
             try {
                 held.close();
             } catch (java.io.IOException e) {
                 context.report(Tuple.of(Problem.class,
                         Problems.internal("lock release", Problems.reason(e))));
             }
+        }
+    }
+
+    /// Removes the container a start left behind, if there is one. Called when the start failed,
+    /// and from a shutdown hook when the user pressed Ctrl-C before the supervisor took over.
+    private void removeUnfinishedSandbox(ContainerName container, String why) {
+        boolean exists = machine.run(Machine.Command.of("podman", "container", "exists", container.value())
+                .withTimeout(java.time.Duration.ofSeconds(20)).labelled("podman container exists")
+                .shieldedFromSignals()).succeeded();
+        if (!exists) return;
+        Result<Plan> removed = new StepRunner(machine, context).run(Plan.of(LampEvent.Phase.SESSION,
+                Tuple.of(Step.class, new Step.RemoveContainer(container, why))));
+        if (removed instanceof Result.Err<Plan> failure) context.report(failure.problems());
+        else context.info("session", "removed the sandbox that did not start, so nothing is left running");
+    }
+
+    private static void stopWatching(Thread hook) {
+        try {
+            Runtime.getRuntime().removeShutdownHook(hook);
+        } catch (IllegalStateException alreadyShuttingDown) {
+            // The JVM is already running the hook; it removes the container itself.
         }
     }
 
