@@ -28,7 +28,7 @@ record ReadyInfo(String renderer, boolean gpuFallback, Optional<SessionId> sessi
     /// the session is known to work. An unreadable field is no reason to stop it.
     public static ReadyInfo parse(String json) {
         try {
-            JsonNode node = Json.MAPPER.readTree(json);
+            JsonNode node = Json.READER.readTree(json);
             JsonNode renderer = node.get("renderer");
             JsonNode fallback = node.get("gpu_fallback");
             JsonNode session = node.get("session");

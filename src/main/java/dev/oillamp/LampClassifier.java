@@ -52,7 +52,7 @@ final class LampClassifier {
     }
 
     private static LampMeta parse(String json) throws JacksonException {
-        JsonNode node = Json.MAPPER.readTree(json);
+        JsonNode node = Json.READER.readTree(json);
         JsonNode version = node.get("schemaVersion");
         JsonNode agentId = node.get("agentId");
         JsonNode createdAt = node.get("createdAt");

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.core.util.Separators;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /// Reading and writing JSON, for everything oillamp keeps or exchanges in it: `lamp.json`,
@@ -19,7 +20,13 @@ final class Json {
 
     private Json() {}
 
-    static final ObjectMapper MAPPER = new ObjectMapper();
+    /// Shared by every thread. Jackson's mapper is safe for that as long as nobody changes its
+    /// configuration once it is in use, so it is private here and callers get [#READER], which
+    /// cannot be reconfigured at all.
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /// For callers that want an exception rather than an empty result, with the reason in it.
+    static final ObjectReader READER = MAPPER.reader();
 
     /// Two spaces per level and `"key": value`, the way a person would write it.
     private static final DefaultPrettyPrinter READABLE = new DefaultPrettyPrinter(
@@ -32,7 +39,7 @@ final class Json {
     /// The parsed text, or empty for anything that is not JSON.
     static Optional<JsonNode> parse(String text) {
         try {
-            return Optional.of(MAPPER.readTree(text));
+            return Optional.of(READER.readTree(text));
         } catch (JacksonException notJson) {
             return Optional.empty();
         }

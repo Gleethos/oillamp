@@ -57,7 +57,7 @@ final class Control {
 
         public static Optional<Request> parse(String line) {
             try {
-                JsonNode node = Json.MAPPER.readTree(line);
+                JsonNode node = Json.READER.readTree(line);
                 JsonNode op = node.get("op");
                 if (op == null || !op.isTextual()) return Optional.empty();
                 Association<String, String> arguments = Association.between(String.class, String.class);
@@ -108,7 +108,7 @@ final class Control {
 
         public static Reply parse(String line) {
             try {
-                JsonNode node = Json.MAPPER.readTree(line);
+                JsonNode node = Json.READER.readTree(line);
                 Association<String, String> values = Association.between(String.class, String.class);
                 for (var field : node.properties())
                     if (!field.getKey().equals("ok") && !field.getKey().equals("argv"))
