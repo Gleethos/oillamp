@@ -1118,7 +1118,7 @@ var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-ru
 outcome.reported('OIL-PKG-001')
 ```
 
-Scenarios need no podman, no network and no display, and all 98 run in well under a minute.
+Scenarios need no podman, no network and no display, and together they run in about two minutes.
 Session scenarios run a real supervisor with real Unix sockets; only the container is simulated.
 
 Each scenario starts with a `reportInfo` block that explains, in plain words, what the scenario is

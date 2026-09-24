@@ -636,9 +636,18 @@ Knowing the limits is part of owning the tool.
 - **The agent can reach the internet by default.** This is deliberate: an agent that cannot
   install a package or read documentation is of little use. The policy is configurable
   (section 7). But the default is "the open web", and data the agent can read, it can send.
+- **Your machine's own public addresses are not blocked.** The default rules block loopback and the
+  private ranges, which is where a machine's own services normally are. If your machine also has
+  a public IPv4 address, or a global IPv6 address (common at home and on laptops), a service that
+  listens on every address, such as sshd or a development server bound to `0.0.0.0`, can be
+  reached at that address too. Add a deny rule for your machine's addresses (`ip -brief address`
+  lists them), or bind such services to `127.0.0.1`.
 - **The resource limits are ceilings, not guarantees.** `--memory`, `--cpus` and `--pids-limit`
   stop a runaway process from taking the machine down. They do not stop the agent from using
   everything up to those limits.
+- **Disk space has no limit.** The agent's home is a directory in the lamp, on your own disk, and
+  the container's own files are in your podman storage. An agent that downloads or builds without
+  end can fill that disk.
 - **The threat model is your machine, not the web.** oillamp is built to stop an agent reaching
   your files, your keys and your other projects. It is not built to stop an attacker who already
   controls the agent from talking to the internet.
@@ -970,7 +979,7 @@ In this order:
 You need a JDK 25. Nothing else: Gradle downloads itself through the wrapper.
 
 ```sh
-./gradlew build          # compile, run the 98 scenarios, check the architecture rules
+./gradlew build          # compile, run the scenarios, check the architecture rules
 ./gradlew singleFile     # produce build/dist/oillamp, the whole program in one file
 ./gradlew installDist    # a conventional bin/lib layout, for development
 ./gradlew spikes         # the tests that need real podman (slow, need a network)
@@ -1032,7 +1041,7 @@ def 'A lamp whose sandbox is still up is not removed out from under it'() {
 These blocks are written for a reader who has not seen any other document. They explain terms
 such as *subordinate user id* rather than assuming them.
 
-The 98 scenarios run in well under a minute. They need no podman, no network and no graphical
+The scenarios run in about two minutes. They need no podman, no network and no graphical
 session, because they run against `SimulatedMachine`.
 
 ### 12.2 Spikes

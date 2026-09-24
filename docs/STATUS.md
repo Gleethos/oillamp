@@ -22,7 +22,7 @@ builds the image, starts the sandbox, opens a shell window and a desktop viewer,
 reach the internet through the policy proxy, optionally records the desktop, reports health in the
 launching terminal, and removes the container when the session ends.
 
-The fast test suite has 98 scenarios and passes. The spikes pass on the development machine.
+The fast test suite passes. The spikes pass on the development machine.
 
 ---
 
@@ -209,6 +209,13 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 - The output of a failed image build is only shown in the error (its last 40 lines). It is not
   saved to `.oillamp/logs/`.
 
+### The network
+
+- The default rules block loopback and the private ranges, but not the host's own public IPv4 or
+  global IPv6 addresses. A service on the host that listens on every address can be reached at
+  them. The proxy could add the host's addresses to the denied ones when a session starts; that is
+  undecided. Until then, README section 6.5 tells users to add a deny rule themselves.
+
 ### Inconsistencies
 
 - `oillamp list` and `remove` recognise containers by the label `oillamp.lamp`; the archived
@@ -265,7 +272,7 @@ the code that would otherwise look unnecessary.
 ## Running the tests and the program
 
 ```sh
-./gradlew build          # compile and run the 98 scenarios and the architecture test
+./gradlew build          # compile and run the scenarios and the architecture test
 ./gradlew test           # then read build/spock-reports/*.md
 ./gradlew spikes         # checks against real podman; slow, needs podman and a network
 ./gradlew installDist    # build/install/oillamp/bin/oillamp, for development
