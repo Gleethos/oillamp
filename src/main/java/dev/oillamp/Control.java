@@ -13,7 +13,6 @@ import java.util.Optional;
 
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import sprouts.Association;
@@ -34,7 +33,6 @@ final class Control {
 
     private Control() {}
 
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     /// What a second oillamp is asking for.
     record Request(String op, Association<String, String> arguments) {
@@ -50,7 +48,7 @@ final class Control {
         public boolean flag(String key) { return arguments.get(key).orElse("false").equals("true"); }
 
         public String render() {
-            ObjectNode node = JSON.createObjectNode();
+            ObjectNode node = Json.object();
             node.put("op", op);
             for (Pair<String, String> argument : arguments)
                 node.put(argument.first(), argument.second());
@@ -59,7 +57,7 @@ final class Control {
 
         public static Optional<Request> parse(String line) {
             try {
-                JsonNode node = JSON.readTree(line);
+                JsonNode node = Json.MAPPER.readTree(line);
                 JsonNode op = node.get("op");
                 if (op == null || !op.isTextual()) return Optional.empty();
                 Association<String, String> arguments = Association.between(String.class, String.class);
@@ -97,7 +95,7 @@ final class Control {
         public String error() { return values.get("error").orElse("the session did not say why"); }
 
         public String render() {
-            ObjectNode node = JSON.createObjectNode();
+            ObjectNode node = Json.object();
             node.put("ok", succeeded);
             for (Pair<String, String> value : values)
                 node.put(value.first(), value.second());
@@ -110,7 +108,7 @@ final class Control {
 
         public static Reply parse(String line) {
             try {
-                JsonNode node = JSON.readTree(line);
+                JsonNode node = Json.MAPPER.readTree(line);
                 Association<String, String> values = Association.between(String.class, String.class);
                 for (var field : node.properties())
                     if (!field.getKey().equals("ok") && !field.getKey().equals("argv"))

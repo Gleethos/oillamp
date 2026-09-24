@@ -306,6 +306,7 @@ output are removed before it is shown.
 | Configuration | `ConfigLoader`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `Templates`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId` |
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
+| Shared | `Json` (every JSON file, message and answer is read and written through it) |
 | Image and container | `SandboxPhase`, `ImageResources`, `ImageTag`, `ContainerName`, `RuntimeEnv`, `ReadyInfo`, `AgentGuide`, `Gpu` |
 | Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `Ssh`, `Terminals`, `Viewers` |
 | Network | `Egress`, `Policy`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |

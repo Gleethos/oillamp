@@ -7,7 +7,6 @@ import java.util.Optional;
 
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import sprouts.Tuple;
 
 /// Decides what is at a lamp path: nothing, an empty directory, an existing lamp, someone else's
@@ -17,7 +16,6 @@ final class LampClassifier {
 
     private LampClassifier() {}
 
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     /// Entries that do not make a directory count as someone else's: files that editors and file
     /// managers leave behind, and the lamp's own `oillamp.toml` and `README.txt`. Writing
@@ -54,7 +52,7 @@ final class LampClassifier {
     }
 
     private static LampMeta parse(String json) throws JacksonException {
-        JsonNode node = JSON.readTree(json);
+        JsonNode node = Json.MAPPER.readTree(json);
         JsonNode version = node.get("schemaVersion");
         JsonNode agentId = node.get("agentId");
         JsonNode createdAt = node.get("createdAt");
@@ -74,13 +72,12 @@ final class LampClassifier {
 
     /// Writes `lamp.json` as text; the reverse of [#parse].
     public static String render(LampMeta meta) {
-        StringBuilder out = new StringBuilder("{\n");
-        out.append("  \"schemaVersion\": ").append(meta.schemaVersion()).append(",\n");
-        out.append("  \"agentId\": \"").append(meta.agentId().value()).append("\",\n");
-        out.append("  \"createdAt\": \"").append(meta.createdAt()).append("\",\n");
-        out.append("  \"createdBy\": \"").append(meta.createdBy()).append('"');
-        meta.lastSessionAt().ifPresent(when ->
-                out.append(",\n  \"lastSessionAt\": \"").append(when).append('"'));
-        return out.append("\n}\n").toString();
+        var node = Json.object()
+                .put("schemaVersion", meta.schemaVersion())
+                .put("agentId", meta.agentId().value())
+                .put("createdAt", meta.createdAt().toString())
+                .put("createdBy", meta.createdBy());
+        meta.lastSessionAt().ifPresent(when -> node.put("lastSessionAt", when.toString()));
+        return Json.readable(node);
     }
 }

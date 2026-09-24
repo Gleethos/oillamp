@@ -25,7 +25,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import sprouts.Tuple;
@@ -53,7 +52,6 @@ final class Egress implements AutoCloseable {
     private static final int BUFFER_BYTES = 64 * 1024;
     /// The rule name logged for a host name that could not be resolved.
     private static final String UNRESOLVED = "unresolved";
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     /// What the supervisor is told as it happens. Called from connection threads.
     interface Listener {
@@ -68,7 +66,7 @@ final class Egress implements AutoCloseable {
                   long bytesUp, long bytesDown, Duration took) {
 
         String toJson() {
-            ObjectNode line = JSON.createObjectNode()
+            ObjectNode line = Json.object()
                 .put("ts", at.toString()).put("channel", channel).put("method", method)
                 .put("host", host).put("port", port)
                 .put("address", address.map(IpAddress::text).orElse(null))
@@ -587,7 +585,7 @@ final class Egress implements AutoCloseable {
         void write(Journey journey) { lines.offer(journey.toJson()); }
 
         void write(String note) {
-            lines.offer(JSON.createObjectNode().put("ts", Instant.now().toString())
+            lines.offer(Json.object().put("ts", Instant.now().toString())
                             .put("channel", "proxy").put("note", note).toString());
         }
 

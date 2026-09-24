@@ -4,7 +4,6 @@ import java.util.Optional;
 
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /// The contents of `ready.json`, which the container's entrypoint writes once the desktop and
 /// the SSH listener accept connections.
@@ -17,7 +16,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /// `runtime.env` itself, and trusts its own value over what the container reports.
 record ReadyInfo(String renderer, boolean gpuFallback, Optional<SessionId> session) {
 
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     /// Used when the file cannot be read. The session may still be working perfectly.
     public static ReadyInfo unknown() {
@@ -30,7 +28,7 @@ record ReadyInfo(String renderer, boolean gpuFallback, Optional<SessionId> sessi
     /// the session is known to work. An unreadable field is no reason to stop it.
     public static ReadyInfo parse(String json) {
         try {
-            JsonNode node = JSON.readTree(json);
+            JsonNode node = Json.MAPPER.readTree(json);
             JsonNode renderer = node.get("renderer");
             JsonNode fallback = node.get("gpu_fallback");
             JsonNode session = node.get("session");

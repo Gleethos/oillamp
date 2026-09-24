@@ -336,15 +336,14 @@ final class Supervisor {
 
     /// The session's own record, read by `oillamp at` on a busy lamp and by `status`.
     private String sessionJson() {
-        return "{\n"
-             + "  \"session\": \"" + prepared.session() + "\",\n"
-             + "  \"agentId\": \"" + prepared.layout().agentId() + "\",\n"
-             + "  \"container\": \"" + sandbox.container() + "\",\n"
-             + "  \"image\": \"" + sandbox.image() + "\",\n"
-             + "  \"startedAt\": \"" + sessionStarted + "\",\n"
-             + "  \"supervisorPid\": " + ProcessHandle.current().pid() + ",\n"
-             + "  \"controlSocket\": \"" + prepared.layout().controlSocket() + "\"\n"
-             + "}\n";
+        return Json.readable(Json.object()
+                .put("session", prepared.session().toString())
+                .put("agentId", prepared.layout().agentId().toString())
+                .put("container", sandbox.container().toString())
+                .put("image", sandbox.image().toString())
+                .put("startedAt", sessionStarted.toString())
+                .put("supervisorPid", ProcessHandle.current().pid())
+                .put("controlSocket", prepared.layout().controlSocket().toString()));
     }
 
     private void beginShutdown(SessionState.ShutdownReason reason) {

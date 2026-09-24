@@ -197,7 +197,8 @@ final class StepRunner {
     /// container had started.
     private boolean readyForThisSession(Step.AwaitReady step) {
         return Filesystem.readString(step.readyFile())
-                .filter(json -> json.contains("\"session\":\"" + step.session().value() + "\""))
+                .flatMap(json -> ReadyInfo.parse(json).session())
+                .filter(step.session()::equals)
                 .isPresent();
     }
 

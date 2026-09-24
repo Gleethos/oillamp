@@ -359,15 +359,15 @@ final class Commands {
         if (!outcome.succeeded()) return Optional.empty();
         try {
             com.fasterxml.jackson.databind.JsonNode listing =
-                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(outcome.output());
+                    Json.MAPPER.readTree(outcome.output());
             if (!listing.isArray()) return Optional.empty();
             for (com.fasterxml.jackson.databind.JsonNode container : listing) {
                 com.fasterxml.jackson.databind.JsonNode labels = container.get("Labels");
-                if (labels == null || !text(labels, "oillamp.lamp").equals(root.toString())) continue;
+                if (labels == null || !Json.text(labels, "oillamp.lamp").equals(root.toString())) continue;
                 com.fasterxml.jackson.databind.JsonNode names = container.get("Names");
                 return Optional.of(names != null && names.isArray() && !names.isEmpty()
                         ? names.get(0).asText()
-                        : text(container, "Names"));
+                        : Json.text(container, "Names"));
             }
         } catch (com.fasterxml.jackson.core.JacksonException unreadable) {
             // Unreadable output: fall back to the other checks in whatIsStillRunning.
@@ -456,16 +456,16 @@ final class Commands {
         Tuple<String> rows = Tuple.of(String.class);
         try {
             com.fasterxml.jackson.databind.JsonNode listing =
-                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+                    Json.MAPPER.readTree(json);
             if (!listing.isArray()) return rows;
             for (com.fasterxml.jackson.databind.JsonNode container : listing) {
                 com.fasterxml.jackson.databind.JsonNode labels = container.get("Labels");
                 com.fasterxml.jackson.databind.JsonNode names = container.get("Names");
                 String name = names != null && names.isArray() && !names.isEmpty()
                         ? names.get(0).asText()
-                        : text(container, "Names");
-                String lamp = labels == null ? "" : text(labels, "oillamp.lamp");
-                rows = rows.add(column(name) + column(text(container, "State")) + lamp);
+                        : Json.text(container, "Names");
+                String lamp = labels == null ? "" : Json.text(labels, "oillamp.lamp");
+                rows = rows.add(column(name) + column(Json.text(container, "State")) + lamp);
             }
         } catch (com.fasterxml.jackson.core.JacksonException unreadable) {
             // Output that is not the expected JSON: show nothing rather than fail.
@@ -475,10 +475,6 @@ final class Commands {
                 : Tuple.of(String.class, column("CONTAINER") + column("STATE") + "LAMP").addAll(rows);
     }
 
-    private static String text(com.fasterxml.jackson.databind.JsonNode node, String field) {
-        com.fasterxml.jackson.databind.JsonNode value = node.get(field);
-        return value == null ? "" : value.asText();
-    }
 
     // ─── reaching the supervisor ───────────────────────────────────────────────────────────
 
@@ -754,37 +750,14 @@ final class Commands {
                 + ", node " + config.image().nodeVersion();
     }
 
+    /// Says who holds the lamp, from the `session.json` the running session wrote.
     private Problem busyProblem(LampPhase.Prepared prepared) {
-        Optional<String> sessionMeta = Filesystem.readString(prepared.layout().sessionMeta());
+        Optional<com.fasterxml.jackson.databind.JsonNode> session =
+                Filesystem.readString(prepared.layout().sessionMeta()).flatMap(Json::parse);
         return Problems.lockBusy(prepared.layout().root(),
-                extractLong(sessionMeta, "supervisorPid").orElse(0L),
-                extract(sessionMeta, "startedAt").orElse("an earlier time"));
-    }
-
-    private static Optional<String> extract(Optional<String> json, String key) {
-        return json.flatMap(text -> {
-            int at = text.indexOf('"' + key + '"');
-            if (at < 0) return Optional.empty();
-            int colon = text.indexOf(':', at);
-            int start = text.indexOf('"', colon + 1);
-            int end = start < 0 ? -1 : text.indexOf('"', start + 1);
-            return start < 0 || end < 0 ? Optional.empty() : Optional.of(text.substring(start + 1, end));
-        });
-    }
-
-    private static Optional<Long> extractLong(Optional<String> json, String key) {
-        return json.flatMap(text -> {
-            int at = text.indexOf('"' + key + '"');
-            if (at < 0) return Optional.empty();
-            int colon = text.indexOf(':', at);
-            StringBuilder digits = new StringBuilder();
-            for (int i = colon + 1; i < text.length(); i++) {
-                char c = text.charAt(i);
-                if (Character.isDigit(c)) digits.append(c);
-                else if (digits.length() > 0) break;
-            }
-            return digits.isEmpty() ? Optional.empty() : Optional.of(Long.parseLong(digits.toString()));
-        });
+                session.map(json -> json.path("supervisorPid").asLong(0)).orElse(0L),
+                session.map(json -> Json.text(json, "startedAt")).filter(when -> !when.isEmpty())
+                       .orElse("an earlier time"));
     }
 
     /// The exit code for a list of problems: 4 for a busy lamp, 2 for configuration errors, otherwise 1.

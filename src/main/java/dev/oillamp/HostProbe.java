@@ -5,7 +5,6 @@ import java.time.Duration;
 import java.util.Optional;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import sprouts.Tuple;
 import sprouts.ValueSet;
 
@@ -23,7 +22,6 @@ final class HostProbe {
 
     private HostProbe() {}
 
-    private static final ObjectMapper JSON = new ObjectMapper();
     private static final Duration QUICK = Duration.ofSeconds(5);
 
     public static HostFacts probe(Machine machine, HostRequirements requirements, Path lampPathHint) {
@@ -162,9 +160,9 @@ final class HostProbe {
         Machine.Outcome info = machine.run(
                 Machine.Command.of("podman", "info", "--format", "json").withTimeout(QUICK));
         try {
-            JsonNode versionNode = JSON.readTree(version.output());
+            JsonNode versionNode = Json.MAPPER.readTree(version.output());
             String versionText = versionNode.path("Client").path("Version").asText("0");
-            JsonNode infoNode = info.succeeded() ? JSON.readTree(info.output()) : JSON.createObjectNode();
+            JsonNode infoNode = info.succeeded() ? Json.MAPPER.readTree(info.output()) : Json.object();
             JsonNode host = infoNode.path("host");
             return Optional.of(new PodmanFacts(
                     versionText,
