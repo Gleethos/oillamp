@@ -353,27 +353,41 @@ final class Commands {
     /// Found by label rather than by name, because the name comes from `lamp.json`, which
     /// may already have been deleted by hand. The label holds the lamp's path.
     private Optional<String> runningSandboxFor(Path root) {
-        Machine.Outcome outcome = machine.run(Machine.Command
+        Machine.Outcome outcome = listRunningSandboxes();
+        if (!outcome.succeeded()) return Optional.empty();
+        return runningSandboxesIn(outcome.output()).stream()
+                .filter(sandbox -> sandbox.lamp().equals(root.toString()))
+                .map(RunningSandbox::name).findFirst();
+    }
+
+    /// One oillamp container, as `podman ps` describes it.
+    private record RunningSandbox(String name, String state, String lamp) {}
+
+    /// Every container with an `oillamp.agent-id` label that podman is running.
+    ///
+    /// JSON rather than a --format template: the template field names differ between podman
+    /// 4 and 5, and this must work with both.
+    private Machine.Outcome listRunningSandboxes() {
+        return machine.run(Machine.Command
                 .of("podman", "ps", "--filter", "label=oillamp.agent-id", "--format", "json")
                 .withTimeout(java.time.Duration.ofSeconds(20)).labelled("podman ps"));
-        if (!outcome.succeeded()) return Optional.empty();
-        try {
-            com.fasterxml.jackson.databind.JsonNode listing =
-                    Json.MAPPER.readTree(outcome.output());
-            if (!listing.isArray()) return Optional.empty();
-            for (com.fasterxml.jackson.databind.JsonNode container : listing) {
-                com.fasterxml.jackson.databind.JsonNode labels = container.get("Labels");
-                if (labels == null || !Json.text(labels, "oillamp.lamp").equals(root.toString())) continue;
-                com.fasterxml.jackson.databind.JsonNode names = container.get("Names");
-                return Optional.of(names != null && names.isArray() && !names.isEmpty()
-                        ? names.get(0).asText()
-                        : Json.text(container, "Names"));
-            }
-        } catch (com.fasterxml.jackson.core.JacksonException unreadable) {
-            // Unreadable output: fall back to the other checks in whatIsStillRunning.
-            return Optional.empty();
+    }
+
+    /// Reads the output of [#listRunningSandboxes]. Output that is not the expected JSON counts
+    /// as no containers at all, rather than as a failure.
+    private static Tuple<RunningSandbox> runningSandboxesIn(String json) {
+        Tuple<RunningSandbox> found = Tuple.of(RunningSandbox.class);
+        com.fasterxml.jackson.databind.JsonNode listing =
+                Json.parse(json).orElse(com.fasterxml.jackson.databind.node.NullNode.getInstance());
+        if (!listing.isArray()) return found;
+        for (com.fasterxml.jackson.databind.JsonNode container : listing) {
+            // podman 4 and 5 give the names as a list; older versions as one string.
+            com.fasterxml.jackson.databind.JsonNode names = container.path("Names");
+            String name = names.isArray() && !names.isEmpty() ? names.get(0).asText() : names.asText("");
+            found = found.add(new RunningSandbox(name, Json.text(container, "State"),
+                    container.path("Labels").path("oillamp.lamp").asText("")));
         }
-        return Optional.empty();
+        return found;
     }
 
     /// The list of what `remove` would delete, shown before the user adds `--yes`. The
@@ -423,7 +437,7 @@ final class Commands {
         }
         Control.Reply answer = ((Result.Ok<Control.Reply>) reply).value();
         StringBuilder out = new StringBuilder();
-        for (String key : java.util.List.of("state", "detail", "lamp", "session", "container",
+        for (String key : Tuple.of(String.class, "state", "detail", "lamp", "session", "container",
                                             "desktop", "renderer", "uptime", "shells", "viewer"))
             answer.values().get(key).ifPresent(value ->
                     out.append(pad(key)).append(value).append('\n'));
@@ -434,45 +448,20 @@ final class Commands {
     /// `oillamp list`: every oillamp container running on this host, found by its
     /// `oillamp.agent-id` label. oillamp keeps no list of its own that could go out of date.
     public ExitStatus list() {
-        // JSON rather than a --format template: the template field names differ between podman
-        // 4 and 5, and this must work with both.
-        Machine.Outcome outcome = machine.run(Machine.Command
-                .of("podman", "ps", "--filter", "label=oillamp.agent-id", "--format", "json")
-                .withTimeout(java.time.Duration.ofSeconds(20)).labelled("podman ps"));
+        Machine.Outcome outcome = listRunningSandboxes();
         if (!outcome.succeeded()) {
             context.report(Tuple.of(Problem.class, Problems.podmanFailed(
                     "podman ps", outcome.exitCode(), outcome.errorOutput().strip())));
             return ExitStatus.ERROR;
         }
-        Tuple<String> rows = describeRunningSandboxes(outcome.output());
-        context.emit(new LampEvent.Answer(rows.isEmpty()
+        Tuple<RunningSandbox> running = runningSandboxesIn(outcome.output());
+        StringBuilder rows = new StringBuilder(column("CONTAINER") + column("STATE") + "LAMP");
+        for (RunningSandbox sandbox : running)
+            rows.append('\n').append(column(sandbox.name())).append(column(sandbox.state())).append(sandbox.lamp());
+        context.emit(new LampEvent.Answer(running.isEmpty()
                 ? "no oillamp sandboxes are running on this host"
-                : String.join("\n", rows)));
+                : rows.toString()));
         return ExitStatus.SUCCESS;
-    }
-
-    /// Turns `podman ps --format json` into one line per sandbox, lamp path included.
-    private static Tuple<String> describeRunningSandboxes(String json) {
-        Tuple<String> rows = Tuple.of(String.class);
-        try {
-            com.fasterxml.jackson.databind.JsonNode listing =
-                    Json.MAPPER.readTree(json);
-            if (!listing.isArray()) return rows;
-            for (com.fasterxml.jackson.databind.JsonNode container : listing) {
-                com.fasterxml.jackson.databind.JsonNode labels = container.get("Labels");
-                com.fasterxml.jackson.databind.JsonNode names = container.get("Names");
-                String name = names != null && names.isArray() && !names.isEmpty()
-                        ? names.get(0).asText()
-                        : Json.text(container, "Names");
-                String lamp = labels == null ? "" : Json.text(labels, "oillamp.lamp");
-                rows = rows.add(column(name) + column(Json.text(container, "State")) + lamp);
-            }
-        } catch (com.fasterxml.jackson.core.JacksonException unreadable) {
-            // Output that is not the expected JSON: show nothing rather than fail.
-            return Tuple.of(String.class);
-        }
-        return rows.isEmpty() ? rows
-                : Tuple.of(String.class, column("CONTAINER") + column("STATE") + "LAMP").addAll(rows);
     }
 
 
@@ -657,7 +646,7 @@ final class Commands {
                 return ExitStatus.ERROR;
             }
         }
-        for (Path leftover : java.util.List.of(layout.controlSocket(), layout.primarySshSocket(),
+        for (Path leftover : Tuple.of(Path.class, layout.controlSocket(), layout.primarySshSocket(),
                                                 layout.extraSshSocket(), layout.sessionMeta())) {
             try {
                 Filesystem.deleteIfPresent(leftover);

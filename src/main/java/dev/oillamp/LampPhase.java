@@ -195,8 +195,8 @@ final class LampPhase {
     /// Older versions attached their shared parent, which the agent owns, so the agent could
     /// replace one with a link to any directory of the user's. Such a lamp is refused.
     private static Optional<Problem> aSocketDirectoryReplacedByALink(LampLayout layout) {
-        for (Path directory : java.util.List.of(layout.socketsDir(), layout.hostSocketsDir(),
-                                                layout.agentSocketsDir(), layout.infraSocketsDir())) {
+        for (Path directory : Tuple.of(Path.class, layout.socketsDir(), layout.hostSocketsDir(),
+                                                   layout.agentSocketsDir(), layout.infraSocketsDir())) {
             if (!Files.isSymbolicLink(directory)) continue;
             String target;
             try {
