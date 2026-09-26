@@ -12,8 +12,8 @@ include /run/lamp/output.conf
 include /run/lamp/windows.conf
 # The lamp itself, centred on the same colour the rest of the desktop uses. `center` rather than
 # `stretch` so it looks right at any resolution the user configures, and the fill colour matches
-# the image's own background so there is no visible seam around it.
-output * bg /usr/share/oillamp/wallpaper.png center #1f2430
+# the dark surface around the image's panel so there is no visible seam around it.
+output * bg /usr/share/oillamp/wallpaper.png center #161a22
 
 # Start Xwayland (the X11 server for Swing and other X11 applications) with sway and keep it
 # running. With "enable", sway starts it on first use and stops it 10 seconds after the last X11
@@ -26,7 +26,8 @@ default_floating_border normal 4
 # Window frames in the wallpaper's colours: slate for everything at rest, and the lamp's brass
 # only around the window that has the keyboard, so it is obvious where typing goes. The terminal
 # (/etc/xdg/foot/foot.ini) uses the same palette.
-#   slate #1f2430, frame #2a303c, focused title #343b4a, muted text #8e97ab, brass #c8913f
+#   surface #161a22, slate #1f2430, frame #2a303c, focused title #343b4a,
+#   muted text #8e97ab, brass #c8913f
 font pango:DejaVu Sans 10
 titlebar_padding 10 4
 #                       border  title   text    split   frame
