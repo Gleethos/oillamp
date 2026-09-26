@@ -158,7 +158,8 @@ final class Supervisor {
             state = transition.next();
             if (!before.getClass().equals(state.getClass())) announceState();
             // The briefing is printed once the shell is connected, when everything it says is true.
-            if (state instanceof SessionState.Running) brief();
+            if (state instanceof SessionState.Running)
+                dispatchUserBriefing();
 
             for (SessionAction action : transition.actions()) {
                 if (action instanceof SessionAction.Exit(ExitStatus status)) exit = status;
@@ -547,7 +548,7 @@ final class Supervisor {
     /// The briefing printed once the shell is connected: the desktop, how to open more windows,
     /// the one directory the agent can see, the network policy, the recording, and the three ways
     /// to end the session.
-    private void brief() {
+    private void dispatchUserBriefing() {
         if (briefed) return;
         briefed = true;
         LampLayout layout = prepared.layout();
