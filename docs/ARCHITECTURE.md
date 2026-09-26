@@ -347,7 +347,7 @@ output are removed before it is shown.
 |---|---|
 | Entry and commands | `OilLamp`, `Invocation`, `Commands`, `Context`, `ConsoleRenderer`, `Handbook` (the texts of `oillamp about` and `oillamp guide`) |
 | The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `Filesystem`, `LampLock` |
-| Host phase | `HostPhase`, `HostProbe`, `HostPlanner`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UsernsFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
+| Host phase | `HostPhase`, `HostProbe`, `HostPlanner`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
 | Lamp phase | `LampPhase`, `LampPlanner`, `LampClassifier`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
 | Configuration | `ConfigLoader`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `Templates`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId` |
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |

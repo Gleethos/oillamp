@@ -21,7 +21,7 @@ record HostFacts(
     ValueSet<String> installedPackages,
     SubIdFacts subIds,
     Optional<PodmanFacts> podman,
-    UsernsFacts userns,
+    UserNameSpaceFacts userns,
     boolean selinuxEnabled,
     Tuple<TerminalCandidate> terminals,
     Optional<Path> vncViewer,

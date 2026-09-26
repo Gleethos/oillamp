@@ -191,15 +191,15 @@ final class HostProbe {
         }
     }
 
-    private static UsernsFacts probeUserNamespaces(Machine machine, Optional<PodmanFacts> podman) {
-        if (podman.isEmpty()) return new UsernsFacts.Works();   // nothing to test yet; HostPhase probes again after installing
+    private static UserNameSpaceFacts probeUserNamespaces(Machine machine, Optional<PodmanFacts> podman) {
+        if (podman.isEmpty()) return new UserNameSpaceFacts.Works();   // nothing to test yet; HostPhase probes again after installing
         Machine.Outcome outcome = machine.run(
                 Machine.Command.of("podman", "unshare", "true").withTimeout(QUICK));
-        if (outcome.succeeded()) return new UsernsFacts.Works();
+        if (outcome.succeeded()) return new UserNameSpaceFacts.Works();
         boolean apparmor = machine
                 .readSystemFile(Path.of("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"))
                 .map(String::trim).filter("1"::equals).isPresent();
-        return new UsernsFacts.Fails(new Problem.Evidence.Command(
+        return new UserNameSpaceFacts.Fails(new Problem.Evidence.Command(
                 Tuple.of(String.class, "podman", "unshare", "true"),
                 outcome.exitCode(), tail(outcome.errorOutput(), 10), Duration.ZERO), apparmor);
     }

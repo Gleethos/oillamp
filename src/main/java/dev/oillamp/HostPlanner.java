@@ -113,7 +113,7 @@ final class HostPlanner {
             problems = problems.add(Problems.podmanNotRootless(
                     "podman info reports host.security.rootless = false"));
 
-        if (facts.userns() instanceof UsernsFacts.Fails failure) {
+        if (facts.userns() instanceof UserNameSpaceFacts.Fails failure) {
             problems = problems.add(failure.apparmorRestricted()
                     ? Problems.apparmorBlocked(failure.evidence())
                     : Problems.usernsBroken(failure.evidence()));
