@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
-  <!-- The source of wallpaper.png. The lamp sits on a panel with strongly rounded corners, raised
-       like a soft button out of the darker surface around it: lit along its top left edge, where
-       the flame is, and shaded along its bottom right. The surface runs to the edges of the image
+  <!-- The source of wallpaper.png. The lamp sits on a panel with strongly rounded corners, lifted
+       off the darker surface around it: its edge catches the light along the top left, where the
+       flame is, and it casts a shadow to the bottom right. The surface runs to the edges of the image
        and is the colour sway fills the rest of the screen with, so there is no seam at any screen
        size. -->
   <defs>
@@ -115,9 +115,7 @@
 
   <rect width="1200" height="700" fill="#161a22"/>
 
-  <!-- the panel's two soft edges on the surface: light up and left, shadow down and right -->
-  <rect x="38" y="38" width="1104" height="604" rx="48" fill="#343c4f" opacity="0.7"
-        filter="url(#panelShadow)"/>
+  <!-- the shadow the panel casts onto the surface, down and right, away from the flame -->
   <rect x="58" y="60" width="1104" height="604" rx="48" fill="#050608" opacity="0.95"
         filter="url(#panelShadow)"/>
 
