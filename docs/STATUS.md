@@ -214,7 +214,7 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 - The default rules block loopback and the private ranges, but not the host's own public IPv4 or
   global IPv6 addresses. A service on the host that listens on every address can be reached at
   them. The proxy could add the host's addresses to the denied ones when a session starts; that is
-  undecided. Until then, README section 6.5 tells users to add a deny rule themselves.
+  undecided. Until then, README section 7.5 tells users to add a deny rule themselves.
 
 ### Inconsistencies
 
@@ -231,6 +231,10 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 - Firefox loading a website through the proxy.
 - A forward to a real LLM service, and opencode or pi using it.
 - Two lamps running at the same time.
+- A lamp copied with `cp -a`. The copy has the original's agent id, and the container name, runtime
+  directory and ssh alias are all derived from it. Reading the code, starting the copy while the
+  original runs would remove the original's container as "left over from an earlier session".
+  Nothing checks that an agent id is unique. Undecided: refuse such a lamp, or give it a new id.
 - A lamp path longer than 150 characters.
 - Terminal emulators other than the ones on the development machine.
 

@@ -26,9 +26,25 @@ import sprouts.Tuple;
 /// the session state. A `stop` that removed the container directly would leave the supervisor
 /// believing its session was still running.
 ///
+/// The socket is [LampLayout#controlSocket()]:
+/// `$XDG_RUNTIME_DIR/oillamp/<agent id>/run/control.sock`, usually under `/run/user/<uid>`. It is
+/// outside the lamp and never mounted into the container, so only processes on the host, and only
+/// this user's (mode 0600), can reach it. Both ends are oillamp: the container takes no part.
+///
+/// One exchange, for example `oillamp stop`:
+///
+/// 1. The new process calls [#ask], which connects and writes one line, `{"op":"stop"}`.
+/// 2. In the supervisor, [Server] accepts the connection on a thread of its own, reads the line
+///    into a [Request], and calls the [Handler], which is `Supervisor.answer`.
+/// 3. The handler returns a [Reply]. For `stop` it has only posted an event; the session's event
+///    loop does the rest.
+/// 4. [Server] writes the reply as one line, `{"ok":true,"state":"shutting-down"}`, and the
+///    connection closes.
+///
 /// The protocol is one JSON object per line and one request per connection, simple enough for a
 /// future front end to use as well. It is only spoken between processes of the same oillamp
-/// version, so it has no versioning.
+/// version, so it has no versioning. You can speak it from a shell:
+/// `echo '{"op":"status"}' | socat - UNIX-CONNECT:<control.sock>`.
 final class Control {
 
     private Control() {}

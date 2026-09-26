@@ -81,8 +81,10 @@ file permissions. A mistake that mounts the wrong directory gives the agent your
 
 ### The lamp has two layers
 
-`<lamp>/` holds the configuration and oillamp's state. Only `<lamp>/agent-lamp-<id>/` is mounted
-into the container, as `/home/agent`.
+`<lamp>/` holds the configuration and oillamp's state. `<lamp>/agent-lamp-<id>/` is mounted into
+the container as `/home/agent`, and it is the only part of the lamp the agent can change freely. Of
+the state directory, only the session files (read-only), the three socket directories and the
+recordings are mounted, each on its own. The configuration, keys and logs never are.
 
 *Why:* the network policy, keys, logs and recordings are outside everything the agent can reach, so
 the agent cannot rewrite the rules that restrict it. The agent id in the directory name means a

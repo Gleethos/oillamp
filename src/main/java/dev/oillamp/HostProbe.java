@@ -75,6 +75,11 @@ final class HostProbe {
 
     /// Where the short socket paths of every lamp go: `$XDG_RUNTIME_DIR`, or `/run/user/<uid>`,
     /// its usual value, where it is not set, as under `sudo -i` or in a cron job.
+    ///
+    /// The login system (systemd-logind on most distributions) creates it for each user at login.
+    /// It is in memory, private to the user, and emptied at reboot, which suits what oillamp keeps
+    /// there: sockets that only mean anything while a session runs. Each lamp gets
+    /// `oillamp/<agent id>/` inside it; see [LampLayout].
     static Path runtimeDirectory(Machine machine) {
         return runtimeDirectory(machine, firstInteger(machine, 1000, "id", "-u"));
     }

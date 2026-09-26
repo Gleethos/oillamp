@@ -674,6 +674,18 @@ final class Supervisor {
 
     // ─── the control socket ────────────────────────────────────────────────────────────────
 
+    /// Answers one request from another oillamp process, such as `oillamp stop` or
+    /// `oillamp status`.
+    ///
+    /// The request arrived on the control socket, `run/control.sock` in the runtime directory.
+    /// [Control.Server] reads it, calls this method on that connection's own thread, and writes the
+    /// returned reply back on the same connection. This method does no socket work itself.
+    ///
+    /// Because it runs outside the event loop, it never changes the state. It reads it (the field
+    /// is volatile) and posts events: `stop` posts [SessionEvent.StopRequested] and replies at once,
+    /// and the event loop shuts the session down as it would for Ctrl-C. `view` opens a viewer
+    /// directly. `shell` opens nothing: it returns the ssh command, and the asking process runs it
+    /// in its own terminal.
     private Control.Reply answer(Control.Request request) {
         return switch (request.op()) {
             case "status" -> Control.Reply.ok()

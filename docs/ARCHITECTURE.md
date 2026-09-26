@@ -119,6 +119,52 @@ How data moves:
 Everything between host and container is a Unix domain socket in a bind-mounted directory. There
 is no TCP port on the host and no network interface in the container.
 
+### Where state lives
+
+The README's section 4 introduces this; here it is in full. The code decides with values (records,
+persistent collections, no `null`) and keeps its state in a small number of places, each with one
+job and a known lifetime.
+
+| Place | Written by | Read by | Lifetime |
+|---|---|---|---|
+| `<lamp>/oillamp.toml` | you; created from the template if absent | every command that reads configuration | until `oillamp remove` |
+| `<lamp>/.oillamp/lamp.json` | `LampPlanner` (identity); `Supervisor` (`lastSessionAt`) | every command that names the lamp | until `oillamp remove` |
+| `<lamp>/.oillamp/lock` | `LampLock`; the kernel holds the lock | `Commands.at` | the lock ends with the process, however it ends |
+| `<lamp>/.oillamp/session.json` | `Supervisor`, after its sockets are bound | `Commands.at` on a busy lamp | deleted last at shutdown; a killed supervisor leaves it behind |
+| `<lamp>/.oillamp/session/` | `LampPlanner.planSession`, every start | the entrypoint, sshd, every shell | rewritten each session |
+| `<lamp>/.oillamp/sockets/*/` | the proxy (host), wayvnc and the ssh listener (container) | relays, viewer, socat | files outlive their servers; deleted before the next session |
+| `<lamp>/.oillamp/recordings/`, `logs/` | wf-recorder; the egress proxy | you | recordings until retention deletes them; logs until you do |
+| `<lamp>/agent-lamp-<id>/` | the agent | the agent, you | until `oillamp remove` |
+| `$XDG_RUNTIME_DIR/oillamp/<id>/sockets` (symlink) | `LampPlanner.planSkeleton`, every start | every host-side socket path | in memory: gone at reboot, made again next start |
+| `$XDG_RUNTIME_DIR/oillamp/<id>/run/*.sock` | `Supervisor` (relays, control socket) | `oillamp stop/status/view/shell`, the shell window | deleted at shutdown; a killed supervisor leaves them |
+| podman: image `localhost/oillamp/sandbox:<tag>` | `podman build` | `podman run` | until removed by hand |
+| podman: container `oillamp-<id>` and its labels | `podman run` | `list`, `remove`, `stop`, the sandbox watcher | removed at shutdown; a killed supervisor leaves it running |
+| `/run`, `/tmp` in the container | the entrypoint and its processes | the container's processes | until the container stops |
+| `Supervisor.state` | the event loop only | the watcher, control socket, shutdown thread, JVM hook | until the process exits |
+
+Three rules follow from this, and the code keeps to them:
+
+- **Decide from values, write in one place.** Probes read places into fact records, pure planners
+  turn facts into a `Plan`, and only `StepRunner` carries steps out. During a session, events are
+  values, `SessionMachine.step` returns a new state value and action values, and only the event loop
+  stores the state.
+- **Ask the place that knows.** Whether a session runs is the lock, not `session.json`. Which
+  containers exist is podman's labels, not a registry. Whether a server is up is a connection
+  attempt, not the existence of its socket file.
+- **Clean up at the next start, not only at the last stop.** A process can die without running its
+  shutdown. So every start deletes stale socket files and `ready.json`, removes a leftover container
+  with the lamp's name, and removes a stale `session.json`; `oillamp stop` does the same for a
+  supervisor that died.
+
+Two consequences surprise people. Part of a lamp's state is outside the lamp, in the runtime
+directory, so that nothing mounted into the container can reach it. And the supervisor writes no
+session log: what it reports exists only in the terminal it runs in, apart from the network log.
+
+One sharp edge also follows. The container name, runtime directory and ssh alias are all derived
+from the agent id, and nothing checks that the id is unique. A lamp copied with `cp -a` has the same
+id as the original, so starting it while the original runs would remove the original's container
+as "left over". This has not been tried on real hardware; see STATUS.md.
+
 ---
 
 ## 3. What happens when you run `oillamp at`

@@ -10,8 +10,22 @@ import java.nio.file.Path;
 /// keeps the two layers apart: the agent's world is [#agentDir()], and the keys, logs,
 /// recordings and the network policy are beside it, out of the agent's reach.
 ///
-/// Sockets the host uses are addressed through [#runtimeDir()] rather than through the
-/// lamp, because Unix socket paths are limited to 107 bytes and lamp paths can be longer.
+/// The paths fall into two places with different lifetimes:
+///
+/// - **The lamp**, under [#root()]: on disk until `oillamp remove`. [#agentDir()] is mounted as
+///   `/home/agent`; of the state directory, only [#sessionDir()], the three socket directories
+///   and [#recordingsDir()] are mounted, each on its own.
+/// - **The runtime directory**, [#runtimeDir()], `$XDG_RUNTIME_DIR/oillamp/<agent id>/`,
+///   usually under `/run/user/<uid>`: in memory, emptied at reboot and made again by the lamp
+///   phase at every start. It holds [#runDir()], with the host-only sockets
+///   ([#controlSocket()] and the two SSH relay sockets), which are outside the lamp so that
+///   nothing mounted into the container can reach them. And it holds [#shortSockets()], a symlink
+///   to [#socketsDir()] in the lamp.
+///
+/// The host addresses every socket through the runtime directory, never through the lamp,
+/// because Unix socket paths are limited to 107 bytes and lamp paths can be longer. That is why
+/// [#vncSocket()], [#agentSshSocket()] and [#proxySocket()] start with [#shortSockets()], although
+/// the files are in the lamp.
 record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
 
     public LampLayout {

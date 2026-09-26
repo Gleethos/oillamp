@@ -18,16 +18,17 @@ When you are finished, one command removes the whole thing.
 1. [Who this document is for](#1-who-this-document-is-for)
 2. [Getting it running](#2-getting-it-running)
 3. [Reading the startup output, line by line](#3-reading-the-startup-output-line-by-line)
-4. [The ideas you need](#4-the-ideas-you-need)
-5. [What is in a lamp directory](#5-what-is-in-a-lamp-directory)
-6. [The boundary: two users, and what separates them](#6-the-boundary-two-users-and-what-separates-them)
-7. [The network](#7-the-network)
-8. [The desktop](#8-the-desktop)
-9. [What is inside the image](#9-what-is-inside-the-image)
-10. [The code, briefly](#10-the-code-briefly)
-11. [Building it yourself](#11-building-it-yourself)
-12. [How it is tested](#12-how-it-is-tested)
-13. [Taking ownership](#13-taking-ownership)
+4. [Where oillamp keeps things, and how data moves](#4-where-oillamp-keeps-things-and-how-data-moves)
+5. [The ideas you need](#5-the-ideas-you-need)
+6. [What is in a lamp directory](#6-what-is-in-a-lamp-directory)
+7. [The boundary: two users, and what separates them](#7-the-boundary-two-users-and-what-separates-them)
+8. [The network](#8-the-network)
+9. [The desktop](#9-the-desktop)
+10. [What is inside the image](#10-what-is-inside-the-image)
+11. [The code, briefly](#11-the-code-briefly)
+12. [Building it yourself](#12-building-it-yourself)
+13. [How it is tested](#13-how-it-is-tested)
+14. [Taking ownership](#14-taking-ownership)
 
 ---
 
@@ -139,7 +140,7 @@ To delete it permanently:
 oillamp remove ~/lamps/first --yes
 ```
 
-Without `--yes`, it prints exactly what would be deleted and stops. Section 6.4 explains why this
+Without `--yes`, it prints exactly what would be deleted and stops. Section 7.4 explains why this
 needs its own command instead of `rm -rf`.
 
 ### 2.6 Other commands
@@ -179,19 +180,20 @@ whole system at once.
 🪔 oillamp 0.1.0 — /home/you/lamps/first
 [host]    ✓ Ubuntu 24.04.5 LTS, Wayland (ubuntu:GNOME)
 [host]    ✓ podman 4.9.3, rootless, crun
-[lamp]    ✓ config valid — network: default allow, 1 rule, no forwards
+[lamp]    ✓ config valid — network: default allow, 2 rules, no forwards
 [lamp]    ✓ desktop 1920x1080, renderer gles2 (hardware)
 [lamp]    ✓ ready — agent v4elchzj, desktop 1920x1080, renderer gles2
 [image]   ✓ sandbox image ready — localhost/oillamp/sandbox:0a6f7ffa4c89ca64
 [session] ✓ sandbox running — container oillamp-v4elchzj
 [session] ✓ desktop and shell both answering — oillamp connected to each socket before handing it over
 [session] ✓ the desktop is up — renderer gles2
-[session] ✓ opened your shell, in a new terminal window
 [session] ✓ opened the desktop viewer
+[session] ✓ opened your shell, in a new terminal window
 ```
 
-The tag in brackets is the **phase**. oillamp runs its phases in order, and each finishes before
-the next begins. This is the actual structure of the program, not just formatting.
+The first line shows the lamp path as you typed it. The tag in brackets on the others is the
+**phase**. oillamp runs its phases in order, and each finishes before the next begins. This is the
+actual structure of the program, not just formatting.
 
 **`[host]`: what is this machine, and can it run a sandbox?**
 
@@ -199,15 +201,15 @@ the next begins. This is the actual structure of the program, not just formattin
 session you are logged into. oillamp needs to know the session type because it opens windows.
 
 `podman 4.9.3, rootless, crun` is three facts. *podman 4.9.3* is the container program and its
-version. *rootless* means podman runs as you, not as the system administrator (section 4.2).
+version. *rootless* means podman runs as you, not as the system administrator (section 5.2).
 *crun* is the low-level program podman uses to create containers. oillamp requires crun because it
-is the one that can pass your graphics card into the container (section 8.4).
+is the one that can pass your graphics card into the container (section 9.4).
 
 **`[lamp]`: what is in this directory, and what does its configuration ask for?**
 
-`config valid — network: default allow, 1 rule, no forwards` means the `oillamp.toml` file in the
+`config valid — network: default allow, 2 rules, no forwards` means the `oillamp.toml` file in the
 lamp directory was read without errors, and summarises the network policy it describes
-(section 7).
+(section 8).
 
 `desktop 1920x1080, renderer gles2 (hardware)` means the desktop will be 1920 × 1080 pixels and
 will be drawn by your real graphics card. `gles2` is the name of the drawing method that uses the
@@ -219,7 +221,7 @@ names the container and the agent's home directory, and it never changes for the
 
 **`[image]`: is the container image built?**
 
-An **image** is a frozen filesystem that a container starts from (section 4.5). The long
+An **image** is a frozen filesystem that a container starts from (section 5.5). The long
 hexadecimal string at the end is not a version number. It is a fingerprint of everything that goes
 into building the image: the build recipe, every script, every configuration file and the package
 list. Change any of them and the fingerprint changes, so oillamp builds a new image. Change nothing
@@ -235,18 +237,100 @@ desktop's socket *file exists*. It opens a connection to it, and to the shell's 
 tells you the session is ready. A crashed previous session leaves a socket file with nothing behind
 it, and checking only for the file is how a tool reports "ready" and then fails.
 
-`opened your shell, in a new terminal window` and `opened the desktop viewer` are the two windows.
+`opened the desktop viewer` and `opened your shell, in a new terminal window` are the two windows.
 They are new windows on purpose: the terminal you typed in is not taken over, because it is where
 the health reports go for the rest of the session.
 
 ---
 
-## 4. The ideas you need
+## 4. Where oillamp keeps things, and how data moves
+
+A map, before the mechanisms. Most questions about oillamp ("where is that socket?", "what is left
+after a crash?", "how does it know a session is running?") are answered by knowing where each piece
+of state lives, how long it lives, and what moves between those places.
+
+### 4.1 Values and places
+
+It helps to separate two kinds of thing, a distinction Rich Hickey made popular:
+
+- A **value** is a fact that never changes: a number, a date, a record describing what
+  `podman info` said at 10:15. It can be copied, shared between threads and printed, and nobody can
+  change it under you.
+- A **place** is a location whose content changes over time: a variable, a file, a socket path, a
+  container. Asking a place twice can give two answers.
+
+Programs get hard where places are: who else writes this, is it still true, what if the process
+died halfway? oillamp keeps its places few and does its deciding with values. Its data is immutable
+Java records, its collections return a new collection instead of changing the old one, and there is
+no `null`.
+
+### 4.2 The places
+
+| Place | What is there | How long it lasts |
+|---|---|---|
+| **The lamp**, `<lamp>/` | your configuration, the lamp's identity, the lock, the SSH keys, the files handed to each session, the socket directories the container uses, recordings, the network log, and the agent's home | on disk until `oillamp remove` |
+| **The runtime directory**, `$XDG_RUNTIME_DIR/oillamp/<agent id>/`, usually `/run/user/<uid>/…` | `run/control.sock`, `run/ssh-primary.sock`, `run/ssh.sock`, which only the host uses, and a symlink `sockets` into the lamp | in memory; made again at every start, gone at reboot |
+| **podman's storage**, in your home | the image, named by its fingerprint; while a session runs, the container `oillamp-<agent id>` with labels naming the lamp | images until you remove them; the container until the session ends |
+| **Inside the container** | `/run` and `/tmp` in memory; everything else read-only, except the directories attached from the lamp | until the container stops |
+| **Your account** | `~/.config/oillamp/config.toml` (optional defaults), `~/.cache/oillamp/<version>-<fingerprint>/` (the unpacked program), and what the host phase changed: packages, `/etc/subuid` | until you change them |
+| **The `oillamp at` process** | the session's current state, open connections, and what it reports | until the session ends; reports are printed in its terminal and not saved anywhere else, apart from the network log |
+
+Two of these surprise people. Part of a lamp's state is outside the lamp, in the runtime directory,
+on purpose: the container must never see those sockets, and socket paths are limited to 107 bytes
+(section 5.8). And nothing is written to a session log: the terminal you started `oillamp at` in is
+the record.
+
+What a crash leaves behind follows from the table. If the `oillamp at` process is killed, the
+kernel releases the lock at once, but `session.json`, the `run/` sockets and the running container
+stay. The next `oillamp at` removes the container and the stale `session.json`; `oillamp stop`
+removes all three. A reboot empties the runtime directory and stops the container, and the next
+start cleans up the rest.
+
+### 4.3 How data moves
+
+Starting up, every phase has the same shape. Places are read once into values ("facts"), a pure
+function turns the facts into a plan, which is also a value, and one class carries the plan out:
+
+```
+places (os-release, podman info, the lamp, oillamp.toml)
+   │  probe
+   ▼
+facts: HostFacts, LampState, LampConfig          values
+   │  pure planner (no files, processes, clock)
+   ▼
+plan: [CreateDirectory, WriteFile, RunContainer…] a value; --dry-run prints it
+   │  StepRunner, the only class that carries out steps
+   ▼
+places (the lamp, the runtime directory, podman)
+```
+
+During a session, everything that happens (a shell connecting, the container stopping, Ctrl-C,
+`oillamp stop`, a second passing) becomes an event value on one queue. One thread takes them one at
+a time and asks a pure function, `SessionMachine.step`, what each means. It returns a new state
+value and a list of actions; the supervisor stores the state in its one field and performs the
+actions. The one place that changes during a session has exactly one writer.
+
+### 4.4 Ask the place that knows
+
+oillamp avoids keeping copies of facts that live somewhere else, because a copy can go stale. It
+asks the place that is authoritative, at the moment it needs to know:
+
+| Question | Answered by |
+|---|---|
+| Is a session running on this lamp? | the operating-system lock on `.oillamp/lock`, not `session.json` |
+| Which sandboxes are running? | podman, by container label; oillamp keeps no list of its own |
+| Is the image up to date? | whether podman has the tag computed from today's inputs |
+| Is the desktop up? | connecting to its socket, not checking that the socket file exists |
+| What is the session doing? | the supervisor, asked through its control socket |
+
+---
+
+## 5. The ideas you need
 
 This section explains the mechanisms oillamp is built from. If you already know what a user
-namespace is, skip to section 5.
+namespace is, skip to section 6.
 
-### 4.1 A container is not a virtual machine
+### 5.1 A container is not a virtual machine
 
 A **virtual machine** simulates a whole computer, with its own kernel, memory management and
 virtual disks. Starting one takes tens of seconds and uses hundreds of megabytes of memory before
@@ -260,17 +344,17 @@ different view of a few things:
 - **which files exist** (it sees a different root directory),
 - **which other processes exist** (it sees only its own),
 - **which network interfaces exist**,
-- **which user ids mean what.** This one matters most here; section 4.3 is about it.
+- **which user ids mean what.** This one matters most here; section 5.3 is about it.
 
 Each of these different views is a kernel feature called a **namespace**. A container is a process
 started with its own set of namespaces.
 
 The consequence: containers start in milliseconds and cost almost nothing, but the isolation is
 only as good as the kernel's enforcement of those namespaces. A virtual machine offers a smaller
-attack surface. A container is far easier to use. oillamp uses a container, and section 6.5 says
+attack surface. A container is far easier to use. oillamp uses a container, and section 7.5 says
 what that means for security.
 
-### 4.2 Rootless
+### 5.2 Rootless
 
 Traditionally, running containers required a background service running as the system
 administrator (root). Asking that service to start a container was almost the same as asking it to
@@ -283,9 +367,9 @@ something escapes the container, it escapes into *your* account, not into root.
 oillamp requires rootless podman and refuses to run any other way. This is the most important
 single thing between an agent and your machine: with a root-owned container service, a container
 escape would compromise the whole computer. Rootless reduces the worst case to "the agent can do
-what you can do", and the uid map in section 4.3 reduces it further.
+what you can do", and the uid map in section 5.3 reduces it further.
 
-### 4.3 User namespaces and the uid map
+### 5.3 User namespaces and the uid map
 
 This is the central mechanism of oillamp. Read it slowly.
 
@@ -315,14 +399,14 @@ identity to 165536, and 165536 owns nothing and may do nothing.
 **Second, the agent is you, on purpose.** Container uid 1000 maps to your real account. When the
 agent writes a file in its home directory, that file appears on your machine owned by *you*. You
 can read it, edit it in your own editor and commit it to Git without changing ownership. This is a
-convenience with a cost, which section 6.5 explains.
+convenience with a cost, which section 7.5 explains.
 
 **Third, the infrastructure is a stranger to both of you.** Container uid 1001 runs the desktop
 compositor, the screen recorder and the network bridges. It maps to 166536, which is neither you
 nor the agent. The agent cannot stop those processes, cannot use their private control sockets, and
-cannot change or delete the recording of its own screen. Section 6 shows this being tested.
+cannot change or delete the recording of its own screen. Section 7 shows this being tested.
 
-### 4.4 Subordinate uids: where 165536 comes from
+### 5.4 Subordinate uids: where 165536 comes from
 
 The numbers 165536 and 166536 are not invented by podman. They come from a file on your system:
 
@@ -340,7 +424,7 @@ Most distributions create this line when your account is created. If it is missi
 containers cannot work. oillamp then adds a free range for you with `sudo usermod`, or prints the
 command if it is not allowed to.
 
-Now the table in section 4.3 can be read completely. podman is started with
+Now the table in section 5.3 can be read completely. podman is started with
 `--userns=keep-id:uid=1000,gid=1000`, which means *keep my identity, but call me 1000 inside*. So:
 
 - container uid 1000 becomes your real uid, because of that instruction;
@@ -364,7 +448,7 @@ stat -c '%n  %u (%U)' /tmp/out/*
 
 The file created by the container's "root" belongs to a user your system cannot even name.
 
-### 4.5 Images, layers, and why the tag is a fingerprint
+### 5.5 Images, layers, and why the tag is a fingerprint
 
 An **image** is a frozen filesystem plus a note saying which program to start. A **container** is
 one running instance of an image. The relationship is like a program on disk and a running
@@ -389,7 +473,7 @@ If an image with that tag exists, it was built from exactly these inputs, so the
 If it does not exist, something changed, so oillamp builds it. The code is
 [`ImageResources.hashOf`](src/main/java/dev/oillamp/ImageResources.java).
 
-### 4.6 Wayland, compositors, and "headless"
+### 5.6 Wayland, compositors, and "headless"
 
 The agent needs a graphical desktop: to run a browser, to test a GUI application, to see what it
 is doing. Providing one inside a container requires one piece of Linux graphics knowledge.
@@ -409,7 +493,7 @@ no cable, but to every application inside, there is an ordinary 1920 × 1080 dis
 `HEADLESS-1`. A browser inside the container neither knows nor cares that its pixels go into a
 buffer instead of onto a screen.
 
-### 4.7 VNC, and how you see the desktop
+### 5.7 VNC, and how you see the desktop
 
 The desktop exists only in the container's memory. To show it to you, oillamp runs **wayvnc**, a
 program that connects to sway as a Wayland client, reads the screen contents and serves them using
@@ -417,15 +501,54 @@ program that connects to sway as a Wayland client, reads the screen contents and
 receiving keyboard and mouse input back.
 
 Your viewer window is an ordinary VNC client. It does not connect over the network, because the
-container has none (section 7). It connects through a **Unix domain socket**: a special file that
-two processes on the same machine use like a network connection. The file is
+container has none (section 8). It connects through a **Unix domain socket**: a special file that
+two processes on the same machine use like a network connection (section 5.8). The file is
 `<lamp>/.oillamp/sockets/infra/vnc.sock`. It is created by the container's infrastructure user,
 and wayvnc's control socket (which could disconnect viewers) is kept where the agent cannot reach
 it.
 
+### 5.8 Unix domain sockets: talking through a file
+
+Every connection between your machine and the sandbox is a Unix domain socket, so they are worth
+understanding from the start.
+
+A **socket** is a two-way channel between two running programs. A network socket is addressed by
+an IP address and a port, like `127.0.0.1:3128`. A **Unix domain socket** is addressed by a *file
+path*, like `/run/user/1001/oillamp/v4elchzj/run/control.sock`, and only works between programs
+that share a kernel: on one machine, or between a container and its host.
+
+The `.sock` file holds no data. It is a meeting point: a server *binds* it, which creates the file,
+and *listens*; a client *connects* to the path and gets a private two-way connection; many clients
+can connect, one connection each. `ls -l` shows such a file with an `s` in front of its
+permissions. From a shell, `socat` talks to one:
+
+```sh
+echo '{"op":"status"}' | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/oillamp/<agent id>/run/control.sock
+ss -xlp        # which Unix sockets are listening, and which process owns each
+```
+
+It is interprocess communication, like a pipe, with three differences that oillamp needs: it
+carries data both ways, it keeps each client's connection separate, and the server sees each
+client arrive and leave.
+
+Three properties matter for oillamp:
+
+- **File permissions decide who may connect.** Connecting needs write permission on the file and
+  access to its directory. No password, no firewall.
+- **A socket file in a bind-mounted directory is visible on both sides**, so programs inside and
+  outside the container can connect through it without any network.
+- **The file stays behind when its server dies.** "The file exists" never means "something is
+  listening". That is why oillamp deletes leftover socket files before a session and connects to
+  each socket, rather than looking for the file, before it says the sandbox is ready.
+
+oillamp's sockets are in two places. The ones the container must reach are in the lamp, under
+`.oillamp/sockets/`. The ones only the host uses (`control.sock` and the two SSH relay sockets) are
+in `$XDG_RUNTIME_DIR/oillamp/<agent id>/run/`, usually under `/run/user/<your uid>`, outside
+anything the container can see. Section 4 describes both places.
+
 ---
 
-## 5. What is in a lamp directory
+## 6. What is in a lamp directory
 
 A **lamp** is one directory. Everything about one sandbox lives in it. Here is a real one:
 
@@ -460,15 +583,18 @@ A **lamp** is one directory. Everything about one sandbox lives in it. Here is a
 
 The split into two levels is the point of the layout:
 
-**The agent sees `agent-lamp-v4elchzj/` and nothing else.** That one directory is attached to the
-container as `/home/agent`. The configuration file with the network policy, the keys, the logs and
-the recordings are all *beside* it, never inside it. The agent cannot rewrite the rules that
-restrict it, because they are not in any directory it can reach.
+**The agent's world is `agent-lamp-v4elchzj/`.** That directory is attached to the container as
+`/home/agent`, and it is the only part of the lamp the agent can change freely. A few of oillamp's
+working directories are attached too, each for one purpose: `.oillamp/session/` (read-only), the
+three socket directories, and `recordings/`, which the agent can read but not change (section 7.3
+lists every one). The configuration file with the network policy, the keys and the logs are
+*beside* the agent's home and never attached. The agent cannot rewrite the rules that restrict it,
+because they are not in any directory it can reach.
 
 The `agent-lamp-<id>` name has a second purpose: if you copy that directory somewhere else, it is
 obviously an agent's home belonging to a particular lamp, so it cannot be mistaken for a lamp.
 
-### 5.1 The configuration file
+### 6.1 The configuration file
 
 `oillamp.toml` is created with every setting present and commented. A fragment:
 
@@ -502,11 +628,11 @@ lists its own rules, it gets exactly those rules.
 
 ---
 
-## 6. The boundary: two users, and what separates them
+## 7. The boundary: two users, and what separates them
 
-Section 4.3 introduced the uid map. This section is about what it achieves.
+Section 5.3 introduced the uid map. This section is about what it achieves.
 
-### 6.1 Who runs what
+### 7.1 Who runs what
 
 Inside the container there are two accounts:
 
@@ -523,7 +649,7 @@ let a process act as another user or override file permissions), and the image c
 programs (programs that switch to their owner's identity when run). So there is no way for the
 agent to become `lamp` or to gain privileges.
 
-### 6.2 What that prevents, tested
+### 7.2 What that prevents, tested
 
 These are real results from a running sandbox, run as `agent`:
 
@@ -542,7 +668,7 @@ to read it, and to the infrastructure user you and the agent are the same kind o
 it unreadable to the agent would make it unreadable to you. Reading a recording gives the agent
 nothing: it cannot change or delete it, so the record stays trustworthy.
 
-### 6.3 How the container is started
+### 7.3 How the container is started
 
 The exact command, with the security-relevant flags explained:
 
@@ -551,7 +677,7 @@ podman run --detach --name oillamp-v4elchzj \
     --network=none \                              # no network interfaces at all
     --read-only \                                 # the image's filesystem cannot be changed
     --user 0:0 \                                  # start as container root, which is nobody on the host
-    --userns=keep-id:uid=1000,gid=1000 \          # the uid map of section 4.3
+    --userns=keep-id:uid=1000,gid=1000 \          # the uid map of section 5.3
     --tmpfs /run:rw,mode=755 \                    # writable scratch space, in memory, gone at exit
     --tmpfs /tmp:rw,mode=1777 \
     --memory 16g --cpus 15 --pids-limit 8192 \    # resource limits
@@ -590,7 +716,7 @@ There is no podman flag that removes capabilities. Container root keeps the defa
 it needs to create the users' runtime directories and switch users, and the container's first
 program (the entrypoint) removes all capabilities from every process it starts.
 
-### 6.4 Why deleting a lamp needs a command
+### 7.4 Why deleting a lamp needs a command
 
 Some files in a lamp belong to host uid 166536, the infrastructure user. You are uid 1001. You
 cannot delete another user's files, and you are not root, so:
@@ -600,7 +726,7 @@ $ rm -rf ~/lamps/first
 rm: cannot remove '.../.oillamp/sockets/infra/vnc.sock': Permission denied
 ```
 
-This is the protection of section 6.2 working, seen from the one angle where it is inconvenient.
+This is the protection of section 7.2 working, seen from the one angle where it is inconvenient.
 The answer is `oillamp remove`, which deletes those files from inside podman's user namespace,
 where your account *is* allowed to act as its subordinate ids.
 
@@ -623,7 +749,7 @@ Every lamp is checked first. If any directory the pattern matched is not a lamp,
 running, nothing is removed and oillamp says which one is the problem. The other commands work on
 one lamp each and refuse a list of them, rather than acting on the first and ignoring the rest.
 
-### 6.5 What this does not protect against
+### 7.5 What this does not protect against
 
 Knowing the limits is part of owning the tool.
 
@@ -635,7 +761,7 @@ Knowing the limits is part of owning the tool.
   much less convenient.
 - **The agent can reach the internet by default.** This is deliberate: an agent that cannot
   install a package or read documentation is of little use. The policy is configurable
-  (section 7). But the default is "the open web", and data the agent can read, it can send.
+  (section 8). But the default is "the open web", and data the agent can read, it can send.
 - **Your machine's own public addresses are not blocked.** The default rules block loopback and the
   private ranges, which is where a machine's own services normally are. If your machine also has
   a public IPv4 address, or a global IPv6 address (common at home and on laptops), a service that
@@ -654,9 +780,9 @@ Knowing the limits is part of owning the tool.
 
 ---
 
-## 7. The network
+## 8. The network
 
-### 7.1 The problem
+### 8.1 The problem
 
 Two requirements seem to contradict each other:
 
@@ -669,7 +795,7 @@ A normal container gets a virtual network interface, and with it an address that
 local network. Firewall rules could restrict that, but they are machine-wide settings, they need
 root to install, and a mistake in them fails open.
 
-### 7.2 The solution: no network at all, plus a proxy
+### 8.2 The solution: no network at all, plus a proxy
 
 oillamp starts the container with **`--network=none`**. This is not a firewall rule. The container
 has no network interfaces except loopback. There is no address it could send a packet to, and
@@ -702,7 +828,7 @@ Unix socket. The container still has no network.
 
 On the other side of that socket is oillamp itself, which applies the policy.
 
-### 7.3 Why the policy is checked against the resolved address
+### 8.3 Why the policy is checked against the resolved address
 
 A rule that says "deny 192.168.0.0/16" must not be bypassed by a host name that *resolves* to
 192.168.1.5. So oillamp resolves the name first and applies the policy to each address it got. A
@@ -713,7 +839,7 @@ A refusal is an HTTP 403 whose body names the rule that refused it, and it is pr
 status terminal as it happens. A denial that looked like a network timeout would waste the agent's
 time and yours.
 
-### 7.4 Configuring it
+### 8.4 Configuring it
 
 ```toml
 [network]
@@ -741,7 +867,7 @@ blocking rule again: your list replaces the default list rather than adding to i
 Every connection, allowed or denied, is written to `.oillamp/logs/network-<session>.jsonl`, one
 JSON object per line.
 
-### 7.5 Forwards, for things that are not the web
+### 8.5 Forwards, for things that are not the web
 
 A **forward** makes one specific service reachable inside the container on a fixed local port,
 typically a language-model service on your own machine or company network. It uses the same socket
@@ -757,9 +883,9 @@ target = "llm.corp.example.com:8000"
 
 ---
 
-## 8. The desktop
+## 9. The desktop
 
-### 8.1 The processes
+### 9.1 The processes
 
 Inside the container, these programs run as the infrastructure user `lamp`:
 
@@ -774,7 +900,7 @@ The agent's programs connect to sway as ordinary Wayland clients, through a sock
 reach. What the agent cannot reach is sway's *control* socket, which would let it command the
 compositor: move windows, change the screen, or run commands as `lamp`.
 
-### 8.2 Driving the desktop from a shell
+### 9.2 Driving the desktop from a shell
 
 An agent works through a terminal, so it needs a way to use a desktop without a mouse. That is
 `lamp`, a small shell script inside the sandbox:
@@ -799,7 +925,7 @@ It works the same for Wayland and X11 applications, including Java Swing.
 apart and returns when they are identical. That is a much better way to know an application has
 finished starting than waiting a guessed number of seconds.
 
-### 8.3 Recording
+### 9.3 Recording
 
 When `recording.enabled = true`, `wf-recorder` records the whole session to
 `.oillamp/recordings/<session>.mkv`. The file is owned by `lamp`, so the agent cannot change it.
@@ -814,7 +940,7 @@ Retention has two independent limits, an age and a total size. A recording is de
 says so. Retention runs automatically at the start of every session, so a lamp used every day does
 not slowly fill your disk.
 
-### 8.4 The graphics card
+### 9.4 The graphics card
 
 By default (`gpu = "auto"`) oillamp uses your graphics card if it can and falls back to drawing
 with the processor if it cannot, saying which and why. It never refuses to start a session because
@@ -840,7 +966,7 @@ and still leave the session drawing with the processor.
 
 ---
 
-## 9. What is inside the image
+## 10. What is inside the image
 
 The recipe is [`src/main/resources/image/Containerfile`](src/main/resources/image/Containerfile),
 about 120 lines with comments. The built image is roughly 3.5 GB.
@@ -884,12 +1010,12 @@ container could let the agent become `lamp`.
 
 ---
 
-## 10. The code, briefly
+## 11. The code, briefly
 
 About 12,400 lines of Java 25 in one package, `dev.oillamp`.
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) describes it in detail; this is the outline.
 
-### 10.1 Five public types
+### 11.1 Five public types
 
 The whole package is package-private except five types. A test keeps it that way.
 
@@ -904,7 +1030,7 @@ The whole package is package-private except five types. A test keeps it that way
 Everything else is an internal detail that should stay free to change. If `LampPlanner` were
 public, its shape would become a promise to the outside world.
 
-### 10.2 Deciding and doing are separate
+### 11.2 Deciding and doing are separate
 
 Most of the code *decides*: pure functions that take values and return values, with no file
 access, no clock, no randomness and no processes. Given the same inputs they always produce the
@@ -918,7 +1044,7 @@ outside an explicit list uses files (`java.nio.file.Files`), processes, threads,
 
 This is why the test suite runs in seconds without podman.
 
-### 10.3 Phases, plans and steps
+### 11.3 Phases, plans and steps
 
 Starting a session happens in phases, in order. Each has the same shape:
 
@@ -939,7 +1065,7 @@ carries steps out is `StepRunner`, `oillamp at <dir> --dry-run` prints the compl
 package, every file with its permissions, every command) and changes nothing. There is no separate
 preview code that could drift away from what really happens.
 
-### 10.4 The `Machine` interface
+### 11.4 The `Machine` interface
 
 `Machine` has two implementations:
 
@@ -957,7 +1083,7 @@ One exception: **files in the lamp directory are real, even in tests.** oillamp'
 made of permission bits, ownership and symbolic links, and a simulated filesystem that approximated
 those would hide bugs exactly where they matter most. Tests write to a real temporary directory.
 
-### 10.5 Where to start reading
+### 11.5 Where to start reading
 
 In this order:
 
@@ -968,13 +1094,13 @@ In this order:
 4. **`LampPlanner.java`**: a pure function turning facts into a plan. The clearest example of the
    style of the whole code base.
 5. **`SandboxPhase.java`**: where the container command is built, including the security flags of
-   section 6.3.
+   section 7.3.
 6. **`src/main/resources/image/rootfs/usr/local/lib/oillamp/entrypoint`**: the shell script that
-   is the container's first process. It starts every process in section 8 and watches them.
+   is the container's first process. It starts every process in section 9 and watches them.
 
 ---
 
-## 11. Building it yourself
+## 12. Building it yourself
 
 You need a JDK 25. Nothing else: Gradle downloads itself through the wrapper.
 
@@ -985,7 +1111,7 @@ You need a JDK 25. Nothing else: Gradle downloads itself through the wrapper.
 ./gradlew spikes         # the tests that need real podman (slow, need a network)
 ```
 
-### 11.1 How the single file works
+### 12.1 How the single file works
 
 `build/dist/oillamp` is a shell script with a compressed archive attached to the end. The script is
 [`src/packaging/launcher.sh`](src/packaging/launcher.sh), about 90 lines, and it is meant to be
@@ -1010,9 +1136,9 @@ rather than 300.
 
 ---
 
-## 12. How it is tested
+## 13. How it is tested
 
-### 12.1 Scenarios
+### 13.1 Scenarios
 
 The tests are written in Spock, a Groovy testing framework. They are called **scenarios** because
 each one describes a situation a user can be in, not a method's return value. They live in
@@ -1044,7 +1170,7 @@ such as *subordinate user id* rather than assuming them.
 The scenarios run in about two minutes. They need no podman, no network and no graphical
 session, because they run against `SimulatedMachine`.
 
-### 12.2 Spikes
+### 13.2 Spikes
 
 A simulation only knows what its author already believed. A second suite, the **spikes**, checks
 assumptions about third-party tools that no simulation can confirm: that sway accepts a custom
@@ -1055,7 +1181,7 @@ These pull images and start containers, so they are slow and need a network. The
 `./gradlew spikes`, separately from `build`, so that the normal build stays fast and does not need
 podman.
 
-### 12.3 Verification on real hardware
+### 13.3 Verification on real hardware
 
 [docs/STATUS.md](docs/STATUS.md) records what has been run on a real machine, and the bugs that
 turned up: a recording setting that was read and silently ignored, a shell that got no environment
@@ -1064,7 +1190,7 @@ still running. Each says what was wrong and what changed.
 
 ---
 
-## 13. Taking ownership
+## 14. Taking ownership
 
 A short guide to making this code base yours.
 
@@ -1096,7 +1222,7 @@ carried out and how it is described to the user.
 - **`/home/agent` is a bind mount**, so anything the image puts there at build time is hidden when
   the container runs. SDKMAN and pi's settings are affected already and are copied in by the
   entrypoint; any new tool that installs into the home directory will need the same treatment.
-- **The agent runs as your uid.** Re-read section 6.5 before changing anything about the uid map.
+- **The agent runs as your uid.** Re-read section 7.5 before changing anything about the uid map.
 
 **Record your decisions.** When you change a design decision, update
 [docs/DECISIONS.md](docs/DECISIONS.md). When you find a gap between what the code does and what
