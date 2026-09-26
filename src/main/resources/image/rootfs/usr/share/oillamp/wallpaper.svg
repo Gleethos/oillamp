@@ -1,7 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
-  <!-- The source of wallpaper.png. The background is the colour sway fills the rest of the
-       screen with, and every glow fades out well inside the edges, so there is no seam at any
-       screen size. Light comes from the flame, top left of the lamp. -->
+  <!-- The source of wallpaper.png. The lamp sits on a panel with strongly rounded corners, raised
+       like a soft button out of the darker surface around it: lit along its top left edge, where
+       the flame is, and shaded along its bottom right. The surface runs to the edges of the image
+       and is the colour sway fills the rest of the screen with, so there is no seam at any screen
+       size. -->
   <defs>
     <!-- Bell-shaped and in many small steps, so the glow's slope never changes suddenly and
          flattens to nothing at its edge. A gradient with a few stops shows each stop as a ring
@@ -98,87 +100,117 @@
     <filter id="soften" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur stdDeviation="1.2"/>
     </filter>
+    <filter id="panelShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+    <linearGradient id="rim" x1="48" y1="48" x2="700" y2="652" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8e97ab" stop-opacity="0.35"/>
+      <stop offset="0.45" stop-color="#8e97ab" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#8e97ab" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="panel">
+      <rect x="48" y="48" width="1104" height="604" rx="48"/>
+    </clipPath>
   </defs>
 
-  <rect width="1200" height="700" fill="#1f2430"/>
+  <rect width="1200" height="700" fill="#161a22"/>
 
-  <g transform="translate(138 70)">
-    <!-- the light the flame throws: into the room, and onto the surface the lamp stands on -->
-    <rect x="-138" y="-70" width="1200" height="700" fill="url(#glow)"/>
-    <rect x="-138" y="-70" width="1200" height="700" fill="url(#pool)"/>
-    <rect x="-138" y="-70" width="1200" height="700" fill="url(#shadow)"/>
+  <!-- the panel's two soft edges on the surface: light up and left, shadow down and right -->
+  <rect x="38" y="38" width="1104" height="604" rx="48" fill="#343c4f" opacity="0.7"
+        filter="url(#panelShadow)"/>
+  <rect x="58" y="60" width="1104" height="604" rx="48" fill="#050608" opacity="0.95"
+        filter="url(#panelShadow)"/>
 
-    <!-- handle, behind the body -->
-    <path d="M598 336 C650 318 692 334 690 366 C688 396 652 404 618 392"
-          fill="none" stroke="url(#brassDark)" stroke-width="15" stroke-linecap="round"/>
-    <path d="M606 334 C648 322 680 334 682 358"
-          fill="none" stroke="#f3cf7e" stroke-opacity="0.35" stroke-width="3" stroke-linecap="round"/>
+  <!-- the panel: the lamp, its light and the name, all cut to the panel's rounded corners -->
+  <g clip-path="url(#panel)">
+    <rect width="1200" height="700" fill="#1f2430"/>
 
-    <!-- foot: a narrow waist under the body, flaring out to a ring that stands on the surface -->
-    <path d="M466 404 C472 410 478 412 478 416 C478 421 460 424 446 427 L446 432
-             C470 438 530 438 554 432 L554 427 C540 424 522 421 522 416 C522 412 528 410 534 404 Z"
-          fill="url(#turned)"/>
-    <path d="M446 432 C470 438 530 438 554 432 L554 434 C530 440 470 440 446 434 Z" fill="url(#turnedDark)"/>
-    <path d="M447 427.5 C470 432.5 530 432.5 553 427.5" fill="none" stroke="#fbe3a6" stroke-opacity="0.55"
-          stroke-width="1.2"/>
-    <!-- the shadow the body casts onto the top of the waist -->
-    <ellipse cx="500" cy="410" rx="30" ry="4" fill="#24160a" opacity="0.5" filter="url(#soften)"/>
+    <g transform="translate(138 70)">
+      <!-- the light the flame throws: into the room, and onto the surface the lamp stands on -->
+      <rect x="-138" y="-70" width="1200" height="700" fill="url(#glow)"/>
+      <rect x="-138" y="-70" width="1200" height="700" fill="url(#pool)"/>
+      <rect x="-138" y="-70" width="1200" height="700" fill="url(#shadow)"/>
 
-    <!-- body and spout in one piece -->
-    <path d="M226 300
-             C228 296 236 296 242 300
-             C282 318 336 330 392 330
-             C426 304 574 300 612 330
-             C642 356 626 396 566 406
-             C530 412 470 412 434 406
-             C410 402 390 392 378 380
-             C330 368 278 344 236 318
-             C228 313 224 306 226 300 Z"
-          fill="url(#brass)"/>
-    <!-- the rim of the body, catching the light -->
-    <path d="M396 332 C432 312 568 308 606 332" fill="none" stroke="url(#sheen)" stroke-width="3" stroke-linecap="round"/>
-    <path d="M246 304 C286 321 338 332 390 334" fill="none" stroke="#fff3d0" stroke-opacity="0.45" stroke-width="2.5" stroke-linecap="round"/>
-    <!-- the flame's reflection on the shoulder of the body -->
-    <path d="M404 350 C424 338 470 332 510 334" fill="none" stroke="#fff4d6" stroke-opacity="0.55"
-          stroke-width="5" stroke-linecap="round" filter="url(#soften)"/>
-    <!-- a thin band around the body -->
-    <path d="M388 374 C440 390 566 390 622 368" fill="none" stroke="#4a2d10" stroke-opacity="0.4" stroke-width="1.5"/>
+      <!-- handle, behind the body: a band that is widest where it leaves the rim and narrows as it
+           loops round, so both ends disappear into the body -->
+      <path d="M592 331 C634 308 704 311 709 355 C714 392 670 406 607 389 L609 379
+               C670 394 700 384 697 357 C692 325 638 324 600 345 Z"
+            fill="url(#brassDark)"/>
+      <!-- light on its upper edge, and shade along the inside of the loop -->
+      <path d="M612 323 C652 311 699 318 705 350"
+            fill="none" stroke="#f3cf7e" stroke-opacity="0.5" stroke-width="2.5" stroke-linecap="round"/>
+      <path d="M620 334 C650 324 690 328 695 357 C698 380 670 389 626 382"
+            fill="none" stroke="#3e250c" stroke-opacity="0.35" stroke-width="2" stroke-linecap="round"/>
 
-    <!-- the opening in the top of the body, with a raised collar the lid sits in -->
-    <ellipse cx="500" cy="318" rx="47" ry="6.5" fill="url(#turnedDark)"/>
-    <ellipse cx="500" cy="317.5" rx="44" ry="5" fill="#3e250c"/>
+      <!-- foot: a narrow waist under the body, flaring out to a ring that stands on the surface -->
+      <path d="M466 404 C472 410 478 412 478 416 C478 421 460 424 446 427 L446 432
+               C470 438 530 438 554 432 L554 427 C540 424 522 421 522 416 C522 412 528 410 534 404 Z"
+            fill="url(#turned)"/>
+      <path d="M446 432 C470 438 530 438 554 432 L554 434 C530 440 470 440 446 434 Z" fill="url(#turnedDark)"/>
+      <path d="M447 427.5 C470 432.5 530 432.5 553 427.5" fill="none" stroke="#fbe3a6" stroke-opacity="0.55"
+            stroke-width="1.2"/>
+      <!-- the shadow the body casts onto the top of the waist -->
+      <ellipse cx="500" cy="410" rx="30" ry="4" fill="#24160a" opacity="0.5" filter="url(#soften)"/>
 
-    <!-- lid: a low dome with a lip, a short neck and a knob, all one turned piece -->
-    <path d="M459 317 C460 301 478 293 500 293 C522 293 540 301 541 317 C528 321.5 472 321.5 459 317 Z"
-          fill="url(#turned)"/>
-    <path d="M457 316.5 C472 321.5 528 321.5 543 316.5 L543 319 C528 324.5 472 324.5 457 319 Z"
-          fill="url(#turnedDark)"/>
-    <path d="M466 309 C469 302 478 297 488 295.5" fill="none" stroke="#fff4d6" stroke-opacity="0.6"
-          stroke-width="2.5" stroke-linecap="round" filter="url(#soften)"/>
-    <path d="M495.5 294 C497 291 497 289 495.5 286.5 L504.5 286.5 C503 289 503 291 504.5 294 Z"
-          fill="url(#turnedDark)"/>
-    <path d="M500 268 C503 274 510 278 510 282.5 C510 286.5 505.5 288 500 288 C494.5 288 490 286.5 490 282.5
-             C490 278 497 274 500 268 Z" fill="url(#turned)"/>
-    <ellipse cx="495.5" cy="280.5" rx="1.8" ry="3.2" fill="#fff4d6" opacity="0.7"/>
+      <!-- body and spout in one piece -->
+      <path d="M226 300
+               C228 296 236 296 242 300
+               C282 318 336 330 392 330
+               C426 304 574 300 612 330
+               C642 356 626 396 566 406
+               C530 412 470 412 434 406
+               C410 402 390 392 378 380
+               C330 368 278 344 236 318
+               C228 313 224 306 226 300 Z"
+            fill="url(#brass)"/>
+      <!-- the rim of the body, catching the light -->
+      <path d="M396 332 C432 312 568 308 606 332" fill="none" stroke="url(#sheen)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M246 304 C286 321 338 332 390 334" fill="none" stroke="#fff3d0" stroke-opacity="0.45" stroke-width="2.5" stroke-linecap="round"/>
+      <!-- the flame's reflection on the shoulder of the body -->
+      <path d="M404 350 C424 338 470 332 510 334" fill="none" stroke="#fff4d6" stroke-opacity="0.55"
+            stroke-width="5" stroke-linecap="round" filter="url(#soften)"/>
+      <!-- a thin band around the body -->
+      <path d="M388 374 C440 390 566 390 622 368" fill="none" stroke="#4a2d10" stroke-opacity="0.4" stroke-width="1.5"/>
 
-    <!-- wick -->
-    <path d="M229 300 L233 284 L239 286 L237 302 Z" fill="#2a1d12"/>
+      <!-- the opening in the top of the body, with a raised collar the lid sits in -->
+      <ellipse cx="500" cy="318" rx="47" ry="6.5" fill="url(#turnedDark)"/>
+      <ellipse cx="500" cy="317.5" rx="44" ry="5" fill="#3e250c"/>
 
-    <!-- flame: a soft halo, then three layers from the hot white core outwards, leaning a
-         little as a real flame does -->
-    <g transform="translate(236 288)">
-      <path d="M4 -132 C14 -100 38 -74 36 -40 C34 -12 18 2 0 2 C-18 2 -35 -12 -35 -40 C-35 -72 -8 -92 4 -132 Z"
-            fill="#ff9b33" opacity="0.55" filter="url(#halo)"/>
-      <path d="M5 -130 C8 -104 32 -82 32 -44 C32 -16 17 0 0 0 C-17 0 -31 -16 -31 -42 C-31 -74 -4 -90 5 -130 Z"
-            fill="url(#flameOuter)" filter="url(#soften)"/>
-      <path d="M4 -106 C7 -86 24 -66 24 -38 C24 -16 12 -5 0 -5 C-12 -5 -23 -16 -23 -36 C-23 -60 -3 -76 4 -106 Z"
-            fill="url(#flameMid)" filter="url(#soften)"/>
-      <path d="M2 -70 C4 -56 13 -46 13 -30 C13 -18 7 -11 0 -11 C-7 -11 -12 -18 -12 -29 C-12 -44 -1 -52 2 -70 Z"
-            fill="url(#flameCore)" filter="url(#soften)"/>
-      <ellipse cx="0" cy="-6" rx="9" ry="7" fill="url(#flameBase)"/>
+      <!-- lid: a low dome with a lip, a short neck and a knob, all one turned piece -->
+      <path d="M459 317 C460 301 478 293 500 293 C522 293 540 301 541 317 C528 321.5 472 321.5 459 317 Z"
+            fill="url(#turned)"/>
+      <path d="M457 316.5 C472 321.5 528 321.5 543 316.5 L543 319 C528 324.5 472 324.5 457 319 Z"
+            fill="url(#turnedDark)"/>
+      <path d="M466 309 C469 302 478 297 488 295.5" fill="none" stroke="#fff4d6" stroke-opacity="0.6"
+            stroke-width="2.5" stroke-linecap="round" filter="url(#soften)"/>
+      <path d="M495.5 294 C497 291 497 289 495.5 286.5 L504.5 286.5 C503 289 503 291 504.5 294 Z"
+            fill="url(#turnedDark)"/>
+      <path d="M500 268 C503 274 510 278 510 282.5 C510 286.5 505.5 288 500 288 C494.5 288 490 286.5 490 282.5
+               C490 278 497 274 500 268 Z" fill="url(#turned)"/>
+      <ellipse cx="495.5" cy="280.5" rx="1.8" ry="3.2" fill="#fff4d6" opacity="0.7"/>
+
+      <!-- wick -->
+      <path d="M229 300 L233 284 L239 286 L237 302 Z" fill="#2a1d12"/>
+
+      <!-- flame: a soft halo, then three layers from the hot white core outwards, leaning a
+           little as a real flame does -->
+      <g transform="translate(236 288)">
+        <path d="M4 -132 C14 -100 38 -74 36 -40 C34 -12 18 2 0 2 C-18 2 -35 -12 -35 -40 C-35 -72 -8 -92 4 -132 Z"
+              fill="#ff9b33" opacity="0.55" filter="url(#halo)"/>
+        <path d="M5 -130 C8 -104 32 -82 32 -44 C32 -16 17 0 0 0 C-17 0 -31 -16 -31 -42 C-31 -74 -4 -90 5 -130 Z"
+              fill="url(#flameOuter)" filter="url(#soften)"/>
+        <path d="M4 -106 C7 -86 24 -66 24 -38 C24 -16 12 -5 0 -5 C-12 -5 -23 -16 -23 -36 C-23 -60 -3 -76 4 -106 Z"
+              fill="url(#flameMid)" filter="url(#soften)"/>
+        <path d="M2 -70 C4 -56 13 -46 13 -30 C13 -18 7 -11 0 -11 C-7 -11 -12 -18 -12 -29 C-12 -44 -1 -52 2 -70 Z"
+              fill="url(#flameCore)" filter="url(#soften)"/>
+        <ellipse cx="0" cy="-6" rx="9" ry="7" fill="url(#flameBase)"/>
+      </g>
     </g>
-  </g>
 
-  <text x="600" y="610" text-anchor="middle" fill="#8e97ab" fill-opacity="0.55"
-        font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="20" letter-spacing="10">oillamp</text>
+    <text x="600" y="610" text-anchor="middle" fill="#8e97ab" fill-opacity="0.55"
+          font-family="DejaVu Sans, Liberation Sans, sans-serif" font-size="20" letter-spacing="10">oillamp</text>
+  </g>
+  <!-- the panel's edge catching the light along the top and left, fading out towards the far corners -->
+  <rect x="48.75" y="48.75" width="1102.5" height="602.5" rx="47.25" fill="none" stroke="url(#rim)"
+        stroke-width="1.5"/>
 </svg>
