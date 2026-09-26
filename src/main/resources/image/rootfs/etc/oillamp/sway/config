@@ -28,14 +28,20 @@ default_floating_border normal 4
 # only around the window that has the keyboard, so it is obvious where typing goes. The terminal
 # (/etc/xdg/foot/foot.ini) uses the same palette.
 #   surface #161a22, slate #1f2430, frame #2a303c, focused title #343b4a,
-#   muted text #8e97ab, brass #c8913f
+#   muted text #8e97ab, brass #c8913f, light bronze #e0b366, dark bronze #7a4d1c
+#
+# Each frame has two tones, like brass lit from above: a thin light outline around the title bar
+# ("border" below) and a wider, darker border around the window's content ("frame" below). Sway
+# gives every edge of a border the same colour and draws square corners; a bevel or rounded
+# corners would need a different compositor.
 font pango:DejaVu Sans 10
 titlebar_padding 10 4
+titlebar_border_thickness 2
 #                       border  title   text    split   frame
-client.focused          #c8913f #343b4a #f3dfb0 #f3cf7e #c8913f
-client.focused_inactive #2a303c #2a303c #8e97ab #2a303c #2a303c
-client.unfocused        #2a303c #252a35 #8e97ab #2a303c #2a303c
-client.urgent           #e0703a #e0703a #1f2430 #e0703a #e0703a
+client.focused          #e0b366 #343b4a #f3dfb0 #f3cf7e #7a4d1c
+client.focused_inactive #3a4252 #2a303c #8e97ab #2a303c #2a303c
+client.unfocused        #3a4252 #252a35 #8e97ab #2a303c #2a303c
+client.urgent           #f0955a #e0703a #1f2430 #9c4a22 #9c4a22
 client.placeholder      #1f2430 #1f2430 #8e97ab #1f2430 #1f2430
 client.background       #1f2430
 # Super+drag moves any floating window, Super+right-drag resizes it. A mouse binding, not a command.
