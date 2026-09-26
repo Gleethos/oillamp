@@ -11,8 +11,9 @@ include /run/lamp/output.conf
 # and windows share the screen.
 include /run/lamp/windows.conf
 # The lamp itself, centred on the same colour the rest of the desktop uses. `center` rather than
-# `stretch` so it looks right at any resolution the user configures, and the fill colour matches
-# the dark surface around the image's panel so there is no visible seam around it.
+# `stretch` so it looks right at any resolution the user configures. The image is transparent
+# around its panel, so this fill colour is the dark surface the panel sits on. It is set here and
+# nowhere else.
 output * bg /usr/share/oillamp/wallpaper.png center #161a22
 
 # Start Xwayland (the X11 server for Swing and other X11 applications) with sway and keep it
