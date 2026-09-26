@@ -107,12 +107,12 @@ final class Supervisor {
         state = new SessionState.Starting(sessionStarted);
 
         Result<Tuple<Problem>> opened = openTheSession();
-        if (opened instanceof Result.Err<Tuple<Problem>> failure) {
+        if (opened instanceof Result.Err<Tuple<Problem>>(Tuple<Problem> problems)) {
             // The session could not be opened, but the container is already running and must
             // not be left behind.
-            context.report(failure.problems());
+            context.report(problems);
             context.report(shutDown(new SessionState.ShutdownReason.StartupFailed(
-                    failure.problems().first())));
+                    problems.first())));
             return ExitStatus.SESSION_FAILED;
         }
         context.report(((Result.Ok<Tuple<Problem>>) opened).value());
@@ -161,7 +161,7 @@ final class Supervisor {
             if (state instanceof SessionState.Running) brief();
 
             for (SessionAction action : transition.actions()) {
-                if (action instanceof SessionAction.Exit leaving) exit = leaving.status();
+                if (action instanceof SessionAction.Exit(ExitStatus status)) exit = status;
                 else perform(action);
             }
         }
@@ -239,9 +239,9 @@ final class Supervisor {
     /// doing.
     private void openTerminal() {
         Result<Tuple<String>> command = terminalCommand();
-        if (command instanceof Result.Err<Tuple<String>> failure) {
+        if (command instanceof Result.Err<Tuple<String>>(Tuple<Problem> problems)) {
             post(new SessionEvent.ActionFailed(new SessionAction.LaunchTerminal(),
-                    failure.problems().first()));
+                    problems.first()));
             return;
         }
         Tuple<String> argv = ((Result.Ok<Tuple<String>>) command).value();
@@ -305,23 +305,23 @@ final class Supervisor {
         LampLayout layout = prepared.layout();
         Result<Relay> primaryRelay = Relay.open(layout.primarySshSocket(), layout.agentSshSocket(),
                 1, new PrimaryListener());
-        if (primaryRelay instanceof Result.Err<Relay> failure) return Result.err(failure.problems());
+        if (primaryRelay instanceof Result.Err<Relay>(Tuple<Problem> problems)) return Result.err(problems);
         primary = Optional.of(((Result.Ok<Relay>) primaryRelay).value());
 
         Result<Relay> extraRelay = Relay.open(layout.extraSshSocket(), layout.agentSshSocket(),
                 Integer.MAX_VALUE, new ExtraListener());
-        if (extraRelay instanceof Result.Err<Relay> failure) return Result.err(failure.problems());
+        if (extraRelay instanceof Result.Err<Relay>(Tuple<Problem> problems)) return Result.err(problems);
         extras = Optional.of(((Result.Ok<Relay>) extraRelay).value());
 
         Result<Control.Server> server = Control.Server.open(layout.controlSocket(), this::answer);
-        if (server instanceof Result.Err<Control.Server> failure) return Result.err(failure.problems());
+        if (server instanceof Result.Err<Control.Server>(Tuple<Problem> problems)) return Result.err(problems);
         control = Optional.of(((Result.Ok<Control.Server>) server).value());
 
         // The sandbox has no network of its own. Without the proxy, every outbound connection the
         // agent makes fails, so failing to start it fails the session.
         Result<Egress> proxy = Egress.open(layout, prepared.config(), prepared.session(),
                 new EgressListener());
-        if (proxy instanceof Result.Err<Egress> failure) return Result.err(failure.problems());
+        if (proxy instanceof Result.Err<Egress>(Tuple<Problem> problems)) return Result.err(problems);
         egress = Optional.of(((Result.Ok<Egress>) proxy).value());
 
         Tuple<Problem> warnings = Tuple.of(Problem.class);
