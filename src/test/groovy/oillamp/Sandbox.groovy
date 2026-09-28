@@ -60,8 +60,8 @@ class Sandbox {
      * against the simulation. Each engine started is kept in {@link #engines}.
      */
     dev.lamp.Lamp.Launcher getLauncher() {
-        return { List<String> arguments ->
-            var engine = new EngineInThisProcess(simulation, arguments)
+        return { List<String> arguments, Map<String, String> environment ->
+            var engine = new EngineInThisProcess(simulation, arguments, environment)
             engines << engine
             engine
         } as dev.lamp.Lamp.Launcher

@@ -118,7 +118,7 @@ class WhenAnApplicationOrItsSandboxDiesSpec extends Specification {
      * (same process), which holds the pipe open and writes nothing, as a live application does.
      */
     private static Lamp.Launcher engineWithInputHeldBy(Path pidFile) {
-        return { List<String> arguments ->
+        return { List<String> arguments, Map<String, String> environment ->
             var java = Path.of(System.getProperty('java.home'), 'bin', 'java').toString()
             var command = ['bash', '-c', '{ echo $BASHPID > "$0"; exec sleep infinity; } | exec "$@"',
                            pidFile.toString(),

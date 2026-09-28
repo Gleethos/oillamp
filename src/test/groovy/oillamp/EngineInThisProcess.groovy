@@ -29,8 +29,13 @@ class EngineInThisProcess extends Process {
     /** The command line the lamp asked for, such as {@code at <dir> --embedded}. */
     final List<String> arguments
 
-    EngineInThisProcess(Machine.Simulation simulation, List<String> arguments) {
+    /** What the lamp added to the engine's environment, such as a model key. */
+    final Map<String, String> environment
+
+    EngineInThisProcess(Machine.Simulation simulation, List<String> arguments, Map<String, String> environment) {
         this.arguments = List.copyOf(arguments)
+        this.environment = Map.copyOf(environment)
+        environment.each { name, value -> simulation.environmentVariable(name, value) }
         OutputStream engineWrites = Channels.newOutputStream(fromEngine.sink())
         Machine machine = simulation.standardInput(Channels.newInputStream(toEngine.source())).build()
         runner = Thread.start('engine-in-this-process') {

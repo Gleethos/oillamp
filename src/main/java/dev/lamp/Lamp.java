@@ -3,11 +3,13 @@ package dev.lamp;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -31,11 +33,25 @@ import java.util.function.Consumer;
 ///   it, in [#close()], ends the session. If the application dies, the operating system closes it,
 ///   so the sandbox never outlives the application.
 ///
+/// Model requests from the sandbox go through the engine, which adds the key. By default the
+/// engine uses the lamp's `[model]` settings and reads the key from its environment, which it
+/// inherits from the application. An application with its own settings screen gives both instead:
+///
+/// ```
+/// Lamp.at(dir).modelService(URI.create("https://llm.example.com")).modelKey(userKey).start()
+/// ```
+///
+/// The key goes to the engine in its environment, which only this user can read, and never onto
+/// its command line or into the lamp.
+///
 /// Public because this is what an application uses oillamp through.
 public final class Lamp implements AutoCloseable {
 
     /// The engine's main class. Named as text, because this package must not depend on the engine.
     static final String ENGINE = "dev.oillamp.OilLamp";
+
+    /// The variable in the engine's environment that holds a key given with [Starting#modelKey].
+    static final String MODEL_KEY_VARIABLE = "OILLAMP_MODEL_KEY";
 
     private final Path directory;
     private final Process engine;
@@ -54,16 +70,18 @@ public final class Lamp implements AutoCloseable {
 
     /// Starts describing the lamp in `directory`, which oillamp creates if it does not exist.
     public static Starting at(Path directory) {
-        return new Starting(directory.toAbsolutePath(), List.of(), Lamp::sameJava);
+        return new Starting(directory.toAbsolutePath(), List.of(), Lamp::sameJava,
+                            Optional.empty(), Optional.empty());
     }
 
-    /// Starts the engine as a separate process, and returns the command line it is started with.
+    /// Starts the engine as a separate process, with `arguments` after the engine's main class
+    /// and `environment` added to the environment it inherits.
     ///
     /// Given a replacement with [Starting#launchedBy], for tests, or for an application that
     /// runs the engine some other way.
     @FunctionalInterface
     public interface Launcher {
-        Process launch(List<String> arguments) throws IOException;
+        Process launch(List<String> arguments, Map<String, String> environment) throws IOException;
     }
 
     /// A lamp that has been described but not started yet.
@@ -72,11 +90,16 @@ public final class Lamp implements AutoCloseable {
         private final Path directory;
         private final List<Consumer<LampEvent>> listeners;
         private final Launcher launcher;
+        private final Optional<URI> modelService;
+        private final Optional<String> modelKey;
 
-        private Starting(Path directory, List<Consumer<LampEvent>> listeners, Launcher launcher) {
+        private Starting(Path directory, List<Consumer<LampEvent>> listeners, Launcher launcher,
+                         Optional<URI> modelService, Optional<String> modelKey) {
             this.directory = directory;
             this.listeners = listeners;
             this.launcher = launcher;
+            this.modelService = modelService;
+            this.modelKey = modelKey;
         }
 
         /// Receives every event the engine reports, in order, from the moment it starts.
@@ -86,11 +109,28 @@ public final class Lamp implements AutoCloseable {
         public Starting onEvent(Consumer<LampEvent> listener) {
             List<Consumer<LampEvent>> more = new ArrayList<>(listeners);
             more.add(listener);
-            return new Starting(directory, List.copyOf(more), launcher);
+            return new Starting(directory, List.copyOf(more), launcher, modelService, modelKey);
         }
 
         public Starting launchedBy(Launcher launcher) {
-            return new Starting(directory, listeners, launcher);
+            return new Starting(directory, listeners, launcher, modelService, modelKey);
+        }
+
+        /// Sends the sandbox's model requests to `service`, such as `https://api.eu.edenai.run`,
+        /// in place of the lamp's `model.service`. Just the scheme, host and port: the harnesses
+        /// in the sandbox choose the path. It must be `https`, unless it is on this machine's
+        /// loopback; the engine refuses anything else, and the events say why.
+        public Starting modelService(URI service) {
+            return new Starting(directory, listeners, launcher, Optional.of(service), modelKey);
+        }
+
+        /// Uses `key` for the sandbox's model requests, in place of the one in the variable the
+        /// lamp's `model.key_env` names. The sandbox never sees it.
+        ///
+        /// @throws IllegalArgumentException when `key` is blank, which would only fail later
+        public Starting modelKey(String key) {
+            if (key.isBlank()) throw new IllegalArgumentException("a model key cannot be blank");
+            return new Starting(directory, listeners, launcher, modelService, Optional.of(key.strip()));
         }
 
         /// Starts the engine, and returns at once. The sandbox is running when
@@ -98,7 +138,11 @@ public final class Lamp implements AutoCloseable {
         ///
         /// @throws IOException when the engine's process could not be started at all
         public Lamp start() throws IOException {
-            Process engine = launcher.launch(List.of("at", directory.toString(), "--embedded"));
+            List<String> arguments = new ArrayList<>(List.of("at", directory.toString(), "--embedded"));
+            modelService.ifPresent(service -> arguments.addAll(List.of("--model-service", service.toString())));
+            modelKey.ifPresent(key -> arguments.addAll(List.of("--model-key-env", MODEL_KEY_VARIABLE)));
+            Process engine = launcher.launch(List.copyOf(arguments),
+                    modelKey.map(key -> Map.of(MODEL_KEY_VARIABLE, key)).orElse(Map.of()));
             Lamp lamp = new Lamp(directory, engine, listeners);
             Thread.ofVirtual().name("lamp-events-" + directory.getFileName()).start(lamp::readEvents);
             return lamp;
@@ -207,14 +251,14 @@ public final class Lamp implements AutoCloseable {
     /// Starts the engine with this process's own Java runtime and classpath, so that the
     /// application and the engine are always the same version of oillamp. The engine's error
     /// output goes where the application's does.
-    private static Process sameJava(List<String> arguments) throws IOException {
+    private static Process sameJava(List<String> arguments, Map<String, String> environment) throws IOException {
         List<String> command = new ArrayList<>(List.of(
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-cp", System.getProperty("java.class.path"),
                 ENGINE));
         command.addAll(arguments);
-        return new ProcessBuilder(command)
-                .redirectError(ProcessBuilder.Redirect.INHERIT)
-                .start();
+        ProcessBuilder builder = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.INHERIT);
+        builder.environment().putAll(environment);
+        return builder.start();
     }
 }
