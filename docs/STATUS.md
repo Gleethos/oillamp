@@ -113,6 +113,25 @@ From inside a real sandbox, through the real proxy:
 | `sdk install java 21.0.12+1.1-tem`, then a new shell | Java 21 active, installed without prompting, still there after a restart |
 | `sdk install groovy`, `sdk install gradle` | both work |
 
+### The model key stays on the host
+
+`KeepingTheModelKeyOutOfARealSandboxSpec` (a spike) starts `oillamp at` with a real
+`EDENAI_API_KEY` and a windowless terminal (checked on 2026-09-28):
+
+| Check | Result |
+|---|---|
+| the lamp directory and oillamp's own output, during and after the session | the key is in none of it |
+| every file the agent can read (home, session settings, sockets, `/tmp`, `/run`, `/etc`), and the environment and command line of every process it can see | the key is in none of it |
+| `EDENAI_BASE_URL` and `EDENAI_API_KEY` in the sandbox; opencode's configuration | the relay, `http://127.0.0.1:3129/v3`, and the placeholder |
+| the placeholder sent straight to `api.eu.edenai.run`; `api.edenai.run` | refused by Eden AI; refused by the network policy |
+| a chat request through the relay, with the placeholder | answered by `mistral/mistral-small-latest` |
+| `pi -p` and `opencode run`, holding only the placeholder | both get an answer from the model |
+| the network log | records the model requests, never the key |
+
+The bundled Java runtime of the single-file build completes a TLS 1.3 handshake with
+`api.eu.edenai.run`, checking the certificate against the host name, with no modules beyond those
+it already has.
+
 ### Desktop, recording, GPU
 
 - `lamp info`, `screenshot`, `type`, `key` and `wait-stable` work against the real desktop.
