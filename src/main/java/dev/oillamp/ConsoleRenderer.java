@@ -34,6 +34,9 @@ final class ConsoleRenderer {
     private boolean verbose;
     private boolean echoToTerminal = true;
     private boolean keepText = true;
+    /// `--embedded`: every event as one line of JSON, and nothing else, for the application
+    /// reading standard output. No banner, no colour, no activity line.
+    private boolean jsonLines;
 
     // ─── the live activity line ─────────────────────────────────────────────────────────────
     //
@@ -125,20 +128,34 @@ final class ConsoleRenderer {
     /// that runs for days would otherwise hold everything it ever printed.
     void forgetText() { keepText = false; }
 
+    /// `--embedded`: from now on, every event is written as one line of JSON and nothing else is
+    /// written at all. Told before anything is printed, so the application reading standard
+    /// output never sees a line it cannot parse.
+    void asJsonLines() {
+        jsonLines = true;
+        colour = false;
+    }
+
     /// `--no-color`: no colour codes, even on a terminal.
     void withoutColour() { colour = false; }
 
     /// Writes text with no banner, tag or colour. Used only for the completion script, which a
     /// shell evaluates, so any decoration would be evaluated too.
     public void plain(String text) {
+        if (jsonLines) return;
         line(text.stripTrailing());
     }
 
     public void banner(String version, String lamp) {
+        if (jsonLines) return;
         line("🪔 oillamp " + version + (lamp.isEmpty() ? "" : " — " + lamp));
     }
 
     public void render(LampEvent event) {
+        if (jsonLines) {
+            line(event.toJson());
+            return;
+        }
         switch (event) {
             case LampEvent.StepStarted started -> startActivity(started.step());
             case LampEvent.Output output -> activity = activity.map(a -> a.withOutput(output.line()));

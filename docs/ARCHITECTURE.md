@@ -592,6 +592,8 @@ stateDiagram-v2
 
 **An embedded session** (`oillamp at <dir> --embedded`) is one an application started, not a
 person. It opens no windows and goes straight to `Running`, so the terminal timeout never applies.
+Its standard output carries every event as one line of JSON (`LampEvent.toJson()`), and nothing
+else: no banner, no colour, no activity line.
 The supervisor reads its standard input until it closes, then posts `StopRequested`: the
 application closes it when it is done, and the operating system closes it when the application
 dies.

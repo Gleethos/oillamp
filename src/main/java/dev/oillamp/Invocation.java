@@ -25,6 +25,8 @@ final class Invocation {
         List<String> arguments = new ArrayList<>(List.of(argv));
         // Before anything is printed, so that even a usage error comes without colour.
         if (arguments.contains("--no-color")) console.withoutColour();
+        // Likewise: an application reading standard output must never see a line that is not JSON.
+        if (arguments.contains("--embedded")) console.asJsonLines();
 
         Context.Options options = Context.Options.defaults();
         // Only `view` reads this, so it stays a local rather than joining Options, where every

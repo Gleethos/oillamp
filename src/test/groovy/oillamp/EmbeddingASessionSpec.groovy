@@ -62,6 +62,24 @@ class EmbeddingASessionSpec extends Specification {
             !Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
     }
 
+    def 'An embedded oillamp reports on standard output in JSON, one event per line, and nothing else'() {
+        reportInfo """
+            The application reads standard output to show the player what the sandbox is doing.
+            A banner, a coloured line or a progress spinner in between would be a line it cannot
+            read, so in embedded mode every line is an event, and every event is a line.
+        """
+        when:
+            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--embedded')
+
+        then: 'every line of output reads back as an event'
+            var lines = outcome.console().readLines()
+            var read = lines.collect { LampEvent.fromJson(it) }
+            read.every { it.present }
+
+        and: 'and together they are exactly what the session reported, in order'
+            read.collect { it.get() } == outcome.events().toList()
+    }
+
     def 'An embedded session is not given up for want of a terminal'() {
         reportInfo """
             A normal session that no terminal connects to is ended after

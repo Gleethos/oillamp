@@ -33,7 +33,8 @@ final class Context {
     /// @param init        `--init`: accept a non-empty directory as a new lamp
     /// @param openViewer  false with `--no-viewer`
     /// @param embedded    `--embedded`: an application started oillamp and owns the session. No
-    ///                    windows open, and the session ends when standard input closes
+    ///                    windows open, events go to standard output as JSON lines, and the
+    ///                    session ends when standard input closes
     public record Options(boolean verbose, boolean debug, boolean dryRun,
                           boolean autoInstall, boolean init, boolean openViewer, boolean embedded) {
 
