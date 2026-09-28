@@ -35,39 +35,59 @@ final class Context {
     /// @param embedded    `--embedded`: an application started oillamp and owns the session. No
     ///                    windows open, events go to standard output as JSON lines, and the
     ///                    session ends when standard input closes
+    /// @param model       `--model-service` and `--model-key-env`: where model requests go and
+    ///                    which variable holds the key, in place of the lamp's `[model]` settings
     public record Options(boolean verbose, boolean debug, boolean dryRun,
-                          boolean autoInstall, boolean init, boolean openViewer, boolean embedded) {
+                          boolean autoInstall, boolean init, boolean openViewer, boolean embedded,
+                          ModelOverride model) {
 
         public static Options defaults() {
-            return new Options(false, false, false, true, false, true, false);
+            return new Options(false, false, false, true, false, true, false, ModelOverride.NONE);
+        }
+
+        public Options withModel(ModelOverride model) {
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
         }
 
         public Options withDryRun(boolean dryRun) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
         }
 
         public Options withAutoInstall(boolean autoInstall) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
         }
 
         public Options withInit(boolean init) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
         }
 
         public Options withVerbose(boolean verbose) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
         }
 
         public Options withDebug(boolean debug) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
         }
 
         public Options withViewer(boolean openViewer) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
         }
 
         public Options withEmbedded(boolean embedded) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
+        }
+    }
+
+    /// The model settings given on the command line. Each one that is present replaces the
+    /// lamp's own, for this session only. The key itself is never on the command line, which
+    /// other users of the machine can read: only the name of the variable that holds it.
+    public record ModelOverride(Optional<java.net.URI> service, Optional<String> keyEnv) {
+
+        static final ModelOverride NONE = new ModelOverride(Optional.empty(), Optional.empty());
+
+        public LampConfig.Model applyTo(LampConfig.Model configured) {
+            return new LampConfig.Model(service.orElse(configured.service()),
+                                        keyEnv.orElse(configured.keyEnv()));
         }
     }
 

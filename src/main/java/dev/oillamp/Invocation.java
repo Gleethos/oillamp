@@ -35,18 +35,41 @@ final class Invocation {
         // Likewise --yes, which only `remove` reads. It is not a general "assume yes": it is the
         // answer to one question, asked by one command, that deletes the agent's home.
         boolean confirmed = false;
-        // `recordings` only. --open takes a session id, so it is the one option here that
-        // consumes the argument after it; openPending is how a flat switch does that.
+        // `recordings` only.
         Optional<String> open = Optional.empty();
-        boolean openPending = false;
+        // `at` only: where model requests go, and which variable holds the key.
+        Optional<String> modelService = Optional.empty();
+        Optional<String> modelKeyEnv = Optional.empty();
+        // --open, --model-service and --model-key-env take a value, either as `--open=x` or as
+        // the argument after them; pending is the option still waiting for its value.
+        Optional<String> pending = Optional.empty();
         boolean prune = false;
         List<String> positional = new ArrayList<>();
         // Every option other than the four that apply to all commands, as it is spelt in usage(),
         // so that a command given one it does not take can refuse it.
         List<String> commandOptions = new ArrayList<>();
         for (String argument : arguments) {
-            String option = argument.startsWith("--open=") ? "--open"
-                          : argument.equals("-y") ? "--yes" : argument;
+            String option = VALUE_OPTIONS.stream().filter(taking -> argument.startsWith(taking + "="))
+                    .findFirst().orElse(argument.equals("-y") ? "--yes" : argument);
+            if (pending.isPresent()) {
+                switch (pending.get()) {
+                    case "--open"          -> open = Optional.of(argument);
+                    case "--model-service" -> modelService = Optional.of(argument);
+                    default                -> modelKeyEnv = Optional.of(argument);
+                }
+                pending = Optional.empty();
+                continue;
+            }
+            if (VALUE_OPTIONS.contains(option) && !option.equals(argument)) {
+                commandOptions.add(option);
+                String value = argument.substring(option.length() + 1);
+                switch (option) {
+                    case "--open"          -> open = Optional.of(value);
+                    case "--model-service" -> modelService = Optional.of(value);
+                    default                -> modelKeyEnv = Optional.of(value);
+                }
+                continue;
+            }
             if (OPTIONS_OF.values().stream().anyMatch(taken -> taken.contains(option)))
                 commandOptions.add(option);
             switch (argument) {
@@ -61,14 +84,9 @@ final class Invocation {
                 case "--view-only"     -> viewOnly = true;
                 case "--yes", "-y"     -> confirmed = true;
                 case "--prune"         -> prune = true;
-                case "--open"          -> openPending = true;
+                case "--open", "--model-service", "--model-key-env" -> pending = Optional.of(argument);
                 default -> {
-                    if (argument.startsWith("--open=")) {
-                        open = Optional.of(argument.substring("--open=".length()));
-                    } else if (openPending) {
-                        open = Optional.of(argument);
-                        openPending = false;
-                    } else if (argument.startsWith("-")) {
+                    if (argument.startsWith("-")) {
                         console.banner(version, "");
                         sink.accept(new LampEvent.Failure(Problems.usage(
                                 "'" + argument + "' is not an option oillamp knows", usage())));
@@ -80,13 +98,40 @@ final class Invocation {
             }
         }
 
-        if (openPending) {
+        if (pending.isPresent() && !pending.get().equals("--open")) {
+            console.banner(version, "");
+            sink.accept(new LampEvent.Failure(Problems.usage(
+                    pending.get() + " needs a value, for example " + pending.get()
+                  + (pending.get().equals("--model-service") ? " https://api.eu.edenai.run" : " MY_MODEL_KEY"),
+                    usageOf("at"))));
+            return ExitStatus.USAGE;
+        }
+        if (pending.isPresent()) {
             console.banner(version, "");
             sink.accept(new LampEvent.Failure(Problems.usage(
                     "--open needs the session to play, for example --open 20260101-120000",
                     "oillamp recordings <dir> [--open <session>] [--prune]")));
             return ExitStatus.USAGE;
         }
+
+        if (modelService.isPresent()) {
+            Optional<String> wrong = ConfigLoader.serviceProblem(modelService.get());
+            if (wrong.isPresent()) {
+                console.banner(version, "");
+                sink.accept(new LampEvent.Failure(Problems.usage(
+                        "--model-service \"" + modelService.get() + "\": " + wrong.get(), usageOf("at"))));
+                return ExitStatus.USAGE;
+            }
+        }
+        if (modelKeyEnv.isPresent() && !ConfigLoader.isVariableName(modelKeyEnv.get())) {
+            console.banner(version, "");
+            sink.accept(new LampEvent.Failure(Problems.usage(
+                    "--model-key-env \"" + modelKeyEnv.get() + "\": expected the name of an "
+                  + "environment variable, such as EDENAI_API_KEY", usageOf("at"))));
+            return ExitStatus.USAGE;
+        }
+        options = options.withModel(new Context.ModelOverride(
+                modelService.map(java.net.URI::create), modelKeyEnv));
 
         // The renderer was created before the options were known, so tell it now.
         console.verbose(options.verbose());
@@ -227,7 +272,8 @@ final class Invocation {
     /// every command takes. `doctor` and `config` change nothing anyway, so they accept the two
     /// options that promise that.
     private static final java.util.Map<String, java.util.Set<String>> OPTIONS_OF = java.util.Map.ofEntries(
-            java.util.Map.entry("at",         java.util.Set.of("--init", "--dry-run", "--no-install", "--no-viewer", "--embedded")),
+            java.util.Map.entry("at",         java.util.Set.of("--init", "--dry-run", "--no-install", "--no-viewer", "--embedded",
+                                                        "--model-service", "--model-key-env")),
             java.util.Map.entry("view",       java.util.Set.of("--view-only")),
             java.util.Map.entry("remove",     java.util.Set.of("--yes", "--dry-run")),
             java.util.Map.entry("recordings", java.util.Set.of("--open", "--prune", "--dry-run")),
@@ -242,6 +288,10 @@ final class Invocation {
             java.util.Map.entry("help",       java.util.Set.of()),
             java.util.Map.entry("about",      java.util.Set.of()),
             java.util.Map.entry("guide",      java.util.Set.of()));
+
+    /// The options that take a value.
+    private static final java.util.Set<String> VALUE_OPTIONS = java.util.Set.of(
+            "--open", "--model-service", "--model-key-env");
 
     /// The commands that take a lamp directory and cannot do without it.
     private static final java.util.Set<String> NEEDS_A_LAMP = java.util.Set.of(
@@ -301,9 +351,11 @@ final class Invocation {
             oillamp is for and what it is built from.
 
               at <dir> [--init] [--dry-run] [--no-install] [--no-viewer] [--embedded]
+                       [--model-service <url>] [--model-key-env <name>]
                     Set up (if needed) and run a session. Stays in the foreground until it ends.
                     --embedded is for applications that start oillamp themselves: no windows,
-                    and the session ends when standard input closes.
+                    and the session ends when standard input closes. --model-service and
+                    --model-key-env replace the lamp's [model] settings for this session.
               view <dir> [--view-only]
                     Open another window onto a running session's desktop.
               shell <dir>

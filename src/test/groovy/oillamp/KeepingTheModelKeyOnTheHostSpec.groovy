@@ -167,6 +167,58 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             received.first().authorization == 'Bearer sk-campaign'
     }
 
+    def 'The command line can name another service and key variable, for this one session'() {
+        reportInfo """
+            An application that starts oillamp for its own users has its own settings screen: the
+            user types in a service and a key there, not into the lamp's configuration file. So
+            `oillamp at` takes `--model-service` and `--model-key-env`, which replace the lamp's
+            `[model]` settings for this session and leave the file alone. The key itself is never
+            an argument, because every user of the machine can read a process's arguments: the
+            option names the variable that holds it.
+        """
+        given: 'a lamp configured for one service and key, and another key in the environment'
+            sandbox.machine { it.environmentVariable('APP_MODEL_KEY', 'sk-from-the-app').environmentVariable('EDENAI_API_KEY', KEY) }
+            sandbox.givenConfig(sandbox.lampPath(), '''
+                schema_version = 1
+                [model]
+                service = "https://api.eu.edenai.run"
+            '''.stripIndent())
+
+        when: 'the session is started with the other service and the other key'
+            startASession(false, '--model-service', "http://127.0.0.1:${service.address.port}".toString(),
+                          '--model-key-env=APP_MODEL_KEY')
+            ask(request('GET', '/v3/models', '', 'Authorization: Bearer placeholder'))
+
+        then: 'the request went to the service from the command line, with the key it named'
+            received.size() == 1
+            received.first().authorization == 'Bearer sk-from-the-app'
+
+        and: 'the lamp\'s own configuration is unchanged'
+            Files.readString(sandbox.lampPath().resolve('oillamp.toml')).contains('https://api.eu.edenai.run')
+    }
+
+    def 'A service or key variable on the command line is checked like the one in the file'() {
+        reportInfo """
+            The same rules as for `model.service` and `model.key_env`: the key is sent to the
+            service, so it must be https unless it runs on this machine, and the variable must be
+            a name, not a key. A mistake is a usage error before anything starts.
+        """
+        when:
+            var outcome = sandbox.oillamp.run(['at', sandbox.lampPath().toString(), *given] as String[])
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.console().contains(complaint)
+            !Files.exists(sandbox.lampPath())
+
+        where:
+            given                                                || complaint
+            ['--model-service', 'http://api.eu.edenai.run']      || 'must be https://'
+            ['--model-service=https://api.eu.edenai.run/v3']     || 'expected just a scheme, a host'
+            ['--model-key-env', 'sk-a-key-by-mistake']           || 'expected the name of an environment variable'
+            ['--model-service']                                  || '--model-service needs a value'
+    }
+
     def 'Without a key, the request is refused with an explanation, and nothing reaches the service'() {
         reportInfo """
             A session started without the key in its environment still starts: the agent can do
@@ -311,7 +363,7 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
 
     /** Starts a session, with the stand-in as its model service unless the lamp configures one. */
-    private void startASession(boolean configureService = true) {
+    private void startASession(boolean configureService = true, String... options) {
         if (configureService)
             sandbox.givenConfig(sandbox.lampPath(), """
                 schema_version = 1
@@ -319,7 +371,7 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
                 service = "http://127.0.0.1:${service.address.port}"
             """.stripIndent())
         var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
-        session = Thread.start { sessionOutcome = oillamp.run('at', sandbox.lampPath().toString()) }
+        session = Thread.start { sessionOutcome = oillamp.run(['at', sandbox.lampPath().toString(), *options] as String[]) }
         waitUntil { reported.any { it instanceof LampEvent.Summary && it.title() == 'your session is up' } }
     }
 

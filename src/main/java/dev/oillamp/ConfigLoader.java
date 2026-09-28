@@ -324,7 +324,7 @@ final class ConfigLoader {
         if (wrong.isPresent()) s.invalid("service", "\"" + text + "\"", wrong.get());
         else service = java.net.URI.create(text);
         String keyEnv = s.string("key_env", fallback.keyEnv());
-        if (!keyEnv.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+        if (!isVariableName(keyEnv)) {
             s.invalid("key_env", "\"" + keyEnv + "\"", "expected the name of an environment variable, "
                     + "such as \"EDENAI_API_KEY\"");
             keyEnv = fallback.keyEnv();
@@ -332,10 +332,12 @@ final class ConfigLoader {
         return new LampConfig.Model(service, keyEnv);
     }
 
+    static boolean isVariableName(String text) { return text.matches("[A-Za-z_][A-Za-z0-9_]*"); }
+
     /// Why `text` cannot be the model service, or empty if it can. It is an origin only
     /// (scheme, host, optional port): the harnesses choose the path. The key travels to it, so it
     /// must be `https`, except for a service on this machine's own loopback.
-    private static Optional<String> serviceProblem(String text) {
+    static Optional<String> serviceProblem(String text) {
         java.net.URI uri;
         try {
             uri = new java.net.URI(text);
