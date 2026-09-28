@@ -1,7 +1,7 @@
 # Sprouts cheat sheet (verified against `io.github.globaltcad:sprouts:2.8.0`)
 
 oillamp's records hold Sprouts persistent collections instead of `java.util.List`, `Set` and
-`Map` (see "Coding conventions" in [ARCHITECTURE.md](ARCHITECTURE.md)). These collections are
+`Map` (see "Coding conventions" in [CONTRIBUTING.md](../CONTRIBUTING.md)). These collections are
 immutable: every "change" returns a new collection and leaves the old one as it was. This sheet
 lists the methods you will need. Read it before writing a record.
 

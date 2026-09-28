@@ -54,7 +54,9 @@ final class Handbook {
 
               oillamp guide          a first session, step by step
               oillamp help           every command
-              README.md              how it all works, for programmers new to containers
+              README.md              what oillamp is, and how to use it
+              docs/TECH-STACK.md     the tools it is built from, for programmers new to them
+              docs/ARCHITECTURE.md   how it works inside
             """;
     }
 

@@ -1,377 +1,180 @@
 # How oillamp works
 
-This document describes the code as it is today. It is for the people who maintain oillamp.
+This document describes the running application: its moving parts, where its state lives, what
+happens in which order, and how each tool is configured. It is for the people who maintain
+oillamp.
 
-Read [the README](../README.md) first. It explains what oillamp is for and introduces the Linux
-mechanisms it uses: containers, rootless podman, user namespaces, uid maps, subordinate ids,
-images, Wayland and VNC. This document assumes you have read it and focuses on how the code
-puts those pieces together.
+It assumes you know what the tools are: containers, rootless podman, uid maps, Unix sockets,
+Wayland, VNC. If you don't, read [TECH-STACK.md](TECH-STACK.md) first. The reasons behind the
+design are in [DECISIONS.md](DECISIONS.md), and what has been verified and what is missing is in
+[STATUS.md](STATUS.md).
 
-Two companion documents:
-
-- [DECISIONS.md](DECISIONS.md) lists the design decisions and why each was made.
-- [STATUS.md](STATUS.md) lists what works, what was verified on real hardware, and the known
-  gaps between what the code does and what the configuration or older documents suggest.
-
-The original design specification is kept in [archive/](archive/oillamp-design-spec.md) for
-history. It was written before the code and is out of date in many places. Do not use it as a
-reference.
+File names without a directory are in `src/main/java/dev/oillamp/`. Image files are under
+`src/main/resources/image/`.
 
 ---
 
 ## Contents
 
-1. [Vocabulary](#1-vocabulary)
-2. [The big picture](#2-the-big-picture)
-3. [What happens when you run `oillamp at`](#3-what-happens-when-you-run-oillamp-at)
-4. [How the Java code is organised](#4-how-the-java-code-is-organised)
-5. [The lamp directory on disk](#5-the-lamp-directory-on-disk)
-6. [The container](#6-the-container)
-7. [The running session](#7-the-running-session)
-8. [The network](#8-the-network)
-9. [Desktop, viewer, recording and GPU](#9-desktop-viewer-recording-and-gpu)
-10. [Configuration reference](#10-configuration-reference)
-11. [Problem codes and exit codes](#11-problem-codes-and-exit-codes)
-12. [Tests](#12-tests)
-13. [Packaging](#13-packaging)
+1. [Vocabulary](#vocabulary)
+2. [The moving parts](#the-moving-parts)
+3. [Where state lives](#where-state-lives)
+4. [How oillamp changes state](#how-oillamp-changes-state)
+5. [What happens when you run `oillamp at`](#what-happens-when-you-run-oillamp-at)
+6. [The container](#the-container)
+7. [The running session](#the-running-session)
+8. [The network](#the-network)
+9. [Desktop, viewer, recording and GPU](#desktop-viewer-recording-and-gpu)
+10. [How each tool is configured](#how-each-tool-is-configured)
+11. [How the Java code is organised](#how-the-java-code-is-organised)
+12. [Packaging](#packaging)
+13. [Configuration reference](#configuration-reference)
+14. [Problem codes and exit codes](#problem-codes-and-exit-codes)
 
 ---
 
-## 1. Vocabulary
+## Vocabulary
 
-These words are used with one meaning each, everywhere in the code and the documents.
+These words have one meaning each, in the code and in the documents.
 
 | Word | Meaning |
 |---|---|
 | **host** | The computer oillamp runs on: your laptop. |
 | **sandbox** | The container oillamp starts for the agent. "Container" and "sandbox" mean the same thing here. |
 | **lamp** | One directory on the host that holds everything about one sandbox: configuration, state and the agent's files. You pick the path. |
-| **agent id** | Eight random characters from `a`–`z` and `2`–`7`, generated when a lamp is created and never changed. Container, hostname and directory names are derived from it. Example: `v4elchzj`. |
-| **agent directory** | `<lamp>/agent-lamp-<agent id>/`. Mounted into the container as `/home/agent`. The only part of the lamp the agent can see. |
-| **state directory** | `<lamp>/.oillamp/`. oillamp's own files: identity, keys, sockets, recordings, logs. |
-| **agent user** | The container user `agent`, uid 1000. Mapped to *your* user on the host. Runs the shell and everything the agent starts. |
-| **infra user** | The container user `lamp`, uid 1001. Mapped to a subordinate id on the host that belongs to nobody. Runs the compositor, the VNC server, the recorder and the network bridges. ("infra" is short for infrastructure.) |
-| **session** | One run of `oillamp at`, from start to shutdown. Its **session id** is the UTC start time, for example `20260923-085055`. |
-| **supervisor** | The `oillamp at` process while a session runs. It stays in the foreground of the terminal you started it from. |
-| **primary shell** | The SSH connection from the terminal window oillamp opens. When it connects, the session is up. Closing it ends nothing. |
-| **extra shell** | A shell opened with `oillamp shell <dir>`. Closing it ends nothing. |
-| **relay** | A Unix socket on the host that forwards connections into a socket inside the sandbox. Used for SSH. |
+| **agent id** | Eight random characters from `a`–`z` and `2`–`7`, made when a lamp is created and never changed. The container name, hostname and some directory names come from it. Example: `v4elchzj`. |
+| **agent directory** | `<lamp>/agent-lamp-<agent id>/`, attached to the container as `/home/agent`. The only part of the lamp the agent can change freely. |
+| **state directory** | `<lamp>/.oillamp/`: oillamp's own files (identity, keys, sockets, recordings, logs). |
+| **agent user** | The container user `agent`, uid 1000. It is *your* user on the host. Runs the shell and everything the agent starts. |
+| **infra user** | The container user `lamp`, uid 1001. On the host it is a subordinate id that owns nothing. Runs the compositor, the VNC server, the recorder and the network bridges. |
+| **session** | One run of `oillamp at`, from start to shutdown. Its **session id** is the UTC start time, such as `20260923-085055`. |
+| **supervisor** | The `oillamp at` process while a session runs. It stays in the foreground of the terminal you started it in. |
+| **primary shell** | The SSH connection from the terminal window oillamp opens. When it connects, the session is up. |
+| **extra shell** | A shell opened with `oillamp shell <dir>`. |
+| **relay** | A Unix socket on the host that forwards each connection into a socket inside the sandbox. Used for SSH. |
 | **control socket** | A Unix socket the supervisor listens on, so that `oillamp stop`, `status`, `view` and `shell` can talk to a running session. |
-| **egress proxy** | The HTTP proxy inside oillamp that is the sandbox's only way out to the network. "Egress" means outbound. |
-| **forward** | A fixed tunnel from a port inside the sandbox to one host-reachable address, configured by you, not subject to the proxy policy. |
-| **runtime directory** | `$XDG_RUNTIME_DIR/oillamp/<agent id>/`, usually `/run/user/1000/oillamp/<agent id>/`. Holds short paths to the sockets. See [Why sockets have two paths](#why-sockets-have-two-paths). |
-| **phase** | One stage of starting up: host, lamp, image, session. |
-| **plan** / **step** | A plan is a list of steps. A step is a description of one change oillamp intends to make, such as "create this directory with mode 0700". See [Plans and steps](#plans-and-steps). |
-| **problem** | oillamp's structured error: a code, what happened, why it matters, evidence, and fixes. See [Problems and results](#problems-and-results). |
-| **spike** | A test that runs against real podman to confirm an assumption about a third-party tool. See [Tests](#12-tests). |
+| **egress proxy** | The HTTP proxy inside oillamp that is the sandbox's only way out. "Egress" means outbound. |
+| **forward** | A fixed tunnel from a port inside the sandbox to one address you configured. Not subject to the proxy's rules. |
+| **runtime directory** | `$XDG_RUNTIME_DIR/oillamp/<agent id>/`, usually `/run/user/<uid>/oillamp/<agent id>/`. Short socket paths, in memory. |
+| **phase** | One stage of starting up: host, lamp, image and sandbox, session. |
+| **plan**, **step** | A step describes one change oillamp intends to make, such as "create this directory with mode 0700". A plan is a list of steps. |
+| **problem** | oillamp's structured error: a code, what happened, why it matters, evidence, and fixes. |
+| **spike** | A test that runs real podman to confirm an assumption about a third-party tool. |
 
 ---
 
-## 2. The big picture
+## The moving parts
 
+oillamp is a Java program, a handful of shell scripts, and about twenty third-party tools. This
+table lists every part that runs, what it is written in, where it runs and as whom.
+
+| Part | Kind | Runs where, as whom | Job |
+|---|---|---|---|
+| `oillamp` launcher (`src/packaging/launcher.sh`) | POSIX shell | host, you | Unpacks the bundled Java runtime once, then `exec`s it. |
+| oillamp (`dev.oillamp`) | Java 25 | host, you | Checks the host, prepares the lamp, builds the image, starts the container, supervises the session, **is** the network proxy. |
+| `podman`, `crun` | third-party | host, you | Build the image, run the container, `podman unshare` for infra-owned files. |
+| `apt-get`, `usermod` via `sudo` | third-party | host, root | Install missing host packages and add subordinate ids. Only with your consent. |
+| `ssh-keygen` | third-party | host, you | Makes the lamp's client and host keys. |
+| your terminal emulator + `ssh` + `socat` | third-party | host, you | The shell window. `ssh` reaches the sandbox through `socat` and a Unix socket. |
+| `vncviewer` (TigerVNC) | third-party | host, you | The desktop viewer window. |
+| `entrypoint` (`rootfs/usr/local/lib/oillamp/`) | bash | container, root (pid 1) | Prepares the container, starts every process below with no capabilities, reports ready, watches them, stops them. |
+| `sway` + `Xwayland` | third-party | container, infra user | The headless desktop, with X11 on display `:0`. |
+| `swaybg` | third-party | container, infra user | Draws the wallpaper. |
+| `wayvnc` | third-party | container, infra user | Serves the desktop over VNC on a Unix socket. |
+| `wf-recorder` | third-party | container, infra user | Records the desktop, if recording is on. |
+| `socat` bridges | third-party | container, infra user | `127.0.0.1:3128` → proxy socket, and one per forward. |
+| `socat` + `sshd -i` | third-party | container, agent user | The SSH listener; one `sshd` per connection. |
+| `dbus-daemon` | third-party | container, agent user | The session bus GUI applications expect. |
+| `/etc/profile.d/oillamp.sh` | bash | container, agent user | The environment of every shell: proxy, display, library paths, SDKMAN, prompt, banner. |
+| `lamp` (`rootfs/usr/local/bin/`) | bash | container, agent user | The desktop helper: screenshot, click, type, key, wait-stable. |
+| `lamp-pointer` (`rootfs/usr/local/lib/oillamp/`) | Python 3, standard library | container, agent user | Sends mouse events through the VNC socket for `lamp click` and friends. |
+| `install-*.sh`, `write-opencode-config.mjs` (`build/`) | bash, Node.js | container, root, **while the image is built** | Install Node.js, SDKMAN, pi, opencode, and write opencode's config. |
+| pi, opencode, Firefox, the JDK, … | third-party | container, agent user | What the agent uses. oillamp never starts these itself. |
+
+And the whole picture, while a session runs:
+
+```mermaid
+flowchart LR
+    subgraph HOST["Host (your desktop session)"]
+        direction TB
+        launch["launching terminal"]
+        subgraph SUP["oillamp supervisor (Java)"]
+            direction TB
+            loop["event loop + SessionMachine"]
+            relays["SSH relays<br/>run/ssh-primary.sock<br/>run/ssh.sock"]
+            control["control socket<br/>run/control.sock"]
+            egress["egress proxy<br/>sockets/host/proxy.sock<br/>sockets/host/fwd-*.sock"]
+            watch["sandbox watcher"]
+        end
+        termwin["shell window<br/>ssh + socat"]
+        viewer["viewer window<br/>vncviewer"]
+        other["oillamp stop / status /<br/>view / shell"]
+    end
+    subgraph C["Container oillamp-(id) · no network · read-only"]
+        direction TB
+        ep["entrypoint (pid 1, root)"]
+        subgraph INFRA["as infra user"]
+            sway["sway + Xwayland"]
+            wayvnc["wayvnc<br/>sockets/infra/vnc.sock"]
+            rec["wf-recorder"]
+            bridge["socat 127.0.0.1:3128"]
+        end
+        subgraph AGENT["as agent user"]
+            sshd["socat sockets/agent/ssh.sock<br/>→ sshd -i → bash"]
+            apps["harness, browser, GUI apps"]
+        end
+    end
+    launch --- SUP
+    termwin -->|ssh| relays -->|ssh.sock| sshd
+    viewer -->|vnc.sock| wayvnc --> sway
+    apps -->|Wayland / X11| sway
+    apps -->|HTTP_PROXY| bridge -->|proxy.sock| egress --> internet(("internet"))
+    other --> control
+    watch -.->|podman inspect,<br/>connect to sockets| C
+    ep -.->|starts, watches| INFRA
+    ep -.->|starts| AGENT
 ```
-HOST (your desktop session)
-│
-│  the terminal you typed `oillamp at` in
-│  └── oillamp supervisor (Java)
-│        • holds the lamp's lock
-│        • SSH relays:   run/ssh-primary.sock  (one connection: the terminal window)
-│                        run/ssh.sock          (any number: `oillamp shell`)
-│        • control socket: run/control.sock    (`oillamp stop/status/view/shell`)
-│        • egress proxy:  sockets/host/proxy.sock, plus one fwd-<name>.sock per forward
-│        • watches the container every 2 s, reports health every 30 s
-│
-│  terminal window (new) ── ssh ── socat ──▶ run/ssh-primary.sock ─┐
-│  viewer window   (new) ── vncviewer ─────▶ sockets/infra/vnc.sock │
-│                                                                   │
-│  <lamp>/                                                          │
-│   ├── oillamp.toml            configuration (agent cannot see it) │
-│   ├── .oillamp/               state (only the listed parts are    │
-│   │                           mounted into the container)         │
-│   └── agent-lamp-<id>/  ──mounted as──▶ /home/agent               │
-│                                                                   │
-└─── rootless podman, --network=none, read-only image ──────────────┘
-    CONTAINER  oillamp-<agent id>
-      pid 1: /usr/local/lib/oillamp/entrypoint  (bash, starts as container root)
-        as `lamp` (infra user):
-            sway            the Wayland compositor, one virtual screen HEADLESS-1
-            Xwayland        X11 display :0 for Swing and other X11 apps; the agent is allowed on it
-            wayvnc          serves the screen on /oillamp/sockets/infra/vnc.sock
-            wf-recorder     only if recording is enabled
-            socat 127.0.0.1:3128  → /oillamp/sockets/host/proxy.sock
-            socat 127.0.0.1:<p>   → /oillamp/sockets/host/fwd-<name>.sock
-        as `agent`:
-            dbus-daemon     session bus
-            socat /oillamp/sockets/agent/ssh.sock → sshd -i  (one sshd per connection)
-            your shell, the agent harness, GUI applications, the browser
-```
 
-How data moves:
+Every arrow that crosses between host and container is a Unix domain socket in a bind-mounted
+directory. There is no TCP port on the host and no network interface in the container.
 
-- **Your shell:** terminal window → `ssh` → `ProxyCommand socat` → `run/ssh-primary.sock` →
-  supervisor relay → `sockets/agent/ssh.sock` → socat in the container → `sshd -i` as `agent`.
-- **The desktop picture:** `vncviewer` → `sockets/infra/vnc.sock` → wayvnc → sway.
-- **The web:** a program in the sandbox → `HTTPS_PROXY=http://127.0.0.1:3128` → socat in the
-  container → `sockets/host/proxy.sock` → egress proxy on the host → policy check → internet.
-- **A forward:** a program → `127.0.0.1:<port>` → socat → `sockets/host/fwd-<name>.sock` →
-  supervisor → TCP connection to the configured target.
+---
 
-Everything between host and container is a Unix domain socket in a bind-mounted directory. There
-is no TCP port on the host and no network interface in the container.
+## Where state lives
 
-### Where state lives
-
-The README's section 4 introduces this; here it is in full. The code decides with values (records,
-persistent collections, no `null`) and keeps its state in a small number of places, each with one
-job and a known lifetime.
+oillamp decides with **values** (immutable records, persistent collections, no `null`) and keeps
+its state in a small number of **places**. A value never changes; a place is somewhere whose
+content changes over time: a file, a socket, a container, a field. Every place has one job and a
+known lifetime:
 
 | Place | Written by | Read by | Lifetime |
 |---|---|---|---|
-| `<lamp>/oillamp.toml` | you; created from the template if absent | every command that reads configuration | until `oillamp remove` |
+| `<lamp>/oillamp.toml` | you; created from a template if missing | every command that reads configuration | until `oillamp remove` |
 | `<lamp>/.oillamp/lamp.json` | `LampPlanner` (identity); `Supervisor` (`lastSessionAt`) | every command that names the lamp | until `oillamp remove` |
 | `<lamp>/.oillamp/lock` | `LampLock`; the kernel holds the lock | `Commands.at` | the lock ends with the process, however it ends |
-| `<lamp>/.oillamp/session.json` | `Supervisor`, after its sockets are bound | `Commands.at` on a busy lamp | deleted last at shutdown; a killed supervisor leaves it behind |
+| `<lamp>/.oillamp/session.json` | `Supervisor`, after its sockets are bound | `Commands.at` on a busy lamp | deleted at shutdown; a killed supervisor leaves it |
+| `<lamp>/.oillamp/keys/`, `ssh_config`, `known_hosts` | `LampPlanner` (keys once, the rest every start) | the shell window, `oillamp shell` | until `oillamp remove` |
 | `<lamp>/.oillamp/session/` | `LampPlanner.planSession`, every start | the entrypoint, sshd, every shell | rewritten each session |
-| `<lamp>/.oillamp/sockets/*/` | the proxy (host), wayvnc and the ssh listener (container) | relays, viewer, socat | files outlive their servers; deleted before the next session |
-| `<lamp>/.oillamp/recordings/`, `logs/` | wf-recorder; the egress proxy | you | recordings until retention deletes them; logs until you do |
-| `<lamp>/agent-lamp-<id>/` | the agent | the agent, you | until `oillamp remove` |
-| `$XDG_RUNTIME_DIR/oillamp/<id>/sockets` (symlink) | `LampPlanner.planSkeleton`, every start | every host-side socket path | in memory: gone at reboot, made again next start |
+| `<lamp>/.oillamp/image/context/` | `ImageResources`, before a build | `podman build` | overwritten at the next build |
+| `<lamp>/.oillamp/sockets/*/` | the proxy (host); wayvnc and the ssh listener (container) | relays, viewer, socat | files outlive their servers; deleted before the next session |
+| `<lamp>/.oillamp/recordings/` | wf-recorder | you, the agent (read only) | until retention deletes them |
+| `<lamp>/.oillamp/logs/network-<session>.jsonl` | the egress proxy | you | until you delete them |
+| `<lamp>/agent-lamp-<id>/` | the agent; `LampPlanner` writes `AGENTS.md` and `.bashrc` | the agent, you | until `oillamp remove` |
+| `$XDG_RUNTIME_DIR/oillamp/<id>/sockets` (a symlink) | `LampPlanner.planSkeleton`, every start | every host-side socket path | in memory: gone at reboot, made again next start |
 | `$XDG_RUNTIME_DIR/oillamp/<id>/run/*.sock` | `Supervisor` (relays, control socket) | `oillamp stop/status/view/shell`, the shell window | deleted at shutdown; a killed supervisor leaves them |
+| `~/.config/oillamp/config.toml` | you (optional) | every command that reads configuration | until you delete it |
+| `~/.cache/oillamp/<version>-<fingerprint>/` | the launcher, on first run | the launcher | until you delete it |
 | podman: image `localhost/oillamp/sandbox:<tag>` | `podman build` | `podman run` | until removed by hand |
 | podman: container `oillamp-<id>` and its labels | `podman run` | `list`, `remove`, `stop`, the sandbox watcher | removed at shutdown; a killed supervisor leaves it running |
 | `/run`, `/tmp` in the container | the entrypoint and its processes | the container's processes | until the container stops |
-| `Supervisor.state` | the event loop only | the watcher, control socket, shutdown thread, JVM hook | until the process exits |
+| `Supervisor.state` (in memory) | the event loop only | the watcher, the control socket, the shutdown thread, the JVM hook | until the process exits |
+| the launching terminal | `ConsoleRenderer` | you | the only record of a session; no session log is written |
 
-Three rules follow from this, and the code keeps to them:
+Two things surprise people. Part of a lamp's state is **outside the lamp**, in the runtime
+directory, so that nothing attached to the container can reach it. And the supervisor writes **no
+session log**: what it reports exists only in the terminal it runs in, apart from the network log.
 
-- **Decide from values, write in one place.** Probes read places into fact records, pure planners
-  turn facts into a `Plan`, and only `StepRunner` carries steps out. During a session, events are
-  values, `SessionMachine.step` returns a new state value and action values, and only the event loop
-  stores the state.
-- **Ask the place that knows.** Whether a session runs is the lock, not `session.json`. Which
-  containers exist is podman's labels, not a registry. Whether a server is up is a connection
-  attempt, not the existence of its socket file.
-- **Clean up at the next start, not only at the last stop.** A process can die without running its
-  shutdown. So every start deletes stale socket files and `ready.json`, removes a leftover container
-  with the lamp's name, and removes a stale `session.json`; `oillamp stop` does the same for a
-  supervisor that died.
-
-Two consequences surprise people. Part of a lamp's state is outside the lamp, in the runtime
-directory, so that nothing mounted into the container can reach it. And the supervisor writes no
-session log: what it reports exists only in the terminal it runs in, apart from the network log.
-
-One sharp edge also follows. The container name, runtime directory and ssh alias are all derived
-from the agent id, and nothing checks that the id is unique. A lamp copied with `cp -a` has the same
-id as the original, so starting it while the original runs would remove the original's container
-as "left over". This has not been tried on real hardware; see STATUS.md.
-
----
-
-## 3. What happens when you run `oillamp at`
-
-This is the whole program in order. File names are in `src/main/java/dev/oillamp/`.
-
-1. **`OilLamp.main`** builds a real `Machine` and calls `OilLamp.run(argv)`. `run` catches any
-   unexpected exception and turns it into problem `OIL-INTERNAL-001`, so the user never sees a raw
-   stack trace.
-2. **`Invocation.execute`** parses the command line by hand (no library) and calls the matching
-   method on `Commands`. Any usage mistake exits with code 2.
-3. **`Commands.at`** runs the phases in order. Each phase follows the same pattern: *probe* the
-   world into a record of facts, *plan* with a pure function, then *run* the plan with
-   `StepRunner`.
-4. **Host phase (`HostPhase`)**
-   - `HostProbe.probe` collects `HostFacts`: the distribution, your user and groups, the
-     graphical session, which required packages are installed, your subordinate id ranges,
-     podman's version and runtime, whether `podman unshare true` works, terminal emulators on
-     `PATH`, GPU render nodes, CPU count, sudo, and the filesystem type of the lamp path.
-   - `HostPlanner.plan` turns the facts into steps (install packages, add a subordinate id
-     range, `podman system migrate`) or problems.
-   - After running the steps, the host is **probed again** and planned again in strict mode.
-     The first probe ran before podman existed, so its answers about podman meant nothing.
-5. **Lamp phase (`LampPhase`)**
-   - Resolves the path (following symlinks) and refuses dangerous ones (`LampPaths`): `/`, your
-     home directory itself, and system directories such as `/etc` or `/usr`.
-   - Refuses network and FAT filesystems, which cannot hold Unix sockets.
-   - `LampClassifier` decides what the directory is: missing, empty, an existing lamp, someone
-     else's files, or damaged.
-   - Loads the configuration (`ConfigLoader`), decides on the GPU (`Gpu.decide`), and prints a
-     summary.
-   - `LampPlanner.planSkeleton` plans the directory tree, identity file, SSH keys, ownership
-     changes, recording retention and the runtime directory. `StepRunner` runs it.
-   - `LampPlanner.planSession` then plans the per-session files (`runtime.env`, the agent guide,
-     `authorized_keys`, `ssh_config`, `known_hosts`). This is a second plan because it needs the
-     public keys the first plan generated. See [Plans and steps](#plans-and-steps).
-6. **`--dry-run` stops here**, after also planning the image and container steps so that the
-   full `podman run` command is printed. A dry run takes no lock and changes nothing.
-7. **Lock.** `LampLock.tryAcquire` takes an exclusive OS file lock on `.oillamp/lock`. If another
-   session holds it, oillamp reports `OIL-LOCK-001` and exits with code 4. The OS releases the
-   lock when the process dies, however it dies.
-8. **Image and sandbox phase (`SandboxPhase`)**
-   - Computes the image tag from a hash of the image's files and build arguments. If podman does
-     not have that tag, it extracts the image files from the jar and runs `podman build`.
-   - Removes a leftover container with the same name, deletes the previous session's socket
-     files, runs `podman run` (flags in [The `podman run` command](#the-podman-run-command)),
-     waits for `ready.json` from *this* session, then connects to the VNC and SSH sockets to
-     prove they answer.
-9. **Supervisor (`Supervisor.run`)** binds the relays, the control socket and the egress proxy,
-   writes `session.json`, opens the two windows and then waits until the session ends. On the way
-   out it runs the shutdown sequence. `Commands.at` releases the lock afterwards.
-
-The other commands reuse these parts. `doctor` runs the host phase in dry-run mode with
-installing forbidden. `view`, `shell`, `stop` and `status` send one request to the control
-socket. `remove` and `recordings --prune` build a plan and run it with `StepRunner`.
-
----
-
-## 4. How the Java code is organised
-
-### One package, five public types
-
-All production code is in one package, `dev.oillamp`. Only five types are `public`:
-
-| Type | Why it is public |
-|---|---|
-| `OilLamp` | The entry point. `OilLamp.on(machine).run(argv)` is the whole tool. |
-| `Machine` | Everything oillamp does to the outside world goes through it. A caller (a test, or a future GUI) must be able to supply one. |
-| `LampEvent` | The stream of things oillamp reports. A GUI would render these itself. |
-| `Problem` | Structured errors, so a caller can inspect them rather than parse text. |
-| `ExitStatus` | The process exit codes, by name. |
-
-Everything else is package-private. Because Java does not let another package use a
-package-private class, the compiler enforces this boundary. Sub-packages would need public types
-to talk to each other, and those would be visible to everyone, which is why there is only one
-package. The tests live in package `oillamp`, outside `dev.oillamp`, so they can only use the five
-public types, the same way any other caller would.
-
-### Deciding versus doing
-
-Most classes only *decide*: they take values and return values, with no file access, no
-processes, no clock and no randomness. A small set of classes *do* things. The test
-`TheShapeOfTheCodeSpec` enforces the split. It fails the build if any class outside this list
-uses `java.nio.file.Files`, `ProcessBuilder`, `Process`, `SecureRandom`, `Thread` or `System`:
-
-`RealMachine`, `SimulatedMachine`, `Machine`, `Filesystem`, `LampLock`, `HostProbe`,
-`StepRunner`, `HostPhase`, `LampPhase`, `Commands`, `ConsoleRenderer`, `OilLamp`, `Invocation`,
-`Supervisor`, `Relay`, `Control`, `Egress`.
-
-(The check does not look for `Instant.now()`. By convention, time comes from `Machine.now()`.)
-
-`SandboxPhase`, `ImageResources` and a few others read files or the classpath through helpers on
-this list, so they pass the check.
-
-### The `Machine` interface
-
-`Machine` is the only way the program runs commands, reads system files (`/etc/os-release`,
-`/etc/subuid`, `/proc/...`), looks up executables, asks the time, generates random ids and opens
-windows. It has two implementations:
-
-- `RealMachine` does these things for real. Every command gets an argument list (never a shell
-  string) and a timeout. On timeout, the process and all its children are killed. Commands marked
-  `shieldedFromSignals()` run under `setsid --wait`, so a second Ctrl-C in your terminal cannot
-  kill the `podman stop` that is cleaning up.
-- `SimulatedMachine` pretends to be a machine described in a test, such as "Ubuntu 24.04, no
-  podman, sudo needs a password". It answers with realistic command output (real `podman info`
-  JSON, real `dpkg-query` lines) so the real parsers are tested. It also simulates the container
-  well enough for a session to run: on `podman run` it binds real Unix sockets and writes a
-  `ready.json`.
-
-Files *inside the lamp directory* are not behind `Machine`. They go through `Filesystem`, which
-touches the real disk even in tests, because the lamp's security depends on real permission bits,
-ownership and symlinks.
-
-### Plans and steps
-
-A `Step` (in `Step.java`) is a record describing one change: `CreateDirectory`, `WriteFile`,
-`InstallPackages`, `ChownForContainer`, `RunContainer`, and so on. A `Plan` is a list of steps for
-one phase. Every step can describe itself in one line (`describe()`) and in detail (`detail()`).
-
-`StepRunner.run(plan)` either announces each step (in a dry run) or performs it. This is why
-`--dry-run` can be trusted: the dry run and the real run build the same plan, and the only
-difference is whether `StepRunner` executes it. There is no separate "preview" code to go out of
-date.
-
-Two properties of `StepRunner`:
-
-- A step that is already done is skipped and reported as skipped: a file written "only if absent"
-  that exists, a key that exists, a directory that exists.
-- It stops at the first failed step.
-
-Adding a new kind of step is a compile error in `Step.describe()`, `Step.detail()` and
-`StepRunner.perform()` until you handle it in all three. The `switch` statements have no
-`default` branch on purpose.
-
-### Problems and results
-
-Expected failures are values, not exceptions.
-
-- `Problem` has a code (`OIL-AREA-NNN`), a severity (`INFO`, `WARNING`, `ERROR`), a title, *what
-  happened*, *why it matters*, evidence (a command and its output, a file, a value, a config
-  location) and fixes (a description and optionally a command to paste).
-- `Problems.java` is the catalogue: one factory method per problem, holding its fixed wording.
-- `Result<T>` is either `Ok(value, warnings)` or `Err(problems)`. `Result.combine` and
-  `Result.all` collect problems from independent checks, so a user with three mistakes sees all
-  three in one run.
-
-Unexpected exceptions are caught in `OilLamp.run` and reported as `OIL-INTERNAL-001`.
-
-### Events and the console
-
-oillamp never prints directly. Everything it wants to say is a `LampEvent`: `Ok`, `Info`,
-`StepPlanned`, `Warning`, `Failure`, `Summary`, `Answer` and so on. `OilLamp.run` sends each event
-to `ConsoleRenderer` (which prints it), to any listener registered with `observedBy`, and into the
-`Outcome` that `run` returns. Tests assert on events and on the rendered console text.
-
-`Context` carries the event sink and the command-line options through one run.
-
-**The activity line.** While a step runs, `ConsoleRenderer` shows what is happening on the last
-line of the terminal: a spinner, the elapsed time, a plain description of the step and the latest
-line of the step's own output (for the image build, `podman build`'s output, which
-`Machine.run(command, eachLine)` passes on line by line). A daemon thread redraws it in place every
-120 ms, and it is cleared before any ordinary line is printed, so it never mixes with the output
-above it. It is only drawn when standard output is a terminal, never into `Outcome.console()`, and
-never during steps that may run `sudo` (`InstallPackages`, `AddSubIds`), because redrawing would
-overwrite the password prompt.
-
-The line must never wrap onto a second row. A carriage return only goes back to the start of the
-current row, so a wrapped line leaves one row behind on every redraw and floods the terminal. Two
-things prevent that. The width comes from `$COLUMNS` if it is exported, and otherwise from
-`stty size` (shells usually do not export `$COLUMNS`); a longer line is shortened and ends in "…".
-And while drawing, the renderer turns the terminal's automatic wrapping off (`ESC[?7l`, back on
-with `ESC[?7h`), so that a line that is still too long, for example after the window was made
-narrower, is cut off at the right edge. Escape sequences and control characters in the program's
-output are removed before it is shown.
-
-### Class map
-
-| Area | Classes |
-|---|---|
-| Entry and commands | `OilLamp`, `Invocation`, `Commands`, `Context`, `ConsoleRenderer`, `Handbook` (the texts of `oillamp about` and `oillamp guide`) |
-| The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `Filesystem`, `LampLock` |
-| Host phase | `HostPhase`, `HostProbe`, `HostPlanner`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
-| Lamp phase | `LampPhase`, `LampPlanner`, `LampClassifier`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
-| Configuration | `ConfigLoader`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `Templates`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId` |
-| Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
-| Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
-| Shared | `Json` (every JSON file, message and answer is read and written through it) |
-| Image and container | `SandboxPhase`, `ImageResources`, `ImageTag`, `ContainerName`, `RuntimeEnv`, `ReadyInfo`, `AgentGuide`, `Gpu` |
-| Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `Ssh`, `Terminals`, `Viewers` |
-| Network | `Egress`, `Policy`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |
-
-### Coding conventions
-
-- Data is immutable `record`s. Validation happens in the record's constructor, so an invalid
-  value cannot exist.
-- Collections in records are Sprouts persistent collections (`Tuple`, `ValueSet`,
-  `Association`), never `java.util.List`, `Set`, `Map` or arrays. See
-  [SproutsCheatSheet.md](SproutsCheatSheet.md).
-- Alternatives are `sealed interface`s with record cases, handled with exhaustive `switch`
-  statements without `default`, so adding a case forces every `switch` to be updated.
-- No `null`. Absence is `Optional`. NullAway (run by Error Prone during compilation) checks this.
-- Only final Java 25 features; no preview features.
-
----
-
-## 5. The lamp directory on disk
+### The lamp directory on disk
 
 ```
 <lamp>/
@@ -382,66 +185,59 @@ output are removed before it is shown.
 │   ├── lock                     locked by the supervisor while a session runs
 │   ├── session.json             present while a session runs (informational)
 │   ├── keys/                    client_ed25519(.pub), host_ed25519(.pub)  0700
-│   ├── ssh_config               generated; used by the terminal window and `oillamp shell`
+│   ├── ssh_config               used by the shell window and `oillamp shell`
 │   ├── known_hosts              pins the sandbox's host key
-│   ├── session/                 rewritten each session; mounted read-only at /oillamp/session
-│   │   ├── runtime.env          settings the entrypoint and login shells read
+│   ├── session/                 rewritten each session; attached read-only at /oillamp/session
+│   │   ├── runtime.env          settings the entrypoint and every shell read
 │   │   ├── authorized_keys      the client public key
 │   │   ├── ssh_host_ed25519_key a copy of the host key for sshd (0600)
 │   │   └── agent-guide.md       the same text as ~/AGENTS.md
 │   ├── image/context/           the image build files, extracted from the jar before a build
-│   ├── sockets/                 not mounted itself; each directory below is, on its own
-│   │   ├── host/                you;        proxy.sock and fwd-*.sock (the supervisor binds them); read-only in the container
-│   │   ├── infra/               infra user; vnc.sock and ready.json
-│   │   └── agent/               you;        ssh.sock (sshd's listener)
-│   ├── recordings/              infra user; <session>.mkv; mounted at /oillamp/recordings
+│   ├── sockets/                 not attached itself; each directory below is, on its own
+│   │   ├── host/                you;        proxy.sock, fwd-*.sock; read-only in the container
+│   │   ├── infra/               infra user; vnc.sock, ready.json
+│   │   └── agent/               you;        ssh.sock
+│   ├── recordings/              infra user; <session>.mkv; attached at /oillamp/recordings
 │   └── logs/                    network-<session>.jsonl
-└── agent-lamp-<agent id>/       mounted read-write at /home/agent
+└── agent-lamp-<agent id>/       attached read-write at /home/agent
     ├── AGENTS.md                rewritten each session
     ├── .bashrc                  written once, then left alone
     ├── workspace/
-    ├── libs/                    on LD_LIBRARY_PATH and java.library.path
+    ├── libs/                    on LD_LIBRARY_PATH, and so on java.library.path
     └── screenshots/
 ```
 
-The paths in this tree come from methods in `LampLayout`. Commands that must work on a damaged
-lamp without an agent id (`remove`) use its static helpers `stateDirOf`, `configOf` and
-`readmeOf`. `LampPhase` and `Commands` still spell out `.oillamp/lamp.json` in two places.
+The paths come from `LampLayout`. Why it is laid out like this:
 
-### Who owns what, and why
-
-- **`oillamp.toml` is outside the agent directory.** It holds the network policy. The agent must
-  not be able to change the rules that restrict it.
-- **`.oillamp/` is mode 0700.** No other user on the host can reach the sockets inside it. That
-  lets the individual sockets be more open (the proxy socket is 0666) without exposing them.
+- **`oillamp.toml` is outside the agent directory.** It holds the network policy, and the agent
+  must not be able to change the rules that restrict it. Keys and logs are outside for the same
+  reason.
+- **`.oillamp/` is mode 0700**, so no other user on the host can reach the sockets inside it. That
+  lets the proxy socket itself be 0666, so the infra user's socat can connect.
 - **`sockets/infra/` and `recordings/` belong to the infra user.** `LampPlanner` hands them over
-  with `podman unshare chown 1001:1001`. `podman unshare` runs a command inside podman's user
-  namespace, where "1001" means the container's infra user, and podman translates it to the
-  right subordinate id on the host. Because the agent is uid 1000 and has no capabilities, it
-  cannot write, delete or replace anything there. It can *read* recordings, and that is intended:
-  the directory must be readable for you, and to the infra user you and the agent are the same
-  kind of outsider.
-- **A lamp cannot be deleted with `rm -rf`.** Those infra-owned files belong to a subordinate id
-  on the host, which your account cannot delete directly. `oillamp remove` deletes them through
-  `podman unshare rm -rf`.
+  with `podman unshare chown 1001:1001`. The agent (uid 1000, no capabilities) cannot write,
+  delete or replace anything there. It can *read* recordings, on purpose: you need to read them,
+  and to the infra user you and the agent are the same kind of outsider.
+- **A lamp cannot be deleted with `rm -rf`**, because those infra-owned files belong to a
+  subordinate id. `oillamp remove` deletes them with `podman unshare rm -rf`.
+- The name **`agent-lamp-<id>`** means a copied agent directory is never mistaken for a lamp.
 
 ### Why sockets have two paths
 
-Linux limits a Unix socket path to 107 bytes. A lamp can be anywhere, so its paths are often too
-long. oillamp therefore creates a short **runtime directory**:
+Linux limits a Unix socket path to 107 bytes, and a lamp can be anywhere. So every socket the host
+binds or connects to is addressed through the short runtime directory:
 
 ```
 $XDG_RUNTIME_DIR/oillamp/<agent id>/
 ├── sockets -> <lamp>/.oillamp/sockets    a symlink
-└── run/                                  host-only sockets, never mounted into the container
+└── run/                                  host-only sockets, never attached to the container
     ├── control.sock
     ├── ssh-primary.sock
     └── ssh.sock
 ```
 
-Every socket the host connects to or binds is addressed through this short path. The `run/`
-sockets are deliberately outside the lamp: the container cannot see them, so the agent cannot take
-the primary SSH slot or send commands to the supervisor.
+The `run/` sockets are outside the lamp on purpose: the container cannot see them, so the agent
+cannot take the primary SSH slot or send commands to the supervisor.
 
 ### `lamp.json`
 
@@ -455,56 +251,209 @@ the primary SSH slot or send commands to the supervisor.
 }
 ```
 
-A lamp with a higher `schemaVersion` than this build understands is refused with `OIL-LAMP-004`.
-There is no migration code yet, because there has only ever been version 1.
+A lamp with a higher `schemaVersion` than this build understands is refused (`OIL-LAMP-004`).
+There is no migration code yet, because there has only been version 1.
 
 ---
 
-## 6. The container
+## How oillamp changes state
+
+There are exactly two ways oillamp changes a place, and both keep deciding apart from doing.
+
+### While starting: probe, plan, run
+
+Each startup phase reads places into a record of **facts**, turns the facts into a **plan** with a
+pure function, and hands the plan to `StepRunner`, the only class that carries out steps.
+
+```mermaid
+flowchart LR
+    P1[("places<br/>/etc/os-release, podman info,<br/>the lamp, oillamp.toml")] -->|probe| F["facts<br/>HostFacts, LampState, LampConfig"]
+    F -->|"pure planner<br/>(no files, processes, clock)"| PL["plan<br/>CreateDirectory, WriteFile,<br/>InstallPackages, RunContainer, …"]
+    PL -->|StepRunner| P2[("places<br/>the lamp, the runtime directory,<br/>podman, host packages")]
+    PL -->|--dry-run| OUT["printed, nothing changed"]
+```
+
+Because a plan is data, `--dry-run` prints the real plan, not a separate preview that could drift
+from what really happens. `StepRunner` skips a step that is already done (a file written "only if
+absent" that exists, a key that exists) and reports it as skipped, and it stops at the first
+failed step.
+
+### While running: events, one state machine, one writer
+
+During a session, everything that happens becomes an **event** value on one queue: a shell
+connecting, the container stopping, Ctrl-C, `oillamp stop`, or a `Tick` every second. One thread
+takes events one at a time and calls `SessionMachine.step(state, event, now)`, a pure function that
+returns the next state and a list of **actions**. The supervisor stores the state in its one field
+and performs the actions.
+
+```mermaid
+flowchart LR
+    src["watcher · relays · control socket ·<br/>JVM hook · timer"] -->|SessionEvent| Q[["event queue"]]
+    Q --> L["event loop (one thread)"]
+    L -->|state, event, now| SM["SessionMachine.step<br/>(pure)"]
+    SM -->|new state + actions| L
+    L -->|stores| ST[("Supervisor.state")]
+    L -->|performs| ACT["open window · report ·<br/>close shells · shut down"]
+```
+
+The one place that changes during a session has exactly one writer.
+
+### Three rules that follow
+
+- **Ask the place that knows.** oillamp does not keep copies of facts that live elsewhere:
+
+  | Question | Answered by |
+  |---|---|
+  | Is a session running on this lamp? | the lock on `.oillamp/lock`, not `session.json` |
+  | Which sandboxes are running? | podman, by container label; oillamp keeps no list |
+  | Is the image up to date? | whether podman has the tag computed from today's inputs |
+  | Is the desktop up? | connecting to its socket, not checking the file exists |
+  | What is the session doing? | the supervisor, through its control socket |
+
+- **Clean up at the next start, not only at the last stop.** A process can die without running
+  its shutdown. So every start deletes stale socket files and `ready.json`, removes a leftover
+  container with the lamp's name, and removes a stale `session.json`. `oillamp stop` does the same
+  for a supervisor that died.
+- **One id, many names.** The container name, runtime directory and ssh alias all come from the
+  agent id, and nothing checks the id is unique. A lamp copied with `cp -a` has the same id as the
+  original, so starting both at once would remove the original's container as "left over". This
+  is an open question in STATUS.md.
+
+---
+
+## What happens when you run `oillamp at`
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor You
+    participant O as oillamp (Commands.at)
+    participant H as HostPhase
+    participant L as LampPhase
+    participant S as SandboxPhase
+    participant P as podman
+    participant E as entrypoint (in container)
+    participant V as Supervisor
+    participant W as shell + viewer windows
+
+    You->>O: oillamp at ~/lamps/first
+    O->>H: probe host, plan, run
+    H-->>O: packages installed, host probed again
+    O->>L: classify lamp, load config, decide GPU
+    L-->>O: skeleton + session files written
+    Note over O: --dry-run stops here
+    O->>O: take .oillamp/lock
+    O->>S: image and container
+    S->>P: podman build (only if tag missing)
+    S->>P: podman rm -f leftover, podman run
+    P->>E: start pid 1
+    E->>E: sway, wayvnc, recorder, bridges, sshd
+    E-->>S: ready.json (this session's id)
+    S->>E: connect to vnc.sock and ssh.sock
+    O->>V: run session
+    V->>V: bind relays, control socket, proxy, then write session.json
+    V->>W: open viewer, open shell window
+    W->>V: primary SSH connection arrives
+    Note over V: Running, until Ctrl-C, closed terminal or oillamp stop
+    V->>P: podman stop, podman rm
+    V-->>O: exit status
+    O->>O: release lock
+```
+
+The same, step by step:
+
+1. **`OilLamp.main`** builds a real `Machine` and calls `OilLamp.run(argv)`. `run` catches any
+   unexpected exception and reports it as `OIL-INTERNAL-001`, so you never see a raw stack trace.
+2. **`Invocation.execute`** parses the command line by hand (no library) and calls the matching
+   method on `Commands`. Every usage mistake exits with code 2.
+3. **Host phase (`HostPhase`).**
+   - `HostProbe.probe` collects `HostFacts`: the distribution, your user and groups, the graphical
+     session, which required packages are installed, your subordinate id ranges, podman's version
+     and runtime, whether `podman unshare true` works, terminal emulators on `PATH`, GPU render
+     nodes, CPU count, sudo, and the filesystem type of the lamp path.
+   - `HostPlanner.plan` turns the facts into steps (install packages, add a subordinate id range,
+     `podman system migrate`) or problems.
+   - After running the steps, the host is **probed again** and planned again in strict mode. The
+     first probe ran before podman existed, so its answers about podman meant nothing.
+4. **Lamp phase (`LampPhase`).**
+   - Resolves the path (following symlinks) and refuses dangerous ones (`LampPaths`): `/`, your
+     home directory itself, system directories such as `/etc`.
+   - Refuses network and FAT filesystems, which cannot hold Unix sockets.
+   - `LampClassifier` decides what the directory is: missing, empty, an existing lamp, someone
+     else's files, or damaged.
+   - Loads the configuration (`ConfigLoader`), decides on the GPU (`Gpu.decide`) and prints a
+     summary.
+   - `LampPlanner.planSkeleton` plans the directory tree, identity file, SSH keys, ownership
+     changes, recording retention and the runtime directory. `StepRunner` runs it.
+   - `LampPlanner.planSession` then plans the per-session files: `runtime.env`, the agent guide,
+     `authorized_keys`, `ssh_config`, `known_hosts`. It is a second plan because it needs the
+     public keys the first one generated.
+5. **`--dry-run` stops here**, after also planning the image and container steps, so the full
+   `podman run` command is printed. A dry run takes no lock and changes nothing.
+6. **Lock.** `LampLock.tryAcquire` takes an exclusive OS file lock on `.oillamp/lock`. If another
+   session holds it, oillamp reports `OIL-LOCK-001` and exits with code 4. The OS releases the lock
+   when the process dies, however it dies.
+7. **Image and sandbox phase (`SandboxPhase`).**
+   - Computes the image tag. If podman does not have it, extracts the image files from the jar and
+     runs `podman build`, showing its output on the activity line.
+   - Removes a leftover container with the same name, deletes the previous session's socket files,
+     runs `podman run`, waits for `ready.json` carrying **this** session's id, then connects to
+     the VNC and SSH sockets to prove they answer.
+8. **Supervisor (`Supervisor.run`)** binds the relays, the control socket and the egress proxy,
+   writes `session.json`, opens the two windows, and waits until the session ends. On the way out
+   it runs the shutdown sequence. `Commands.at` then releases the lock.
+
+Until the supervisor is up, `Commands.at` holds a JVM shutdown hook of its own: a Ctrl-C while the
+image builds, or a start that fails, removes the container this run started. The supervisor's hook
+replaces it once the session is up.
+
+The other commands reuse these parts. `doctor` runs the host phase as a dry run with installing
+forbidden. `view`, `shell`, `stop` and `status` send one request to the control socket. `remove`
+and `recordings --prune` build a plan and run it with `StepRunner`. `list` asks podman for
+containers labelled `oillamp.agent-id`.
+
+---
+
+## The container
 
 ### The image
 
-The image is built from `src/main/resources/image/`:
+Everything that goes into the image is under `src/main/resources/image/`:
 
-| Path | Purpose |
-|---|---|
-| `Containerfile` | The build recipe. Debian 13 "trixie" base, everyday shell tools, the desktop stack, developer tools (JDK, Node.js, Python, Firefox), the two users, then the files from `rootfs/`. |
-| `build/install-node.sh` | Installs Node.js from NodeSource (Debian's version is too old for the agent harnesses). |
-| `build/install-sdkman.sh` | Installs SDKMAN into `/usr/local/share/oillamp/sdkman`, with prompts turned off. |
-| `build/install-agent-tools.sh` | Installs `opencode` and `pi` with npm, and pi's Eden AI extension into `/usr/local/share/oillamp/pi`. Never fails the build. |
-| `build/write-opencode-config.mjs` | Writes opencode's configuration, `/usr/local/share/oillamp/opencode/opencode.json`: Eden AI through its EU endpoint, with the models that endpoint lists. Run by `install-agent-tools.sh`. |
-| `rootfs/usr/local/lib/oillamp/entrypoint` | The container's first process. Described below. |
-| `rootfs/usr/local/bin/lamp` | The desktop helper the agent uses: `lamp screenshot`, `click`, `type`, … |
-| `rootfs/etc/profile.d/oillamp.sh` | The agent's shell environment: proxy variables, display, library paths, SDKMAN, prompt, banner. |
-| `rootfs/etc/oillamp/sshd_config` | sshd settings: key login only, every kind of forwarding off. |
-| `rootfs/etc/oillamp/sway/config` | Compositor settings, including the window frames' colours. No key binding runs a command. |
-| `rootfs/etc/xdg/foot/foot.ini` | The terminal's font, padding and colours, the same palette as the wallpaper and the window frames. |
-| `rootfs/etc/ssh/ssh_config.d/50-oillamp-proxy.conf` | Sends outbound SSH (`git@github.com:…`) through the egress proxy. |
-| `rootfs/usr/share/oillamp/wallpaper.png` | The desktop background. |
-| `rootfs/usr/share/oillamp/wallpaper.svg` | The drawing the background is rendered from. After changing it, render it again with `inkscape wallpaper.svg --export-type=png --export-filename=wallpaper.png`. |
+| Path | Kind | Purpose |
+|---|---|---|
+| `Containerfile` | build recipe | Debian 13 "trixie", everyday shell tools, the desktop stack, developer tools (JDK, Node.js, Python, Firefox), the two users, then the files from `rootfs/`. |
+| `build/install-node.sh` | bash | Installs Node.js from NodeSource (Debian's is too old for the harnesses). |
+| `build/install-sdkman.sh` | bash | Installs SDKMAN into `/usr/local/share/oillamp/sdkman`, with its questions turned off. |
+| `build/install-agent-tools.sh` | bash | Installs `opencode` and `pi` with npm, and pi's Eden AI extension into `/usr/local/share/oillamp/pi`. Never fails the build. |
+| `build/write-opencode-config.mjs` | Node.js | Writes `/usr/local/share/oillamp/opencode/opencode.json`: Eden AI through its EU endpoint, with the models that endpoint lists. |
+| `rootfs/usr/local/lib/oillamp/entrypoint` | bash | The container's first process. |
+| `rootfs/usr/local/lib/oillamp/lamp-pointer` | Python | Mouse input through VNC, for `lamp`. |
+| `rootfs/usr/local/bin/lamp` | bash | The agent's desktop helper. |
+| `rootfs/etc/profile.d/oillamp.sh` | bash | The environment of every shell. |
+| `rootfs/etc/oillamp/sshd_config` | config | sshd: key login only, every kind of forwarding off. |
+| `rootfs/etc/oillamp/sway/config` | config | The compositor: includes, window frames, no key binding that runs a command. |
+| `rootfs/etc/xdg/foot/foot.ini` | config | The in-sandbox terminal's font and colours. |
+| `rootfs/etc/ssh/ssh_config.d/50-oillamp-proxy.conf` | config | Sends outbound SSH (`git@github.com:…`) through the egress proxy. |
+| `rootfs/usr/share/oillamp/wallpaper.svg`, `.png` | image | The desktop background. After editing the SVG, render it with `inkscape wallpaper.svg --export-type=png --export-filename=wallpaper.png`. |
 
-At build time, Gradle writes a `MANIFEST` listing every file with its mode (`755` or `644`), so
-that `ImageResources` can find the files inside the jar and extract them with the right
-permissions. An entrypoint extracted without its executable bit would make the container die
-immediately.
+At build time Gradle writes a `MANIFEST` listing every file with its mode (`755` or `644`), so that
+`ImageResources` can find the files inside the jar and extract them with the right permissions. An
+entrypoint extracted without its executable bit would make the container die at once.
 
 **The image tag is a hash of its inputs.** `ImageResources.hashOf` computes SHA-256 over every
 image file (path, mode and contents) and every build argument (`BASE_IMAGE`, `JDK_PACKAGE`,
 `NODE_MAJOR`, `EXTRA_APT_PACKAGES`, `AGENT_TOOLS`). The tag is
-`localhost/oillamp/sandbox:<first 16 hex digits>`. If podman already has that tag, the build is
-skipped. If any input changes, the tag changes and the next session builds a new image. Lamps with
-identical inputs share one image.
+`localhost/oillamp/sandbox:<first 16 hex digits>`. Lamps with identical inputs share an image.
+Old images are never removed; see STATUS.md.
 
-The Containerfile has a `WITH_TOOLCHAIN` argument (default `true`). When `false`, the JDK,
-browser, Node.js and agent tools are skipped. oillamp always builds with the default. The spike
-tests use `false` to build faster.
-
-At the end of the build, the setuid and setgid bits are removed from every file, so no program in
-the image can change which user it runs as.
+The Containerfile has a `WITH_TOOLCHAIN` argument (default `true`). When `false`, the JDK, browser,
+Node.js and agent tools are skipped. oillamp always builds with the default; the spikes use `false`
+to build faster. At the end of the build, the setuid and setgid bits are removed from every file.
 
 ### The `podman run` command
 
-`SandboxPhase.containerArgv` builds it. `--dry-run --verbose` prints it in full.
+`SandboxPhase.containerArgv` builds it; `oillamp at <dir> --dry-run --verbose` prints it.
 
 ```
 podman run --detach --name oillamp-<id>
@@ -526,73 +475,56 @@ podman run --detach --name oillamp-<id>
     localhost/oillamp/sandbox:<tag>
 ```
 
-Things to know about these flags:
-
-- **The three socket directories are mounted one by one, never their parent.** The agent runs as
-  your user id, and `sockets/` belongs to you, so if it were mounted the agent could move the
-  infra user's `infra/` aside and serve its own desktop in its place, or leave a symbolic link
-  there for the next session to follow. A directory that is itself a mount point cannot be moved
-  from inside the container. `host/` is read-only because the sandbox only connects to the sockets
-  in it. `oillamp at` refuses a lamp in which any of these directories is a symbolic link.
-
-- **Capabilities are not dropped by a podman flag.** Container root starts with podman's default
-  set of capabilities, which it needs to create directories for each user and switch users. The
-  entrypoint then starts every long-running process with `setpriv`, which removes all
-  capabilities (`--inh-caps=-all --ambient-caps=-all --bounding-set=-all`). So the agent's
-  processes and the infra processes have none.
-- **There is no `--init` and no `no-new-privileges`.** The entrypoint is process 1 itself. Instead
-  of `no-new-privileges`, the image contains no setuid programs.
-- **The labels** let `oillamp list` and `oillamp remove` find containers without keeping their own
-  registry. `oillamp.lamp` in particular lets `remove` find a running container even when the
-  lamp's `lamp.json` has already been deleted.
-- **Container root is not host root.** With `keep-id`, container uid 0 maps to the first
-  subordinate id, for example 165536, which owns nothing on the host.
+- **The three socket directories are attached one by one, never their parent.** The agent runs as
+  your uid, and `sockets/` belongs to you. If the parent were attached, the agent could move the
+  infra user's `infra/` aside and serve its own desktop to your viewer. A directory that is itself
+  a mount point cannot be moved from inside. `oillamp at` also refuses a lamp in which one of
+  these directories is a symbolic link. `host/` is read-only because the sandbox only connects to
+  the sockets in it.
+- **Capabilities are not dropped by a podman flag.** Container root keeps podman's default set, to
+  create directories and switch users. The entrypoint starts every long-running process with
+  `setpriv --inh-caps=-all --ambient-caps=-all --bounding-set=-all`.
+- **There is no `--init` and no `no-new-privileges`.** The entrypoint is process 1. Instead of
+  `no-new-privileges`, the image has no setuid programs.
+- **The labels** let `list`, `stop` and `remove` find containers without a registry of their own.
+  `oillamp.lamp` lets `remove` find a running container even when `lamp.json` is already gone.
 
 ### The entrypoint, step by step
 
-`/usr/local/lib/oillamp/entrypoint` is a bash script. It runs as container root and does this:
+`/usr/local/lib/oillamp/entrypoint` is a bash script running as container root:
 
-1. Reads `/oillamp/session/runtime.env` and checks the required settings are there. Missing
-   settings stop the container with exit code 70.
-2. Deletes `vnc.sock`, `ready.json` and `ssh.sock` left by the previous session. The sockets
-   directory is a bind mount, so it outlives the container, and wayvnc cannot bind a path that
-   already exists.
-3. Creates `/run/lamp` (infra user, 0711), `/run/lamp/private` (0700) and `/run/agent` (agent,
-   0700), plus cache directories, and writes sway's screen size into `/run/lamp/output.conf`. It
-   also creates the X11 socket directory `/tmp/.X11-unix` as root with mode 1777, as on any Linux
-   system; otherwise sway would create it as the infra user with mode 0700.
-4. Copies pi's configuration and SDKMAN from `/usr/local/share/oillamp/` into the agent's home,
-   as the agent user, never overwriting anything already there. This is needed because
-   `/home/agent` is a bind mount: anything the image put there at build time is hidden at run
-   time. Failure here never stops the container.
-5. Starts **sway** as the infra user and waits up to 20 s for its Wayland socket
-   `/run/lamp/wayland-1`. If the GPU renderer (`gles2`) fails, it retries once with software
-   rendering (`pixman`) and records `gpu_fallback: true`.
-6. Makes `/run/lamp/wayland-1` world-connectable (0666) so the agent's applications can draw.
-   sway's control socket stays private (0700), so the agent cannot send it commands.
-   Then it opens the X11 display to the agent: sway has started Xwayland (the X11 server) as the
-   infra user on display `:0`, and Xwayland only accepts its own user. The entrypoint makes the
-   socket `/tmp/.X11-unix/X0` connectable and runs `xhost +si:localuser:agent` as the infra user.
-   Without this, every X11 application the agent starts, including Java Swing, fails with
-   "Authorization required". A failure here is logged but does not stop the sandbox.
-7. Starts **wayvnc** as the infra user on `/oillamp/sockets/infra/vnc.sock`. Its own control
-   socket is in `/run/lamp/private`, out of the agent's reach.
-8. If recording is enabled, starts **wf-recorder** as the infra user, writing
-   `/oillamp/recordings/<session>.mkv`. The quality option is called `crf` for software encoders
-   and `qp` for hardware encoders (`*vaapi*`, `*nvenc*`, `*qsv*`, `*_v4l2m2m`).
-9. Starts the **network bridges** as the infra user: a socat listening on `127.0.0.1:3128` for the
-   proxy, and one per forward.
-10. Starts, as the agent user, a **D-Bus session bus** and the **SSH listener**: socat on
-    `/oillamp/sockets/agent/ssh.sock` that runs `sshd -i` for each connection.
-11. Waits until both the VNC socket and the SSH socket *accept a connection* (not just exist),
-    then writes `ready.json` as the infra user:
+1. Reads `/oillamp/session/runtime.env` and checks the required settings. Missing settings stop the
+   container with exit code 70.
+2. Deletes `vnc.sock`, `ready.json` and `ssh.sock` from the previous session. The socket directories
+   outlive the container, and wayvnc cannot bind a path that already exists.
+3. Creates `/run/lamp` (infra user, 0711), `/run/lamp/private` (0700), `/run/agent` (agent, 0700)
+   and cache directories. Writes sway's screen size to `/run/lamp/output.conf` and the window
+   layout to `/run/lamp/windows.conf`. Creates `/tmp/.X11-unix` as root with mode 1777.
+4. Copies pi's configuration and SDKMAN from `/usr/local/share/oillamp/` into the agent's home, as
+   the agent user, never over anything already there. Failure never stops the container.
+5. Starts **sway** as the infra user and waits up to 20 s for `/run/lamp/wayland-1`. If the GPU
+   renderer (`gles2`) fails, it retries once with `pixman` and records `gpu_fallback: true`.
+6. Makes the Wayland socket connectable (0666) so the agent's applications can draw; sway's control
+   socket stays 0700. Opens X11 display `:0` to the agent: makes `/tmp/.X11-unix/X0` connectable
+   and runs `xhost +si:localuser:agent` as the infra user. A failure here is logged but does not
+   stop the sandbox.
+7. Starts **wayvnc** as the infra user on `/oillamp/sockets/infra/vnc.sock`, with its control
+   socket in `/run/lamp/private`.
+8. If recording is on, starts **wf-recorder** as the infra user, writing
+   `/oillamp/recordings/<session>.mkv`.
+9. Starts the **network bridges** as the infra user: socat on `127.0.0.1:3128` to the proxy
+   socket, and one per forward.
+10. Starts, as the agent user, a **D-Bus session bus** and the **SSH listener** (socat on
+    `/oillamp/sockets/agent/ssh.sock`, running `sshd -i` per connection).
+11. Waits until the VNC and SSH sockets **accept a connection** (not just exist), then writes
+    `ready.json` as the infra user:
     `{"renderer":"pixman","gpu_fallback":false,"width":1920,"height":1080,"session":"<id>"}`.
 12. Supervises. If sway, wayvnc, a bridge or the recorder exits, it stops everything and exits
-    with code 70. The agent-side processes (D-Bus, SSH listener) are not watched this way.
-13. On SIGTERM or SIGINT (which `podman stop` sends), it sends SIGINT to wf-recorder so the
-    `.mkv` file is finalised, waits up to 10 s, stops the rest, and exits 0.
+    with code 70. D-Bus and the SSH listener are not watched this way.
+13. On SIGTERM or SIGINT (from `podman stop`), sends SIGINT to wf-recorder so the `.mkv` is
+    finished, waits up to 10 s, stops the rest, and exits 0.
 
-The `drop` function starts each process. It uses `setpriv` to switch user and remove
+Every process is started by the `drop` function. It uses `setpriv` to switch user and remove
 capabilities, sets `HOME` and the XDG directories for that user (`setpriv` does not), sets the
 umask, and prefixes each output line with a tag such as `[sway]`. In GPU mode it uses
 `--keep-groups` instead of `--init-groups`, so the host's `render` group survives the switch.
@@ -602,37 +534,45 @@ umask, and prefixes each output line with a tag such as `[sway]`. In GPU mode it
 | | agent | lamp (infra user) |
 |---|---|---|
 | uid inside | 1000 | 1001 |
-| uid on the host | yours | a subordinate id, e.g. 166536 |
+| uid on the host | yours | a subordinate id, such as 166536 |
 | home | `/home/agent` (the agent directory) | `/var/lib/lamp` |
-| runs | sshd per connection, the shell, D-Bus, everything the agent starts | sway, swaybg, wayvnc, wf-recorder, socat bridges |
-| can reach | the Wayland display socket, its home, `/tmp`, the proxy port | its own sockets and files |
+| runs | sshd per connection, the shell, D-Bus, everything the agent starts | sway, Xwayland, swaybg, wayvnc, wf-recorder, socat bridges |
+| can reach | the Wayland and X11 display sockets, the VNC socket, its home, `/tmp`, the proxy port | its own sockets and files |
 
 The agent cannot signal the infra processes (different uid, no capabilities), cannot connect to
-sway's or wayvnc's control sockets (mode 0700, owned by `lamp`), and cannot write the recordings.
-These were tested on real hardware; see STATUS.md.
+sway's or wayvnc's control sockets (0700, owned by `lamp`), and cannot write the recordings.
+STATUS.md records these checks on real hardware.
 
 ---
 
-## 7. The running session
+## The running session
 
 ### The state machine
 
-A session's rules live in `SessionMachine.step(state, event, now)`, a pure function that returns
-the next state and a list of actions. `Supervisor` performs the actions and turns what happens
-into new events. This keeps every decision about how a session ends in one place, where tests can
-check it quickly.
+A session's rules live in `SessionMachine.step`, a pure function. `Supervisor` performs the actions
+it returns and turns what happens into new events.
 
-States (`SessionState`):
+```mermaid
+stateDiagram-v2
+    [*] --> Starting
+    Starting --> AwaitingTerminal: ContainerReady / open viewer and terminal
+    Starting --> ShuttingDown: ContainerExited, Interrupted, StopRequested
+    AwaitingTerminal --> Running: PrimaryConnected
+    AwaitingTerminal --> ShuttingDown: Tick after terminal timeout (OIL-TERM-002)
+    Running --> Running: Primary/Shell connected or disconnected
+    AwaitingTerminal --> ShuttingDown: Interrupted, StopRequested, ContainerExited
+    Running --> ShuttingDown: Interrupted, StopRequested, ContainerExited
+    ShuttingDown --> Stopped: ShutdownCompleted
+    Stopped --> [*]
+```
 
 | State | Meaning |
 |---|---|
-| `Starting` | The container has been started; the supervisor has not processed its readiness yet. |
-| `AwaitingTerminal` | The sandbox answered on both sockets. The windows have been asked to open. Nobody is connected yet. |
-| `Running` | The primary shell is connected. Counts extra shells. |
+| `Starting` | The container has been started; its readiness has not been processed yet. |
+| `AwaitingTerminal` | The sandbox answered on both sockets and the windows were asked to open. Nobody is connected yet. |
+| `Running` | The primary shell has connected. Counts extra shells. |
 | `ShuttingDown` | The shutdown sequence is running. Events other than `ShutdownCompleted` are ignored. |
 | `Stopped` | Final. Holds the exit code. |
-
-Transitions:
 
 | In state | Event | Goes to | Actions |
 |---|---|---|---|
@@ -640,7 +580,7 @@ Transitions:
 | Starting | `ContainerExited` | ShuttingDown (startup failed) | report, shut down |
 | AwaitingTerminal | `PrimaryConnected` | Running | announce |
 | AwaitingTerminal | `Tick` after the terminal timeout | ShuttingDown (startup failed, `OIL-TERM-002`) | report, shut down |
-| Running | `PrimaryDisconnected` | Running (shell window closed) | announce how to open another shell |
+| Running | `PrimaryDisconnected` | Running (shell window closed) | say how to open another shell |
 | Running | `ShellConnected` / `ShellDisconnected` | Running (count ±1) | announce |
 | any live state | `Interrupted` (Ctrl-C, SIGTERM, SIGHUP from closing the launching terminal) | ShuttingDown | close extra shells, shut down |
 | any live state | `StopRequested` (`oillamp stop`) | ShuttingDown | close extra shells, shut down |
@@ -649,67 +589,56 @@ Transitions:
 | any live state | `ActionFailed` for the viewer | unchanged | warning |
 | ShuttingDown | `ShutdownCompleted` | Stopped | report cleanup problems, exit |
 
-Closing a window never ends a session: not the shell window, not a viewer, not an extra shell.
-The session ends where it was started, with Ctrl-C or by closing that terminal, or with
-`oillamp stop`.
+**Closing a window never ends a session**: not the shell window, not a viewer, not an extra shell.
+A session ends where it was started (Ctrl-C, or closing that terminal) or with `oillamp stop`.
 
-Why a terminal that fails to open still ends the session, while a failing viewer does not: a
-terminal that cannot open almost always means the terminal setting is wrong, and it would be wrong
-in every session, so the session stops and says why. Without a viewer you just cannot see the
-desktop, and `oillamp view` can open another, so the session continues.
+A terminal that fails to open ends the session, because it almost always means the terminal
+setting is wrong, which would be wrong every time. A viewer that fails does not, because
+`oillamp view` can open another.
 
-Exit codes by shutdown reason (`ShutdownReason.exitStatus`): `oillamp stop`
-→ 0; interrupted while `Running` → 0; interrupted before `Running` → 130; container died → 5;
-startup failed → 5.
+Exit codes by shutdown reason (`ShutdownReason.exitStatus`): `oillamp stop` → 0; interrupted while
+`Running` → 0; interrupted before `Running` → 130; container died → 5; startup failed → 5.
 
 ### Threads
 
-- **Event loop** (the thread that called `Supervisor.run`). Takes one event at a time from a
-  queue, calls `SessionMachine.step`, stores the new state, performs the actions. If no event
-  arrives within a second, it creates a `Tick`, which is how timeouts are noticed. Only this thread
-  writes the state. The field is `volatile` because other threads read it.
-- **Sandbox watcher.** Every 2 seconds runs `podman container inspect` to check the container is
-  still running, and connects to the VNC, SSH and proxy sockets. Reports a change immediately and
-  a health line every 30 seconds.
-- **Relay threads.** One accept loop per relay socket, and two virtual threads per connection
-  (one per direction).
-- **Control socket threads.** One accept loop, and one thread per connection, which answers its
-  one request. A connection that sends nothing for 5 s is closed, so it cannot hold up the rest.
-- **Egress threads.** One accept loop per proxy or forward socket, one thread per connection, and
-  a single writer thread for the network log.
+- **Event loop** (the thread that called `Supervisor.run`). Takes one event at a time, calls
+  `SessionMachine.step`, stores the new state, performs the actions. With no event for a second it
+  creates a `Tick`, which is how timeouts are noticed. Only this thread writes the state; the field
+  is `volatile` because others read it.
+- **Sandbox watcher.** Every 2 s runs `podman container inspect` and connects to the VNC, SSH and
+  proxy sockets. Reports a change at once and a health line every 30 s.
+- **Relay threads.** One accept loop per relay socket, and two virtual threads per connection (one
+  per direction).
+- **Control socket threads.** One accept loop, one thread per connection. A connection that sends
+  nothing for 5 s is closed.
+- **Egress threads.** One accept loop per proxy or forward socket, one thread per connection, and a
+  single writer thread for the network log.
 - **Shutdown thread.** Runs the shutdown sequence so the event loop stays responsive.
-- **JVM shutdown hook.** On Ctrl-C or SIGTERM it posts `Interrupted` and waits for the state to
-  become `Stopped`, for as long as the shutdown sequence may take: `timeouts.stop_seconds` plus
-  a minute. If the sequence never began in that time, it runs it itself. If it began but has not
-  finished, it does not start it a second time; that would force-remove the container in the
-  middle of the first `podman stop`, while the recording is being finished.
-
-Before the supervisor exists, `Commands.at` holds a shutdown hook of its own. A Ctrl-C while the
-image builds or the desktop comes up removes the container that run started, and so does a start
-that fails. The supervisor's hook replaces it once the session is up. Without this, a container
-started by an interrupted or failed run kept running with nothing watching it.
+- **JVM shutdown hook.** On Ctrl-C or SIGTERM it posts `Interrupted` and waits for `Stopped`, for up
+  to `timeouts.stop_seconds` plus a minute. If the sequence never began, it runs it itself. If it
+  began but has not finished, it does not start a second one, which would force-remove the
+  container while the recording is being finished.
 
 ### Shutdown sequence
 
-`Supervisor.shutDown` runs every step even if an earlier one failed:
+`Supervisor.shutDown` runs every step, even if an earlier one failed:
 
 1. Close both SSH relays and all their connections.
-2. `podman stop --time <timeouts.stop_seconds> oillamp-<id>`, shielded from Ctrl-C. This lets the
-   entrypoint finalise the recording.
-3. `podman rm -f oillamp-<id>`, also shielded. If stop failed but remove worked, that is reported
-   as information, not an error. If both failed, `OIL-SANDBOX-005`.
+2. `podman stop --time <timeouts.stop_seconds> oillamp-<id>`, shielded from Ctrl-C (it runs under
+   `setsid --wait`). This lets the entrypoint finish the recording.
+3. `podman rm -f oillamp-<id>`, also shielded. If stop failed but remove worked, that is reported as
+   information. If both failed, `OIL-SANDBOX-005`.
 4. Close the egress proxy, the control socket and the windows oillamp opened.
 5. Delete `session.json` and update `lastSessionAt` in `lamp.json`.
 6. Print the summary: why it ended, how long it ran, the session id, the recording path.
 
-The lock is released by `Commands.at` after `Supervisor.run` returns.
-
 ### Crash recovery
 
-If the supervisor is killed (`kill -9`, power loss), the OS releases the lock. On the next
-`oillamp at`, `SandboxPhase` finds the container with the same name and removes it, and
-`LampPlanner` removes the stale `session.json`. `oillamp stop` on a lamp with no supervisor
-finds the orphaned container and removes it.
+If the supervisor is killed (`kill -9`, power loss), the OS releases the lock, but `session.json`,
+the `run/` sockets and the running container stay. On the next `oillamp at`, `SandboxPhase` removes
+the container with the same name and `LampPlanner` removes the stale `session.json`. `oillamp stop`
+on a lamp with no supervisor removes all three. A reboot empties the runtime directory and stops
+the container, and the next start cleans up the rest.
 
 ### The control protocol
 
@@ -718,74 +647,80 @@ finds the orphaned container and removes it.
 | Request | Reply |
 |---|---|
 | `{"op":"status"}` | `{"ok":true,"state":"running","detail":…,"lamp":…,"session":…,"container":…,"renderer":…,"desktop":…,"uptime":…,"shells":…,"viewer":…}` |
-| `{"op":"stop"}` | `{"ok":true,"state":"shutting-down"}` and the session begins to shut down |
-| `{"op":"view","view_only":"true"}` | `{"ok":true}` and another viewer opens |
+| `{"op":"stop"}` | `{"ok":true,"state":"shutting-down"}`, and the session begins to shut down |
+| `{"op":"view","view_only":"true"}` | `{"ok":true}`, and another viewer opens |
 | `{"op":"shell"}` | `{"ok":true,"argv":["ssh","-F",…]}`; the *asking* process runs that ssh in its own terminal |
 
-A missing socket means no session is running (`OIL-SESSION-001`). A socket that does not answer
-means a supervisor died without cleaning up (`OIL-SESSION-002`); `oillamp stop` then removes the
-container, the dead socket and `session.json`. A session that answers `{"ok":false,…}`, for example
-to `shell` while it is shutting down, is alive and has refused (`OIL-SESSION-003`).
-
-Every request is answered at once, so the asking command waits at most 5 s. A socket that accepts
-the connection but answers nothing within that time belongs to a supervisor that is frozen or
-stuck; that is also `OIL-SESSION-002`, but `stop` then removes nothing, because the process
-listening on the socket is still alive.
+A missing socket means no session is running (`OIL-SESSION-001`). A socket that refuses
+connections, or accepts but answers nothing within 5 s, is `OIL-SESSION-002`. In the first case
+the supervisor is dead and `oillamp stop` cleans up; in the second it is alive but stuck, and
+`stop` removes nothing. A session that answers `{"ok":false,…}` is alive and has refused
+(`OIL-SESSION-003`).
 
 ### The windows
 
-- **Terminal.** `Terminals.choose` picks the terminal emulator: `terminal.command` if set, else
+- **Terminal.** `Terminals.choose` picks the emulator: `terminal.command` if set, else
   `terminal.profile` if set, else the desktop's own (GNOME: Ptyxis, GNOME Terminal, Console; KDE:
-  Konsole), else the first installed from the table (`ptyxis`, `gnome-terminal`, `kgx`, `konsole`,
-  `kitty`, `foot`, `alacritty`, `wezterm`, `xterm`). The command inside is
+  Konsole), else the first installed of `ptyxis`, `gnome-terminal`, `kgx`, `konsole`, `kitty`,
+  `foot`, `alacritty`, `wezterm`, `xterm`. The command inside is
   `ssh -F <lamp>/.oillamp/ssh_config -o ProxyCommand="socat - UNIX-CONNECT:<run>/ssh-primary.sock" -t lamp-<id> "cd ~/workspace && exec bash -l"`.
 - **Viewer.** TigerVNC's `vncviewer`, given the socket path directly:
   `vncviewer -Shared=1 -AcceptClipboard=0 -SendClipboard=1 -SendPrimary=0 -RemoteResize=0 -geometry 1920x1080 <socket>`.
   The clipboard flags follow `viewer.clipboard`.
 
-The session is up when the primary *SSH connection* arrives, and `oillamp status` says when it
-has closed. oillamp watches the connection, not the terminal *process*: many terminal emulators
-hand the window to an existing server process and exit immediately, so their process id says
-nothing about the window.
-
-A window that exits with a non-zero code within 3 seconds is reported: as a warning for the
-viewer (`OIL-VIEW-001`), as a failure that ends the session for the terminal (`OIL-TERM-003`).
+oillamp watches the SSH **connection**, not the terminal **process**: many terminal emulators hand
+the window to a server process and exit at once, so their process says nothing about the window. A
+window program that exits with a non-zero code within 3 s is reported: a warning for the viewer
+(`OIL-VIEW-001`), a failure that ends the session for the terminal (`OIL-TERM-003`).
 
 ---
 
-## 8. The network
+## The network
 
-### Why there is no network interface
+The container has only a loopback interface: no route and no DNS. Every connection in or out is a
+Unix socket. These are the four data paths:
 
-The container runs with `--network=none`: it has only a loopback interface, no route and no DNS.
-Firewall rules are not needed, because there is nothing to filter. The internet is reached
-through the egress proxy instead, which runs in oillamp on the host.
+```mermaid
+flowchart LR
+    subgraph Host
+        T["shell window: ssh"] --> R1["run/ssh-primary.sock<br/>(supervisor relay)"]
+        VW["vncviewer"]
+        EG["egress proxy<br/>policy check"]
+        FW["forward handler<br/>(no policy)"]
+    end
+    subgraph Container
+        SS["sockets/agent/ssh.sock<br/>socat → sshd -i"]
+        VS["sockets/infra/vnc.sock<br/>wayvnc → sway"]
+        P1["curl, npm, git…"] -->|HTTPS_PROXY| B1["socat 127.0.0.1:3128"]
+        P2["harness"] -->|127.0.0.1:port| B2["socat 127.0.0.1:port"]
+    end
+    R1 --> SS
+    VW --> VS
+    B1 -->|sockets/host/proxy.sock| EG --> I(("internet"))
+    B2 -->|sockets/host/fwd-name.sock| FW --> TG(("configured target"))
+```
 
 ### The proxy (`Egress.java`)
 
-The proxy listens on `sockets/host/proxy.sock` (mode 0666, so the infra user's socat can connect;
-the enclosing `.oillamp/` is 0700). Inside the container, socat forwards `127.0.0.1:3128` to it.
-`/etc/profile.d/oillamp.sh` sets `HTTP_PROXY`, `HTTPS_PROXY` (both spellings), `NO_PROXY` and
+The proxy listens on `sockets/host/proxy.sock` (mode 0666; the enclosing `.oillamp/` is 0700).
+Inside the container, socat forwards `127.0.0.1:3128` to it. `/etc/profile.d/oillamp.sh` sets
+`HTTP_PROXY`, `HTTPS_PROXY` (both spellings), `NO_PROXY`, `NODE_USE_ENV_PROXY` and
 `JAVA_TOOL_OPTIONS` so that tools use it.
-
-It understands:
 
 | Request | What happens |
 |---|---|
 | `CONNECT host:port` (HTTPS and most real traffic) | policy check → connect → `200 Connection Established` → copy bytes both ways without reading them |
-| `GET http://host/path` (absolute form, plain HTTP) | policy check → connect → forward the request in normal form with hop-by-hop headers removed and `Connection: close` → stream the answer back |
-| `GET /path` (normal form) | `400` explaining that this is a proxy |
+| `GET http://host/path` (plain HTTP) | policy check → connect → forward the request with hop-by-hop headers removed and `Connection: close` → stream the answer back |
+| `GET /path` | `400`, explaining that this is a proxy |
 | `GET https://…` | `400`: HTTPS must use `CONNECT` |
-| a method that is not a plain word, or a host that is not a name or an address | `400`, before anything is printed or logged, so the agent cannot put terminal escape sequences on the user's screen or break a line of the network log |
+| a method that is not a plain word, or a host that is not a name or an address | `400`, before anything is printed or logged, so the agent cannot put escape sequences on your screen or break a line of the log |
 | denied | `403`, with a body such as `oillamp: connection to 10.0.0.1:5432 denied by rule "block private, internal and loopback ranges" in oillamp.toml` |
 | name does not resolve | `502` |
 | cannot connect in 10 s | `504` for `CONNECT`, `502` for plain HTTP |
 
-Limits: request head at most 64 KiB; at most 512 open connections (more are closed immediately);
-name resolution times out after 5 s.
-
-TLS is never intercepted. oillamp sees the host name and port, and the addresses it resolved,
-never the content.
+Limits: request head at most 64 KiB; at most 512 open connections; name resolution times out after
+5 s. TLS is never intercepted: oillamp sees the host name, port and resolved addresses, never the
+content.
 
 ### The policy (`Policy.java`)
 
@@ -797,53 +732,46 @@ rules. Each rule has a `label`, an `action` and up to three criteria:
 - `ports`: numbers or ranges such as `"8000-8100"`.
 - `cidrs`: address ranges such as `"10.0.0.0/8"` or `"fc00::/7"`.
 
-A rule matches when *every criterion it lists* matches. A criterion it does not list is ignored.
-A rule with no criteria matches everything.
+A rule matches when every criterion it lists matches. A rule with no criteria matches everything.
 
 How a connection is decided:
 
-1. The host name is resolved **on the host** into a list of addresses (or used directly if it is
-   an address).
-2. For each address, in the resolver's order, the rules are checked from top to bottom. The first
-   matching rule decides. If none matches, the default decides.
-3. The proxy connects to the first address that is allowed. If none is allowed, the connection is
-   denied, and the reported rule is the one that decided the *first* address.
+1. The host name is resolved **on the host** into addresses (or used as is, if it is an address).
+2. For each address, in the resolver's order, the rules are checked top to bottom. The first
+   matching rule decides; if none matches, the default decides.
+3. The proxy connects to the first allowed address. If none is allowed, the connection is denied,
+   and the reported rule is the one that decided the first address.
 
-Deciding per address, not per name, is what makes the default safe. Anyone can point a public name
-at `127.0.0.1` or a private address. Because the shipped deny rule lists address ranges, such a
-name is refused by where it points.
+Deciding per address, not per name, is what makes "allow the web" safe: a public name that points
+at `127.0.0.1` or a private address is refused because of where it points.
 
-The shipped default is `default = "allow"` with two deny rules. The first, *"Eden AI only through
-its EU endpoint"*, denies the host `api.edenai.run` (see [Eden AI, only in the
-EU](#eden-ai-only-in-the-eu)). The second, *"block private, internal and loopback ranges"*, denies `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10` (carrier-
-grade NAT, often used by VPNs), `127.0.0.0/8`, `169.254.0.0/16`, `0.0.0.0/8`, `::1/128`, `::/128`,
-`fc00::/7` and `fe80::/10`. To allow an internal service, add an `allow` rule *above* it.
+The shipped default is `default = "allow"` with two deny rules:
 
-Two things hold whatever the rules say. An IPv4 address written in IPv6 notation, such as
-`::ffff:7f00:1` (which is `127.0.0.1`), is judged as the IPv4 address it stands for, because that is
-where the connection goes. And `0.0.0.0` and `::`, which Linux treats as "this machine", are always
-refused. The proxy then connects to exactly the address the policy judged, never to a name or a
-text form that could be read differently.
+- *"Eden AI only through its EU endpoint"* denies the host `api.edenai.run`.
+- *"block private, internal and loopback ranges"* denies `10.0.0.0/8`, `172.16.0.0/12`,
+  `192.168.0.0/16`, `100.64.0.0/10` (carrier-grade NAT, often used by VPNs), `127.0.0.0/8`,
+  `169.254.0.0/16`, `0.0.0.0/8`, `::1/128`, `::/128`, `fc00::/7` and `fe80::/10`.
+
+To allow an internal service, add an `allow` rule above them.
+
+Two things hold whatever the rules say. An IPv4 address written as IPv6, such as `::ffff:7f00:1`
+(which is `127.0.0.1`), is judged as the IPv4 address it stands for. And `0.0.0.0` and `::`, which
+Linux treats as "this machine", are always refused. The proxy then connects to exactly the address
+it judged, never to a name or text form that could be read differently.
 
 ### Eden AI, only in the EU
 
-Both harnesses reach Eden AI only through its EU endpoint, `https://api.eu.edenai.run/v3`, which
-only serves models hosted in the EU. Three things make that so:
+Both harnesses reach Eden AI only through `https://api.eu.edenai.run/v3`. Three things make it so:
 
-- **pi.** Its Eden AI extension reads `EDENAI_BASE_URL` and `EDENAI_EU_ONLY`.
-  `/etc/profile.d/oillamp.sh` sets them in every shell, after reading `runtime.env`, and oillamp
-  never copies them from the host. So a host that points `EDENAI_BASE_URL` elsewhere changes
-  nothing in the sandbox. With `EDENAI_EU_ONLY` set, pi offers only the EU models.
-- **opencode.** It knows Eden AI already, but only the global endpoint, and it offers a model list
-  from its own catalog, most of which the EU endpoint does not serve. While the image is built,
-  `build/write-opencode-config.mjs` writes `/usr/local/share/oillamp/opencode/opencode.json`. That
-  file sets the EU endpoint and replaces the model list with the one the EU endpoint gives.
-  `OPENCODE_CONFIG` points opencode at it. The list is as fresh as the image; if it could not be
-  fetched during the build, opencode still uses the EU endpoint and keeps its own list.
-- **The network policy.** The shipped rule *"Eden AI only through its EU endpoint"* refuses
-  `api.edenai.run`, for any tool that ignores those settings. It is an ordinary rule: removing it
-  from `oillamp.toml` allows the global endpoint again. A lamp that lists its own rules and does
-  not include it has no such rule, as for any other shipped rule.
+- **pi.** Its Eden AI extension reads `EDENAI_BASE_URL` and `EDENAI_EU_ONLY`. The shell profile sets
+  both, after reading `runtime.env`, and oillamp never copies them from the host. With
+  `EDENAI_EU_ONLY` set, pi offers only the EU models.
+- **opencode.** It knows only Eden AI's global endpoint, with a model list from its own catalogue.
+  `build/write-opencode-config.mjs` writes `opencode.json` during the image build, setting the EU
+  endpoint and the model list the EU endpoint gives. `OPENCODE_CONFIG` points opencode at it. If
+  the list could not be fetched during the build, opencode still uses the EU endpoint.
+- **The network policy.** The shipped rule refuses `api.edenai.run` for any tool that ignores those
+  settings. It is an ordinary rule: a lamp can remove it.
 
 ### Forwards
 
@@ -857,10 +785,9 @@ target = "llm.corp.example.com:8000"
 ```
 
 The supervisor listens on `sockets/host/fwd-llm.sock`; socat in the container listens on
-`127.0.0.1:8000`. Each connection is opened from the host to the target, so your VPN and routing
-apply. Forwards bypass the policy on purpose: you chose the target. They are listed in the agent
-guide and logged like proxy connections. A forward cannot use port 3128, and names and ports must
-be unique.
+`127.0.0.1:8000`. Each connection is opened from the host, so your VPN and routing apply. Forwards
+skip the policy on purpose: you chose the target. They are listed in the agent guide and logged. A
+forward cannot use port 3128, and names and ports must be unique.
 
 ### The network log
 
@@ -871,50 +798,43 @@ be unique.
 ```
 
 `rule` is `(default)` when no rule matched, `unresolved` when the name did not resolve, and
-`forward` for forwards. Allowed connections are only logged when `network.log_allowed = true` (the
+`forward` for forwards. Allowed connections are logged only when `network.log_allowed = true` (the
 default). Denials are also printed in your terminal when `network.console_denied = true` (the
-default). A name that did not resolve is logged with `"decision":"deny"` but not printed as a
-denial, because no rule refused it.
+default). A name that did not resolve is logged as a denial but not printed as one, because no rule
+refused it.
 
 ### Outbound SSH and other tools
 
-- `git@github.com:…` works because `/etc/ssh/ssh_config.d/50-oillamp-proxy.conf` sends every SSH
-  connection except to `lamp-*` through the proxy with `CONNECT github.com:22`.
-- pip is told to install into `~/.local` (`PIP_USER=1`, `PIP_BREAK_SYSTEM_PACKAGES=1`) because
-  Debian refuses system-wide pip installs and the root filesystem is read-only anyway.
-- Tools that do their own DNS lookups and ignore proxy variables fail. There is no DNS.
-- Firefox has no proxy policy file yet. See STATUS.md.
+- `git@github.com:…` works because `50-oillamp-proxy.conf` sends every SSH connection except to
+  `lamp-*` through the proxy with `CONNECT github.com:22`.
+- pip installs into `~/.local` (`PIP_USER=1`, `PIP_BREAK_SYSTEM_PACKAGES=1`), because Debian
+  refuses system-wide pip installs and the root filesystem is read-only anyway.
+- Tools that do their own DNS lookups and ignore the proxy variables fail. There is no DNS.
+- Firefox has no proxy policy file yet (see STATUS.md).
 
 ---
 
-## 9. Desktop, viewer, recording and GPU
+## Desktop, viewer, recording and GPU
 
 ### Desktop
 
 sway runs headless with one virtual screen, `HEADLESS-1`, at `display.width` × `display.height`
-and `display.scale`. sway starts Xwayland, the X11 server, at once and keeps it running
-(`xwayland force`), so X11 applications, including Java Swing, work. It must keep running: by
-default sway stops Xwayland 10 seconds after the last X11 client exits, and a new Xwayland would
-forget that the agent is allowed to connect.
+and `display.scale`. It starts Xwayland at once and keeps it running (`xwayland force`). By default
+sway stops Xwayland 10 s after the last X11 client exits, and a new Xwayland would forget that the
+agent may connect.
 
-Windows float by default (`display.windows = "floating"`), as on most desktops: each opens at the
-size its application asks for, moves by its title bar and resizes by its 4-pixel border.
-`display.windows = "tiling"` makes sway split the screen between windows instead, so none covers
-another, but a single window then fills the screen and cannot be moved or resized. The entrypoint
-writes the choice to `/run/lamp/windows.conf`, which the sway config includes; it accepts only
-those two words, because that file is compositor configuration. Dialogs float either way. The
-agent's guide describes whichever is in effect.
+Windows float by default (`display.windows = "floating"`): each opens at the size its application
+asks for, moves by its title bar and resizes by its 4-pixel border. `"tiling"` makes sway split the
+screen instead. The entrypoint turns the choice into `/run/lamp/windows.conf`, and accepts only
+those two words, because that file is compositor configuration. Dialogs float either way.
 
-No key binding exits sway or runs a command, because the agent can type into the desktop
-and sway runs as the infra user. `TheSandboxImageSpec` checks the sway config for this.
+No key binding exits sway or runs a command, because the agent can type into the desktop and sway
+runs as the infra user. `TheSandboxImageSpec` checks the sway config for this.
 
 The agent's environment points at the display with `WAYLAND_DISPLAY=/run/lamp/wayland-1` and
-`DISPLAY=:0`. `_JAVA_AWT_WM_NONREPARENTING=1` is set because Swing otherwise misbehaves under a
-tiling compositor.
+`DISPLAY=:0`. `_JAVA_AWT_WM_NONREPARENTING=1` stops Swing drawing a second set of decorations.
 
 ### The `lamp` helper
-
-A bash script at `/usr/local/bin/lamp`. Each subcommand wraps one tool:
 
 | Command | Runs |
 |---|---|
@@ -923,104 +843,256 @@ A bash script at `/usr/local/bin/lamp`. Each subcommand wraps one tool:
 | `lamp move X Y`, `lamp drag X1 Y1 X2 Y2`, `lamp scroll [X Y] AMOUNT [HORIZONTAL]` | `lamp-pointer …` |
 | `lamp type "text"` | `wtype -s 150 -- "text"` |
 | `lamp key ctrl+shift+t` | `wtype -s 150 -M ctrl -M shift -k t` |
-| `lamp wait-stable [SECONDS]` | takes a screenshot every 0.5 s until two are identical (default limit 10 s) |
+| `lamp wait-stable [SECONDS]` | a screenshot every 0.5 s until two are identical (default limit 10 s) |
 | `lamp info` | size, renderer, output name and screenshot directory |
 
-It is a script so that the agent can read it and call the tools directly when it needs something
-the script does not do. There is no window list: that would need sway's control socket, which the
-agent must not reach.
+There is no window list: that would need sway's control socket, which the agent must not reach.
 
-**Pointer input goes through VNC.** `/usr/local/lib/oillamp/lamp-pointer` is a small Python
-program (standard library only) that connects to the desktop's VNC socket and sends pointer events:
-absolute positions and button presses, the same way your viewer does. Coordinates are screen
-pixels, as in a screenshot. It remembers the last position in `$XDG_RUNTIME_DIR`, so
-`lamp scroll AMOUNT` scrolls where the pointer last went. The agent can reach the VNC socket, which
-gives it nothing new: it can already see the screen and send input.
+**Pointer input goes through VNC.** `lamp-pointer` connects to the desktop's VNC socket and sends
+absolute pointer positions and button presses, the same way your viewer does. It remembers the last
+position in `$XDG_RUNTIME_DIR`, so `lamp scroll AMOUNT` scrolls where the pointer last was.
+Reaching the VNC socket gives the agent nothing new: it can already see the screen and send input.
+(`wlrctl` was tried first and failed: its moves are relative, and each call's virtual mouse
+disappears when the call ends, taking pointer focus with it.)
 
-`wlrctl` was used before and did not work, for two reasons. `wlrctl pointer move DX DY` moves the
-pointer *by* an offset, not *to* a position. And every `wlrctl` call creates a virtual mouse of its
-own and removes it when it exits; when it disappears, the window under the pointer loses pointer
-focus, so the next call's click reaches no window at all. Both apply to Wayland and X11
-applications. The spike "The agent can click and type in an X11 application, using only lamp"
-checks the result.
-
-**Keyboard input waits 150 ms before the first key** (`wtype -s 150`). Each `wtype` call sends the
-desktop a new keyboard layout, and X11 applications drop the key that arrives together with it, so
-without the pause the first key of every `lamp type` was lost.
+**Keyboard input waits 150 ms before the first key** (`wtype -s 150`). Each `wtype` call sends a new
+keyboard layout, and X11 applications drop the key that arrives with it.
 
 ### Viewer
 
-`vncviewer` connects straight to the Unix socket. `-SendPrimary=0` stops your X selection being
-pushed into the sandbox, `-RemoteResize=0` stops the viewer resizing the desktop, and the clipboard
-direction follows `viewer.clipboard` (default `to-agent`: you can paste in, the sandbox cannot
-copy out).
+`vncviewer` connects straight to the Unix socket. `-SendPrimary=0` keeps your X selection out of
+the sandbox, `-RemoteResize=0` stops the viewer resizing the desktop, and the clipboard direction
+follows `viewer.clipboard` (default `to-agent`: you can paste in, the sandbox cannot copy out).
 
 ### Recording
 
 Off by default. With `recording.enabled = true`, wf-recorder writes
-`.oillamp/recordings/<session>.mkv` at a constant `recording.max_fps` frames per second. A
-Matroska file stays playable even if the recorder is killed.
+`.oillamp/recordings/<session>.mkv` at `recording.max_fps` frames per second. The quality option is
+called `crf` for software encoders and `qp` for hardware ones (`*vaapi*`, `*nvenc*`, `*qsv*`,
+`*_v4l2m2m`). A Matroska file stays playable even if the recorder is killed.
 
-Retention (`Retention.select`) runs at every session start and on `oillamp recordings --prune`.
-A recording is deleted if it is older than `max_age_days` *or* falls outside the newest
-`max_total_gb`. `0` disables either limit. Deletion goes through `podman unshare rm` because the
-files belong to the infra user.
+Retention (`Retention.select`) runs at every session start and on `oillamp recordings --prune`. A
+recording is deleted if it is older than `max_age_days` **or** falls outside the newest
+`max_total_gb`. `0` disables either limit. Deletion goes through `podman unshare rm`.
 
-`oillamp recordings <dir>` lists recordings with duration and size. The duration comes from the
-file's own timestamps (created when recording started, last modified when it stopped), so no
-`ffmpeg` is needed on the host. When the filesystem keeps no creation time, the session id in the
-file name is used as the start.
+`oillamp recordings <dir>` shows each recording's duration from the file's own timestamps (created
+when recording started, last modified when it stopped), so no `ffmpeg` is needed on the host.
 
 ### GPU
 
-`Gpu.decide` chooses between hardware rendering (`gles2`) and software rendering (`pixman`):
+`Gpu.decide` chooses between hardware (`gles2`) and software (`pixman`) rendering:
 
 - `display.gpu = "off"`: always software.
-- `"auto"` (default): hardware only if there is a `/dev/dri/renderD*` node, podman is available
-  and uses crun, the node's driver is one of `i915`, `xe`, `amdgpu`, `radeon`, `nouveau`,
-  `virtio_gpu`, and you are in the group that owns the node (usually `render`). Otherwise
-  software, with the reason printed. If you are not in the group, the exact `usermod` command is
-  printed. oillamp does not run it, because it changes your account and only takes effect after
-  you log in again.
+- `"auto"` (default): hardware only if there is a `/dev/dri/renderD*` node, podman uses crun, the
+  node's driver is one of `i915`, `xe`, `amdgpu`, `radeon`, `nouveau`, `virtio_gpu`, and you are in
+  the group that owns the node (usually `render`). Otherwise software, with the reason printed. If
+  you are not in the group, the exact `usermod` command is printed, not run: it changes your
+  account and only takes effect after you log in again.
 - `"on"`: like `auto`, but any unmet condition is an error (`OIL-GPU-003`).
-
-crun is required because passing the render group into the container needs
-`--group-add keep-groups`, which runc does not support. Ubuntu 24.04 installs runc by default,
-which is why `crun` is a required host package.
 
 Even with hardware chosen, the entrypoint falls back to software if sway cannot start with it.
 
 ---
 
-## 10. Configuration reference
+## How each tool is configured
+
+Nothing in the container reads the host directly. Everything a tool needs reaches it through one
+of three routes: **baked into the image** (fixed until the image changes), **written by oillamp
+each session** into `.oillamp/session/` (read-only in the container), or **passed on a command
+line** by the entrypoint or the supervisor.
+
+| Tool | Configured by | Written when, by whom |
+|---|---|---|
+| podman | the `podman run` arguments | every start, `SandboxPhase.containerArgv`, from `oillamp.toml` (`limits.*`, GPU decision) |
+| the image contents | Containerfile build arguments | every build, `SandboxPhase`, from `image.*` and `agent_tools.install` |
+| the entrypoint | `/oillamp/session/runtime.env` | every start, `RuntimeEnv.render` |
+| sway | `/etc/oillamp/sway/config`, which includes `/run/lamp/output.conf` and `/run/lamp/windows.conf` | the config is in the image; the two includes are written by the entrypoint from `runtime.env` |
+| wayvnc | command-line flags, `--config=/dev/null` | every start, the entrypoint (`OILLAMP_VNC_MAX_FPS`) |
+| wf-recorder | command-line flags | every start, the entrypoint (`OILLAMP_RECORDING_*`) |
+| socat bridges | command-line arguments | every start, the entrypoint (`OILLAMP_PROXY_PORT`, `OILLAMP_FORWARDS`) |
+| sshd | `/etc/oillamp/sshd_config`; `HostKey` and `AuthorizedKeysFile` point into `/oillamp/session/` | config in the image; keys copied by `LampPlanner` every start |
+| every shell | `/etc/profile.d/oillamp.sh`, reached from `/etc/profile` and from `~/.bashrc` | the script is in the image; it reads `runtime.env`; `.bashrc` is written once by `LampPlanner` |
+| outbound ssh | `/etc/ssh/ssh_config.d/50-oillamp-proxy.conf` | in the image |
+| foot (in-sandbox terminal) | `/etc/xdg/foot/foot.ini` | in the image |
+| pi | `~/.pi/agent/` plus `EDENAI_*` from the profile | installed in the image, copied into the home by the entrypoint once |
+| opencode | `/usr/local/share/oillamp/opencode/opencode.json` via `OPENCODE_CONFIG` | written during the image build |
+| SDKMAN | `~/.sdkman/etc/config` (questions off) | installed in the image, copied into the home by the entrypoint once |
+| the agent | `~/AGENTS.md` | every start, `AgentGuide`, from the live configuration |
+| ssh on the host | `.oillamp/ssh_config`, `.oillamp/known_hosts` | every start, `LampPlanner` |
+| the terminal emulator | its argument template in `Terminals` | chosen each session from `terminal.*` |
+| vncviewer | command-line flags | each time a viewer opens, `Viewers`, from `viewer.*` |
+| the egress proxy | the `[network]` table | read at start into a `Policy` value |
+
+### `runtime.env`
+
+`RuntimeEnv.render` writes `.oillamp/session/runtime.env`, which the entrypoint and every shell
+read. Every value is single-quoted, a single quote inside is escaped as `'\''`, and values
+containing a line break are refused, because a root shell executes this file. Keys are sorted so
+the file is stable.
+
+Contents: `OILLAMP_SESSION`, `OILLAMP_AGENT_ID`, `OILLAMP_LAMP_NAME`,
+`OILLAMP_DISPLAY_WIDTH/HEIGHT/SCALE`, `OILLAMP_WINDOWS`, `OILLAMP_RENDERER`, `OILLAMP_VNC_MAX_FPS`,
+`OILLAMP_RECORDING_ENABLED/CODEC/CRF/MAX_FPS`, `OILLAMP_PROXY_PORT`, `OILLAMP_FORWARDS`
+(`name:port name:port`), the LLM variables when configured, and `EDENAI_API_KEY` and
+`EDENAI_MAX_TOKENS` when they are set on the host (`RuntimeEnv.INHERITED_FROM_HOST`; their values
+are never logged). `EDENAI_BASE_URL` and `EDENAI_EU_ONLY` are never copied from the host.
+
+---
+
+## How the Java code is organised
+
+About 12,500 lines in one package, `dev.oillamp`.
+
+### Five public types
+
+| Type | Why it is public |
+|---|---|
+| `OilLamp` | The entry point. `OilLamp.on(machine).run(argv)` is the whole tool. |
+| `Machine` | Everything oillamp does to the outside world goes through it, so a caller (a test, a future GUI) must be able to supply one. |
+| `LampEvent` | The stream of things oillamp reports. A GUI would render these itself. |
+| `Problem` | Structured errors, so a caller can inspect them rather than parse text. |
+| `ExitStatus` | The process exit codes, by name. |
+
+Everything else is package-private, and the compiler enforces it. Sub-packages would need public
+types to talk to each other, which is why there is only one package. The tests live in package
+`oillamp`, so they can only use these five types, like any other caller.
+
+### Deciding versus doing
+
+Most classes only **decide**: they take values and return values, with no file access, processes,
+clock or randomness. A few classes **do**. `TheShapeOfTheCodeSpec` fails the build if any class
+outside this list uses `java.nio.file.Files`, `ProcessBuilder`, `Process`, `SecureRandom`, `Thread`
+or `System`:
+
+`RealMachine`, `SimulatedMachine`, `Machine`, `Filesystem`, `LampLock`, `HostProbe`, `StepRunner`,
+`HostPhase`, `LampPhase`, `Commands`, `ConsoleRenderer`, `OilLamp`, `Invocation`, `Supervisor`,
+`Relay`, `Control`, `Egress`.
+
+By convention, time comes from `Machine.now()`, never `Instant.now()`; the check does not look for
+it.
+
+### The `Machine` interface
+
+`Machine` is the only way the program runs commands, reads system files (`/etc/os-release`,
+`/etc/subuid`, `/proc/…`), looks up executables, asks the time, makes random ids and opens windows.
+
+- `RealMachine` does these things for real. Every command gets an argument list (never a shell
+  string) and a timeout; on timeout, the process and its children are killed. Commands marked
+  `shieldedFromSignals()` run under `setsid --wait`, so a second Ctrl-C cannot kill the cleanup.
+- `SimulatedMachine` pretends to be a machine described in a test ("Ubuntu 24.04, no podman, sudo
+  needs a password"), with realistic command output so the real parsers are tested. It simulates
+  the container well enough for a whole session: on `podman run` it binds real Unix sockets and
+  writes `ready.json`.
+
+Files **inside the lamp** are not behind `Machine`. They go through `Filesystem`, which touches the
+real disk even in tests, because the lamp's security depends on real permission bits, ownership
+and symlinks.
+
+### Plans and steps
+
+A `Step` (in `Step.java`) is a record describing one change: `CreateDirectory`, `WriteFile`,
+`InstallPackages`, `ChownForContainer`, `RunContainer`, and so on. A `Plan` is the list of steps for
+one phase. Each step describes itself in one line (`describe()`) and in detail (`detail()`).
+Adding a kind of step fails to compile in `describe()`, `detail()` and `StepRunner.perform()` until
+all three handle it; their `switch` statements have no `default` on purpose.
+
+### Problems and results
+
+Expected failures are values, not exceptions.
+
+- `Problem` has a code (`OIL-AREA-NNN`), a severity (`INFO`, `WARNING`, `ERROR`), a title, what
+  happened, why it matters, evidence (a command and its output, a file, a value, a config location)
+  and fixes (a description and, optionally, a command to paste).
+- `Problems.java` is the catalogue: one factory method per problem, with its fixed wording.
+- `Result<T>` is either `Ok(value, warnings)` or `Err(problems)`. `Result.combine` and `Result.all`
+  collect problems from independent checks, so a user with three mistakes sees all three at once.
+
+### Events and the console
+
+oillamp never prints directly. Everything it says is a `LampEvent` (`Ok`, `Info`, `StepPlanned`,
+`Warning`, `Failure`, `Summary`, `Answer`, …). `OilLamp.run` sends each event to `ConsoleRenderer`,
+to any listener registered with `observedBy`, and into the `Outcome` that `run` returns. `Context`
+carries the event sink and the options through one run.
+
+**The activity line.** While a step runs, `ConsoleRenderer` shows a spinner, the elapsed time, the
+step and the latest line of its output on the terminal's last row, redrawn every 120 ms by a daemon
+thread. It is only drawn when standard output is a terminal, and never during steps that may run
+`sudo`, because redrawing would overwrite the password prompt. It must never wrap: the width comes
+from `$COLUMNS` or `stty size`, long lines are shortened with "…", automatic wrapping is turned off
+while drawing (`ESC[?7l`, back on with `ESC[?7h`), and control characters in the step's output are
+removed.
+
+### Class map
+
+| Area | Classes |
+|---|---|
+| Entry and commands | `OilLamp`, `Invocation`, `Commands`, `Context`, `ConsoleRenderer`, `Handbook` (the texts of `oillamp about` and `oillamp guide`) |
+| The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `Filesystem`, `LampLock` |
+| Host phase | `HostPhase`, `HostProbe`, `HostPlanner`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
+| Lamp phase | `LampPhase`, `LampPlanner`, `LampClassifier`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
+| Configuration | `ConfigLoader`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `Templates`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
+| Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
+| Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
+| Shared | `Json` (every JSON file, message and answer goes through it) |
+| Image and container | `SandboxPhase`, `ImageResources`, `ImageTag`, `ContainerName`, `RuntimeEnv`, `ReadyInfo`, `AgentGuide`, `Gpu` |
+| Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `Ssh`, `Terminals`, `Viewers` |
+| Network | `Egress`, `Policy`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |
+
+---
+
+## Packaging
+
+`./gradlew singleFile` produces `build/dist/oillamp`, one executable of about 40 MB:
+
+1. `jlinkRuntime` builds a reduced Java runtime with `java.base`, `java.desktop` (used by Sprouts),
+   `java.sql` (used by Jackson) and `jdk.charsets` (added by hand, because character sets are
+   loaded by name).
+2. The runtime and all jars are packed into a reproducible `tar.gz` (sorted names, fixed times and
+   owners), so the same source gives the same file.
+3. `src/packaging/launcher.sh` is put in front of the archive, with the version and a 16-digit
+   fingerprint of the archive filled in.
+
+When run, the launcher unpacks itself once into `~/.cache/oillamp/<version>-<fingerprint>/`
+(through a temporary directory and a rename, so two starts at once cannot see a half-unpacked
+copy), then `exec`s the bundled Java, so Ctrl-C reaches Java directly. Later starts take about
+140 ms. `oillamp --where` prints the directory; deleting the file and that directory uninstalls
+oillamp. To read just the script part of the built file:
+
+```sh
+sed -n '1,/^__OILLAMP_PAYLOAD_BELOW__$/p' build/dist/oillamp
+```
+
+`./gradlew installDist` produces a conventional `bin/` and `lib/` layout in `build/install/`, for
+development. It needs a JDK 25 on the machine.
+
+---
+
+## Configuration reference
 
 Configuration is TOML. Three layers are merged, later ones winning:
 
 1. built-in defaults (`ConfigDefaults`),
-2. `~/.config/oillamp/config.toml` (optional, applies to every lamp),
+2. `~/.config/oillamp/config.toml` (optional, for every lamp),
 3. `<lamp>/oillamp.toml` (must contain `schema_version = 1`).
 
-Tables merge key by key. **Arrays replace**: if a lamp lists `network.rules`, it gets exactly
-those rules and none from the global file. Unknown keys are errors, with a suggestion for the
-nearest known key, because a misspelled network rule key would otherwise silently not apply.
+Tables merge key by key. **Arrays replace**: if a lamp lists `network.rules`, it gets exactly those
+rules and none from the global file. Unknown keys are errors, with a suggestion for the nearest
+known key. `ConfigLoader` reads the merged tree with `ConfigSection`, which records every problem
+with its file, key path (such as `network.rules[0].cidrs`), value and expectation, and keeps going,
+so all problems are reported together.
 
-`ConfigLoader` reads the merged tree with `ConfigSection`, which records every problem with its
-file, key path (for example `network.rules[0].cidrs`), value and expectation, and keeps reading.
-All problems are reported together.
-
-The "Used" column says whether the running code currently acts on the setting. Settings marked
-"no" are accepted and validated, but have no effect yet. They are listed under "Known gaps" in
-STATUS.md.
+"Used" says whether the code acts on the setting today. Settings marked "no" are accepted and
+checked but have no effect yet; they are listed under "Known gaps" in STATUS.md.
 
 | Key | Default | Meaning | Used |
 |---|---|---|---|
 | `display.width`, `display.height` | 1920, 1080 | desktop size (640–7680 × 480–4320) | yes |
 | `display.scale` | 1.0 | output scale (0.5–4.0) | yes |
 | `display.gpu` | `"auto"` | `auto`, `on`, `off` | yes |
-| `display.windows` | `"floating"` | `floating` (move and resize by dragging) or `tiling` (windows share the screen) | yes |
+| `display.windows` | `"floating"` | `floating` or `tiling` | yes |
 | `viewer.open_on_start` | true | open the viewer when the session starts | yes |
 | `viewer.clipboard` | `"to-agent"` | `to-agent`, `both`, `none` | yes |
-| `viewer.view_only` | false | viewer shows but does not send input | yes |
+| `viewer.view_only` | false | the viewer shows but sends no input | yes |
 | `viewer.max_fps` | 30 | wayvnc frame rate limit (1–120) | yes |
 | `terminal.profile` | `"auto"` | a terminal from the table, or `auto` | yes |
 | `terminal.command` | (unset) | custom argv with `{cmd}` and optional `{title}` | yes |
@@ -1036,8 +1108,8 @@ STATUS.md.
 | `network.default` | `"allow"` | decision when no rule matches | yes |
 | `network.log_allowed` | true | write allowed connections to the network log | yes |
 | `network.console_denied` | true | print denials in your terminal | yes |
-| `[[network.rules]]` | two deny rules | see [The policy](#the-policy-policyjava) | yes |
-| `[[network.forwards]]` | none | see [Forwards](#forwards) | yes |
+| `[[network.rules]]` | two deny rules | see "The policy" above | yes |
+| `[[network.forwards]]` | none | see "Forwards" above | yes |
 | `llm.forward` | `""` | name of a forward; sets `OILLAMP_LLM_BASE_URL`, `OILLAMP_LLM_MODELS`, `OILLAMP_LLM_PROVIDER` | yes |
 | `llm.base_path` | `"/v1"` | appended to the forward's URL | yes |
 | `llm.models` | `[]` | put into `OILLAMP_LLM_MODELS` | yes |
@@ -1054,31 +1126,13 @@ STATUS.md.
 | `timeouts.terminal_connect_seconds` | 60 | wait for the terminal to connect | yes |
 | `timeouts.stop_seconds` | 15 | `podman stop --time` | yes |
 
-`oillamp config <dir> check` validates, `show-effective` prints a summary of the result, `path`
-prints the file's path. `check` and `show-effective` merge the global file and the lamp's, as
-`oillamp at` does (`LampPhase.configurationFiles`).
-
-Environment variables `EDENAI_API_KEY` and `EDENAI_MAX_TOKENS` are copied from your environment
-into the sandbox when set (`RuntimeEnv.INHERITED_FROM_HOST`). Their values are never logged.
-`EDENAI_BASE_URL` and `EDENAI_EU_ONLY` are not copied: the sandbox sets them itself, so that Eden
-AI is only used through its EU endpoint (see [Eden AI, only in the EU](#eden-ai-only-in-the-eu)).
-
-### `runtime.env`
-
-`RuntimeEnv.render` writes `.oillamp/session/runtime.env`, which the entrypoint and every login
-shell read. Every value is single-quoted, a single quote inside is escaped as `'\''`, and values
-containing a line break are refused, because this file is executed by a root shell. Keys are
-sorted so the file is stable.
-
-Contents: `OILLAMP_SESSION`, `OILLAMP_AGENT_ID`, `OILLAMP_LAMP_NAME`,
-`OILLAMP_DISPLAY_WIDTH/HEIGHT/SCALE`, `OILLAMP_RENDERER`, `OILLAMP_VNC_MAX_FPS`,
-`OILLAMP_RECORDING_ENABLED/CODEC/CRF/MAX_FPS`, `OILLAMP_PROXY_PORT`, `OILLAMP_FORWARDS`
-(`name:port name:port`), the LLM variables when configured, and `EDENAI_API_KEY` and
-`EDENAI_MAX_TOKENS` when they are set on the host.
+`oillamp config <dir> check` validates, `show-effective` prints a summary of the merged result,
+`path` prints the file's path. `check` and `show-effective` merge the global file and the lamp's,
+as `oillamp at` does (`LampPhase.configurationFiles`).
 
 ---
 
-## 11. Problem codes and exit codes
+## Problem codes and exit codes
 
 ### Exit codes (`ExitStatus`)
 
@@ -1108,12 +1162,12 @@ Contents: `OILLAMP_SESSION`, `OILLAMP_AGENT_ID`, `OILLAMP_LAMP_NAME`,
 | `OIL-PODMAN-003` | `podman unshare true` fails. |
 | `OIL-PODMAN-004` | Ubuntu's AppArmor restriction on user namespaces blocks podman. |
 | `OIL-PODMAN-005` | podman is installed but did not answer when asked for its version. |
-| `OIL-LAMP-001` | The lamp's path cannot be mounted by podman (it contains a colon). |
+| `OIL-LAMP-001` | The lamp's path cannot be attached by podman (it contains a colon). |
 | `OIL-LAMP-002` | Directory is not empty and not a lamp (use `--init` to proceed anyway). |
 | `OIL-LAMP-003` | Refused path: `/`, your home directory, or a system directory. |
 | `OIL-LAMP-004` | Lamp created by a newer oillamp. |
 | `OIL-LAMP-005` | Lamp is on a filesystem without Unix sockets (NFS, SMB, FAT, sshfs). |
-| `OIL-LAMP-006` | Cannot write the lamp, or it is not a lamp (used for several "not a lamp" answers). |
+| `OIL-LAMP-006` | Cannot write the lamp, or it is not a lamp. |
 | `OIL-LAMP-007` | `remove` refused: the lamp is in use. |
 | `OIL-LAMP-008` | `remove` could not delete part of the lamp. |
 | `OIL-LAMP-009` | `recordings --open` named a session with no recording. |
@@ -1148,82 +1202,3 @@ Contents: `OILLAMP_SESSION`, `OILLAMP_AGENT_ID`, `OILLAMP_LAMP_NAME`,
 | `OIL-EXEC-001` | A required command is not on `PATH`. |
 | `OIL-USAGE-001` | Invalid command line. |
 | `OIL-INTERNAL-001` | A bug in oillamp. |
-
----
-
-## 12. Tests
-
-All tests are Spock specifications in `src/test/groovy/oillamp/`. There are three kinds.
-
-### Scenarios (`./gradlew test`)
-
-Each scenario describes a situation a user can be in and runs the real `OilLamp.run(...)` against
-a `SimulatedMachine`. The helper `Sandbox.groovy` sets up a simulated Ubuntu machine with a temporary
-home directory; a scenario changes what it needs:
-
-```groovy
-sandbox.machine { it.withoutPodman().withoutSubordinateIds() }
-var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run')
-outcome.reported('OIL-PKG-001')
-```
-
-Scenarios need no podman, no network and no display, and together they run in about two minutes.
-Session scenarios run a real supervisor with real Unix sockets; only the container is simulated.
-
-Each scenario starts with a `reportInfo` block that explains, in plain words, what the scenario is
-about and why it matters. After `./gradlew test`, these are rendered as Markdown into
-`build/spock-reports/`.
-
-| Spec | About |
-|---|---|
-| `CheckingTheMachineSpec` | `doctor` and host prerequisites |
-| `SettingUpALampSpec` | creating, reusing, refusing and removing lamps; recordings |
-| `ConfiguringALampSpec` | the configuration file and its validation |
-| `StartingTheSandboxSpec` | readiness and socket checks |
-| `SupervisingASessionSpec` | a whole session: windows, shutdown, failures |
-| `TheSessionCommandsSpec` | `status`, `stop`, `shell`, `view`, `list` |
-| `DecidingWhatTheSandboxMayReachSpec` | the egress proxy and policy, over the real socket |
-| `UsingTheCommandLineSpec` | usage errors, version, crash handling |
-| `TheLampCommandSpec` | the `lamp` script, with stub tools on `PATH` |
-| `TheSandboxImageSpec` | static checks of the image files |
-| `TheShapeOfTheCodeSpec` | the five public types and the deciding/doing split |
-
-### Spikes (`./gradlew spikes`)
-
-A simulation only knows what we already believe about podman, sway or sshd. Spikes check those
-beliefs against the real tools: they pull images, build the real image (without the toolchain) and
-start real containers. They are tagged `spike`, excluded from `test`, and skip themselves when
-podman is not available.
-
-| Spec | Checks |
-|---|---|
-| `VerifyingPodmanAssumptionsSpec` | rootless podman works on Ubuntu; the uid mapping; read-only root with writable mounts; Unix sockets work in both directions across the container boundary |
-| `VerifyingTheImageBaseSpec` | every package the image needs exists in Debian trixie |
-| `VerifyingTerminalProfilesSpec` | installed terminals accept the arguments oillamp gives them; terminal emulators return before their window closes |
-| `VerifyingTheSandboxDesktopSpec` | the real image: readiness, SSH login as `agent`, absolute `WAYLAND_DISPLAY`, screen size and rendering, vncviewer on a Unix socket, a playable recording, a clean second session |
-
-`Spike.groovy` runs commands through `Machine.real()`, the same code path oillamp uses.
-
-The results of these checks, and what was tested by hand on real hardware, are in STATUS.md.
-
----
-
-## 13. Packaging
-
-`./gradlew singleFile` produces `build/dist/oillamp`, one executable of about 40 MB:
-
-1. `jlinkRuntime` builds a reduced Java runtime with the modules `java.base`, `java.desktop` (used
-   by Sprouts), `java.sql` (used by Jackson) and `jdk.charsets` (added by hand because character
-   sets are loaded by name).
-2. The runtime and all jars are packed into a reproducible `tar.gz` (sorted names, fixed times and
-   owners), so the same source gives the same file.
-3. `src/packaging/launcher.sh` is put in front of the archive, with the version and a 16-digit
-   fingerprint of the archive filled in.
-
-When run, the launcher unpacks itself once into `~/.cache/oillamp/<version>-<fingerprint>/`
-(atomically, via a temporary directory and a rename) and then `exec`s the bundled Java. Using
-`exec` means Ctrl-C reaches Java directly. `oillamp --where` prints the directory. Deleting the
-file and that directory uninstalls oillamp.
-
-`./gradlew installDist` produces a conventional `bin/` and `lib/` layout in `build/install/`, for
-development. It needs a JDK 25 on the machine.

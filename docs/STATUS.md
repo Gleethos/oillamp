@@ -7,7 +7,7 @@ configuration do not yet match. Keep it current: when you close a gap, remove it
 find one, add it.
 
 For how the system works, see [ARCHITECTURE.md](ARCHITECTURE.md). For why, see
-[DECISIONS.md](DECISIONS.md).
+[DECISIONS.md](DECISIONS.md). For how to run the tests, see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ---
 
@@ -214,7 +214,7 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 - The default rules block loopback and the private ranges, but not the host's own public IPv4 or
   global IPv6 addresses. A service on the host that listens on every address can be reached at
   them. The proxy could add the host's addresses to the denied ones when a session starts; that is
-  undecided. Until then, README section 7.5 tells users to add a deny rule themselves.
+  undecided. Until then, the README tells users to add a deny rule themselves.
 
 ### Inconsistencies
 
@@ -271,14 +271,3 @@ the code that would otherwise look unnecessary.
 | `oillamp remove` deleted a lamp whose container was still running, when `lamp.json` was already gone. | It looked for the container by a name derived from `lamp.json`. | It asks podman for a container labelled with the lamp's path. |
 | `pi` and `opencode` seemed to be missing. | Not a bug: the locally installed oillamp was older than the change. | Remember to run `./gradlew installDist` (or `singleFile`) after changing the image. |
 
----
-
-## Running the tests and the program
-
-```sh
-./gradlew build          # compile and run the scenarios and the architecture test
-./gradlew test           # then read build/spock-reports/*.md
-./gradlew spikes         # checks against real podman; slow, needs podman and a network
-./gradlew installDist    # build/install/oillamp/bin/oillamp, for development
-./gradlew singleFile     # build/dist/oillamp, the single-file executable
-```
