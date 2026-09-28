@@ -272,6 +272,26 @@ touches files, processes, the clock or randomness, and a test enforces it.
 would do, because both build the same plan. A future Swing interface can drive the same core.
 *(programming model of the original spec)*
 
+### Other applications embed oillamp through `dev.lamp`, with the engine in its own process
+
+A Java application, such as the Tribalism game, uses oillamp through a second package, `dev.lamp`,
+in the same jar. Its `Lamp` type starts the engine (`dev.oillamp`) as a separate Java process with
+`oillamp at <dir> --embedded`, using the classpath it was itself loaded from, and talks to it:
+events arrive as JSON lines on the engine's standard output, requests go to the control socket, and
+commands in the sandbox run over the existing SSH relay. `dev.lamp` never imports `dev.oillamp`.
+
+An embedded session opens no windows and waits for no terminal. It ends when the application closes
+the engine's standard input, which the operating system also does when the application dies.
+
+*Why:* the supervisor is the sandbox's proxy, relays and shutdown sequence. Inside the
+application's own process, a crash of the application would cut the agent's network mid-task and
+skip the cleanup. As a separate process it shuts down properly, and `oillamp status`, `shell` and
+`view` work on a lamp an application started. Starting the engine from the same jar means the
+application and the engine are always the same version, so nothing has to be installed.
+
+*Given up:* a second process per lamp, and the control protocol is no longer only spoken between
+two copies of the command-line tool. *(added on 2026-09-28)*
+
 ### Libraries: Jackson 2 for TOML and JSON, Sprouts for collections, no CLI library
 
 *Why:* Jackson 3 has no TOML module. Sprouts provides immutable collections that fit records.
