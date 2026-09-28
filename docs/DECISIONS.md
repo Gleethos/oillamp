@@ -412,6 +412,59 @@ application and the engine are always the same version, so nothing has to be ins
 *Given up:* a second process per lamp, and the control protocol is no longer only spoken between
 two copies of the command-line tool. *(added on 2026-09-28)*
 
+### Genies, a chat app, is built on `dev.lamp` to prove it
+
+Genies (`src/gui`, package `dev.gui`, [GENIES.md](GENIES.md)) is a desktop chat app whose every
+conversation partner is an agent in a lamp of its own. It is in this repository, as a Gradle source
+set of its own, and uses oillamp only through `dev.lamp`, as any application must.
+
+*Why:* an API that no real application uses is a guess. Building one found two gaps at once: an
+application could neither show a lamp's desktop nor delete a lamp, so `Lamp.desktop()` and
+`Lamp.at(dir).remove()` were added. A separate source set keeps SwingTree and FlatLaf out of the
+oillamp single file.
+
+*Given up:* the repository now holds a second program with its own dependencies.
+*(added on 2026-09-28)*
+
+### A genie's harness is pi in RPC mode, and the conversation stays in the sandbox
+
+Genies runs `pi --mode rpc --continue` in each genie's sandbox, over the lamp's ssh command, and
+speaks pi's JSON-lines protocol on its standard input and output. The conversation is kept by pi, in
+the genie's home, and read back with `get_messages` when the genie wakes.
+
+*Why:* RPC mode streams an answer as it is written, reports every tool the agent uses, and keeps
+one process per genie, so a conversation is not restarted per message. Keeping the conversation in
+the sandbox gives it one owner, so it cannot disagree with what the agent remembers, and deleting
+the genie deletes it.
+
+*Given up:* only pi is supported. opencode speaks ACP instead, and would need its own protocol
+class. *(added on 2026-09-28)*
+
+### Files pass between a genie and its user through `~/outbox` and `~/inbox`, over ssh
+
+A genie hands over a file by putting it in `~/outbox`; the user saves it where they choose in a
+file dialog. A file the user gives a genie is written to `~/inbox`. Both travel as a command's
+output or input over the lamp's ssh command.
+
+*Why:* no new mount, socket or host directory is shared with the sandbox, so the agent gains no way
+to write to the host. The user decides every place a file of the agent's lands. Two plain
+directories are something any agent understands from one sentence of instructions.
+
+*Given up:* a file is copied, not shared; the user sees a change to it only by saving it again.
+*(added on 2026-09-28)*
+
+### Genies draws the desktop with a small VNC client of its own
+
+`RfbConnection` speaks RFB 3.8 to wayvnc's Unix socket, asking for raw 32-bit pixels, and draws
+them in a Swing component.
+
+*Why:* the Java VNC libraries connect over TCP, and a TCP port on the host would expose the desktop
+to every local user. Over a local socket, the raw encoding costs nothing, and without compression
+the whole client is about 250 lines, tested byte by byte against a stand-in server.
+
+*Given up:* no compressed encodings, so it is only suited to a local socket, which is the only way
+it is used. *(added on 2026-09-28)*
+
 ### Libraries: Jackson 2 for TOML and JSON, Sprouts for collections, no CLI library
 
 *Why:* Jackson 3 has no TOML module. Sprouts provides immutable collections that fit records.
