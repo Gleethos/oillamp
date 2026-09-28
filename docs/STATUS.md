@@ -154,6 +154,13 @@ started as a separate process from the test's own classpath, as an application w
 | `close()` with `sleep 600` running | returns in seconds; container, `session.json` and lock gone |
 | opening the lamp again | same agent id, its files still there |
 
+`WhenAnApplicationOrItsSandboxDiesSpec` (a spike) ends a lamp without asking:
+
+| What happened | Result |
+|---|---|
+| the process holding the engine's standard input killed with `kill -9` | the engine shuts down within seconds, exits 0 and says the application let go; no container, `session.json` or lock left |
+| the container killed with `podman kill` | the application is told within seconds, the engine exits 5, the container is removed, and `Lamp` refuses further commands |
+
 ### Desktop, recording, GPU
 
 - `lamp info`, `screenshot`, `type`, `key` and `wait-stable` work against the real desktop.
