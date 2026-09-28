@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import dev.lamp.Problem;
+
 /// A Unix socket on the host that forwards each connection into the sandbox's SSH socket.
 ///
 /// The container listens on `sockets/agent/ssh.sock`. The supervisor listens on

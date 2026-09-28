@@ -2,6 +2,8 @@ package dev.oillamp;
 
 import java.nio.file.Path;
 
+import dev.lamp.LampEvent;
+
 import sprouts.Association;
 import sprouts.Tuple;
 import sprouts.ValueSet;

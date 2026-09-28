@@ -1,4 +1,4 @@
-package dev.oillamp;
+package dev.lamp;
 
 import java.time.Duration;
 

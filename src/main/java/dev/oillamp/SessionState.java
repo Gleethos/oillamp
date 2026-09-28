@@ -2,6 +2,10 @@ package dev.oillamp;
 
 import java.time.Instant;
 
+import dev.lamp.ExitStatus;
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 /// Where a session has got to.
 ///
 /// The states differ in what an event means. In `AwaitingTerminal` the container is up but

@@ -1,5 +1,7 @@
 package dev.oillamp;
 
+import dev.lamp.LampEvent;
+
 import sprouts.Tuple;
 
 /// The ordered list of changes one phase intends to make. [StepRunner] carries it out, or,

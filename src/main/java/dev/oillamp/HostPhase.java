@@ -1,5 +1,8 @@
 package dev.oillamp;
 
+import dev.lamp.ExitStatus;
+import dev.lamp.Problem;
+
 import sprouts.Tuple;
 
 /// The host phase: makes sure this machine can run a sandbox. Used by `oillamp at` and, without

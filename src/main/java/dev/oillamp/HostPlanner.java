@@ -1,5 +1,8 @@
 package dev.oillamp;
 
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 import sprouts.Association;
 import sprouts.Tuple;
 import sprouts.ValueSet;

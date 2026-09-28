@@ -3,6 +3,10 @@ package dev.oillamp;
 import java.time.Duration;
 import java.time.Instant;
 
+import dev.lamp.ExitStatus;
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 import sprouts.Tuple;
 
 /// The rules a running session follows, as a pure function from (state, event, time) to the next

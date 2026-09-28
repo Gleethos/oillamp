@@ -1,7 +1,7 @@
 package oillamp
 
-import dev.oillamp.ExitStatus
-import dev.oillamp.LampEvent
+import dev.lamp.ExitStatus
+import dev.lamp.LampEvent
 import spock.lang.Specification
 import spock.lang.Subject
 import spock.lang.TempDir

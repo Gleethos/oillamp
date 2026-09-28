@@ -5,6 +5,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 import sprouts.Association;
 import sprouts.Tuple;
 

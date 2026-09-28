@@ -4,6 +4,9 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
 
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 import sprouts.Tuple;
 
 /// Plans the lamp phase: turning a directory into a working lamp. Also plans `oillamp remove`

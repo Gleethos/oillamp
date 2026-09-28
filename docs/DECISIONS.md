@@ -255,7 +255,11 @@ run. *(added during implementation)*
 
 ## Code
 
-### Java 25, one Gradle module, one package, five public types
+### Java 25, one Gradle module, the engine in one package, few public types
+
+The engine, `dev.oillamp`, exposes two types: `OilLamp` and `Machine`. The events, problems and
+exit codes it speaks in are public too, in `dev.lamp`, where an application that embeds oillamp
+finds them.
 
 *Why:* the public API is the part that cannot change without breaking someone, so it is kept small.
 A single package lets the compiler enforce it: package-private classes cannot be used from outside.

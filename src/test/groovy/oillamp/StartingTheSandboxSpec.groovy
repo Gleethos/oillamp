@@ -1,6 +1,6 @@
 package oillamp
 
-import dev.oillamp.ExitStatus
+import dev.lamp.ExitStatus
 import dev.oillamp.Machine
 import spock.lang.Specification
 import spock.lang.Subject

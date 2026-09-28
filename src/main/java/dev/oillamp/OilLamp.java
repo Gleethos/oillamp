@@ -4,6 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
+import dev.lamp.ExitStatus;
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 import sprouts.Tuple;
 
 /// The entry point of oillamp.

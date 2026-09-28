@@ -3,6 +3,10 @@ package dev.oillamp;
 import java.nio.file.Path;
 import java.util.Optional;
 
+import dev.lamp.ExitStatus;
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 import sprouts.Tuple;
 
 /// One method per oillamp command. [Invocation] parses the command line and calls these.

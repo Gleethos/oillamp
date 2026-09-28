@@ -6,6 +6,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 import sprouts.Pair;
 import sprouts.Tuple;
 

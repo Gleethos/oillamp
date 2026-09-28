@@ -4,6 +4,9 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 
 /// What every command needs: where to send events, and the options from the command line.
 ///

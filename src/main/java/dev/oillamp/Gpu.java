@@ -1,6 +1,8 @@
 package dev.oillamp;
 
-import dev.oillamp.Problem.Evidence;
+import dev.lamp.Problem;
+
+import dev.lamp.Problem.Evidence;
 import sprouts.Tuple;
 import java.util.Optional;
 

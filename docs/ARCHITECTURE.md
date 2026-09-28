@@ -969,21 +969,25 @@ and the relay adds it to each model request. `EDENAI_BASE_URL`, `EDENAI_API_KEY`
 
 ## How the Java code is organised
 
-About 12,500 lines in one package, `dev.oillamp`.
+About 12,500 lines in two packages: the engine, `dev.oillamp`, and `dev.lamp`, which holds what an
+application that embeds oillamp needs.
 
-### Five public types
+### The public types
 
-| Type | Why it is public |
-|---|---|
-| `OilLamp` | The entry point. `OilLamp.on(machine).run(argv)` is the whole tool. |
-| `Machine` | Everything oillamp does to the outside world goes through it, so a caller (a test, a future GUI) must be able to supply one. |
-| `LampEvent` | The stream of things oillamp reports. A GUI would render these itself. |
-| `Problem` | Structured errors, so a caller can inspect them rather than parse text. |
-| `ExitStatus` | The process exit codes, by name. |
+| Type | Package | Why it is public |
+|---|---|---|
+| `OilLamp` | `dev.oillamp` | The entry point. `OilLamp.on(machine).run(argv)` is the whole tool. |
+| `Machine` | `dev.oillamp` | Everything oillamp does to the outside world goes through it, so a caller (a test, a future GUI) must be able to supply one. |
+| `LampEvent` | `dev.lamp` | The stream of things oillamp reports. An application renders these itself. |
+| `Problem` | `dev.lamp` | Structured errors, so a caller can inspect them rather than parse text. |
+| `ExitStatus` | `dev.lamp` | The process exit codes, by name. |
 
-Everything else is package-private, and the compiler enforces it. Sub-packages would need public
-types to talk to each other, which is why there is only one package. The tests live in package
-`oillamp`, so they can only use these five types, like any other caller.
+The last three are in `dev.lamp` because both the engine and an application embedding it use them.
+`dev.lamp` never imports `dev.oillamp`.
+
+Everything else is package-private, and the compiler enforces it. Sub-packages of the engine would
+need public types to talk to each other, which is why the engine is one package. The tests live in
+package `oillamp`, so they can only use the public types, like any other caller.
 
 ### Deciding versus doing
 

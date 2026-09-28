@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+import dev.lamp.ExitStatus;
+import dev.lamp.LampEvent;
+
 import sprouts.Tuple;
 
 /// Parses the command line and calls the matching method on [Commands].

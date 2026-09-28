@@ -3,6 +3,8 @@ package dev.oillamp;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import dev.lamp.Problem;
+
 import sprouts.Tuple;
 
 /// The result of something that can fail: a value with any warnings, or a list of [Problem]s.

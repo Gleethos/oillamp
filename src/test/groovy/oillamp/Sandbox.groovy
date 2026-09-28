@@ -10,7 +10,7 @@ import java.nio.file.Path
  * A place to run oillamp against, for the scenarios in this package.
  *
  * <p>Note what this file can and cannot see: it lives outside {@code dev.oillamp}, so the only
- * oillamp types it can touch are the five that are public. Every scenario in this package is
+ * oillamp types it can touch are the public ones. Every scenario in this package is
  * therefore written against the same surface a real caller has, not because a rule says so,
  * but because the compiler will not allow anything else.
  */

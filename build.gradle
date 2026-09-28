@@ -91,7 +91,7 @@ dependencies {
 tasks.withType(JavaCompile) {
     options.errorprone { // list of bug patterns https://errorprone.info/bugpatterns
         check("NullAway", name.toLowerCase(Locale.ROOT).contains("test") ? net.ltgt.gradle.errorprone.CheckSeverity.WARN : net.ltgt.gradle.errorprone.CheckSeverity.ERROR)  // remove the if condition if you want to run NullAway on test code
-        option("NullAway:AnnotatedPackages", "dev.oillamp")
+        option("NullAway:AnnotatedPackages", "dev.oillamp,dev.lamp")
     }
     options.compilerArgs += ['--should-stop=ifError=FLOW', '-Xlint:all,-serial,-processing']
     options.errorprone.disable("StringConcatToTextBlock") // Workaround for: https://github.com/google/error-prone/issues/4918#issuecomment-2952215463

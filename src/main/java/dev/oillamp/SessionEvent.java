@@ -1,5 +1,7 @@
 package dev.oillamp;
 
+import dev.lamp.Problem;
+
 /// Something that happened to a running session: the container becoming ready or exiting, a shell
 /// connecting or disconnecting, a signal, `oillamp stop`, or a second passing.
 ///

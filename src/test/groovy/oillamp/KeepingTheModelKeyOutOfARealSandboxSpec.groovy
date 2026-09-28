@@ -1,7 +1,7 @@
 package oillamp
 
-import dev.oillamp.ExitStatus
-import dev.oillamp.LampEvent
+import dev.lamp.ExitStatus
+import dev.lamp.LampEvent
 import dev.oillamp.Machine
 import dev.oillamp.OilLamp
 import groovy.json.JsonSlurper

@@ -9,6 +9,10 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import dev.lamp.ExitStatus;
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 import sprouts.Tuple;
 
 /// Runs a session: opens the two windows, holds the SSH relays, the control socket and the egress

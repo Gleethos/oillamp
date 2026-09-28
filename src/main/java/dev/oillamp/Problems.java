@@ -1,11 +1,13 @@
 package dev.oillamp;
 
-import dev.oillamp.Problem.Code;
-import dev.oillamp.Problem.Evidence;
-import dev.oillamp.Problem.Fix;
-import dev.oillamp.Problem.Severity;
 import java.nio.file.Path;
 import java.util.Optional;
+
+import dev.lamp.Problem;
+import dev.lamp.Problem.Code;
+import dev.lamp.Problem.Evidence;
+import dev.lamp.Problem.Fix;
+import dev.lamp.Problem.Severity;
 
 import sprouts.Tuple;
 

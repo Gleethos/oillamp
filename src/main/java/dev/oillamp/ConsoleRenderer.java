@@ -2,6 +2,9 @@ package dev.oillamp;
 
 import java.util.Optional;
 
+import dev.lamp.LampEvent;
+import dev.lamp.Problem;
+
 
 /// Prints events as text for a person to read.
 ///

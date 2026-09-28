@@ -84,7 +84,8 @@ clear them now and then with `podman images localhost/oillamp/sandbox` and `podm
 
 `TheShapeOfTheCodeSpec` fails the build if:
 
-- a sixth type in `dev.oillamp` becomes `public`;
+- a third type in `dev.oillamp`, or an unlisted one in `dev.lamp`, becomes `public`;
+- `dev.lamp` imports anything from `dev.oillamp`;
 - a public method uses a package-private type in its signature;
 - a class outside the allowlist uses files, processes, threads, `System` or `SecureRandom`.
 
@@ -93,7 +94,7 @@ If you need to change one of these rules, change the test deliberately and say w
 ## How the tests are organised
 
 All tests are Spock specifications in `src/test/groovy/oillamp/`, a package outside `dev.oillamp`,
-so they can only use the five public types, like any other caller.
+so they can only use the public types, like any other caller.
 
 ### Scenarios
 
@@ -126,7 +127,7 @@ Scenarios need no podman, no network and no display, and together they run in ab
 | `ThePointerSpec` | what `lamp click`, `move`, `drag` and `scroll` send, against a stand-in VNC server |
 | `TheLauncherSpec` | the single-file launcher script |
 | `TheSandboxImageSpec` | static checks of the image files |
-| `TheShapeOfTheCodeSpec` | the five public types and the deciding/doing split |
+| `TheShapeOfTheCodeSpec` | the public types, `dev.lamp` staying apart from the engine, and the deciding/doing split |
 
 ### Spikes
 
@@ -168,7 +169,7 @@ for them.
   backticks, `[OtherType#method]` for a link, a blank `///` line between paragraphs, `-` for a
   list. Groovy has no Markdown comments, so the Spock specs keep `/** */`.
 - **Javadoc:** the first sentence says what the type or method is. Explain visibility only for the
-  five public types; everything else is package-private by default and needs no comment about it.
+  public types; everything else is package-private by default and needs no comment about it.
 - **Scenarios:** the name says what the user experiences. The `reportInfo` block explains, without
   referring to other documents, why the behaviour matters. It is rendered into the test report and
   should make sense on its own.

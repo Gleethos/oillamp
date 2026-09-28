@@ -1,4 +1,4 @@
-package dev.oillamp;
+package dev.lamp;
 
 /// The process exit codes. Scripts depend on them, so a code's meaning never changes: `4`
 /// always means "that lamp is already running".

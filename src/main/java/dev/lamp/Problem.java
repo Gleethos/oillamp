@@ -1,4 +1,4 @@
-package dev.oillamp;
+package dev.lamp;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -11,7 +11,7 @@ import sprouts.Tuple;
 /// oillamp never shows the user a bare stack trace. Every failure is one of these: _what_
 /// happened, _why it matters_, the _evidence_ (commands and their output, files,
 /// values, configuration locations) and concrete _fixes_. The wording for each code lives in
-/// [Problems].
+/// `Problems` in the engine.
 ///
 /// Public because callers, including tests and a future GUI, need to inspect failures rather than
 /// parse text.
@@ -35,7 +35,7 @@ public record Problem(
 
     /// A stable identifier of the form `OIL-<AREA>-<NNN>`. Users quote it in bug reports and
     /// tests match on it, so a code must never change meaning. The codes are listed in
-    /// [Problems] and in `docs/ARCHITECTURE.md`.
+    /// `Problems` in the engine and in `docs/ARCHITECTURE.md`.
     public record Code(String value) {
         public Code {
             if (!value.matches("OIL-[A-Z]+-\\d{3}"))

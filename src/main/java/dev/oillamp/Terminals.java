@@ -3,6 +3,8 @@ package dev.oillamp;
 import java.util.Locale;
 import java.util.Optional;
 
+import dev.lamp.Problem;
+
 import sprouts.Tuple;
 
 /// Chooses a terminal emulator and builds the command line that opens the sandbox shell in it.

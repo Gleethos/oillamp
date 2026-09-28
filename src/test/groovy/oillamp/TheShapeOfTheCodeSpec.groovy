@@ -16,24 +16,30 @@ class TheShapeOfTheCodeSpec extends Specification {
 
     @Shared JavaClasses code = new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-            .importPackages('dev.oillamp')
+            .importPackages('dev.oillamp', 'dev.lamp')
 
-    /** The whole of oillamp, as far as anything outside it is concerned. */
-    static final Set<String> PUBLIC_API = ['OilLamp', 'Machine', 'LampEvent', 'Problem', 'ExitStatus'] as Set
+    /** The engine, as far as anything outside it is concerned. */
+    static final Set<String> ENGINE_API = ['OilLamp', 'Machine'] as Set
 
-    def 'oillamp exposes five types, and nothing else'() {
+    /** What an application that embeds oillamp sees: the words oillamp speaks in. */
+    static final Set<String> EMBEDDING_API = ['LampEvent', 'Problem', 'ExitStatus'] as Set
+
+    static final Set<String> PUBLIC_API = ENGINE_API + EMBEDDING_API
+
+    def 'The engine exposes two types, and nothing else'() {
         reportInfo """
             The public surface is the part that cannot be changed later without breaking someone.
-            Keeping it to five types - the entry point, the machine it runs against, the events it
-            emits and the problems it reports, plus an exit code - is what leaves everything else
-            free to be rewritten.
+            Keeping the engine's to two types - the entry point and the machine it runs against -
+            is what leaves everything else free to be rewritten. The events, problems and exit
+            codes it speaks in are public too, but they live in `dev.lamp`, because an
+            application that embeds oillamp reads them as well.
 
-            This is enforced by the compiler rather than by convention: oillamp is one package, so
-            a class that is not marked public simply cannot be reached from outside it. This
-            scenario exists to catch the moment someone adds `public` to a sixth class - which is
+            This is enforced by the compiler rather than by convention: the engine is one package,
+            so a class that is not marked public simply cannot be reached from outside it. This
+            scenario exists to catch the moment someone adds `public` to another class - which is
             easy to do while debugging and easy to forget to undo.
 
-            The scenarios in this package are themselves the proof that the five are enough: they
+            The scenarios in this package are themselves the proof that these are enough: they
             live outside `dev.oillamp` and drive the whole tool through nothing else.
         """
         when: 'we look at every top-level type oillamp defines'
@@ -43,8 +49,44 @@ class TheShapeOfTheCodeSpec extends Specification {
                               .collect { it.simpleName }
                               .toSet()
 
-        then: 'exactly the five are public'
-            exposed.sort() == PUBLIC_API.sort()
+        then: 'exactly the two are public'
+            exposed.sort() == ENGINE_API.sort()
+    }
+
+    def 'The embedding package exposes only what an application needs'() {
+        reportInfo """
+            `dev.lamp` is what an application such as a game compiles against. Whatever is public
+            there is a promise to that application, so the list is checked like the engine's.
+        """
+        when:
+            var exposed = code.findAll { it.packageName == 'dev.lamp' }
+                              .findAll { it.enclosingClass.empty && !it.simpleName.contains('\$') }
+                              .findAll { it.modifiers.contains(JavaModifier.PUBLIC) }
+                              .collect { it.simpleName }
+                              .toSet()
+
+        then:
+            exposed.sort() == EMBEDDING_API.sort()
+    }
+
+    def 'The embedding package does not depend on the engine'() {
+        reportInfo """
+            The engine runs in a process of its own, and an application talks to it. If
+            `dev.lamp` imported `dev.oillamp`, that separation would be a convention rather than
+            a fact, and the application would be one careless import away from running the
+            supervisor inside itself. The engine may use `dev.lamp`; never the other way round.
+        """
+        when:
+            var reaching = [] as Set
+            code.findAll { it.packageName == 'dev.lamp' }.each { type ->
+                type.directDependenciesFromSelf.each { dependency ->
+                    if (dependency.targetClass.packageName == 'dev.oillamp')
+                        reaching << "${type.simpleName} -> ${dependency.targetClass.simpleName}"
+                }
+            }
+
+        then:
+            reaching.isEmpty()
     }
 
     def 'Nothing internal leaks out through the types that are public'() {
@@ -54,15 +96,15 @@ class TheShapeOfTheCodeSpec extends Specification {
             gone without anyone deciding to give it up.
 
             So every parameter and return type of every public method must itself be public -
-            either one of the five, one of their nested types, or something from the JDK or a
-            library.
+            either one of the public types, one of their nested types, or something from the JDK
+            or a library.
         """
         when:
             var leaks = []
             code.findAll { it.simpleName in PUBLIC_API }.each { type ->
                 type.methods.findAll { it.modifiers.contains(JavaModifier.PUBLIC) }.each { method ->
                     (method.rawParameterTypes + [method.rawReturnType]).each { used ->
-                        if (used.packageName == 'dev.oillamp' && !used.modifiers.contains(JavaModifier.PUBLIC))
+                        if (used.packageName in ['dev.oillamp', 'dev.lamp'] && !used.modifiers.contains(JavaModifier.PUBLIC))
                             leaks << "${type.simpleName}.${method.name} exposes ${used.simpleName}"
                     }
                 }

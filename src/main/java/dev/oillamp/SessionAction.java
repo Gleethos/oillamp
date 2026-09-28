@@ -1,5 +1,8 @@
 package dev.oillamp;
 
+import dev.lamp.ExitStatus;
+import dev.lamp.LampEvent;
+
 /// Something the supervisor should do during a session.
 ///
 /// [SessionMachine] decides which actions to take and returns them as values;
