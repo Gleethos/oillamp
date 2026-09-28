@@ -292,8 +292,10 @@ class TheSandboxImageSpec extends Specification {
 
             pi's Eden AI extension reads its endpoint from EDENAI_BASE_URL and its key from
             EDENAI_API_KEY, which must not be empty, so the profile sets a placeholder. With
-            EDENAI_EU_ONLY it offers only the models served in the EU. The profile sets all three
-            after reading runtime.env, so nothing from the host can change them.
+            EDENAI_EU_ONLY it offers only the models served in the EU; oillamp decides on the host
+            whether that applies (on for Eden AI, off for a model server of the user's own) and
+            says so in OILLAMP_MODEL_EU_ONLY, and it is on unless oillamp said otherwise. The
+            profile sets all three after reading runtime.env.
 
             opencode has Eden AI built in, but pointed at the global endpoint and with a model
             list mostly made of models the EU endpoint does not serve. The build writes a
@@ -310,8 +312,14 @@ class TheSandboxImageSpec extends Specification {
             var writer = Files.readString(IMAGE.resolve('build/write-opencode-config.mjs'))
 
         then: 'pi is told the relay and a placeholder key, after the session\'s own variables are read'
-            profile.contains('export EDENAI_BASE_URL=http://127.0.0.1:${OILLAMP_MODEL_PORT:-3129}/v3 EDENAI_EU_ONLY=1')
+            profile.contains('export EDENAI_BASE_URL=http://127.0.0.1:${OILLAMP_MODEL_PORT:-3129}/v3')
             profile.contains('export EDENAI_API_KEY=held-by-oillamp-on-the-host')
+
+        and: 'EU only unless oillamp said otherwise, as the profile\'s own line decides it in bash'
+            var euLine = profile.lines().filter { it.contains('OILLAMP_MODEL_EU_ONLY') && !it.startsWith('#') }.findFirst().orElseThrow()
+            euOnlyWith(euLine, null) == '1'
+            euOnlyWith(euLine, '1') == '1'
+            euOnlyWith(euLine, '0') == ''
             profile.indexOf('EDENAI_BASE_URL=') > profile.indexOf('runtime.env && set +a')
             profile.indexOf('EDENAI_API_KEY=held') > profile.indexOf('runtime.env && set +a')
 
@@ -392,5 +400,17 @@ class TheSandboxImageSpec extends Specification {
 
     private static List<Path> getAllImageFiles() {
         Files.walk(IMAGE).filter { Files.isRegularFile(it) }.toList()
+    }
+
+    /** What EDENAI_EU_ONLY is after running `line` in bash with OILLAMP_MODEL_EU_ONLY set to `value`. */
+    private static String euOnlyWith(String line, String value) {
+        var bash = new ProcessBuilder('bash', '-c', line + '\nprintf %s "${EDENAI_EU_ONLY:-}"')
+        bash.environment().remove('EDENAI_EU_ONLY')
+        if (value != null) bash.environment().put('OILLAMP_MODEL_EU_ONLY', value)
+        else bash.environment().remove('OILLAMP_MODEL_EU_ONLY')
+        var process = bash.start()
+        var out = process.inputStream.text
+        process.waitFor()
+        out
     }
 }

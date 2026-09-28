@@ -375,15 +375,21 @@ on 2026-09-28, replacing the earlier design, in which the key was copied into th
 
 ### Eden AI is used only through its EU endpoint
 
-oillamp forwards model requests only to `https://api.eu.edenai.run`. The address is fixed in
-oillamp; no configuration changes it. Both harnesses are also set up to offer only the models the
-EU endpoint serves, and the shipped network policy refuses the global endpoint, `api.edenai.run`,
-for anything in the sandbox that tries it directly (it would have no key anyway).
+oillamp forwards model requests to `https://api.eu.edenai.run` unless the user names another
+service on the host (`model.service`, or `--model-service` and `Lamp.modelService` for one
+session); nothing inside the sandbox can. With Eden AI, the harnesses offer only the models the EU
+endpoint serves, and the shipped network policy refuses the global endpoint, `api.edenai.run`, for
+anything in the sandbox that tries it directly (it would have no key anyway).
+
+A service of the user's own, such as a model server on their machine, is not filtered by region:
+its model list names no regions, so the filter would leave nothing, and where it runs is the
+user's decision. oillamp tells the sandbox which applies, in `OILLAMP_MODEL_EU_ONLY`.
 
 *Why:* the team requires its model traffic to stay in the EU. Holding the key on the host makes
 this a property of oillamp rather than a setting inside the sandbox: a request can only be sent
 with the key by oillamp, and oillamp only sends it to the EU. *(added on 2026-09-24, changed on
-2026-09-28 when the key moved to the host)*
+2026-09-28 when the key moved to the host, and again when services of the user's own were
+allowed)*
 
 ### One environment for every kind of shell
 

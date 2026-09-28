@@ -334,9 +334,10 @@ final class ConfigLoader {
 
     static boolean isVariableName(String text) { return text.matches("[A-Za-z_][A-Za-z0-9_]*"); }
 
-    /// Why `text` cannot be the model service, or empty if it can. It is an origin only
-    /// (scheme, host, optional port): the harnesses choose the path. The key travels to it, so it
-    /// must be `https`, except for a service on this machine's own loopback.
+    /// Why `text` cannot be the model service, or empty if it can. It is a scheme, a host, an
+    /// optional port and an optional path, such as `/v1` for a model server whose API is there;
+    /// no user, query or fragment. The key travels to it, so it must be `https`, except for a
+    /// service on this machine's own loopback.
     static Optional<String> serviceProblem(String text) {
         java.net.URI uri;
         try {
@@ -347,9 +348,9 @@ final class ConfigLoader {
         String host = Optional.ofNullable(uri.getHost()).orElse("");
         if (host.isEmpty() || !Optional.ofNullable(uri.getScheme()).orElse("").matches("https?")
                 || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
-                || !Optional.ofNullable(uri.getPath()).orElse("").isEmpty())
-            return Optional.of("expected just a scheme, a host and optionally a port, "
-                    + "such as \"https://api.eu.edenai.run\"");
+                || !Optional.ofNullable(uri.getRawPath()).orElse("").matches("(/[A-Za-z0-9._~-]+)*/?"))
+            return Optional.of("expected a scheme, a host, and optionally a port and a path, "
+                    + "such as \"https://api.eu.edenai.run\" or \"http://127.0.0.1:11434/v1\"");
         boolean loopback = host.equals("localhost") || host.equals("127.0.0.1") || host.equals("[::1]");
         if (uri.getScheme().equals("http") && !loopback)
             return Optional.of("the key is sent to this service, so it must be https:// "

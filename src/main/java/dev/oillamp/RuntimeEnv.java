@@ -73,6 +73,7 @@ final class RuntimeEnv {
             .put("OILLAMP_RECORDING_MAX_FPS", Integer.toString(config.recording().maxFps()))
             .put("OILLAMP_PROXY_PORT",      Integer.toString(Forward.PROXY_PORT))
             .put("OILLAMP_MODEL_PORT",      Integer.toString(Forward.MODEL_PORT))
+            .put("OILLAMP_MODEL_EU_ONLY",   config.model().euOnly() ? "1" : "0")
             .put("OILLAMP_FORWARDS",        forwardList(config));
 
         for (Pair<String, String> inherited : fromHost)

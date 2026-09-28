@@ -777,7 +777,9 @@ sandbox:
 
 - **pi.** Its Eden AI extension reads `EDENAI_BASE_URL`, `EDENAI_API_KEY` and `EDENAI_EU_ONLY`. The
   shell profile sets all three after reading `runtime.env`: the relay's address, a placeholder
-  key, and EU only, so pi offers only the EU models. None of them is copied from the host.
+  key, and EU only, so pi offers only the EU models. EU only is decided on the host and passed
+  as `OILLAMP_MODEL_EU_ONLY`: on for Eden AI, off for any other service, whose model list names no
+  regions. None of them is copied from the host.
 - **opencode.** It knows only Eden AI's global endpoint, with a model list from its own catalogue.
   `build/write-opencode-config.mjs` writes `opencode.json` during the image build, setting the
   relay's address and the model list the EU endpoint gives (its catalogue needs no key).
@@ -794,6 +796,11 @@ reads each request head, drops the sandbox's own `Authorization`, `Host` and con
 adds `Authorization: Bearer <key>`, and sends the request to `model.service` (Eden AI's EU endpoint
 by default) over TLS, checking the certificate belongs to that host. The answer streams back
 unbuffered, so a harness shows it as it is written.
+
+`model.service` may carry a path, for a model server whose API lives under one, such as Ollama's
+`http://127.0.0.1:11434/v1`. The sandbox always asks under `/v3`, and the relay puts the service's
+path in its place: `/v3/chat/completions` becomes `/v1/chat/completions`. A request outside `/v3`
+is answered with 404 then. A service without a path gets the sandbox's path unchanged.
 
 The key is read from the variable `model.key_env` names, in the environment oillamp was started
 from, when the session starts, and kept only in memory. Only a request for a path (`POST
@@ -967,7 +974,7 @@ the file is stable.
 
 Contents: `OILLAMP_SESSION`, `OILLAMP_AGENT_ID`, `OILLAMP_LAMP_NAME`,
 `OILLAMP_DISPLAY_WIDTH/HEIGHT/SCALE`, `OILLAMP_WINDOWS`, `OILLAMP_RENDERER`, `OILLAMP_VNC_MAX_FPS`,
-`OILLAMP_RECORDING_ENABLED/CODEC/CRF/MAX_FPS`, `OILLAMP_PROXY_PORT`, `OILLAMP_MODEL_PORT`, `OILLAMP_FORWARDS`
+`OILLAMP_RECORDING_ENABLED/CODEC/CRF/MAX_FPS`, `OILLAMP_PROXY_PORT`, `OILLAMP_MODEL_PORT`, `OILLAMP_MODEL_EU_ONLY`, `OILLAMP_FORWARDS`
 (`name:port name:port`), the LLM variables when configured, and `EDENAI_MAX_TOKENS` when it is set
 on the host (`RuntimeEnv.INHERITED_FROM_HOST`). The model key is never in it: it stays on the host,
 and the relay adds it to each model request. `EDENAI_BASE_URL`, `EDENAI_API_KEY` and
@@ -1152,7 +1159,7 @@ checked but have no effect yet; they are listed under "Known gaps" in STATUS.md.
 | `network.console_denied` | true | print denials in your terminal | yes |
 | `[[network.rules]]` | two deny rules | see "The policy" above | yes |
 | `[[network.forwards]]` | none | see "Forwards" above | yes |
-| `model.service` | `"https://api.eu.edenai.run"` | where oillamp sends the sandbox's model requests, with the key; `https://`, or `http://` only on this machine's loopback | yes |
+| `model.service` | `"https://api.eu.edenai.run"` | where oillamp sends the sandbox's model requests, with the key; `https://`, or `http://` only on this machine's loopback; a path, such as `/v1`, replaces the sandbox's `/v3`; harnesses keep only EU models when it is Eden AI | yes |
 | `model.key_env` | `"EDENAI_API_KEY"` | the host environment variable holding the model key, read when a session starts | yes |
 | `llm.forward` | `""` | name of a forward; sets `OILLAMP_LLM_BASE_URL`, `OILLAMP_LLM_MODELS`, `OILLAMP_LLM_PROVIDER` | yes |
 | `llm.base_path` | `"/v1"` | appended to the forward's URL | yes |

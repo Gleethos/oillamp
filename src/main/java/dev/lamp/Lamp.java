@@ -116,10 +116,13 @@ public final class Lamp implements AutoCloseable {
             return new Starting(directory, listeners, launcher, modelService, modelKey);
         }
 
-        /// Sends the sandbox's model requests to `service`, such as `https://api.eu.edenai.run`,
-        /// in place of the lamp's `model.service`. Just the scheme, host and port: the harnesses
-        /// in the sandbox choose the path. It must be `https`, unless it is on this machine's
-        /// loopback; the engine refuses anything else, and the events say why.
+        /// Sends the sandbox's model requests to `service`, in place of the lamp's `model.service`:
+        /// `https://api.eu.edenai.run`, say, or a model server on this machine with the path of
+        /// its API, such as `http://127.0.0.1:11434/v1` for Ollama. It must be `https`, unless it
+        /// is on this machine's loopback; the engine refuses anything else, and the events say why.
+        ///
+        /// Only Eden AI's models are filtered to those served in the EU. Any other service's
+        /// models are all offered, since its model list names no regions.
         public Starting modelService(URI service) {
             return new Starting(directory, listeners, launcher, Optional.of(service), modelKey);
         }

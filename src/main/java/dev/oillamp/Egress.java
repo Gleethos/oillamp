@@ -338,6 +338,14 @@ final class Egress implements AutoCloseable {
                 finishQuietly(client, in);
                 return;
             }
+            Optional<String> target = serviceTarget(model.service(), request.target());
+            if (target.isEmpty()) {
+                respond(out, 404, "oillamp: the model service is reached under /v3 from the sandbox, "
+                        + "such as `POST /v3/chat/completions`; oillamp sends it on to "
+                        + model.service() + ".");
+                finishQuietly(client, in);
+                return;
+            }
             if (model.key().isEmpty()) {
                 respond(out, 401, "oillamp: there is no model key for this session. oillamp holds "
                         + "the key, not the sandbox: set " + model.keyEnv() + " in the environment "
@@ -359,7 +367,8 @@ final class Egress implements AutoCloseable {
             AtomicLong up = new AtomicLong();
             AtomicLong down = new AtomicLong();
             try {
-                byte[] head = request.forService(host, model.key().get()).getBytes(StandardCharsets.ISO_8859_1);
+                byte[] head = request.forService(host, target.get(), model.key().get())
+                        .getBytes(StandardCharsets.ISO_8859_1);
                 upstream.getOutputStream().write(head);
                 upstream.getOutputStream().flush();
                 pipeBothWays(in, out, upstream, up, down);
@@ -428,6 +437,20 @@ final class Egress implements AutoCloseable {
         return tls;
     }
 
+    /// The path a request from the sandbox asks the model service for.
+    ///
+    /// Inside the sandbox the model's address is always `http://127.0.0.1:3129/v3`, as Eden AI's
+    /// is. A service configured with a path of its own, such as `http://127.0.0.1:11434/v1` for
+    /// a model server on this machine, gets that path in place of `/v3`. A service without one
+    /// gets the request's path unchanged. With a path configured, a request outside `/v3` has no
+    /// place on the service, and gets nothing.
+    static Optional<String> serviceTarget(java.net.URI service, String requested) {
+        String base = Optional.ofNullable(service.getRawPath()).orElse("").replaceAll("/+$", "");
+        if (base.isEmpty()) return Optional.of(requested);
+        boolean underV3 = requested.equals("/v3") || requested.startsWith("/v3/") || requested.startsWith("/v3?");
+        return underV3 ? Optional.of(base + requested.substring(3)) : Optional.empty();
+    }
+
     private static int servicePort(java.net.URI service) {
         if (service.getPort() > 0) return service.getPort();
         return "https".equals(service.getScheme()) ? 443 : 80;
@@ -439,8 +462,8 @@ final class Egress implements AutoCloseable {
 
         /// The request as the model service receives it: the sandbox's own `Host`,
         /// `Authorization` and connection headers are dropped, and the real ones added.
-        String forService(String host, String key) {
-            StringBuilder out = new StringBuilder(method).append(' ').append(target)
+        String forService(String host, String path, String key) {
+            StringBuilder out = new StringBuilder(method).append(' ').append(path)
                     .append(" HTTP/1.1\r\n");
             for (String header : headers) {
                 String name = header.substring(0, header.indexOf(':')).trim().toLowerCase(Locale.ROOT);

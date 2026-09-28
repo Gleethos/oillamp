@@ -108,7 +108,8 @@ final class Templates {
             # machine: inside the sandbox the harnesses only ever see http://127.0.0.1:3129 and a
             # placeholder key, and oillamp adds the real key to each request on its way out.
             [model]
-            service = "https://api.eu.edenai.run"   # https://, or http:// only on this machine
+            service = "https://api.eu.edenai.run"   # https://, or http:// only on this machine, such as
+                                                    # "http://127.0.0.1:11434/v1" for Ollama
             key_env = "EDENAI_API_KEY"              # the variable holding the key, where oillamp starts
 
             [agent_tools]

@@ -45,6 +45,8 @@ class ChoosingTheModelForALampSpec extends Specification {
     HttpServer service
     /** The Authorization header of each request the stand-in model service received. */
     final List<String> received = new CopyOnWriteArrayList<>()
+    /** The path of each request the stand-in model service received. */
+    final List<String> paths = new CopyOnWriteArrayList<>()
     final List<LampEvent> events = new CopyOnWriteArrayList<>()
     Lamp lamp
 
@@ -54,6 +56,7 @@ class ChoosingTheModelForALampSpec extends Specification {
         service = HttpServer.create(new InetSocketAddress('127.0.0.1', 0), 0)
         service.createContext('/') { HttpExchange exchange ->
             received << exchange.requestHeaders.getFirst('Authorization')
+            paths << exchange.requestURI.toString()
             byte[] body = '{"data":[]}'.getBytes(StandardCharsets.UTF_8)
             exchange.sendResponseHeaders(200, body.length)
             exchange.responseBody.withCloseable { it.write(body) }
@@ -168,6 +171,34 @@ class ChoosingTheModelForALampSpec extends Specification {
 
         then:
             received == ["Bearer ${APP_KEY}".toString()]
+    }
+
+    def 'An application can point a lamp at a model server on this machine'() {
+        reportInfo """
+            A user may run their own models, with Ollama, LM Studio or llama.cpp's server, and
+            want their genie to use those. Such a server answers under /v1 on this machine's
+            loopback, needs no key, and lists no regions. The application gives its address
+            with that path, and any key, which the server ignores: the lamp's requests go there,
+            and the harness in the sandbox is not told to keep only EU models, which would
+            leave none of the server's.
+        """
+        when:
+            lamp = Lamp.at(sandbox.lampPath())
+                       .modelService(URI.create("http://127.0.0.1:${service.address.port}/v1"))
+                       .modelKey('local')
+                       .launchedBy(sandbox.launcher).start()
+
+        then:
+            lamp.awaitRunning(Duration.ofSeconds(30))
+
+        when:
+            ask('GET /v3/models HTTP/1.1\r\nHost: 127.0.0.1:3129\r\n\r\n')
+
+        then: 'the server was asked under its own path'
+            paths == ['/v1/models']
+
+        and: 'the sandbox is told not to filter the models by region'
+            Files.readString(sandbox.lampPath().resolve('.oillamp/session/runtime.env')).contains("OILLAMP_MODEL_EU_ONLY='0'")
     }
 
     def 'A service the key must not be sent to is refused, and the application is told why'() {

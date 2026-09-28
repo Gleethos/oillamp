@@ -29,6 +29,13 @@ record LampConfig(
     Host host,
     Timeouts timeouts
 ) {
+    /// The same configuration with other `[model]` settings, such as those an application gave
+    /// on the command line for one session.
+    public LampConfig withModel(Model changed) {
+        return new LampConfig(display, viewer, terminal, recording, limits, network, forwards, llm,
+                              changed, agentTools, image, host, timeouts);
+    }
+
     /// The version of the config schema this build writes and understands.
     public static final int SCHEMA_VERSION = 1;
 
@@ -85,14 +92,24 @@ record LampConfig(
     /// Both stay on the host. Inside the sandbox the harnesses always see the same local address
     /// and a placeholder key, whatever is set here.
     ///
-    /// @param service the model service's origin, such as `https://api.eu.edenai.run`. Plain
-    ///                `http` only for a service on this machine's loopback, so the key never
-    ///                crosses a network unencrypted
+    /// @param service the model service, such as `https://api.eu.edenai.run`, or a model server
+    ///                on this machine with the path of its API, such as
+    ///                `http://127.0.0.1:11434/v1`. Plain `http` only for a service on this
+    ///                machine's loopback, so the key never crosses a network unencrypted
     /// @param keyEnv  the host environment variable holding the key, read when a session starts
     public record Model(java.net.URI service, String keyEnv) {
         public Model {
             if (!keyEnv.matches("[A-Za-z_][A-Za-z0-9_]*"))
                 throw new IllegalArgumentException("model.key_env is not a variable name: " + keyEnv);
+        }
+
+        /// Whether the harnesses offer only models served in the EU. True for Eden AI, whose
+        /// model list says where each model is served. Any other service is the user's own
+        /// choice, and its model list says nothing about regions, so filtering it by region
+        /// would leave no model at all.
+        public boolean euOnly() {
+            String host = java.util.Optional.ofNullable(service.getHost()).orElse("");
+            return host.equals("edenai.run") || host.endsWith(".edenai.run");
         }
     }
 

@@ -177,14 +177,20 @@ final class AgentGuide {
                .append("they send their requests to `http://127.0.0.1:3129/v3`, and oillamp, outside\n")
                .append("this sandbox, adds the key and sends them on. You do not have the key, and you\n")
                .append("do not need it: `EDENAI_API_KEY` here is a placeholder. If a request is\n")
-               .append("answered with 401, the human has not given oillamp a key; tell them.\n\n")
-               .append("Only models served in the EU are offered. `EDENAI_BASE_URL` and\n")
-               .append("`EDENAI_EU_ONLY` are set for that; do not change them.")
-               .append(refusesEdenAiOutsideTheEu(config)
-                       ? " The global endpoint,\n`api.edenai.run`, is refused by the network policy."
-                       : "")
-               .append(" If a model you were asked\nto use is not offered, say so rather than looking ")
-               .append("for a way around this.\n\n");
+               .append("answered with 401, the human has not given oillamp a key; tell them.\n\n");
+            if (config.model().euOnly())
+                out.append("Only models served in the EU are offered. `EDENAI_BASE_URL` and\n")
+                   .append("`EDENAI_EU_ONLY` are set for that; do not change them.")
+                   .append(refusesEdenAiOutsideTheEu(config)
+                           ? " The global endpoint,\n`api.edenai.run`, is refused by the network policy."
+                           : "")
+                   .append(" If a model you were asked\nto use is not offered, say so rather than looking ")
+                   .append("for a way around this.\n\n");
+            else
+                out.append("The human chose the model service for this sandbox, and it is not Eden AI:\n")
+                   .append("`pi --provider edenai` offers the models that service lists. `opencode`'s list\n")
+                   .append("of models is Eden AI's, from when the image was built, so use `pi`.\n")
+                   .append("`EDENAI_BASE_URL` is set for this; do not change it.\n\n");
             if (config.agentTools().install().contains("pi"))
                 out.append("- `pi` has the Eden AI provider extension already installed — it is listed in\n")
                .append("  `~/.pi/agent/settings.json` with its clone under `~/.pi/agent/git/`.\n")

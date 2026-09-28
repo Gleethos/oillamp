@@ -63,7 +63,9 @@ final class LampPhase {
 
         Result<LampConfig> configuration = loadConfiguration(layout, host);
         if (configuration instanceof Result.Err<LampConfig> failure) return Result.err(failure.problems());
-        LampConfig config = ((Result.Ok<LampConfig>) configuration).value();
+        // Model settings given on the command line replace the lamp's own, for this session.
+        LampConfig config = ((Result.Ok<LampConfig>) configuration).value()
+                .withModel(context.options().model().applyTo(((Result.Ok<LampConfig>) configuration).value().model()));
         context.report(configuration.warnings());
         describeConfiguration(config);
 

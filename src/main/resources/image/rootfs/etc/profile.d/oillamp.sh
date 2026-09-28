@@ -50,9 +50,12 @@ export NODE_USE_ENV_PROXY=1
 # sandbox: EDENAI_API_KEY here is a placeholder, which the harnesses need to be non-empty and
 # which oillamp replaces. Set after runtime.env, so nothing from the host changes them.
 # pi's Eden AI extension reads all three; EU_ONLY also has it offer only the models served in the
-# EU. opencode reads the same address from the file OPENCODE_CONFIG names, written when the image
+# EU. oillamp decides that on the host (OILLAMP_MODEL_EU_ONLY): on for Eden AI, off for a service
+# of the user's own, such as a model server on their machine, whose model list names no regions.
+# opencode reads the same address from the file OPENCODE_CONFIG names, written when the image
 # was built.
-export EDENAI_BASE_URL=http://127.0.0.1:${OILLAMP_MODEL_PORT:-3129}/v3 EDENAI_EU_ONLY=1
+export EDENAI_BASE_URL=http://127.0.0.1:${OILLAMP_MODEL_PORT:-3129}/v3
+if [ "${OILLAMP_MODEL_EU_ONLY:-1}" = 1 ]; then export EDENAI_EU_ONLY=1; else unset EDENAI_EU_ONLY; fi
 export EDENAI_API_KEY=held-by-oillamp-on-the-host
 [ -r /usr/local/share/oillamp/opencode/opencode.json ] \
     && export OPENCODE_CONFIG=/usr/local/share/oillamp/opencode/opencode.json

@@ -214,9 +214,69 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
         where:
             given                                                || complaint
             ['--model-service', 'http://api.eu.edenai.run']      || 'must be https://'
-            ['--model-service=https://api.eu.edenai.run/v3']     || 'expected just a scheme, a host'
+            ['--model-service=https://api.eu.edenai.run?key=x']  || 'expected a scheme, a host'
             ['--model-key-env', 'sk-a-key-by-mistake']           || 'expected the name of an environment variable'
             ['--model-service']                                  || '--model-service needs a value'
+    }
+
+    def 'A model server on this machine is reached under the path of its own API'() {
+        reportInfo """
+            Local model servers such as Ollama, LM Studio or llama.cpp's server answer OpenAI-style
+            requests under /v1, while the address inside the sandbox is always
+            http://127.0.0.1:3129/v3, the same in every sandbox. So the service can be given with
+            a path, http://127.0.0.1:11434/v1 for Ollama, and the relay puts that path in place
+            of /v3. A request outside /v3 has no place on such a service and is answered with 404
+            by the relay itself.
+        """
+        given:
+            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', 'local') }
+            sandbox.givenConfig(sandbox.lampPath(), """
+                schema_version = 1
+                [model]
+                service = "http://127.0.0.1:${service.address.port}/v1"
+            """.stripIndent())
+            startASession(false)
+
+        when:
+            ask(request('POST', '/v3/chat/completions', '{}', 'Authorization: Bearer placeholder'))
+            ask(request('GET', '/v3/models', ''))
+            var elsewhere = ask(request('GET', '/metrics', ''))
+
+        then:
+            received*.path == ['/v1/chat/completions', '/v1/models']
+            elsewhere.startsWith('HTTP/1.1 404')
+            elsewhere.contains('under /v3')
+    }
+
+    def 'Only Eden AI\'s models are filtered by region; a service of the user\'s own is not'() {
+        reportInfo """
+            Eden AI is used only for models served in the EU, and its model list says where each
+            model is served, so the harness filters it. A model server of the user's own, such
+            as one on this machine, lists no regions, and filtering it would leave nothing. So
+            oillamp decides on the host, from the service, and tells the sandbox in
+            OILLAMP_MODEL_EU_ONLY; the agent's guide says what it means.
+        """
+        given:
+            if (local) sandbox.givenConfig(sandbox.lampPath(), """
+                schema_version = 1
+                [model]
+                service = "http://127.0.0.1:11434/v1"
+            """.stripIndent())
+
+        when: 'the lamp is set up for a session, which writes the settings the sandbox reads'
+            startASession(false)
+            var settings = Files.readString(sandbox.lampPath().resolve('.oillamp/session/runtime.env'))
+            var agentHome = Files.list(sandbox.lampPath()).filter { it.fileName.toString().startsWith('agent-lamp-') }.findFirst().orElseThrow()
+            var guide = Files.readString(agentHome.resolve('AGENTS.md'))
+
+        then:
+            settings.contains("OILLAMP_MODEL_EU_ONLY='${euOnly}'")
+            guide.contains(local ? 'it is not Eden AI' : 'Only models served in the EU are offered')
+
+        where:
+            local || euOnly
+            false || '1'
+            true  || '0'
     }
 
     def 'Without a key, the request is refused with an explanation, and nothing reaches the service'() {
@@ -330,8 +390,8 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
         reportInfo """
             The key travels with every request to the model service. Over plain http, anyone on
             the network path could read it. So oillamp refuses an http:// service unless it is on
-            this machine's own loopback, where there is no network path. It also refuses a
-            service address with a path or query in it: the harnesses choose the path.
+            this machine's own loopback, where there is no network path. A path is allowed, for a
+            model server whose API lives under one; a user, query or fragment is not.
         """
         given:
             sandbox.givenConfig(sandbox.lampPath(), """
@@ -354,7 +414,10 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             'http://localhost:8080'                   || true
             'http://api.eu.edenai.run'                || false
             'http://192.168.1.20:8080'                || false
-            'https://api.eu.edenai.run/v3'            || false
+            'https://api.eu.edenai.run/v3'            || true
+            'http://127.0.0.1:11434/v1'               || true
+            'https://api.eu.edenai.run/v3 x'          || false
+            'https://me@api.eu.edenai.run'            || false
             'https://api.eu.edenai.run?key=x'         || false
             'ftp://api.eu.edenai.run'                 || false
             'not an address'                          || false
