@@ -45,6 +45,21 @@ def imageManifest = tasks.register('imageManifest') {
 }
 
 sourceSets.main.resources.srcDir(layout.buildDirectory.dir('generated-resources'))
+
+// Genies, a desktop chat app that hosts agents in lamps (package dev.gui). It is a separate source
+// set so that its user-interface libraries stay out of the oillamp single file, and it sees
+// oillamp only as any other application would: through dev.lamp.
+sourceSets {
+    gui {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+configurations {
+    guiImplementation.extendsFrom(implementation)
+    guiRuntimeOnly.extendsFrom(runtimeOnly)
+    testImplementation.extendsFrom(guiImplementation)
+}
 tasks.named('processResources') { dependsOn(imageManifest) }
 
 dependencies {
@@ -64,6 +79,11 @@ dependencies {
     // TOML for oillamp.toml, JSON for lamp.json and podman's output.
     implementation group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.20.0'
     implementation group: 'com.fasterxml.jackson.dataformat', name: 'jackson-dataformat-toml', version: '2.20.0'
+
+    // Genies: declarative Swing, and a look-and-feel that looks at home on a modern desktop.
+    guiImplementation group: 'io.github.globaltcad', name: 'swing-tree', version: '1.0.0'
+    guiImplementation group: 'com.formdev', name: 'flatlaf', version: '3.6.1'
+    testImplementation sourceSets.gui.output
 
     // Test dependencies! : Groovy & Spock
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'  // needed since gradle 9
@@ -91,10 +111,17 @@ dependencies {
 tasks.withType(JavaCompile) {
     options.errorprone { // list of bug patterns https://errorprone.info/bugpatterns
         check("NullAway", name.toLowerCase(Locale.ROOT).contains("test") ? net.ltgt.gradle.errorprone.CheckSeverity.WARN : net.ltgt.gradle.errorprone.CheckSeverity.ERROR)  // remove the if condition if you want to run NullAway on test code
-        option("NullAway:AnnotatedPackages", "dev.oillamp,dev.lamp")
+        option("NullAway:AnnotatedPackages", "dev.oillamp,dev.lamp,dev.gui")
     }
     options.compilerArgs += ['--should-stop=ifError=FLOW', '-Xlint:all,-serial,-processing']
     options.errorprone.disable("StringConcatToTextBlock") // Workaround for: https://github.com/google/error-prone/issues/4918#issuecomment-2952215463
+}
+
+tasks.register('genies', JavaExec) {
+    group = 'application'
+    description = 'Starts Genies, the chat app whose agents each live in a lamp.'
+    classpath = sourceSets.gui.runtimeClasspath
+    mainClass = 'dev.gui.Genies'
 }
 
 // The default `test` task must stay fast, offline and deterministic: it runs entirely against

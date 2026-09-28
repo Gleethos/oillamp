@@ -89,6 +89,40 @@ class TheShapeOfTheCodeSpec extends Specification {
             reaching.isEmpty()
     }
 
+    def 'Genies uses oillamp the way any application must: through dev.lamp alone'() {
+        reportInfo """
+            Genies, the chat app in `dev.gui`, is the test of the embedding API on a real
+            application, so it may use only what any other application can: `dev.lamp`. If it
+            reached into the engine, the API could be missing something without anyone noticing.
+            And the engine knows nothing of Genies.
+        """
+        given:
+            JavaClasses genies = new ClassFileImporter()
+                    .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                    .importPackages('dev.gui')
+
+        when:
+            var intoTheEngine = [] as Set
+            genies.each { type ->
+                type.directDependenciesFromSelf.each { dependency ->
+                    if (dependency.targetClass.packageName.startsWith('dev.oillamp'))
+                        intoTheEngine << "${type.simpleName} -> ${dependency.targetClass.simpleName}"
+                }
+            }
+            var intoGenies = [] as Set
+            code.each { type ->
+                type.directDependenciesFromSelf.each { dependency ->
+                    if (dependency.targetClass.packageName.startsWith('dev.gui'))
+                        intoGenies << "${type.simpleName} -> ${dependency.targetClass.simpleName}"
+                }
+            }
+
+        then:
+            genies.size() > 20
+            intoTheEngine.isEmpty()
+            intoGenies.isEmpty()
+    }
+
     def 'Nothing internal leaks out through the types that are public'() {
         reportInfo """
             A small public API is not small if one of its methods returns an internal type: the
