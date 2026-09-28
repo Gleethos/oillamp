@@ -194,6 +194,10 @@ final class ConsoleRenderer {
             case LampEvent.SessionStateChanged changed ->
                     { if (verbose) line(area("session") + dim("· " + changed.status().state()
                                                               + " — " + changed.status().detail())); }
+            // The briefing below says the same for a person; the command is for applications.
+            case LampEvent.SessionOpened opened ->
+                    { if (verbose) line(area("session") + dim("· commands run in the sandbox with: "
+                                                              + String.join(" ", opened.command()))); }
             case LampEvent.WindowOpened opened -> {
                 line(area("session") + colour(GREEN, "✓ ") + "opened " + opened.what());
                 // The command matters when the window misbehaves, and by then it is too late to

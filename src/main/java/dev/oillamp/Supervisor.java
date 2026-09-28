@@ -584,6 +584,7 @@ final class Supervisor {
         briefed = true;
         LampLayout layout = prepared.layout();
         LampConfig config = prepared.config();
+        context.emit(new LampEvent.SessionOpened(prepared.session().value(), Ssh.commandArgv(layout)));
         if (context.options().embedded()) {
             context.emit(new LampEvent.Summary("your session is up", Tuple.of(String.class,
                     "started by      an application, which ends it when it is done",

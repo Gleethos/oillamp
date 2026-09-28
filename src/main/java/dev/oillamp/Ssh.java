@@ -51,6 +51,18 @@ final class Ssh {
     ///
     /// The `ProxyCommand` differs per role, so it is passed on the command line, while the
     /// shared settings are in the generated `ssh_config`.
+    /// An ssh command line that runs a command in the sandbox without a terminal, once the command
+    /// is appended. Given to an application in `LampEvent.SessionOpened`.
+    ///
+    /// It goes through the extra-shell socket, so a command running counts as an extra shell.
+    public static Tuple<String> commandArgv(LampLayout layout) {
+        return Tuple.of(String.class,
+                "ssh",
+                "-F", layout.sshConfig().toString(),
+                "-o", "ProxyCommand=socat - UNIX-CONNECT:" + layout.extraSshSocket(),
+                "-T", layout.sshHostAlias());
+    }
+
     public static Tuple<String> clientArgv(LampLayout layout, SocketRole role) {
         java.nio.file.Path socket = role == SocketRole.PRIMARY
                 ? layout.primarySshSocket()

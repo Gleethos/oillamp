@@ -42,7 +42,8 @@ public final class Lamp implements AutoCloseable {
     private final List<Consumer<LampEvent>> listeners;
     private final CountDownLatch runningOrEnded = new CountDownLatch(1);
     private final CountDownLatch ended = new CountDownLatch(1);
-    private volatile boolean running;
+    /// How to run a command in the sandbox, once the engine has said so. Present means running.
+    private volatile Optional<LampEvent.SessionOpened> opened = Optional.empty();
     private volatile Optional<ExitStatus> exit = Optional.empty();
 
     private Lamp(Path directory, Process engine, List<Consumer<LampEvent>> listeners) {
@@ -113,7 +114,7 @@ public final class Lamp implements AutoCloseable {
     ///         which case the events said why, or if it is still starting after `limit`
     public boolean awaitRunning(Duration limit) throws InterruptedException {
         runningOrEnded.await(limit.toMillis(), TimeUnit.MILLISECONDS);
-        return running && exit.isEmpty();
+        return opened.isPresent() && exit.isEmpty();
     }
 
     /// How the engine ended, once it has.
@@ -160,9 +161,9 @@ public final class Lamp implements AutoCloseable {
     }
 
     private void deliver(LampEvent event) {
-        if (event instanceof LampEvent.SessionStateChanged changed
-                && changed.status().state().equals("running")) {
-            running = true;
+        // The engine reports this once the session is running, with how to reach the sandbox.
+        if (event instanceof LampEvent.SessionOpened session) {
+            opened = Optional.of(session);
             runningOrEnded.countDown();
         }
         for (Consumer<LampEvent> listener : listeners) listener.accept(event);

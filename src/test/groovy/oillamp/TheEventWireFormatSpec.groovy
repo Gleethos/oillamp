@@ -50,6 +50,7 @@ class TheEventWireFormatSpec extends Specification {
             new LampEvent.Output('sway', '[sway] 00:00:01 ✓ ünïcödé'),
             new LampEvent.Answer('multi\nline\nanswer'),
             new LampEvent.SessionStateChanged(new LampEvent.SessionStatus('running', 'up', Duration.ofMinutes(2), 1)),
+            new LampEvent.SessionOpened('20260928-120000', Tuple.of(String, 'ssh', '-T', 'lamp-k3v7x2ab')),
             new LampEvent.WindowOpened('the desktop viewer', Tuple.of(String, 'vncviewer', '/run/x.sock')),
             new LampEvent.Summary('session 20260928-120000', Tuple.of(String)),
             new LampEvent.Warning(PROBLEM.withFix(Problem.Fix.of('another'))),

@@ -71,6 +71,17 @@ public sealed interface LampEvent {
 
     record SessionStateChanged(SessionStatus status)    implements LampEvent {}
 
+    /// The session is running, and this is how to run a command in its sandbox.
+    ///
+    /// Reported once per session. An application reads the command from here rather than working
+    /// out socket paths itself, because the engine is the one that knows them.
+    ///
+    /// @param session the session id, such as `20260928-120000`
+    /// @param command an `ssh` command line. Append a command, as ssh expects it, and it runs in
+    ///                the sandbox as the agent user, with the same environment as the agent's
+    ///                shell, and with no terminal. It counts as an extra shell while it runs
+    record SessionOpened(String session, sprouts.Tuple<String> command) implements LampEvent {}
+
     /// A window oillamp opened on the user's desktop: the terminal or a viewer.
     ///
     /// It carries the full command line, because when a window opens and closes again, the first

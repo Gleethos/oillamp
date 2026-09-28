@@ -55,6 +55,12 @@ class EmbeddingASessionSpec extends Specification {
             outcome.events().any { it instanceof LampEvent.SessionStateChanged
                                    && it.status().state() == 'running' }
 
+        and: 'it told the application how to run commands in the sandbox: over ssh, without a terminal'
+            var opened = outcome.events().find { it instanceof LampEvent.SessionOpened }
+            opened.command().first() == 'ssh'
+            opened.command().toList().contains('-T')
+            opened.command().any { it.contains('UNIX-CONNECT:') && it.endsWith('/ssh.sock') }
+
         and: 'it ended because the application let go, and left nothing behind'
             outcome.events().any { it instanceof LampEvent.Summary
                                    && it.lines().toList().any { line ->
