@@ -1,0 +1,181 @@
+package dev.gui.model;
+
+import java.util.Optional;
+import java.util.UUID;
+import java.util.function.UnaryOperator;
+
+import sprouts.Tuple;
+
+/// Everything the Genies window shows, as one value.
+///
+/// The window is a function of this value. Every change, whether the user clicked something or
+/// a genie said something, is a method that returns a new one, and the window follows.
+///
+/// @param genies   every genie, in the order they were made
+/// @param selected the genie the chat shows. Refers to no genie while there are none
+/// @param settings the model settings every genie uses when it wakes
+/// @param page     the chat, or the settings
+/// @param environmentKey the key in `EDENAI_API_KEY` where Genies started, if any; kept here so
+///                 the settings can say whether it is there, and never shown
+/// @param sidebarShown whether the list of genies is shown; hidden to make room in a narrow window
+/// @param narrow   whether the window is too narrow for the list and a conversation side by side
+/// @param lookUp   the models a server on this computer offered when last asked, for the settings
+/// @param zoom     how large a genie's desktop is shown
+/// @param area     the room the conversation, and the desktop beside it, have in the window
+public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings, Page page,
+                          Optional<String> environmentKey, boolean sidebarShown, boolean narrow,
+                          ModelLookUp lookUp, DesktopZoom zoom, Area area) {
+
+    /// A width and a height, in the window's own units.
+    public record Area(int width, int height) {}
+
+    /// What asking a model server on this computer for its models found.
+    ///
+    /// @param models the models it offers, by the names genies use for them
+    /// @param note   what happened, in a few words, such as how many were found or why none were
+    public record ModelLookUp(Tuple<String> models, String note) {
+        public static final ModelLookUp NOT_YET = new ModelLookUp(Tuple.of(String.class), "");
+    }
+
+    public enum Page { CHAT, SETTINGS }
+
+    /// The selection when there is no genie.
+    public static final UUID NONE = new UUID(0, 0);
+
+    public static GeniesState of(Tuple<Genie> genies, Settings settings, Optional<String> environmentKey) {
+        return new GeniesState(genies, genies.isEmpty() ? NONE : genies.first().id(), settings,
+                               Page.CHAT, environmentKey, true, false, ModelLookUp.NOT_YET, DesktopZoom.FIT,
+                               new Area(1030, 760));
+    }
+
+    public GeniesState withGenies(Tuple<Genie> genies) { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
+    public GeniesState withSelected(UUID selected)     { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
+    public GeniesState withSettings(Settings settings) { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
+    public GeniesState withPage(Page page)             { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
+    public GeniesState withSidebarShown(boolean shown) { return new GeniesState(genies, selected, settings, page, environmentKey, shown, narrow, lookUp, zoom, area); }
+    public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
+    public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
+
+    /// Below this width, in the window's own units, the list of genies and a conversation do not
+    /// both fit.
+    static final int NARROW = 820;
+
+    /// Folds the window's width into the state, the only place a pixel enters it. Crossing into
+    /// narrow hides the list of genies, crossing back shows it; in between, the user shows and
+    /// hides it as they like. Leaving a width takes a margin of a tenth, so that dragging the
+    /// window's edge across the line does not flicker.
+    public GeniesState withViewWidth(int width) {
+        boolean nowNarrow = narrow ? width < NARROW * 1.1 : width < NARROW / 1.1;
+        if (nowNarrow == narrow) return this;
+        return new GeniesState(genies, selected, settings, page, environmentKey, !nowNarrow, nowNarrow, lookUp, zoom, area);
+    }
+
+    /// From this width of the conversation's area, a genie's desktop is shown beside the chat;
+    /// below it, under the chat. The window's grid says the same, in its own terms: its large
+    /// size class starts at three fifths of its reference width.
+    public static final int SIDE_BY_SIDE_FROM = 660;
+
+    /// Folds the size of the conversation's area into the state, the only place a pixel of it
+    /// enters. Rounded to tens, so that dragging a window edge is a handful of changes, not one
+    /// per pixel.
+    public GeniesState withArea(int width, int height) {
+        Area rounded = new Area(width / 10 * 10, height / 10 * 10);
+        return rounded.equals(area) ? this : new GeniesState(genies, selected, settings, page, environmentKey,
+                                                            sidebarShown, narrow, lookUp, zoom, rounded);
+    }
+
+    /// Whether the chat and the desktop fit side by side.
+    public boolean sideBySide() { return area.width() >= SIDE_BY_SIDE_FROM; }
+
+    /// How tall the chat is. It has the whole height, unless the desktop is shown below it; then
+    /// the two share the height, each keeping enough to be usable, and the page scrolls.
+    public int chatHeight() {
+        boolean shared = genie().desktopShown() && genie().phase().isAwake() && !sideBySide();
+        return shared ? Math.max(380, area.height() * 3 / 5) : Math.max(240, area.height());
+    }
+
+    /// How tall the desktop is: the whole height beside the chat, half of it below.
+    public int desktopHeight() {
+        return sideBySide() ? Math.max(240, area.height()) : Math.max(260, area.height() / 2);
+    }
+
+    /// The genie the chat shows, or an empty stand-in when there is none, so the window always
+    /// has something to bind to.
+    public Genie genie() {
+        return find(selected).orElse(STAND_IN);
+    }
+
+    /// Writes the selected genie back. For the window's lenses; changes to a genie by id go
+    /// through [#update].
+    public GeniesState withGenie(Genie changed) {
+        return find(changed.id()).isPresent() ? update(changed.id(), ignored -> changed) : this;
+    }
+
+    public boolean hasGenies() { return !genies.isEmpty(); }
+
+    public Optional<Genie> find(UUID id) {
+        for (Genie genie : genies) if (genie.id().equals(id)) return Optional.of(genie);
+        return Optional.empty();
+    }
+
+    /// Changes one genie, if it still exists. Events from a genie's lamp arrive by id, and may
+    /// arrive after the user deleted it.
+    public GeniesState update(UUID id, UnaryOperator<Genie> change) {
+        return withGenies(genies.map(genie -> genie.id().equals(id) ? change.apply(genie) : genie));
+    }
+
+    /// Adds a genie and shows its chat.
+    public GeniesState add(Genie genie) {
+        return withGenies(genies.add(genie)).withSelected(genie.id()).withPage(Page.CHAT);
+    }
+
+    /// Removes a genie. The chat then shows the one before it, if any.
+    public GeniesState remove(UUID id) {
+        int index = indexOf(id);
+        if (index < 0) return this;
+        Tuple<Genie> rest = genies.removeAt(index);
+        UUID next = !selected.equals(id) ? selected
+                  : rest.isEmpty() ? NONE : rest.get(Math.max(0, index - 1)).id();
+        return withGenies(rest).withSelected(next);
+    }
+
+    public GeniesState select(UUID id) {
+        return find(id).isPresent() ? withSelected(id).withPage(Page.CHAT) : this;
+    }
+
+    /// The models a server on this computer offered. The first becomes the genies' model if none
+    /// was chosen yet.
+    public GeniesState modelsFound(Tuple<String> models) {
+        Settings chosen = settings.local().model().isBlank() && !models.isEmpty()
+                ? settings.withLocal(settings.local().withModel(models.first())) : settings;
+        String note = models.isEmpty() ? "The model server offers no models yet; pull one first, such as `ollama pull qwen2.5:7b`."
+                    : models.size() == 1 ? "The model server offers one model."
+                    : "The model server offers " + models.size() + " models.";
+        return withSettings(chosen).withLookUp(new ModelLookUp(models, note));
+    }
+
+    /// Asking a server on this computer for its models failed, for the reason given.
+    public GeniesState modelsNotFound(String why) {
+        return withLookUp(new ModelLookUp(Tuple.of(String.class), why));
+    }
+
+    /// Why genies cannot reach their model with the current settings, or nothing.
+    public Optional<String> settingsProblem() {
+        return settings.problem(environmentKey);
+    }
+
+    /// A name for a new genie that no other genie has yet.
+    public String freshName() {
+        for (int number = genies.size() + 1; ; number++) {
+            String name = "Genie " + number;
+            if (genies.stream().noneMatch(genie -> genie.name().equals(name))) return name;
+        }
+    }
+
+    private int indexOf(UUID id) {
+        for (int i = 0; i < genies.size(); i++) if (genies.get(i).id().equals(id)) return i;
+        return -1;
+    }
+
+    private static final Genie STAND_IN = Genie.asleep(NONE, "");
+}

@@ -211,6 +211,31 @@ started as a separate process from the test's own classpath, as an application w
 | one lamp closed | it ends cleanly; the other keeps running and answering |
 | the same lamp opened a second time | refused with `OIL-LOCK-001` and exit 4; the running one is unaffected |
 
+### Genies, a chat app on lamps
+
+`RunningARealGenieSpec` and `UsingGeniesForRealSpec` (spikes) run [Genies](GENIES.md) without its
+window against real lamps, with a real Eden AI key (checked on 2026-09-28):
+
+| Check | Result |
+|---|---|
+| a new genie wakes by itself: its lamp is lit through `dev.lamp`, pi starts in RPC mode | yes; the image was already built, so waking took seconds |
+| its desktop over its own VNC client, against the real wayvnc | no password asked, full screen drawn |
+| a file given to the genie | arrives in `~/inbox` |
+| a message, answered through the model relay; a tool call writing `~/outbox/hello.txt` | the answer streams in; the file is announced and saved on the host where asked, unchanged |
+| the genie put to sleep and woken again | the conversation comes back from pi |
+| deleting the genie | its lamp is removed through the engine; nothing left |
+| the key in the spikes' output | never |
+
+The window was driven for real on 2026-09-28: a small program clicked its buttons, typed into it
+and painted it into images, against a real lamp. A new genie woke from one click; a message typed
+and sent with return was answered, and the file the genie wrote was announced with a Save button;
+with Desktop pressed, the genie opened a terminal running `htop` on its desktop and the window showed
+it live; Sleep and Delete left no container and no lamp. That run found three bugs the scenarios had
+not, all fixed: rows in the list and the chat were not redrawn when their genie or answer changed; a
+message sent right after typing could go out before the draft had the last keystroke; and a message
+sent while pi was still starting was replaced by the conversation pi sent back late. The window has
+not yet been used by a person.
+
 ### Desktop, recording, GPU
 
 - `lamp info`, `screenshot`, `type`, `key` and `wait-stable` work against the real desktop.
