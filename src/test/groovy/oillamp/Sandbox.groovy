@@ -55,6 +55,20 @@ class Sandbox {
 
     OilLamp getOillamp() { OilLamp.on(simulation.build()) }
 
+    /**
+     * Starts the engine the way a {@link dev.lamp.Lamp} does, but on this machine: in this JVM,
+     * against the simulation. Each engine started is kept in {@link #engines}.
+     */
+    dev.lamp.Lamp.Launcher getLauncher() {
+        return { List<String> arguments ->
+            var engine = new EngineInThisProcess(simulation, arguments)
+            engines << engine
+            engine
+        } as dev.lamp.Lamp.Launcher
+    }
+
+    final List<EngineInThisProcess> engines = new java.util.concurrent.CopyOnWriteArrayList<>()
+
     /** A path inside the sandbox's home that does not exist yet. */
     Path lampPath(String name = 'feature-x') { home.resolve('lamps').resolve(name) }
 

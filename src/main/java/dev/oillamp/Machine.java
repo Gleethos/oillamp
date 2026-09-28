@@ -384,6 +384,13 @@ public interface Machine {
             return this;
         }
 
+        /// A real stream as the simulated machine's standard input, for a scenario in which a real
+        /// application holds it, as `dev.lamp.Lamp` does.
+        public Simulation standardInput(java.io.InputStream input) {
+            builder.standardInput(input);
+            return this;
+        }
+
         /// A command, identified by the start of its command line, that always fails with the given
         /// exit code and error output. For example `podman stop` dying with exit 130 and no
         /// output, as it did when a second Ctrl-C reached it.

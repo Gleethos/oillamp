@@ -26,5 +26,13 @@ public enum ExitStatus {
 
     public int code() { return code; }
 
+    /// The status an oillamp process meant by exiting with `code`, or empty for a code oillamp
+    /// never uses, such as a Java runtime that could not start.
+    public static java.util.Optional<ExitStatus> ofCode(int code) {
+        for (ExitStatus status : values())
+            if (status.code == code) return java.util.Optional.of(status);
+        return java.util.Optional.empty();
+    }
+
     public boolean isSuccess() { return this == SUCCESS; }
 }

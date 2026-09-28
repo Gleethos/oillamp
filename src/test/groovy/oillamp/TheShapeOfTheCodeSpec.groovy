@@ -21,8 +21,8 @@ class TheShapeOfTheCodeSpec extends Specification {
     /** The engine, as far as anything outside it is concerned. */
     static final Set<String> ENGINE_API = ['OilLamp', 'Machine'] as Set
 
-    /** What an application that embeds oillamp sees: the words oillamp speaks in. */
-    static final Set<String> EMBEDDING_API = ['LampEvent', 'Problem', 'ExitStatus'] as Set
+    /** What an application that embeds oillamp sees: the words oillamp speaks in, and a lamp. */
+    static final Set<String> EMBEDDING_API = ['LampEvent', 'Problem', 'ExitStatus', 'Lamp'] as Set
 
     static final Set<String> PUBLIC_API = ENGINE_API + EMBEDDING_API
 
@@ -135,7 +135,10 @@ class TheShapeOfTheCodeSpec extends Specification {
                            'Supervisor', 'Relay', 'Control',
                            // The egress proxy: sockets, DNS and byte copying. Whether a
                            // connection is allowed is decided by Policy, a pure function.
-                           'Egress'] as Set
+                           'Egress',
+                           // An application's handle on a lamp: starts the engine's process
+                           // and reads its output. It decides nothing about the sandbox.
+                           'Lamp'] as Set
 
         and: 'the things only they may use'
             var effects = ['java.nio.file.Files', 'java.lang.ProcessBuilder', 'java.lang.Process',

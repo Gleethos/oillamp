@@ -983,8 +983,10 @@ application that embeds oillamp needs.
 | `LampEvent` | `dev.lamp` | The stream of things oillamp reports. An application renders these itself. |
 | `Problem` | `dev.lamp` | Structured errors, so a caller can inspect them rather than parse text. |
 | `ExitStatus` | `dev.lamp` | The process exit codes, by name. |
+| `Lamp` | `dev.lamp` | An application's handle on a lamp: starts the engine as `oillamp at <dir> --embedded` in a separate process, reads its events, and ends the session on `close()`. |
 
-The last three are in `dev.lamp` because both the engine and an application embedding it use them.
+`LampEvent`, `Problem` and `ExitStatus` are in `dev.lamp` because both the engine and an
+application embedding it use them.
 `dev.lamp` never imports `dev.oillamp`.
 
 Everything else is package-private, and the compiler enforces it. Sub-packages of the engine would
@@ -1000,7 +1002,7 @@ or `System`:
 
 `RealMachine`, `SimulatedMachine`, `Machine`, `Filesystem`, `LampLock`, `HostProbe`, `StepRunner`,
 `HostPhase`, `LampPhase`, `Commands`, `ConsoleRenderer`, `OilLamp`, `Invocation`, `Supervisor`,
-`Relay`, `Control`, `Egress`.
+`Relay`, `Control`, `Egress`, and `Lamp` in `dev.lamp`.
 
 By convention, time comes from `Machine.now()`, never `Instant.now()`; the check does not look for
 it.

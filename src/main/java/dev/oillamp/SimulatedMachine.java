@@ -44,6 +44,7 @@ final class SimulatedMachine implements Machine {
     private final Duration stopsAfterClosingTheShell;
     private final Optional<Duration> sandboxDiesAfter;
     private final Duration applicationLeavesAfter;
+    private final Optional<java.io.InputStream> standardInput;
     private final RealMachine realMachine = new RealMachine();
 
     /// The sockets the simulated container is listening on, and whether it is still up.
@@ -65,6 +66,7 @@ final class SimulatedMachine implements Machine {
         this.stopsAfterClosingTheShell = builder.stopsAfterClosingTheShell;
         this.sandboxDiesAfter = builder.sandboxDiesAfter;
         this.applicationLeavesAfter = builder.applicationLeavesAfter;
+        this.standardInput = builder.standardInput;
         this.operatingSystemName = builder.operatingSystemName;
         this.systemFiles = Map.copyOf(builder.systemFiles);
         this.environment = Map.copyOf(builder.environment);
@@ -104,6 +106,7 @@ final class SimulatedMachine implements Machine {
     /// A standard input that stays open for a while and then closes, the way an application that
     /// started an embedded session closes it when it is done. The time counts from the first read.
     @Override public java.io.InputStream standardInput() {
+        if (standardInput.isPresent()) return standardInput.get();
         return new java.io.InputStream() {
             @Override public int read(byte[] buffer, int offset, int length) throws java.io.IOException {
                 return read();
@@ -542,6 +545,7 @@ final class SimulatedMachine implements Machine {
         /// How long the application that started an embedded session keeps it. Long enough for the
         /// session to come up and say so.
         private Duration applicationLeavesAfter = Duration.ofMillis(500);
+        private Optional<java.io.InputStream> standardInput = Optional.empty();
 
         private Instant clock = Instant.parse("2026-09-22T14:15:03Z");
         private boolean clockRuns = false;
@@ -644,6 +648,7 @@ final class SimulatedMachine implements Machine {
 
         public void sandboxDiesAfter(Duration duration) { this.sandboxDiesAfter = Optional.of(duration); }
         public void applicationLeavesAfter(Duration duration) { this.applicationLeavesAfter = duration; }
+        public void standardInput(java.io.InputStream input) { this.standardInput = Optional.of(input); }
 
         public void passThrough(Tuple<String> executables) {
             for (String executable : executables) {
