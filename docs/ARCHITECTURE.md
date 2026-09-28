@@ -802,6 +802,12 @@ refused with 400, so nothing can send the key elsewhere. Without a key, requests
 an explanation, and the terminal is told. Each request is written to the network log with the
 channel `model`, never with its key or content.
 
+Both settings can be replaced for one session without editing the file:
+`oillamp at <dir> --model-service <url> --model-key-env <name>`. The key itself is never an
+argument, because any user of the machine can read a process's arguments. An application holding
+a `Lamp` uses `Lamp.at(dir).modelService(url).modelKey(key)`: the lamp puts the key in the engine's
+environment as `OILLAMP_MODEL_KEY` and passes `--model-key-env OILLAMP_MODEL_KEY`.
+
 ### Forwards
 
 A forward exposes one target at a fixed port inside the sandbox:
