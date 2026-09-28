@@ -133,6 +133,27 @@ The bundled Java runtime of the single-file build completes a TLS 1.3 handshake 
 `api.eu.edenai.run`, checking the certificate against the host name, with no modules beyond those
 it already has.
 
+### An application holding a lamp
+
+`RunningALampForAnApplicationSpec` (a spike) runs one lamp through `dev.lamp.Lamp`, with the engine
+started as a separate process from the test's own classpath, as an application would start it
+(checked on 2026-09-28):
+
+| Check | Result |
+|---|---|
+| a lamp created from nothing reports host, lamp, image and session, then `SessionOpened` | yes; no window opens |
+| `Lamp.exec` runs as `agent` (uid 1000) in `/home/agent`, with the proxy and display set | yes |
+| arguments with spaces, quotes and `$` arrive unchanged; exit code and error output are kept apart | yes |
+| a program in the sandbox answers JSON messages one at a time while still running | yes |
+| 8 MB of random bytes into the sandbox and back | identical, by SHA-256 |
+| a file written by the agent is on the host, owned by the user | yes |
+| `https://example.com` through the proxy; `http://192.168.1.1` | 200; 403 naming the rule, reported to the application and in the network log |
+| a lookup or connection that ignores the proxy | fails: only `lo`, no name service |
+| the user's home, the lamp directory, `oillamp.toml`, writing to `/usr` | none visible; not writable |
+| `oillamp status` and `oillamp list` on the lamp | both see it |
+| `close()` with `sleep 600` running | returns in seconds; container, `session.json` and lock gone |
+| opening the lamp again | same agent id, its files still there |
+
 ### Desktop, recording, GPU
 
 - `lamp info`, `screenshot`, `type`, `key` and `wait-stable` work against the real desktop.
@@ -256,9 +277,6 @@ suggests. Each is a decision for the team: implement it, or remove the option.
   original runs would remove the original's container as "left over from an earlier session".
   Nothing checks that an agent id is unique. Undecided: refuse such a lamp, or give it a new id.
 - A lamp path longer than 150 characters.
-- `dev.lamp.Lamp` with a real engine process: the scenarios run the engine in the test's own JVM
-  against the simulated machine. `Lamp.exec` in particular has only had its command line checked,
-  because the simulated sandbox has no real sshd.
 - Terminal emulators other than the ones on the development machine.
 
 ---
