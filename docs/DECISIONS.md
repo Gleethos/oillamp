@@ -329,15 +329,37 @@ into `/usr/local/share/oillamp/`, and copied into the agent's home at session st
 SDKMAN must be writable. A failure to install one of them only prints a warning: the desktop, shell
 and SSH are the product, the harnesses are a convenience. *(added during implementation)*
 
+### The model key stays on the host; the sandbox reaches Eden AI through oillamp
+
+The Eden AI key is never put into the sandbox: not into its environment, not into
+`runtime.env`, not into any file the agent can read. Inside the sandbox, the harnesses send their
+requests in plain HTTP to `http://127.0.0.1:3129/v3`, with a placeholder key. oillamp receives
+each request on the host, replaces the placeholder with the real key, and sends it over HTTPS to
+Eden AI's EU endpoint, `https://api.eu.edenai.run`, and nowhere else. The key comes from
+`EDENAI_API_KEY` in the environment oillamp is started from, and stays in oillamp's memory.
+
+*Why:* an agent can read everything in its sandbox, and whatever it can read, it can send
+anywhere. Instructions picked up from a web page are enough to make it do so. With the key in the
+sandbox, one such page could take the key away, to be used elsewhere for as long as it stays
+valid. With the key on the host, the most a misled agent can do is use the model while its session
+runs, through a channel oillamp sees. It also means the key, the endpoint and the model service
+can change without rebuilding the image, and that every model request can be counted.
+
+*Given up:* the harnesses speak plain HTTP inside the sandbox. That traffic never leaves the
+container's loopback and the host's Unix socket, and the connection to Eden AI is HTTPS. *(added
+on 2026-09-28, replacing the earlier design, in which the key was copied into the sandbox)*
+
 ### Eden AI is used only through its EU endpoint
 
-Both harnesses are set up to reach Eden AI only through `https://api.eu.edenai.run/v3`, and to offer
-only the models served there. The shipped network policy also refuses the global endpoint,
-`api.edenai.run`. That rule is an ordinary one in `oillamp.toml`, so a lamp can remove it.
+oillamp forwards model requests only to `https://api.eu.edenai.run`. The address is fixed in
+oillamp; no configuration changes it. Both harnesses are also set up to offer only the models the
+EU endpoint serves, and the shipped network policy refuses the global endpoint, `api.edenai.run`,
+for anything in the sandbox that tries it directly (it would have no key anyway).
 
-*Why:* the team requires its model traffic to stay in the EU. Setting only the environment would
-depend on every tool honouring it, and on the host not overriding it; the rule makes the requirement
-hold for anything in the sandbox, and a refused request names the rule. *(added on 2026-09-24)*
+*Why:* the team requires its model traffic to stay in the EU. Holding the key on the host makes
+this a property of oillamp rather than a setting inside the sandbox: a request can only be sent
+with the key by oillamp, and oillamp only sends it to the EU. *(added on 2026-09-24, changed on
+2026-09-28 when the key moved to the host)*
 
 ### One environment for every kind of shell
 
