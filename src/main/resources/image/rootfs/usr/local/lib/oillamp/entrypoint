@@ -25,6 +25,7 @@ set -a; . /oillamp/session/runtime.env; set +a
 : "${OILLAMP_RENDERER:=pixman}"
 : "${OILLAMP_SESSION:?runtime.env is missing OILLAMP_SESSION}"
 : "${OILLAMP_PROXY_PORT:=3128}"
+: "${OILLAMP_MODEL_PORT:=3129}"
 : "${OILLAMP_VNC_MAX_FPS:=30}"
 : "${OILLAMP_RECORDING_ENABLED:=false}"
 : "${OILLAMP_RECORDING_CODEC:=libx264}"
@@ -275,6 +276,11 @@ fi
 BRIDGE_PIDS=()
 drop lamp 077 proxy socat "TCP-LISTEN:${OILLAMP_PROXY_PORT},bind=127.0.0.1,reuseaddr,fork" \
      UNIX-CONNECT:/oillamp/sockets/host/proxy.sock
+BRIDGE_PIDS+=("$LAST_PID")
+# The model relay: the harnesses' requests go to oillamp on the host, which adds the key. The key
+# itself never enters the sandbox.
+drop lamp 077 model socat "TCP-LISTEN:${OILLAMP_MODEL_PORT},bind=127.0.0.1,reuseaddr,fork" \
+     UNIX-CONNECT:/oillamp/sockets/host/model.sock
 BRIDGE_PIDS+=("$LAST_PID")
 for forward in $OILLAMP_FORWARDS; do
     name=${forward%%:*}; port=${forward##*:}

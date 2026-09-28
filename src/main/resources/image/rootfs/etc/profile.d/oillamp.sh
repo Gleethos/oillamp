@@ -44,13 +44,16 @@ export http_proxy=$HTTP_PROXY https_proxy=$HTTPS_PROXY
 export NO_PROXY=localhost,127.0.0.1,::1 no_proxy=localhost,127.0.0.1,::1
 export NODE_USE_ENV_PROXY=1
 
-# Eden AI, only through its EU endpoint. pi's Eden AI extension reads these two; EU_ONLY also has
-# it offer only the models served in the EU. opencode reads its Eden AI endpoint and model list
-# from the file OPENCODE_CONFIG names, written when the image was built. Set after runtime.env,
-# and never copied from the host, so a host that points EDENAI_BASE_URL elsewhere changes nothing
-# here. The network policy's rule "Eden AI only through its EU endpoint" refuses the global
-# endpoint as well, for anything that ignores these settings.
-export EDENAI_BASE_URL=https://api.eu.edenai.run/v3 EDENAI_EU_ONLY=1
+# The model service, through oillamp. The harnesses send their requests to the relay on
+# 127.0.0.1:3129, and oillamp, on the host, adds the real key and sends them on to the model
+# service the user configured (Eden AI's EU endpoint by default). The key never enters the
+# sandbox: EDENAI_API_KEY here is a placeholder, which the harnesses need to be non-empty and
+# which oillamp replaces. Set after runtime.env, so nothing from the host changes them.
+# pi's Eden AI extension reads all three; EU_ONLY also has it offer only the models served in the
+# EU. opencode reads the same address from the file OPENCODE_CONFIG names, written when the image
+# was built.
+export EDENAI_BASE_URL=http://127.0.0.1:${OILLAMP_MODEL_PORT:-3129}/v3 EDENAI_EU_ONLY=1
+export EDENAI_API_KEY=held-by-oillamp-on-the-host
 [ -r /usr/local/share/oillamp/opencode/opencode.json ] \
     && export OPENCODE_CONFIG=/usr/local/share/oillamp/opencode/opencode.json
 

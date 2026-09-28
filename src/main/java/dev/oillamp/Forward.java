@@ -21,6 +21,8 @@ record Forward(String name, int port, HostAndPort target) {
             throw new IllegalArgumentException("A forward port must be in 1024-65535, got: " + port);
         if (port == PROXY_PORT)
             throw new IllegalArgumentException("Port " + PROXY_PORT + " is the egress proxy's");
+        if (port == MODEL_PORT)
+            throw new IllegalArgumentException("Port " + MODEL_PORT + " is the model relay's");
     }
 
     /// `fwd-<name>.sock` in the lamp's host socket directory.

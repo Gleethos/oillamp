@@ -129,11 +129,13 @@ class ConfiguringALampSpec extends Specification {
             outcome.console().contains('schema_version')
     }
 
-    def 'A forward may not take the port the sandbox uses for its own proxy'() {
+    def 'A forward may not take a port the sandbox uses for its own way out'() {
         reportInfo """
-            Inside the sandbox, 127.0.0.1:3128 is the policy-controlled egress proxy. A forward
-            bound to the same port would either fail to start or - worse - shadow the proxy, so
-            that traffic the user believes is being checked against their rules silently is not.
+            Inside the sandbox, 127.0.0.1:3128 is the policy-controlled egress proxy, and
+            127.0.0.1:3129 is where the harnesses reach the model service through oillamp. A
+            forward bound to either port would fail to start or - worse - shadow it, so that
+            traffic the user believes is being checked against their rules silently is not, or
+            model requests go somewhere else.
 
             Better to refuse the configuration and say which port to move.
         """
@@ -144,16 +146,21 @@ class ConfiguringALampSpec extends Specification {
 
                 [[network.forwards]]
                 name   = "llm"
-                port   = 3128
+                port   = ${port}
                 target = "llm.corp.example.com:8000"
-            '''.stripIndent())
+            '''.stripIndent().replace('${port}', port.toString()))
 
         when:
             var outcome = sandbox.oillamp.run('config', lamp.toString(), 'check')
 
         then:
             outcome.reported('OIL-CONFIG-004')
-            outcome.console().contains('egress proxy')
+            outcome.console().contains(explanation)
+
+        where:
+            port | explanation
+            3128 | 'egress proxy'
+            3129 | 'model service through oillamp'
     }
 
     def 'Pointing the language model at a forward that does not exist is caught'() {
@@ -404,7 +411,8 @@ class ConfiguringALampSpec extends Specification {
             toml.contains('hosts  = ["api.edenai.run"]')
 
         and: 'the agent is told, so it does not go looking for a way around it'
-            guide.contains('only through its EU endpoint')
+            guide.contains('through oillamp')
+            guide.contains('Only models served in the EU are offered')
             guide.contains('`api.edenai.run`, is refused by the network policy')
 
         when: 'a lamp lists its own rules and leaves that one out'
@@ -420,7 +428,7 @@ class ConfiguringALampSpec extends Specification {
             guide = Files.readString(agentHome.resolve('AGENTS.md'))
 
         then: 'the guide no longer claims the policy refuses it'
-            guide.contains('only through its EU endpoint')
+            guide.contains('Only models served in the EU are offered')
             !guide.contains('is refused by the network policy')
     }
 

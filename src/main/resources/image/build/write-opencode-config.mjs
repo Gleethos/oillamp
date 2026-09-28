@@ -1,9 +1,10 @@
-// Writes the opencode configuration that sends its Eden AI provider to Eden's EU endpoint.
+// Writes the opencode configuration that sends its Eden AI provider to oillamp's model relay.
 //
 // opencode already knows Eden AI, but only its global endpoint, and it offers a model list from
 // its own catalog, most of which the EU endpoint does not serve. So this replaces both: the
-// endpoint becomes the EU one, and the model list becomes what that endpoint actually offers,
-// fetched from it while the image is built.
+// endpoint becomes the relay inside the sandbox, which oillamp forwards with the key to Eden's EU
+// endpoint, and the model list becomes what the EU endpoint actually offers, fetched from it while
+// the image is built (the catalog needs no key).
 //
 // If the catalog cannot be fetched, the endpoint is still changed and opencode keeps its own
 // model list. Models in that list that the EU endpoint does not serve fail with an error from Eden
@@ -15,6 +16,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const EU_BASE_URL = "https://api.eu.edenai.run/v3";
+// The model relay inside the sandbox. The same in every sandbox: where it leads is decided on the
+// host, and so is the key.
+const RELAY_BASE_URL = "http://127.0.0.1:3129/v3";
 // Eden's catalog does not say how long an answer may be, so this matches the default of pi's
 // Eden AI extension, EDENAI_MAX_TOKENS.
 const MAX_OUTPUT_TOKENS = 8192;
@@ -26,7 +30,7 @@ if (!output) {
     process.exit(2);
 }
 
-const provider = { options: { baseURL: EU_BASE_URL } };
+const provider = { options: { baseURL: RELAY_BASE_URL } };
 
 try {
     const response = await fetch(`${EU_BASE_URL}/models`, { signal: AbortSignal.timeout(30000) });
@@ -66,7 +70,7 @@ try {
     console.log(`opencode: ${provider.whitelist.length} Eden AI models from the EU endpoint`);
 } catch (error) {
     console.error(`WARNING: could not read Eden AI's EU model list (${error.message}); `
-        + "opencode still uses the EU endpoint, with its own model list");
+        + "opencode still uses the relay, with its own model list");
 }
 
 mkdirSync(dirname(output), { recursive: true });

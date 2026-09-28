@@ -430,7 +430,7 @@ Everything that goes into the image is under `src/main/resources/image/`:
 | `rootfs/usr/local/lib/oillamp/entrypoint` | bash | The container's first process. |
 | `rootfs/usr/local/lib/oillamp/lamp-pointer` | Python | Mouse input through VNC, for `lamp`. |
 | `rootfs/usr/local/bin/lamp` | bash | The agent's desktop helper. |
-| `rootfs/etc/profile.d/oillamp.sh` | bash | The environment of every shell. |
+| `rootfs/etc/profile.d/oillamp.sh` | bash | The environment of every shell, including the harnesses' model address and placeholder key. |
 | `rootfs/etc/oillamp/sshd_config` | config | sshd: key login only, every kind of forwarding off. |
 | `rootfs/etc/oillamp/sway/config` | config | The compositor: includes, window frames, no key binding that runs a command. |
 | `rootfs/etc/xdg/foot/foot.ini` | config | The in-sandbox terminal's font and colours. |
@@ -513,7 +513,7 @@ podman run --detach --name oillamp-<id>
 8. If recording is on, starts **wf-recorder** as the infra user, writing
    `/oillamp/recordings/<session>.mkv`.
 9. Starts the **network bridges** as the infra user: socat on `127.0.0.1:3128` to the proxy
-   socket, and one per forward.
+   socket, on `127.0.0.1:3129` to the model relay's socket, and one per forward.
 10. Starts, as the agent user, a **D-Bus session bus** and the **SSH listener** (socat on
     `/oillamp/sockets/agent/ssh.sock`, running `sshd -i` per connection).
 11. Waits until the VNC and SSH sockets **accept a connection** (not just exist), then writes
@@ -761,17 +761,21 @@ it judged, never to a name or text form that could be read differently.
 
 ### Eden AI, only in the EU
 
-Both harnesses reach Eden AI only through `https://api.eu.edenai.run/v3`. Three things make it so:
+Both harnesses send their model requests to oillamp's relay at `http://127.0.0.1:3129/v3` (see
+the next section), and oillamp sends them on to `model.service`, which is Eden AI's EU endpoint,
+`https://api.eu.edenai.run`, unless the user configures another service on the host. Inside the
+sandbox:
 
-- **pi.** Its Eden AI extension reads `EDENAI_BASE_URL` and `EDENAI_EU_ONLY`. The shell profile sets
-  both, after reading `runtime.env`, and oillamp never copies them from the host. With
-  `EDENAI_EU_ONLY` set, pi offers only the EU models.
+- **pi.** Its Eden AI extension reads `EDENAI_BASE_URL`, `EDENAI_API_KEY` and `EDENAI_EU_ONLY`. The
+  shell profile sets all three after reading `runtime.env`: the relay's address, a placeholder
+  key, and EU only, so pi offers only the EU models. None of them is copied from the host.
 - **opencode.** It knows only Eden AI's global endpoint, with a model list from its own catalogue.
-  `build/write-opencode-config.mjs` writes `opencode.json` during the image build, setting the EU
-  endpoint and the model list the EU endpoint gives. `OPENCODE_CONFIG` points opencode at it. If
-  the list could not be fetched during the build, opencode still uses the EU endpoint.
-- **The network policy.** The shipped rule refuses `api.edenai.run` for any tool that ignores those
-  settings. It is an ordinary rule: a lamp can remove it.
+  `build/write-opencode-config.mjs` writes `opencode.json` during the image build, setting the
+  relay's address and the model list the EU endpoint gives (its catalogue needs no key).
+  `OPENCODE_CONFIG` points opencode at it. If the list could not be fetched during the build,
+  opencode still uses the relay.
+- **The network policy.** The shipped rule refuses `api.edenai.run` for any tool that tries it
+  directly. It is an ordinary rule: a lamp can remove it. Such a tool would have no key anyway.
 
 ### The model relay
 
@@ -803,7 +807,7 @@ target = "llm.corp.example.com:8000"
 The supervisor listens on `sockets/host/fwd-llm.sock`; socat in the container listens on
 `127.0.0.1:8000`. Each connection is opened from the host, so your VPN and routing apply. Forwards
 skip the policy on purpose: you chose the target. They are listed in the agent guide and logged. A
-forward cannot use port 3128, and names and ports must be unique.
+forward cannot use port 3128 or 3129, and names and ports must be unique.
 
 ### The network log
 
@@ -948,7 +952,7 @@ the file is stable.
 
 Contents: `OILLAMP_SESSION`, `OILLAMP_AGENT_ID`, `OILLAMP_LAMP_NAME`,
 `OILLAMP_DISPLAY_WIDTH/HEIGHT/SCALE`, `OILLAMP_WINDOWS`, `OILLAMP_RENDERER`, `OILLAMP_VNC_MAX_FPS`,
-`OILLAMP_RECORDING_ENABLED/CODEC/CRF/MAX_FPS`, `OILLAMP_PROXY_PORT`, `OILLAMP_FORWARDS`
+`OILLAMP_RECORDING_ENABLED/CODEC/CRF/MAX_FPS`, `OILLAMP_PROXY_PORT`, `OILLAMP_MODEL_PORT`, `OILLAMP_FORWARDS`
 (`name:port name:port`), the LLM variables when configured, and `EDENAI_API_KEY` and
 `EDENAI_MAX_TOKENS` when they are set on the host (`RuntimeEnv.INHERITED_FROM_HOST`; their values
 are never logged). `EDENAI_BASE_URL` and `EDENAI_EU_ONLY` are never copied from the host.

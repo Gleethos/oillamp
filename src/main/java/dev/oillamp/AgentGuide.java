@@ -173,10 +173,12 @@ final class AgentGuide {
                .append("you log in:\n\n");
             for (String tool : config.agentTools().install())
                 out.append("- `").append(tool).append("`\n");
-            out.append("\n`pi` and `opencode` can use Eden AI as their model provider. It needs\n")
-               .append("`EDENAI_API_KEY`, which is set here only if the human had it set on the host.\n\n")
-               .append("Eden AI is used **only through its EU endpoint**, `https://api.eu.edenai.run/v3`,\n")
-               .append("and only models served in the EU are offered. `EDENAI_BASE_URL` and\n")
+            out.append("\n`pi` and `opencode` use Eden AI as their model provider, through oillamp:\n")
+               .append("they send their requests to `http://127.0.0.1:3129/v3`, and oillamp, outside\n")
+               .append("this sandbox, adds the key and sends them on. You do not have the key, and you\n")
+               .append("do not need it: `EDENAI_API_KEY` here is a placeholder. If a request is\n")
+               .append("answered with 401, the human has not given oillamp a key; tell them.\n\n")
+               .append("Only models served in the EU are offered. `EDENAI_BASE_URL` and\n")
                .append("`EDENAI_EU_ONLY` are set for that; do not change them.")
                .append(refusesEdenAiOutsideTheEu(config)
                        ? " The global endpoint,\n`api.edenai.run`, is refused by the network policy."

@@ -256,6 +256,12 @@ final class ConfigLoader {
                           "port " + Forward.PROXY_PORT + " is the sandbox's egress proxy — pick another");
                 continue;
             }
+            if (port == Forward.MODEL_PORT) {
+                s.invalid("port", Integer.toString(port),
+                          "port " + Forward.MODEL_PORT + " is where the sandbox reaches the model service "
+                        + "through oillamp — pick another");
+                continue;
+            }
             String target = s.string("target", "");
             HostAndPort endpoint;
             try {

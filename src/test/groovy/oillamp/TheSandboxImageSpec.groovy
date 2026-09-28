@@ -284,35 +284,51 @@ class TheSandboxImageSpec extends Specification {
             entrypoint.contains('seed_pi_agent_dir || true')
     }
 
-    def 'both harnesses are sent to Eden AI\'s EU endpoint, and offered only its models'() {
+    def 'both harnesses reach Eden AI through oillamp\'s relay, holding no key, and are offered only EU models'() {
         reportInfo """
-            pi's Eden AI extension reads its endpoint from EDENAI_BASE_URL and, with
-            EDENAI_EU_ONLY, offers only the models served in the EU. The profile sets both after
-            reading runtime.env, so nothing from the host can change them.
+            The harnesses never hold the model key. They send their requests to oillamp's relay
+            inside the sandbox, 127.0.0.1:3129, and oillamp adds the key on the host. The address
+            is the same in every sandbox; where it leads is decided outside.
+
+            pi's Eden AI extension reads its endpoint from EDENAI_BASE_URL and its key from
+            EDENAI_API_KEY, which must not be empty, so the profile sets a placeholder. With
+            EDENAI_EU_ONLY it offers only the models served in the EU. The profile sets all three
+            after reading runtime.env, so nothing from the host can change them.
 
             opencode has Eden AI built in, but pointed at the global endpoint and with a model
             list mostly made of models the EU endpoint does not serve. The build writes a
-            configuration file that changes both, and the profile names it in OPENCODE_CONFIG.
-            That file is written from the EU endpoint's own model list, and only EU models are
-            kept from it.
+            configuration file that points it at the relay instead, and the profile names it in
+            OPENCODE_CONFIG. The model list in that file comes from the EU endpoint's own catalog,
+            which needs no key, and only EU models are kept from it.
+
+            Inside the container, a bridge run by the infrastructure user connects the relay's
+            port to the socket on which oillamp listens.
         """
         when:
             var profile = Files.readString(IMAGE.resolve('rootfs/etc/profile.d/oillamp.sh'))
             var installer = Files.readString(IMAGE.resolve('build/install-agent-tools.sh'))
             var writer = Files.readString(IMAGE.resolve('build/write-opencode-config.mjs'))
 
-        then: 'pi is told the EU endpoint, after the session\'s own variables are read'
-            profile.contains('export EDENAI_BASE_URL=https://api.eu.edenai.run/v3 EDENAI_EU_ONLY=1')
+        then: 'pi is told the relay and a placeholder key, after the session\'s own variables are read'
+            profile.contains('export EDENAI_BASE_URL=http://127.0.0.1:${OILLAMP_MODEL_PORT:-3129}/v3 EDENAI_EU_ONLY=1')
+            profile.contains('export EDENAI_API_KEY=held-by-oillamp-on-the-host')
             profile.indexOf('EDENAI_BASE_URL=') > profile.indexOf('runtime.env && set +a')
+            profile.indexOf('EDENAI_API_KEY=held') > profile.indexOf('runtime.env && set +a')
+
+        and: 'the relay\'s port leads to oillamp\'s socket on the host'
+            var entrypoint = Files.readString(IMAGE.resolve('rootfs/usr/local/lib/oillamp/entrypoint'))
+            entrypoint.contains('drop lamp 077 model socat "TCP-LISTEN:${OILLAMP_MODEL_PORT},bind=127.0.0.1,reuseaddr,fork"')
+            entrypoint.contains('UNIX-CONNECT:/oillamp/sockets/host/model.sock')
 
         and: 'opencode is given its configuration, which the build writes'
             profile.contains('export OPENCODE_CONFIG=/usr/local/share/oillamp/opencode/opencode.json')
             installer.contains('OPENCODE_CONFIG_FILE=/usr/local/share/oillamp/opencode/opencode.json')
             installer.contains('write-opencode-config.mjs')
 
-        and: 'that configuration uses the EU endpoint and keeps only EU models'
-            writer.contains('const EU_BASE_URL = "https://api.eu.edenai.run/v3"')
-            writer.contains('baseURL: EU_BASE_URL')
+        and: 'that configuration sends opencode to the relay, and takes its models from the EU catalog'
+            writer.contains('const RELAY_BASE_URL = "http://127.0.0.1:3129/v3"')
+            writer.contains('baseURL: RELAY_BASE_URL')
+            writer.contains('fetch(`${EU_BASE_URL}/models`')
             writer.contains('region?.code?.toLowerCase() === "eu"')
             writer.contains('provider.whitelist')
 
