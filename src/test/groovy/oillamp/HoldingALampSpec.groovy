@@ -84,6 +84,46 @@ class HoldingALampSpec extends Specification {
             lamp?.close()
     }
 
+    def 'An application can show the sandbox\'s desktop, through the socket the lamp names'() {
+        reportInfo """
+            An application that wants the player to watch the agent work draws the sandbox's
+            desktop in a window of its own. The desktop is served as VNC on a Unix socket that
+            only this user can open, so no password is needed and nothing listens on the network.
+            The lamp names the socket once the session is running; the engine is the one that
+            knows where it is.
+        """
+        given:
+            var lamp = Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start()
+            lamp.awaitRunning(Duration.ofSeconds(30))
+
+        expect: 'the desktop socket of this session'
+            lamp.desktop().fileName.toString() == 'vnc.sock'
+            lamp.desktop().startsWith(sandbox.runtime)
+
+        cleanup:
+            lamp?.close()
+    }
+
+    def 'A lamp that is not running has no desktop to show'() {
+        reportInfo """
+            Asking for the desktop of a lamp that never started, or has ended, is a mistake in
+            the application, and it says so at once instead of handing out a socket path that
+            nothing listens on.
+        """
+        given:
+            var lamp = Lamp.at(sandbox.home).launchedBy(sandbox.launcher).start()
+            lamp.awaitRunning(Duration.ofSeconds(30))
+
+        when:
+            lamp.desktop()
+
+        then:
+            thrown(IllegalStateException)
+
+        cleanup:
+            lamp?.close()
+    }
+
     def 'A lamp that is not running refuses commands, rather than sending them nowhere'() {
         reportInfo """
             Here the lamp never started, because oillamp refused its directory. An application

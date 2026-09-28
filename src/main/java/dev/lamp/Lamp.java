@@ -199,6 +199,15 @@ public final class Lamp implements AutoCloseable {
         return "'" + argument.replace("'", "'\\''") + "'";
     }
 
+    /// The Unix socket of the sandbox's desktop, for an application that shows it in a window of
+    /// its own. It speaks VNC (RFB 3.8) with no password: only this user can open the socket.
+    ///
+    /// @throws IllegalStateException when the session is not running
+    public Path desktop() {
+        return opened.filter(ignored -> exit.isEmpty()).map(LampEvent.SessionOpened::desktop)
+                .orElseThrow(() -> new IllegalStateException("the lamp at " + directory + " is not running"));
+    }
+
     /// How the engine ended, once it has.
     public Optional<ExitStatus> exitStatus() { return exit; }
 

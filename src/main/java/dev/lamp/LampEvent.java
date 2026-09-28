@@ -80,7 +80,10 @@ public sealed interface LampEvent {
     /// @param command an `ssh` command line. Append a command, as ssh expects it, and it runs in
     ///                the sandbox as the agent user, with the same environment as the agent's
     ///                shell, and with no terminal. It counts as an extra shell while it runs
-    record SessionOpened(String session, sprouts.Tuple<String> command) implements LampEvent {}
+    /// @param desktop the Unix socket of the sandbox's desktop. It speaks VNC (RFB 3.8) with no
+    ///                password, because only this user can open it
+    record SessionOpened(String session, sprouts.Tuple<String> command, java.nio.file.Path desktop)
+            implements LampEvent {}
 
     /// A window oillamp opened on the user's desktop: the terminal or a viewer.
     ///
