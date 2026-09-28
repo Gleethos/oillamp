@@ -111,6 +111,38 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             answer.endsWith('{"choices":[{"message":{"content":"ok"}}]}')
     }
 
+    def 'The key is nowhere the sandbox can see: not in its settings, not in its home, not in its sockets'() {
+        reportInfo """
+            Everything the container is given comes from three places in the lamp: the session's
+            settings (runtime.env and the agent guide), the agent's home, and the socket
+            directories. None of them may hold the key, in any file, under any name. The session
+            here really starts with a key in its environment and really writes all of these, so
+            this checks the files the container would be given, not a description of them.
+        """
+        given:
+            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
+            startASession()
+
+        when: 'every file the container is given is read'
+            var lamp = sandbox.lampPath()
+            var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
+                                            .findFirst().orElseThrow()
+            var given = [lamp.resolve('.oillamp/session'), agentHome, lamp.resolve('.oillamp/sockets'),
+                         lamp.resolve('.oillamp/recordings')]
+            var files = given.findAll { Files.exists(it) }.collectMany { place ->
+                Files.walk(place).filter { Files.isRegularFile(it) }.toList() }
+
+        then: 'there are files to check, including the settings and the guide'
+            files.any { it.fileName.toString() == 'runtime.env' }
+            files.any { it.fileName.toString() == 'AGENTS.md' }
+
+        and: 'none of them holds the key'
+            files.findAll { Files.readString(it, java.nio.charset.StandardCharsets.ISO_8859_1).contains(KEY) }.isEmpty()
+
+        and: 'the settings do not even name it'
+            !Files.readString(lamp.resolve('.oillamp/session/runtime.env')).contains('EDENAI_API_KEY')
+    }
+
     def 'The key can come from any variable the user names, for a service the user chooses'() {
         reportInfo """
             The model service and its key are the user's choice, made on the host: a company's own

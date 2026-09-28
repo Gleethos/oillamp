@@ -953,9 +953,10 @@ the file is stable.
 Contents: `OILLAMP_SESSION`, `OILLAMP_AGENT_ID`, `OILLAMP_LAMP_NAME`,
 `OILLAMP_DISPLAY_WIDTH/HEIGHT/SCALE`, `OILLAMP_WINDOWS`, `OILLAMP_RENDERER`, `OILLAMP_VNC_MAX_FPS`,
 `OILLAMP_RECORDING_ENABLED/CODEC/CRF/MAX_FPS`, `OILLAMP_PROXY_PORT`, `OILLAMP_MODEL_PORT`, `OILLAMP_FORWARDS`
-(`name:port name:port`), the LLM variables when configured, and `EDENAI_API_KEY` and
-`EDENAI_MAX_TOKENS` when they are set on the host (`RuntimeEnv.INHERITED_FROM_HOST`; their values
-are never logged). `EDENAI_BASE_URL` and `EDENAI_EU_ONLY` are never copied from the host.
+(`name:port name:port`), the LLM variables when configured, and `EDENAI_MAX_TOKENS` when it is set
+on the host (`RuntimeEnv.INHERITED_FROM_HOST`). The model key is never in it: it stays on the host,
+and the relay adds it to each model request. `EDENAI_BASE_URL`, `EDENAI_API_KEY` and
+`EDENAI_EU_ONLY` are set by the sandbox's profile, never copied from the host.
 
 ---
 

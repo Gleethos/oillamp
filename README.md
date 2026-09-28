@@ -75,7 +75,7 @@ once) and gives the exact command that fixes each one.
 ### 3. Start a sandbox 🔥
 
 ```sh
-export EDENAI_API_KEY=...          # optional: the model key for the agent harnesses
+export EDENAI_API_KEY=...          # optional: the model key; oillamp keeps it, the sandbox never sees it
 oillamp at ~/lamps/first
 ```
 
@@ -229,7 +229,8 @@ from talking to the internet.
   the container can see, not file permissions. A kernel flaw, or a wrongly attached directory,
   would give it your rights (never root's).
 - **It is a container, not a virtual machine.** Your kernel is shared with the sandbox.
-- **The internet is open by default.** Data the agent can read, it can send.
+- **The internet is open by default.** Data the agent can read, it can send. That is why the model
+  key is not in the sandbox: oillamp adds it to model requests on their way out.
 - **Your machine's own public addresses are not blocked.** If a service on your machine listens
   on every address (`0.0.0.0`), add a deny rule for your addresses, or bind it to `127.0.0.1`.
 - **Disk space has no limit.** An agent that downloads without end can fill your disk.

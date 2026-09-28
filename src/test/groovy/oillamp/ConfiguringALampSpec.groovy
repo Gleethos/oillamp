@@ -384,7 +384,8 @@ class ConfiguringALampSpec extends Specification {
             tool that ignores those settings. So the endpoint variables are never copied from the
             host, and the shipped network policy refuses the global endpoint by name.
 
-            The API key is still copied, since the harnesses cannot work without it.
+            The key is not copied either. oillamp holds it on the host and adds it to each model
+            request on the way out, so the sandbox has nothing to take elsewhere.
         """
         given: 'a user whose own environment points Eden AI at its global endpoint'
             sandbox.machine {
@@ -401,8 +402,9 @@ class ConfiguringALampSpec extends Specification {
                                             .findFirst().orElseThrow()
             var guide = Files.readString(agentHome.resolve('AGENTS.md'))
 
-        then: 'the key reaches the sandbox, the endpoint does not'
-            runtimeEnv.contains("EDENAI_API_KEY='a-key'")
+        then: 'neither the key nor the endpoint reaches the sandbox'
+            !runtimeEnv.contains('a-key')
+            !runtimeEnv.contains('EDENAI_API_KEY')
             !runtimeEnv.contains('EDENAI_BASE_URL')
 
         and: 'the new lamp\'s policy refuses the global endpoint, in a rule the user can see and remove'
@@ -463,17 +465,17 @@ class ConfiguringALampSpec extends Specification {
             environment, so both are tried here with quotes, `\$(...)` and spaces, and the file is
             sourced by bash exactly as the entrypoint does it.
         """
-        given: 'a lamp whose name, and a key from the host, both look like shell code'
+        given: 'a lamp whose name, and a setting from the host, both look like shell code'
             var marker = tmp.resolve('ran')
             var hostile = "it's \$(touch ran)"
             var key = "k'\$(touch ran)\"`touch ran`"
-            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', key) }
+            sandbox.machine { it.environmentVariable('EDENAI_MAX_TOKENS', key) }
             var lamp = sandbox.lampPath(hostile)
 
         when:
             sandbox.oillamp.run('at', lamp.toString())
             var sourced = new ProcessBuilder('bash', '-c',
-                    'set -a; . "$1"; set +a; printf "%s\\n%s\\n" "$OILLAMP_LAMP_NAME" "$EDENAI_API_KEY"',
+                    'set -a; . "$1"; set +a; printf "%s\\n%s\\n" "$OILLAMP_LAMP_NAME" "$EDENAI_MAX_TOKENS"',
                     'bash', lamp.resolve('.oillamp/session/runtime.env').toString())
                     .directory(tmp.toFile()).redirectErrorStream(true).start()
             var values = sourced.inputStream.text.readLines()
@@ -489,11 +491,11 @@ class ConfiguringALampSpec extends Specification {
     def 'A host value with a line break is refused rather than written into the settings file'() {
         reportInfo """
             Quoting cannot make a line break safe in a file that is read line by line with
-            `source`, and no real key contains one. So a value with a line break stops the
+            `source`, and no real setting contains one. So a value with a line break stops the
             session from starting, with a problem that names the variable and not its value.
         """
         given:
-            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', 'first-line\ntouch /tmp/pwned') }
+            sandbox.machine { it.environmentVariable('EDENAI_MAX_TOKENS', 'first-line\ntouch /tmp/pwned') }
             var lamp = sandbox.lampPath()
 
         when:
@@ -501,7 +503,7 @@ class ConfiguringALampSpec extends Specification {
 
         then: 'the session does not start'
             outcome.status() != ExitStatus.SUCCESS
-            outcome.console().contains('EDENAI_API_KEY')
+            outcome.console().contains('EDENAI_MAX_TOKENS')
             outcome.console().contains('line break')
 
         and: 'the value itself is not printed'

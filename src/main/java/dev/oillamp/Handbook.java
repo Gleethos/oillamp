@@ -74,8 +74,9 @@ final class Handbook {
 
             2. Make the agent's model key available (optional)
 
-               The harnesses in the sandbox, pi and opencode, use Eden AI. oillamp passes
-               EDENAI_API_KEY into the sandbox if it is set in the terminal you start from:
+               The harnesses in the sandbox, pi and opencode, use Eden AI. oillamp reads
+               EDENAI_API_KEY in the terminal you start from, keeps it, and adds it to the
+               sandbox's model requests on their way out. The sandbox never gets the key:
 
                  export EDENAI_API_KEY=...
 

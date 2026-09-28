@@ -39,12 +39,13 @@ final class RuntimeEnv {
 
     /// Environment variables copied from the host into the sandbox when they are set.
     ///
-    /// The agent can read everything in `runtime.env`; that is the point, since its harness
-    /// needs these keys. It is also why this is a short, explicit list rather than the whole host
-    /// environment. `EDENAI_BASE_URL` and `EDENAI_EU_ONLY` are not on it: the sandbox sets those
-    /// itself, so that Eden AI is only ever reached through its EU endpoint.
+    /// The agent can read everything in `runtime.env`, and whatever it can read it can send
+    /// anywhere. So this is a short, explicit list of harmless settings, never a secret: the model
+    /// key in particular stays on the host, and oillamp adds it to each model request on the way
+    /// out (see `Egress`). `EDENAI_BASE_URL`, `EDENAI_API_KEY` and `EDENAI_EU_ONLY` are set by the
+    /// sandbox itself, to the model relay, a placeholder and EU only.
     public static final Tuple<String> INHERITED_FROM_HOST = Tuple.of(String.class,
-            "EDENAI_API_KEY", "EDENAI_MAX_TOKENS");
+            "EDENAI_MAX_TOKENS");
 
     /// The variables for this session.
     ///

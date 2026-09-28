@@ -411,10 +411,12 @@ All of them are installed while the image is built, into `/usr/local/share/oilla
 and pi's settings are copied into the agent's home when a session starts. A failure to install any
 of them never fails the image build; the sandbox is still useful without them.
 
-Both harnesses reach Eden AI **only through its EU endpoint**, `https://api.eu.edenai.run/v3`. The
-sandbox's shell environment sets it for pi, a configuration file written during the build sets it
-for opencode, and a network rule refuses the global endpoint for anything else. Your
-`EDENAI_API_KEY` is passed into the sandbox if it is set when you start oillamp.
+Both harnesses send their model requests to oillamp's relay inside the sandbox,
+`http://127.0.0.1:3129/v3`. oillamp adds your `EDENAI_API_KEY` on the host and sends them on to
+Eden AI's EU endpoint, `https://api.eu.edenai.run`. The key never enters the sandbox: the harnesses
+hold a placeholder. The sandbox's shell environment sets the relay for pi, a configuration file
+written during the build sets it for opencode, and a network rule refuses Eden AI's global
+endpoint for anything that tries it directly.
 
 ---
 
