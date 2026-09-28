@@ -29,35 +29,41 @@ final class Context {
     /// @param autoInstall whether oillamp may install host packages; `--no-install` turns it off
     /// @param init        `--init`: accept a non-empty directory as a new lamp
     /// @param openViewer  false with `--no-viewer`
+    /// @param embedded    `--embedded`: an application started oillamp and owns the session. No
+    ///                    windows open, and the session ends when standard input closes
     public record Options(boolean verbose, boolean debug, boolean dryRun,
-                          boolean autoInstall, boolean init, boolean openViewer) {
+                          boolean autoInstall, boolean init, boolean openViewer, boolean embedded) {
 
         public static Options defaults() {
-            return new Options(false, false, false, true, false, true);
+            return new Options(false, false, false, true, false, true, false);
         }
 
         public Options withDryRun(boolean dryRun) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
         }
 
         public Options withAutoInstall(boolean autoInstall) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
         }
 
         public Options withInit(boolean init) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
         }
 
         public Options withVerbose(boolean verbose) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
         }
 
         public Options withDebug(boolean debug) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
         }
 
         public Options withViewer(boolean openViewer) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
+        }
+
+        public Options withEmbedded(boolean embedded) {
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded);
         }
     }
 

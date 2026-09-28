@@ -43,6 +43,7 @@ final class SimulatedMachine implements Machine {
     private final boolean terminalConnects;
     private final Duration stopsAfterClosingTheShell;
     private final Optional<Duration> sandboxDiesAfter;
+    private final Duration applicationLeavesAfter;
     private final RealMachine realMachine = new RealMachine();
 
     /// The sockets the simulated container is listening on, and whether it is still up.
@@ -63,6 +64,7 @@ final class SimulatedMachine implements Machine {
         this.terminalConnects = builder.terminalConnects;
         this.stopsAfterClosingTheShell = builder.stopsAfterClosingTheShell;
         this.sandboxDiesAfter = builder.sandboxDiesAfter;
+        this.applicationLeavesAfter = builder.applicationLeavesAfter;
         this.operatingSystemName = builder.operatingSystemName;
         this.systemFiles = Map.copyOf(builder.systemFiles);
         this.environment = Map.copyOf(builder.environment);
@@ -98,6 +100,26 @@ final class SimulatedMachine implements Machine {
     }
 
     @Override public boolean isInteractive() { return interactive; }
+
+    /// A standard input that stays open for a while and then closes, the way an application that
+    /// started an embedded session closes it when it is done. The time counts from the first read.
+    @Override public java.io.InputStream standardInput() {
+        return new java.io.InputStream() {
+            @Override public int read(byte[] buffer, int offset, int length) throws java.io.IOException {
+                return read();
+            }
+
+            @Override public int read() throws java.io.IOException {
+                try {
+                    Thread.sleep(applicationLeavesAfter);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new java.io.InterruptedIOException("interrupted");
+                }
+                return -1;
+            }
+        };
+    }
 
     @Override public Outcome run(Command command) {
         if (passThrough.contains(command.executable())) return realMachine.run(command);
@@ -517,6 +539,9 @@ final class SimulatedMachine implements Machine {
         /// `oillamp stop`. Long enough for the session to report the window closing first.
         private Duration stopsAfterClosingTheShell = Duration.ofMillis(200);
         private Optional<Duration> sandboxDiesAfter = Optional.empty();
+        /// How long the application that started an embedded session keeps it. Long enough for the
+        /// session to come up and say so.
+        private Duration applicationLeavesAfter = Duration.ofMillis(500);
 
         private Instant clock = Instant.parse("2026-09-22T14:15:03Z");
         private boolean clockRuns = false;
@@ -618,6 +643,7 @@ final class SimulatedMachine implements Machine {
         public void stopsAfterClosingTheShell(Duration duration) { this.stopsAfterClosingTheShell = duration; }
 
         public void sandboxDiesAfter(Duration duration) { this.sandboxDiesAfter = Optional.of(duration); }
+        public void applicationLeavesAfter(Duration duration) { this.applicationLeavesAfter = duration; }
 
         public void passThrough(Tuple<String> executables) {
             for (String executable : executables) {

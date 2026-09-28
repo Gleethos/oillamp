@@ -577,6 +577,7 @@ stateDiagram-v2
 | In state | Event | Goes to | Actions |
 |---|---|---|---|
 | Starting | `ContainerReady` | AwaitingTerminal | announce, open viewer (unless disabled), open terminal |
+| Starting | `ContainerReady`, embedded session | Running | announce; no windows open |
 | Starting | `ContainerExited` | ShuttingDown (startup failed) | report, shut down |
 | AwaitingTerminal | `PrimaryConnected` | Running | announce |
 | AwaitingTerminal | `Tick` after the terminal timeout | ShuttingDown (startup failed, `OIL-TERM-002`) | report, shut down |
@@ -588,6 +589,12 @@ stateDiagram-v2
 | any live state | `ActionFailed` for the terminal | ShuttingDown (startup failed) | report, shut down |
 | any live state | `ActionFailed` for the viewer | unchanged | warning |
 | ShuttingDown | `ShutdownCompleted` | Stopped | report cleanup problems, exit |
+
+**An embedded session** (`oillamp at <dir> --embedded`) is one an application started, not a
+person. It opens no windows and goes straight to `Running`, so the terminal timeout never applies.
+The supervisor reads its standard input until it closes, then posts `StopRequested`: the
+application closes it when it is done, and the operating system closes it when the application
+dies.
 
 **Closing a window never ends a session**: not the shell window, not a viewer, not an extra shell.
 A session ends where it was started (Ctrl-C, or closing that terminal) or with `oillamp stop`.

@@ -93,7 +93,8 @@ final class Supervisor {
                 prepared.config().timeouts().terminalConnect(),
                 prepared.config().viewer().openOnStart() && context.options().openViewer(),
                 prepared.config().viewer().viewOnly(),
-                prepared.layout().root().toString()));
+                prepared.layout().root().toString(),
+                context.options().embedded()));
         this.sessionStarted = machine.now();
         this.state = new SessionState.Starting(sessionStarted);
     }
@@ -120,6 +121,7 @@ final class Supervisor {
         Thread hook = new Thread(this::onSignal, "oillamp-shutdown-hook");
         Runtime.getRuntime().addShutdownHook(hook);
         watchTheSandbox();
+        if (context.options().embedded()) watchTheApplication();
         post(new SessionEvent.ContainerReady(ReadyInfo.parse(sandbox.readyJson())));
 
         ExitStatus status = loop();
@@ -183,7 +185,9 @@ final class Supervisor {
         return switch (state) {
             case SessionState.Starting ignored -> "the sandbox is coming up";
             case SessionState.AwaitingTerminal ignored -> "waiting for your terminal window";
-            case SessionState.Running running -> running.shellWindowOpen()
+            case SessionState.Running running -> context.options().embedded()
+                    ? "running, for the application that started it"
+                    : running.shellWindowOpen()
                     ? "your shell is connected"
                     : "running; the shell window oillamp opened is closed";
             case SessionState.ShuttingDown shutting -> shutting.reason().describe();
@@ -472,6 +476,24 @@ final class Supervisor {
 
     // ─── the producers ─────────────────────────────────────────────────────────────────────
 
+    /// Ends an embedded session when the application that started it goes away.
+    ///
+    /// The application holds oillamp's standard input open for as long as it wants the session.
+    /// When it closes it, or dies, and the operating system closes it on its behalf, reading
+    /// reaches the end, and the session shuts down as it would for `oillamp stop`. Anything the
+    /// application writes is ignored.
+    private void watchTheApplication() {
+        Thread.ofVirtual().name("oillamp-application-watch").start(() -> {
+            try (java.io.InputStream input = machine.standardInput()) {
+                byte[] ignored = new byte[4096];
+                while (input.read(ignored) >= 0) { /* keep reading until it closes */ }
+            } catch (java.io.IOException closed) {
+                // A broken pipe means the same as a closed one: the application is gone.
+            }
+            post(new SessionEvent.StopRequested("the application that started it"));
+        });
+    }
+
     /// Checks every two seconds that the container is still running and that its sockets answer,
     /// and prints a health line every 30 seconds.
     ///
@@ -558,6 +580,16 @@ final class Supervisor {
         briefed = true;
         LampLayout layout = prepared.layout();
         LampConfig config = prepared.config();
+        if (context.options().embedded()) {
+            context.emit(new LampEvent.Summary("your session is up", Tuple.of(String.class,
+                    "started by      an application, which ends it when it is done",
+                    "the agent sees  " + layout.agentDir() + " and nothing else of this lamp",
+                    "look inside     `oillamp shell " + layout.root() + "`, `oillamp view "
+                            + layout.root() + "`",
+                    "network log     " + layout.networkLog(prepared.session()),
+                    "to finish early `oillamp stop " + layout.root() + "`")));
+            return;
+        }
         Tuple<String> lines = Tuple.of(String.class,
                 "desktop        " + config.display().size() + ", renderer " + prepared.gpu().renderer()
                         + (prepared.gpu() instanceof Gpu.Decision.Hardware ? " (hardware)" : " (software)"),

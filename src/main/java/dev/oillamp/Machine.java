@@ -52,6 +52,13 @@ public interface Machine {
     /// password and whether console output is coloured.
     boolean isInteractive();
 
+    /// This process's standard input.
+    ///
+    /// An embedded session watches it: the application that started oillamp closes it when it
+    /// is done, and the operating system closes it when that application dies. Either way the
+    /// session ends.
+    java.io.InputStream standardInput();
+
     /// Runs an external command to completion, or until its timeout expires.
     Outcome run(Command command);
 
@@ -367,6 +374,13 @@ public interface Machine {
         /// because the terminal rejected its arguments. oillamp reports `OIL-TERM-002`.
         public Simulation terminalThatNeverConnects() {
             builder.terminalNeverConnects();
+            return this;
+        }
+
+        /// How long the application that started an embedded session keeps it, before it closes
+        /// oillamp's standard input.
+        public Simulation applicationLeavesAfter(java.time.Duration duration) {
+            builder.applicationLeavesAfter(duration);
             return this;
         }
 

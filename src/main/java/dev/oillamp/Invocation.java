@@ -52,6 +52,7 @@ final class Invocation {
                 case "--no-install"    -> options = options.withAutoInstall(false);
                 case "--init"          -> options = options.withInit(true);
                 case "--no-viewer"     -> options = options.withViewer(false);
+                case "--embedded"      -> options = options.withEmbedded(true);
                 case "--view-only"     -> viewOnly = true;
                 case "--yes", "-y"     -> confirmed = true;
                 case "--prune"         -> prune = true;
@@ -221,7 +222,7 @@ final class Invocation {
     /// every command takes. `doctor` and `config` change nothing anyway, so they accept the two
     /// options that promise that.
     private static final java.util.Map<String, java.util.Set<String>> OPTIONS_OF = java.util.Map.ofEntries(
-            java.util.Map.entry("at",         java.util.Set.of("--init", "--dry-run", "--no-install", "--no-viewer")),
+            java.util.Map.entry("at",         java.util.Set.of("--init", "--dry-run", "--no-install", "--no-viewer", "--embedded")),
             java.util.Map.entry("view",       java.util.Set.of("--view-only")),
             java.util.Map.entry("remove",     java.util.Set.of("--yes", "--dry-run")),
             java.util.Map.entry("recordings", java.util.Set.of("--open", "--prune", "--dry-run")),
@@ -294,8 +295,10 @@ final class Invocation {
             New here? `oillamp guide` walks through a first session; `oillamp about` says what
             oillamp is for and what it is built from.
 
-              at <dir> [--init] [--dry-run] [--no-install] [--no-viewer]
+              at <dir> [--init] [--dry-run] [--no-install] [--no-viewer] [--embedded]
                     Set up (if needed) and run a session. Stays in the foreground until it ends.
+                    --embedded is for applications that start oillamp themselves: no windows,
+                    and the session ends when standard input closes.
               view <dir> [--view-only]
                     Open another window onto a running session's desktop.
               shell <dir>

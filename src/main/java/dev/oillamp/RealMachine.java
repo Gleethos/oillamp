@@ -54,6 +54,8 @@ final class RealMachine implements Machine {
         return Optional.ofNullable(System.console()).filter(java.io.Console::isTerminal).isPresent();
     }
 
+    @Override public java.io.InputStream standardInput() { return System.in; }
+
     @Override public Outcome run(Command command) {
         return run(command, line -> { });
     }
