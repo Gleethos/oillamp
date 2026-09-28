@@ -256,6 +256,9 @@ suggests. Each is a decision for the team: implement it, or remove the option.
   original runs would remove the original's container as "left over from an earlier session".
   Nothing checks that an agent id is unique. Undecided: refuse such a lamp, or give it a new id.
 - A lamp path longer than 150 characters.
+- `dev.lamp.Lamp` with a real engine process: the scenarios run the engine in the test's own JVM
+  against the simulated machine. `Lamp.exec` in particular has only had its command line checked,
+  because the simulated sandbox has no real sshd.
 - Terminal emulators other than the ones on the development machine.
 
 ---

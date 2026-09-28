@@ -117,6 +117,41 @@ public final class Lamp implements AutoCloseable {
         return opened.isPresent() && exit.isEmpty();
     }
 
+    /// Runs a command in the sandbox, as the agent user, with the agent's shell environment and
+    /// no terminal. The returned process's standard input, output and error are the command's.
+    ///
+    /// For example `lamp.exec("opencode", "acp")` starts a harness whose standard input and output
+    /// the application then speaks a protocol over.
+    ///
+    /// @throws IllegalStateException when the session is not running
+    /// @throws IOException           when ssh could not be started at all
+    public Process exec(String... command) throws IOException {
+        return new ProcessBuilder(commandLine(command)).start();
+    }
+
+    /// The command line [#exec] runs: the engine's ssh command, followed by `command`, each
+    /// argument quoted so the sandbox's shell receives it exactly as given.
+    ///
+    /// For an application that wants to start the process itself, for example with its own
+    /// working directory or redirections.
+    ///
+    /// @throws IllegalStateException when the session is not running
+    public List<String> commandLine(String... command) {
+        LampEvent.SessionOpened session = opened.filter(ignored -> exit.isEmpty())
+                .orElseThrow(() -> new IllegalStateException(
+                        "the lamp at " + directory + " is not running"));
+        List<String> line = new ArrayList<>();
+        for (String part : session.command()) line.add(part);
+        for (String argument : command) line.add(quoted(argument));
+        return List.copyOf(line);
+    }
+
+    /// ssh joins its arguments with spaces and gives them to a shell in the sandbox. Quoting each
+    /// one keeps spaces, quotes and `$` in an argument from being read by that shell.
+    private static String quoted(String argument) {
+        return "'" + argument.replace("'", "'\\''") + "'";
+    }
+
     /// How the engine ended, once it has.
     public Optional<ExitStatus> exitStatus() { return exit; }
 

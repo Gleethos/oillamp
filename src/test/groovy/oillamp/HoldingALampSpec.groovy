@@ -60,6 +60,52 @@ class HoldingALampSpec extends Specification {
             !Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
     }
 
+    def 'A command for the sandbox goes over ssh, with each argument arriving exactly as given'() {
+        reportInfo """
+            ssh joins its arguments with spaces and hands them to a shell in the sandbox, which
+            would split "hello world" in two and expand a dollar sign. The lamp quotes every
+            argument, so the application passes what it means and the sandbox receives that.
+        """
+        given:
+            var lamp = Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start()
+            lamp.awaitRunning(Duration.ofSeconds(30))
+
+        when:
+            var line = lamp.commandLine('echo', 'hello world', 'it\'s $HOME')
+
+        then: 'the engine\'s ssh command, without a terminal'
+            line.first() == 'ssh'
+            line.contains('-T')
+
+        and: 'then each argument, quoted for the sandbox\'s shell'
+            line.takeRight(3) == ["'echo'", "'hello world'", "'it'\\''s \$HOME'"]
+
+        cleanup:
+            lamp?.close()
+    }
+
+    def 'A lamp that is not running refuses commands, rather than sending them nowhere'() {
+        reportInfo """
+            Here the lamp never started, because oillamp refused its directory. An application
+            that asked it to run a command anyway would otherwise get an ssh process that fails
+            with an error about sockets, which says nothing about the real cause. Refusing at
+            once, with a message saying the lamp is not running, points at what actually went
+            wrong, and the application can show the problem the events already carried.
+        """
+        given:
+            var lamp = Lamp.at(sandbox.home).launchedBy(sandbox.launcher).start()
+            lamp.awaitRunning(Duration.ofSeconds(30))
+
+        when:
+            lamp.commandLine('true')
+
+        then:
+            thrown(IllegalStateException)
+
+        cleanup:
+            lamp?.close()
+    }
+
     def 'The engine is started with the lamp directory, in embedded mode'() {
         reportInfo """
             The lamp runs the same engine a person runs on a terminal, as `oillamp at <dir>`.
