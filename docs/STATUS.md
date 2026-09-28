@@ -161,6 +161,15 @@ started as a separate process from the test's own classpath, as an application w
 | the process holding the engine's standard input killed with `kill -9` | the engine shuts down within seconds, exits 0 and says the application let go; no container, `session.json` or lock left |
 | the container killed with `podman kill` | the application is told within seconds, the engine exits 5, the container is removed, and `Lamp` refuses further commands |
 
+`TwoLampsAtOnceSpec` (a spike) holds two lamps at once:
+
+| Check | Result |
+|---|---|
+| two lamps started together | two agent ids, two containers, both running |
+| each agent writes a file in its home | each reads only its own; neither finds the other's home or file |
+| one lamp closed | it ends cleanly; the other keeps running and answering |
+| the same lamp opened a second time | refused with `OIL-LOCK-001` and exit 4; the running one is unaffected |
+
 ### Desktop, recording, GPU
 
 - `lamp info`, `screenshot`, `type`, `key` and `wait-stable` work against the real desktop.
@@ -278,7 +287,6 @@ suggests. Each is a decision for the team: implement it, or remove the option.
   library path.)
 - Firefox loading a website through the proxy.
 - A forward to a real LLM service, and opencode or pi using it.
-- Two lamps running at the same time.
 - A lamp copied with `cp -a`. The copy has the original's agent id, and the container name, runtime
   directory and ssh alias are all derived from it. Reading the code, starting the copy while the
   original runs would remove the original's container as "left over from an earlier session".
