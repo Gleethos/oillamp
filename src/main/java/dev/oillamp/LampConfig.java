@@ -23,6 +23,7 @@ record LampConfig(
     NetworkPolicy network,
     Tuple<Forward> forwards,
     Optional<Llm> llm,
+    Model model,
     AgentTools agentTools,
     Image image,
     Host host,
@@ -78,6 +79,22 @@ record LampConfig(
     /// `[llm]`. `apiKeyEnv` and `apiKeyFile` are not used yet.
     public record Llm(String forward, String basePath, String apiKeyEnv, String apiKeyFile,
                       Tuple<String> models, String providerName) {}
+
+    /// `[model]`: where oillamp sends the sandbox's model requests, and where it finds the key.
+    ///
+    /// Both stay on the host. Inside the sandbox the harnesses always see the same local address
+    /// and a placeholder key, whatever is set here.
+    ///
+    /// @param service the model service's origin, such as `https://api.eu.edenai.run`. Plain
+    ///                `http` only for a service on this machine's loopback, so the key never
+    ///                crosses a network unencrypted
+    /// @param keyEnv  the host environment variable holding the key, read when a session starts
+    public record Model(java.net.URI service, String keyEnv) {
+        public Model {
+            if (!keyEnv.matches("[A-Za-z_][A-Za-z0-9_]*"))
+                throw new IllegalArgumentException("model.key_env is not a variable name: " + keyEnv);
+        }
+    }
 
     /// `[agent_tools]`. `versions` is not used yet; the newest versions are installed.
     public record AgentTools(Tuple<String> install, Association<String, String> versions) {}

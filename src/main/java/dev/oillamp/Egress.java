@@ -40,6 +40,11 @@ import sprouts.Tuple;
 /// TLS is never intercepted. A `CONNECT` tunnel is copied byte for byte, so oillamp sees the
 /// host name, the port and the resolved address, never the content.
 ///
+/// The third way out is the model relay. The harnesses send their model requests, in plain HTTP,
+/// to a socat relay on `127.0.0.1:3129`, which forwards them to [LampLayout#modelSocket()]. Here
+/// each request gets the real key in place of the placeholder the sandbox holds, and goes on over
+/// HTTPS to [Machine#modelService()], Eden AI's EU endpoint. The key never enters the sandbox.
+///
 /// How requests are handled and logged is described in `docs/ARCHITECTURE.md`,
 /// "The network".
 final class Egress implements AutoCloseable {
@@ -52,6 +57,19 @@ final class Egress implements AutoCloseable {
     private static final int BUFFER_BYTES = 64 * 1024;
     /// The rule name logged for a host name that could not be resolved.
     private static final String UNRESOLVED = "unresolved";
+
+    /// Where model requests go, and the key they go with.
+    ///
+    /// Its text never shows the key, so that no log line, problem or debugger view built from it
+    /// can leak it.
+    ///
+    /// @param keyEnv the variable the key was read from, named in the answer when there is none
+    record Model(java.net.URI service, String keyEnv, Optional<String> key) {
+        @Override public String toString() {
+            return "Model[" + service + ", key from " + keyEnv + ", "
+                 + (key.isPresent() ? "held" : "missing") + "]";
+        }
+    }
 
     /// What the supervisor is told as it happens. Called from connection threads.
     interface Listener {
@@ -104,7 +122,7 @@ final class Egress implements AutoCloseable {
     /// runs as the infra user, a different uid. They are still private to this user on the host,
     /// because the enclosing `.oillamp` directory is 0700.
     static Result<Egress> open(LampLayout layout, LampConfig config, SessionId session,
-                               Listener listener) {
+                               Model model, Listener listener) {
         Journal journal = new Journal(layout.networkLog(session));
         Egress egress = new Egress(config.network(), config.network().logAllowed(),
                                    listener, journal);
@@ -124,6 +142,14 @@ final class Egress implements AutoCloseable {
             egress.serve(((Result.Ok<ServerSocketChannel>) bound).value(),
                     client -> egress.handleForward(client, forward), "fwd-" + forward.name());
         }
+
+        Result<ServerSocketChannel> relay = bindShared(layout.modelSocket());
+        if (relay instanceof Result.Err<ServerSocketChannel> failure) {
+            egress.close();
+            return Result.err(failure.problems());
+        }
+        egress.serve(((Result.Ok<ServerSocketChannel>) relay).value(),
+                client -> egress.handleModel(client, model), "model");
         return Result.ok(egress);
     }
 
@@ -182,7 +208,7 @@ final class Egress implements AutoCloseable {
         InputStream in = Channels.newInputStream(client);
         OutputStream out = Channels.newOutputStream(client);
         try {
-            Optional<Head> parsed = readHead(in);
+            Optional<Head> parsed = readHead(in, Egress::parse, Egress::bad);
             if (parsed.isEmpty()) return;      // the client went away mid-request
             Head head = parsed.get();
             if (head.badRequest().isPresent()) {
@@ -287,6 +313,171 @@ final class Egress implements AutoCloseable {
         }
     }
 
+    // ─── the model relay ───────────────────────────────────────────────────────────────────
+
+    /// One model request: replace whatever key the sandbox sent with the real one, send the request
+    /// to the model service, and stream the answer back as it arrives.
+    ///
+    /// Only an ordinary request for a path is accepted, such as `POST /v3/chat/completions`. The
+    /// relay decides the host itself, so nothing in the request can send the key elsewhere. Every
+    /// request is recorded in the network log, without its key or content.
+    private void handleModel(SocketChannel client, Model model) {
+        Instant started = Instant.now();
+        InputStream in = Channels.newInputStream(client);
+        OutputStream out = Channels.newOutputStream(client);
+        String host = model.service().getHost();
+        int port = servicePort(model.service());
+        try {
+            Optional<ModelRequest> parsed = readHead(in, Egress::parseModelRequest, Egress::badModelRequest);
+            if (parsed.isEmpty()) return;      // the client went away mid-request
+            ModelRequest request = parsed.get();
+            if (request.badRequest().isPresent()) {
+                respond(out, 400, request.badRequest().get());
+                finishQuietly(client, in);
+                return;
+            }
+            if (model.key().isEmpty()) {
+                respond(out, 401, "oillamp: there is no model key for this session. oillamp holds "
+                        + "the key, not the sandbox: set " + model.keyEnv() + " in the environment "
+                        + "oillamp is started from, then start the session again.");
+                record(new Journey(Instant.now(), "model", request.method(), host, port, Optional.empty(),
+                        Decision.DENY, "no model key", 0, 0, Duration.between(started, Instant.now())));
+                finishQuietly(client, in);
+                return;
+            }
+            Socket upstream;
+            try {
+                upstream = connectToService(model.service());
+            } catch (IOException e) {
+                respond(out, 502, "oillamp: cannot reach the model service at " + host + " — "
+                        + Problems.reason(e));
+                return;
+            }
+            live.add(upstream);
+            AtomicLong up = new AtomicLong();
+            AtomicLong down = new AtomicLong();
+            try {
+                byte[] head = request.forService(host, model.key().get()).getBytes(StandardCharsets.ISO_8859_1);
+                upstream.getOutputStream().write(head);
+                upstream.getOutputStream().flush();
+                pipeBothWays(in, out, upstream, up, down);
+            } finally {
+                live.remove(upstream);
+                closeQuietly(upstream);
+                record(new Journey(Instant.now(), "model", request.method(), host, port,
+                        IpAddress.parse(upstream.getInetAddress().getHostAddress()),
+                        Decision.ALLOW, "model", up.get(), down.get(),
+                        Duration.between(started, Instant.now())));
+            }
+        } catch (IOException e) {
+            noteTrouble(e);
+        }
+    }
+
+    /// Ends a connection that was answered before its request was read to the end.
+    ///
+    /// Closing a socket with unread data in it makes the kernel reset the connection, and a client
+    /// that sees the reset may never read the answer, which here explains the refusal. So the
+    /// answer is followed by the end of this side, and whatever the client still sends is read and
+    /// dropped, for a few seconds at most.
+    private static void finishQuietly(SocketChannel client, InputStream in) {
+        try {
+            client.shutdownOutput();
+        } catch (IOException gone) {
+            return;
+        }
+        Thread limit = Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(FINISH_TIME);
+                client.close();
+            } catch (InterruptedException | IOException finished) {
+                // The client finished first; nothing to cut short.
+            }
+        });
+        try {
+            byte[] rest = new byte[BUFFER_BYTES];
+            while (in.read(rest) >= 0) { /* dropped */ }
+        } catch (IOException closed) {
+            // Closed by the limit above, or by the client: either way, done.
+        } finally {
+            limit.interrupt();
+        }
+    }
+
+    /// How long a refused client may keep sending before the connection is closed anyway.
+    private static final Duration FINISH_TIME = Duration.ofSeconds(3);
+
+    /// Connects to the model service: over TLS, checking that the certificate belongs to its
+    /// host, for an `https` service (always, on a real machine); in plain TCP for the stand-in
+    /// server a test runs.
+    private static Socket connectToService(java.net.URI service) throws IOException {
+        String host = service.getHost();
+        int port = servicePort(service);
+        Socket plain = new Socket();
+        plain.connect(new InetSocketAddress(host, port), (int) CONNECT_TIMEOUT.toMillis());
+        if (!"https".equals(service.getScheme())) return plain;
+        var tls = (javax.net.ssl.SSLSocket) ((javax.net.ssl.SSLSocketFactory)
+                javax.net.ssl.SSLSocketFactory.getDefault()).createSocket(plain, host, port, true);
+        var parameters = tls.getSSLParameters();
+        // Without this, TLS checks that the certificate is valid, but not that it is this host's.
+        parameters.setEndpointIdentificationAlgorithm("HTTPS");
+        tls.setSSLParameters(parameters);
+        tls.startHandshake();
+        return tls;
+    }
+
+    private static int servicePort(java.net.URI service) {
+        if (service.getPort() > 0) return service.getPort();
+        return "https".equals(service.getScheme()) ? 443 : 80;
+    }
+
+    /// A model request head. Only its method, path and headers are kept.
+    private record ModelRequest(String method, String target, List<String> headers,
+                                Optional<String> badRequest) {
+
+        /// The request as the model service receives it: the sandbox's own `Host`,
+        /// `Authorization` and connection headers are dropped, and the real ones added.
+        String forService(String host, String key) {
+            StringBuilder out = new StringBuilder(method).append(' ').append(target)
+                    .append(" HTTP/1.1\r\n");
+            for (String header : headers) {
+                String name = header.substring(0, header.indexOf(':')).trim().toLowerCase(Locale.ROOT);
+                if (HOP_BY_HOP.contains(name) || name.startsWith("proxy-")
+                        || name.equals("host") || name.equals("authorization")) continue;
+                out.append(header).append("\r\n");
+            }
+            return out.append("Host: ").append(host).append("\r\n")
+                      .append("Authorization: Bearer ").append(key).append("\r\n")
+                      .append("Connection: close\r\n\r\n").toString();
+        }
+    }
+
+    private static ModelRequest badModelRequest(String why) {
+        return new ModelRequest("", "", List.of(), Optional.of("oillamp: " + why));
+    }
+
+    private static ModelRequest parseModelRequest(String text) {
+        List<String> lines = new ArrayList<>(List.of(text.split("\r?\n", -1)));
+        if (lines.isEmpty() || lines.getFirst().isBlank()) return badModelRequest("empty request");
+        String[] parts = lines.getFirst().split(" ", -1);
+        if (parts.length != 3 || !parts[2].startsWith("HTTP/1."))
+            return badModelRequest("malformed request line");
+        if (!METHOD.matcher(parts[0]).matches() || parts[0].equals("CONNECT")
+                || !ORIGIN_PATH.matcher(parts[1]).matches())
+            return badModelRequest("this is oillamp's relay to the model service, which takes requests "
+                    + "for a path, such as `POST /v3/chat/completions`, sent to "
+                    + "http://127.0.0.1:" + Forward.MODEL_PORT);
+        List<String> headers = new ArrayList<>(lines.subList(1, lines.size()));
+        headers.removeIf(String::isBlank);
+        for (String header : headers)
+            if (header.indexOf(':') <= 0) return badModelRequest("a header line has no name");
+        return new ModelRequest(parts[0], parts[1], headers, Optional.empty());
+    }
+
+    /// A path on the model service: starts with `/`, printable ASCII, no spaces.
+    private static final java.util.regex.Pattern ORIGIN_PATH =
+            java.util.regex.Pattern.compile("/[!-~]{0,8191}");
+
     // ─── forwards ──────────────────────────────────────────────────────────────────────────
 
     /// One connection to a forward's fixed target, without a policy check.
@@ -373,6 +564,8 @@ final class Egress implements AutoCloseable {
             throws IOException {
         Thread outbound = Thread.ofVirtual().start(() -> {
             copy(clientIn, quietly(upstream), up);
+            // TLS has no half-close; the far side ends the exchange instead.
+            if (upstream instanceof javax.net.ssl.SSLSocket) return;
             try {
                 upstream.shutdownOutput();
             } catch (IOException ignored) {
@@ -474,25 +667,28 @@ final class Egress implements AutoCloseable {
     private static final List<String> HOP_BY_HOP = List.of(
             "connection", "keep-alive", "te", "trailer", "upgrade", "proxy-connection");
 
-    /// Reads the request head, one byte at a time, up to the blank line.
+    /// Reads the request head, one byte at a time, up to the blank line, and parses it.
     ///
     /// One byte at a time on purpose. A buffered read could also consume the first bytes of the
     /// tunnelled data, which the tunnel would then never forward, and the TLS handshake would hang.
-    private static Optional<Head> readHead(InputStream in) throws IOException {
+    private static <T> Optional<T> readHead(InputStream in,
+                                            java.util.function.Function<String, T> parse,
+                                            java.util.function.Function<String, T> bad)
+            throws IOException {
         StringBuilder head = new StringBuilder();
         int consecutive = 0;
         while (head.length() < HEADER_LIMIT) {
             int b = in.read();
             if (b < 0) return head.isEmpty() ? Optional.empty()
-                                             : Optional.of(bad("the request ended mid-header"));
+                                             : Optional.of(bad.apply("the request ended mid-header"));
             head.append((char) b);
             if (b == '\n') {
-                if (++consecutive == 2) return Optional.of(parse(head.toString()));
+                if (++consecutive == 2) return Optional.of(parse.apply(head.toString()));
             } else if (b != '\r') {
                 consecutive = 0;
             }
         }
-        return Optional.of(bad("the request head is larger than " + HEADER_LIMIT + " bytes"));
+        return Optional.of(bad.apply("the request head is larger than " + HEADER_LIMIT + " bytes"));
     }
 
     private static Head bad(String why) {

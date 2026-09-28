@@ -773,6 +773,22 @@ Both harnesses reach Eden AI only through `https://api.eu.edenai.run/v3`. Three 
 - **The network policy.** The shipped rule refuses `api.edenai.run` for any tool that ignores those
   settings. It is an ordinary rule: a lamp can remove it.
 
+### The model relay
+
+The harnesses in the sandbox never hold the model key. They send their requests in plain HTTP to
+`127.0.0.1:3129`, where socat forwards them to `sockets/host/model.sock`. On the host, `Egress`
+reads each request head, drops the sandbox's own `Authorization`, `Host` and connection headers,
+adds `Authorization: Bearer <key>`, and sends the request to `model.service` (Eden AI's EU endpoint
+by default) over TLS, checking the certificate belongs to that host. The answer streams back
+unbuffered, so a harness shows it as it is written.
+
+The key is read from the variable `model.key_env` names, in the environment oillamp was started
+from, when the session starts, and kept only in memory. Only a request for a path (`POST
+/v3/chat/completions`) is accepted: a proxy-style request naming a host, or `CONNECT`, is
+refused with 400, so nothing can send the key elsewhere. Without a key, requests get 401 with
+an explanation, and the terminal is told. Each request is written to the network log with the
+channel `model`, never with its key or content.
+
 ### Forwards
 
 A forward exposes one target at a fixed port inside the sandbox:
@@ -1110,6 +1126,8 @@ checked but have no effect yet; they are listed under "Known gaps" in STATUS.md.
 | `network.console_denied` | true | print denials in your terminal | yes |
 | `[[network.rules]]` | two deny rules | see "The policy" above | yes |
 | `[[network.forwards]]` | none | see "Forwards" above | yes |
+| `model.service` | `"https://api.eu.edenai.run"` | where oillamp sends the sandbox's model requests, with the key; `https://`, or `http://` only on this machine's loopback | yes |
+| `model.key_env` | `"EDENAI_API_KEY"` | the host environment variable holding the model key, read when a session starts | yes |
 | `llm.forward` | `""` | name of a forward; sets `OILLAMP_LLM_BASE_URL`, `OILLAMP_LLM_MODELS`, `OILLAMP_LLM_PROVIDER` | yes |
 | `llm.base_path` | `"/v1"` | appended to the forward's URL | yes |
 | `llm.models` | `[]` | put into `OILLAMP_LLM_MODELS` | yes |

@@ -125,6 +125,8 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path vncSocket()         { return shortSockets().resolve("infra").resolve("vnc.sock"); }
     public Path agentSshSocket()    { return shortSockets().resolve("agent").resolve("ssh.sock"); }
     public Path proxySocket()       { return shortSockets().resolve("host").resolve("proxy.sock"); }
+    /// Where the sandbox's model requests arrive on the host, to be sent on with the key.
+    public Path modelSocket()       { return shortSockets().resolve("host").resolve("model.sock"); }
     public Path forwardSocket(String name) {
         return shortSockets().resolve("host").resolve("fwd-" + name + ".sock");
     }

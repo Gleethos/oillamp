@@ -104,6 +104,13 @@ final class Templates {
             models        = []
             provider_name = "company"
 
+            # The model service the agent's harnesses use. The key and the address stay here, on your
+            # machine: inside the sandbox the harnesses only ever see http://127.0.0.1:3129 and a
+            # placeholder key, and oillamp adds the real key to each request on its way out.
+            [model]
+            service = "https://api.eu.edenai.run"   # https://, or http:// only on this machine
+            key_env = "EDENAI_API_KEY"              # the variable holding the key, where oillamp starts
+
             [agent_tools]
             install  = ["opencode", "pi"]
             versions = { opencode = "latest", pi = "latest" }

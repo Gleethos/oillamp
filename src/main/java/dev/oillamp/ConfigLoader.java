@@ -80,7 +80,7 @@ final class ConfigLoader {
     private static LampConfig read(ConfigSection root) {
         LampConfig defaults = ConfigDefaults.lampConfig();
         root.allowOnly("schema_version", "display", "viewer", "terminal", "recording",
-                       "limits", "network", "llm", "agent_tools", "image", "host", "timeouts");
+                       "limits", "network", "llm", "model", "agent_tools", "image", "host", "timeouts");
 
         LampConfig.Display display   = readDisplay(root.table("display"), defaults.display());
         LampConfig.Viewer viewer     = readViewer(root.table("viewer"), defaults.viewer());
@@ -94,13 +94,14 @@ final class ConfigLoader {
         Tuple<Forward> forwards      = readForwards(networkSection);
 
         Optional<LampConfig.Llm> llm = readLlm(root.table("llm"), forwards);
+        LampConfig.Model model       = readModel(root.table("model"), defaults.model());
         LampConfig.AgentTools tools  = readAgentTools(root.table("agent_tools"), defaults.agentTools());
         LampConfig.Image image       = readImage(root.table("image"), defaults.image());
         LampConfig.Host host         = readHost(root.table("host"), defaults.host());
         LampConfig.Timeouts timeouts = readTimeouts(root.table("timeouts"), defaults.timeouts());
 
         return new LampConfig(display, viewer, terminal, recording, limits,
-                              network, forwards, llm, tools, image, host, timeouts);
+                              network, forwards, llm, model, tools, image, host, timeouts);
     }
 
     private static LampConfig.Display readDisplay(ConfigSection s, LampConfig.Display fallback) {
@@ -305,6 +306,45 @@ final class ConfigLoader {
                 s.string("api_key_file", ""),
                 s.strings("models", Tuple.of(String.class)),
                 s.string("provider_name", "company")));
+    }
+
+    private static LampConfig.Model readModel(ConfigSection s, LampConfig.Model fallback) {
+        s.allowOnly("service", "key_env");
+        java.net.URI service = fallback.service();
+        String text = s.string("service", fallback.service().toString());
+        Optional<String> wrong = serviceProblem(text);
+        if (wrong.isPresent()) s.invalid("service", "\"" + text + "\"", wrong.get());
+        else service = java.net.URI.create(text);
+        String keyEnv = s.string("key_env", fallback.keyEnv());
+        if (!keyEnv.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            s.invalid("key_env", "\"" + keyEnv + "\"", "expected the name of an environment variable, "
+                    + "such as \"EDENAI_API_KEY\"");
+            keyEnv = fallback.keyEnv();
+        }
+        return new LampConfig.Model(service, keyEnv);
+    }
+
+    /// Why `text` cannot be the model service, or empty if it can. It is an origin only
+    /// (scheme, host, optional port): the harnesses choose the path. The key travels to it, so it
+    /// must be `https`, except for a service on this machine's own loopback.
+    private static Optional<String> serviceProblem(String text) {
+        java.net.URI uri;
+        try {
+            uri = new java.net.URI(text);
+        } catch (java.net.URISyntaxException e) {
+            return Optional.of("expected an address such as \"https://api.eu.edenai.run\"");
+        }
+        String host = Optional.ofNullable(uri.getHost()).orElse("");
+        if (host.isEmpty() || !Optional.ofNullable(uri.getScheme()).orElse("").matches("https?")
+                || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
+                || !Optional.ofNullable(uri.getPath()).orElse("").isEmpty())
+            return Optional.of("expected just a scheme, a host and optionally a port, "
+                    + "such as \"https://api.eu.edenai.run\"");
+        boolean loopback = host.equals("localhost") || host.equals("127.0.0.1") || host.equals("[::1]");
+        if (uri.getScheme().equals("http") && !loopback)
+            return Optional.of("the key is sent to this service, so it must be https:// "
+                    + "(plain http:// only for a service on this machine, such as http://127.0.0.1:8080)");
+        return Optional.empty();
     }
 
     private static LampConfig.AgentTools readAgentTools(ConfigSection s, LampConfig.AgentTools fallback) {

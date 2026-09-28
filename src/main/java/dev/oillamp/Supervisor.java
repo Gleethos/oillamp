@@ -320,8 +320,13 @@ final class Supervisor {
 
         // The sandbox has no network of its own. Without the proxy, every outbound connection the
         // agent makes fails, so failing to start it fails the session.
+        // The key is read here, on the host, and kept in memory only. It is never written into
+        // the lamp or the sandbox.
+        LampConfig.Model configured = prepared.config().model();
+        Egress.Model model = new Egress.Model(configured.service(), configured.keyEnv(),
+                machine.environmentVariable(configured.keyEnv()));
         Result<Egress> proxy = Egress.open(layout, prepared.config(), prepared.session(),
-                new EgressListener());
+                model, new EgressListener());
         if (proxy instanceof Result.Err<Egress>(Tuple<Problem> problems)) return Result.err(problems);
         egress = Optional.of(((Result.Ok<Egress>) proxy).value());
 
