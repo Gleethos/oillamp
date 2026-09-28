@@ -150,6 +150,31 @@ public final class Lamp implements AutoCloseable {
             Thread.ofVirtual().name("lamp-events-" + directory.getFileName()).start(lamp::readEvents);
             return lamp;
         }
+
+        /// Deletes this lamp for good: the agent's home with everything the agent made in it,
+        /// the lamp's state and its configuration. Files in the directory that oillamp did not
+        /// make are left, and so is the directory then.
+        ///
+        /// Part of a lamp belongs to the sandbox's own users, so neither the application nor
+        /// `rm -rf` can delete it; the engine can, as `oillamp remove <dir> --yes`. A lamp whose
+        /// sandbox is still running is refused: close it first.
+        ///
+        /// Blocks until the engine is done. What it reports goes to the listeners.
+        ///
+        /// @return [ExitStatus#SUCCESS] once the lamp is gone; otherwise the events said why
+        /// @throws IOException when the engine's process could not be started at all
+        public ExitStatus remove() throws IOException, InterruptedException {
+            Process engine = launcher.launch(
+                    List.of("remove", directory.toString(), "--yes", "--embedded"), Map.of());
+            engine.getOutputStream().close();
+            try (BufferedReader output = new BufferedReader(
+                    new InputStreamReader(engine.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = output.readLine()) != null)
+                    LampEvent.fromJson(line).ifPresent(event -> listeners.forEach(listener -> listener.accept(event)));
+            }
+            return ExitStatus.ofCode(engine.waitFor()).orElse(ExitStatus.ERROR);
+        }
     }
 
     /// The lamp directory.

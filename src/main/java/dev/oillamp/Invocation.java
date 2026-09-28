@@ -275,7 +275,7 @@ final class Invocation {
             java.util.Map.entry("at",         java.util.Set.of("--init", "--dry-run", "--no-install", "--no-viewer", "--embedded",
                                                         "--model-service", "--model-key-env")),
             java.util.Map.entry("view",       java.util.Set.of("--view-only")),
-            java.util.Map.entry("remove",     java.util.Set.of("--yes", "--dry-run")),
+            java.util.Map.entry("remove",     java.util.Set.of("--yes", "--dry-run", "--embedded")),
             java.util.Map.entry("recordings", java.util.Set.of("--open", "--prune", "--dry-run")),
             java.util.Map.entry("doctor",     java.util.Set.of("--dry-run", "--no-install")),
             java.util.Map.entry("config",     java.util.Set.of("--dry-run", "--no-install")),

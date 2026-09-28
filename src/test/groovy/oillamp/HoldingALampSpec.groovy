@@ -124,6 +124,49 @@ class HoldingALampSpec extends Specification {
             lamp?.close()
     }
 
+    def 'An application deletes a lamp it no longer needs through the engine'() {
+        reportInfo """
+            An application that lets its user make lamps, one per conversation say, must also
+            let them delete one. Part of a lamp belongs to the sandbox's own users, so the
+            application cannot delete the files itself; the engine can, and the lamp asks it
+            to, reporting what it did as events, like everything else.
+        """
+        given: 'a lamp that ran once, and is closed'
+            Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start().withCloseable {
+                assert it.awaitRunning(Duration.ofSeconds(30))
+            }
+
+        when:
+            var status = Lamp.at(sandbox.lampPath()).onEvent { received << it }.launchedBy(sandbox.launcher).remove()
+
+        then: 'it is gone'
+            status == ExitStatus.SUCCESS
+            !Files.exists(sandbox.lampPath().resolve('.oillamp'))
+            !Files.exists(sandbox.lampPath().resolve('oillamp.toml'))
+
+        and: 'the engine was asked as the command line asks it, confirmed and answering in JSON'
+            sandbox.engines.last().arguments == ['remove', sandbox.lampPath().toString(), '--yes', '--embedded']
+            !received.isEmpty()
+    }
+
+    def 'Deleting a directory that is not a lamp says why, and deletes nothing'() {
+        reportInfo """
+            An application with a wrong path must not delete the wrong thing. The engine refuses
+            a directory that is not a lamp, and says so in an event the application can show.
+        """
+        given:
+            Files.createDirectories(sandbox.lampPath())
+            Files.writeString(sandbox.lampPath().resolve('notes.txt'), 'mine')
+
+        when:
+            var status = Lamp.at(sandbox.lampPath()).onEvent { received << it }.launchedBy(sandbox.launcher).remove()
+
+        then:
+            status != ExitStatus.SUCCESS
+            Files.exists(sandbox.lampPath().resolve('notes.txt'))
+            received.any { it instanceof LampEvent.Failure && it.problem().whatHappened().contains('not an oillamp lamp') }
+    }
+
     def 'A lamp that is not running refuses commands, rather than sending them nowhere'() {
         reportInfo """
             Here the lamp never started, because oillamp refused its directory. An application
