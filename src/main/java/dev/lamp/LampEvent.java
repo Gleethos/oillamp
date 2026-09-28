@@ -11,6 +11,16 @@ import java.time.Duration;
 /// Public because any caller that wants to show progress, including a GUI, needs to see them.
 public sealed interface LampEvent {
 
+    /// This event as one line of JSON, the form in which an embedded oillamp reports it to the
+    /// application that started it. [#fromJson] reads it back into an equal value.
+    default String toJson() { return Wire.write(this); }
+
+    /// Reads a line written by [#toJson].
+    ///
+    /// Empty for a line that is not an event this version of oillamp knows, such as one from a
+    /// newer version, so that a reader can skip it rather than fail.
+    static java.util.Optional<LampEvent> fromJson(String line) { return Wire.read(line); }
+
     /// The phases of `oillamp at`, in order.
     enum Phase {
         /// Check and repair the host itself: packages, subuid ranges, a working rootless podman.
