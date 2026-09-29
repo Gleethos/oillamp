@@ -1,16 +1,32 @@
 package dev.gui.genie;
 
+import java.util.ArrayList;
+import java.util.List;
+
+import dev.gui.pi.PiProtocol;
+
 /// How a genie's harness is started, and what it is told about living in Genies.
 final class GeniePrompt {
 
     private GeniePrompt() {}
 
     /// pi in RPC mode, on the Eden AI provider that the sandbox points at oillamp's model relay,
-    /// continuing the genie's last conversation if there is one.
-    static String[] harness(String name, String model) {
-        return new String[] {
-            "pi", "--mode", "rpc", "--provider", "edenai", "--model", model,
-            "--continue", "--append-system-prompt", about(name)};
+    /// with Genies' extension for moving within a conversation.
+    ///
+    /// pi refuses to start with an extension that is not there, which it is not in a sandbox
+    /// image built before Genies had one. Such a genie must still wake, so a shell adds the
+    /// extension only when it finds it; [PiProtocol#askWhatItCanDo()] then tells which it is.
+    ///
+    /// @param conversation the session file to open, as the sandbox names it, or nothing to
+    ///                     continue the last conversation
+    static String[] harness(String name, String model, String conversation) {
+        List<String> command = new ArrayList<>(List.of(
+            "sh", "-c", "if [ -r \"$0\" ]; then exec pi --extension \"$0\" \"$@\"; else exec pi \"$@\"; fi",
+            PiProtocol.EXTENSION,
+            "--mode", "rpc", "--provider", "edenai", "--model", model));
+        command.addAll(conversation.isEmpty() ? List.of("--continue") : List.of("--session", conversation));
+        command.addAll(List.of("--append-system-prompt", about(name)));
+        return command.toArray(String[]::new);
     }
 
     /// Added to pi's own instructions. The sandbox's AGENTS.md, which pi reads too, explains the

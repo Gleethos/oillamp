@@ -62,12 +62,12 @@ public record Transcript(Tuple<Entry> entries) {
                     + "). Trying again, " + retry.attempt() + " of " + retry.attempts() + ".");
             case PiEvent.Settled ignored -> settled();
             case PiEvent.Refused refused -> problem("The genie could not take that: " + refused.reason());
-            case PiEvent.History history -> {
-                Tuple<Entry> said = Tuple.of(Entry.class);
-                for (PiEvent.History.Line line : history.lines())
-                    said = said.add(Entry.of(line.fromUser() ? Entry.Kind.YOU : Entry.Kind.GENIE, line.text()));
-                yield new Transcript(said);
-            }
+            case PiEvent.History history -> asksTheSame(history) ? learnIds(history) : from(history);
+            case PiEvent.Opened ignored -> this;
+            case PiEvent.Switched ignored -> this;
+            case PiEvent.CanMove ignored -> this;
+            case PiEvent.Moved moved -> moved.failed().isEmpty() ? this
+                    : problem("The genie could not go there: " + moved.failed());
         };
     }
 
@@ -78,6 +78,50 @@ public record Transcript(Tuple<Entry> entries) {
     }
 
     public boolean isEmpty() { return entries.isEmpty(); }
+
+    /// The user asks `text` instead of their question `id`: what came after that question goes
+    /// from the chat, since pi keeps it as a branch of its own, and the new question takes its
+    /// place.
+    public Transcript askedInstead(String id, String text) {
+        for (int i = 0; i < entries.size(); i++)
+            if (entries.get(i).kind() == Entry.Kind.YOU && entries.get(i).ref().equals(id))
+                return new Transcript(entries.slice(0, i)).you(text);
+        return this;
+    }
+
+    /// The conversation as pi has it, with nothing but what was said: the chat shows it when
+    /// the genie wakes, or moves to another conversation or branch.
+    private static Transcript from(PiEvent.History history) {
+        Tuple<Entry> said = Tuple.of(Entry.class);
+        for (PiEvent.History.Line line : history.lines())
+            said = said.add(Entry.of(line.fromUser() ? Entry.Kind.YOU : Entry.Kind.GENIE, line.text()).withRef(line.id()));
+        return new Transcript(said);
+    }
+
+    /// pi's ids for the user's questions, learnt from what pi sent after an answer. The chat
+    /// shows more than pi sends, such as the tools used, so it is never replaced then; it only
+    /// learns the ids when it shows the same questions.
+    public Transcript learn(PiEvent.History history) {
+        return asksTheSame(history) ? learnIds(history) : this;
+    }
+
+    /// Whether the chat already shows the conversation pi sent, question for question. It then
+    /// shows more than pi sends, such as the tools used and the files handed over, and is kept.
+    private boolean asksTheSame(PiEvent.History history) {
+        return questions().equals(history.lines().stream().filter(PiEvent.History.Line::fromUser)
+                .map(PiEvent.History.Line::text).map(String::strip).toList());
+    }
+
+    /// pi's ids for the user's questions, which the chat learns after they were sent, so that
+    /// each can be asked differently later.
+    private Transcript learnIds(PiEvent.History history) {
+        java.util.Iterator<PiEvent.History.Line> asked = history.lines().stream().filter(PiEvent.History.Line::fromUser).iterator();
+        return new Transcript(entries.map(entry -> entry.kind() == Entry.Kind.YOU ? entry.withRef(asked.next().id()) : entry));
+    }
+
+    private java.util.List<String> questions() {
+        return entries.stream().filter(entry -> entry.kind() == Entry.Kind.YOU).map(entry -> entry.text().strip()).toList();
+    }
 
     private Transcript answered(PiEvent.Answered answered) {
         Transcript result = doneThinking().answering()

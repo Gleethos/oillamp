@@ -168,15 +168,90 @@ class FollowingAConversationSpec extends Specification {
     def 'A genie that wakes again shows the conversation its harness kept'() {
         reportInfo """
             The conversation is kept by pi, in the genie's home in the sandbox. When the genie
-            wakes, the chat asks for it and shows it, replacing whatever it showed before.
+            wakes, the chat asks for it and shows it, replacing whatever it showed before. The
+            user's questions carry pi's ids, so each can be asked differently later, and the
+            genie learns which entry it continues from.
         """
         when:
             var restored = genie.hear(new PiEvent.History(Tuple.of(PiEvent.History.Line,
-                    new PiEvent.History.Line(true, 'hello'), new PiEvent.History.Line(false, 'hi there'))))
+                    new PiEvent.History.Line(true, 'hello', 'q1'), new PiEvent.History.Line(false, 'hi there', 'a1')), 'a1'))
 
         then:
             restored.transcript().entries()*.kind() == [Entry.Kind.YOU, Entry.Kind.GENIE]
             restored.transcript().entries()*.text() == ['hello', 'hi there']
+            restored.transcript().entries()*.ref() == ['q1', 'a1']
+            restored.conversations().here().leaf() == 'a1'
+    }
+
+    def 'After an answer the chat learns the ids of the questions, and keeps all it shows'() {
+        reportInfo """
+            A question the user just sent has no id of pi's yet, so it cannot be asked
+            differently. After every answer the chat asks pi for the conversation again. When pi
+            has the same questions the chat shows, the chat learns the ids. Either way it keeps
+            its rows, with the tools the genie used and the files it handed over, which pi's
+            conversation leaves out.
+        """
+        given:
+            var answered = genie.withDraft('draw me a map').send()
+                    .hear(new PiEvent.ToolStarted('c1', 'bash', 'draw-map'))
+                    .hear(new PiEvent.Answered('Here it is.', '', 10))
+                    .hear(new PiEvent.Settled())
+
+        when:
+            var learned = answered.learn(new PiEvent.History(Tuple.of(PiEvent.History.Line,
+                    new PiEvent.History.Line(true, 'draw me a map', 'q1'), new PiEvent.History.Line(false, 'Here it is.', 'a1')), 'a1'))
+
+        then:
+            learned.transcript().entries()*.kind() == [Entry.Kind.YOU, Entry.Kind.TOOL, Entry.Kind.GENIE]
+            learned.transcript().entries().first().ref() == 'q1'
+            learned.canAskInstead(learned.transcript().entries().first())
+
+        and: 'questions pi has differently, as when it expanded a template, leave the chat as it is'
+            answered.learn(new PiEvent.History(Tuple.of(PiEvent.History.Line,
+                    new PiEvent.History.Line(true, 'Draw a map of: ...', 'q1')), 'a1')).transcript() == answered.transcript()
+    }
+
+    def 'Asking a question differently leaves out what followed it, and the genie works on the new one'() {
+        reportInfo """
+            As in other chat apps, the user may change a question they asked earlier. pi keeps
+            the old question, and what followed it, as a branch of its own, which the tree of
+            conversations shows. The chat shows the branch the genie is on: everything up to the
+            old question, and then the new one.
+        """
+        given:
+            var talked = genie.hear(new PiEvent.History(Tuple.of(PiEvent.History.Line,
+                    new PiEvent.History.Line(true, 'Plan a trip', 'q1'), new PiEvent.History.Line(false, 'Where to?', 'a1'),
+                    new PiEvent.History.Line(true, 'By train', 'q2'), new PiEvent.History.Line(false, 'Nice.', 'a2')), 'a2'))
+
+        when:
+            var changed = talked.askInstead('q2', '  By bike  ')
+
+        then:
+            changed.transcript().entries()*.text() == ['Plan a trip', 'Where to?', 'By bike']
+            changed.phase() == Genie.Phase.WORKING
+
+        and: 'only while the genie waits, and only for a question pi has an id for'
+            !changed.canAskInstead(changed.transcript().entries().first())
+            !talked.canAskInstead(talked.transcript().entries()[1])
+    }
+
+    def 'A question pi could not take leaves the genie waiting, and says why'() {
+        reportInfo """
+            pi may refuse a question: a plain one it cannot accept, or one asked differently
+            that it could not send on to the model, such as when there is no key. Nothing more
+            comes from pi then, so the genie would look busy for good. It waits for the user
+            again instead, and the chat says why.
+        """
+        given:
+            var working = genie.withDraft('hi').send()
+
+        when:
+            var refused = working.hear(new PiEvent.Refused('send_user_message', 'No API key found for the selected model.'))
+
+        then:
+            refused.phase() == Genie.Phase.READY
+            refused.transcript().entries().last().isFailed()
+            refused.transcript().entries().last().text().contains('No API key found')
     }
 
     def 'A new file in the outbox is announced once, and the files already there when it woke are not'() {

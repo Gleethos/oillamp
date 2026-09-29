@@ -23,6 +23,23 @@ public interface Actions {
     /// Deletes the genie and its lamp, for good. The window has asked the user already.
     void delete(UUID genie);
 
+    /// Goes to a conversation of the genie's, and within it to the entry `leaf`, waking the
+    /// genie first if it sleeps.
+    ///
+    /// @param conversation its session file, relative to the genie's home
+    /// @param leaf         the entry to continue after, or nothing for where pi left it
+    void goTo(UUID genie, String conversation, String leaf);
+
+    /// Starts a new conversation with the genie, waking it first if it sleeps.
+    void startAfresh(UUID genie);
+
+    /// Deletes a conversation of the genie's for good. The window has asked the user already.
+    void forget(UUID genie, String conversation);
+
+    /// Asks `text` instead of the selected genie's question `id`; the old question stays in the
+    /// conversation as a branch of its own.
+    void askInstead(String id, String text);
+
     /// Puts a file of the user's into the genie's inbox.
     void give(UUID genie, Path file);
 

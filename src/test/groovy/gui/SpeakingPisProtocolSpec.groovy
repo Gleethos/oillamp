@@ -119,19 +119,75 @@ class SpeakingPisProtocolSpec extends Specification {
         reportInfo """
             A genie remembers its conversation across restarts because pi saves it in the
             sandbox, and is started with --continue. When the app opens a genie again, it asks
-            pi for the messages and shows them. Only what the user wrote and what the genie
-            answered is shown; tool calls and their results were steps on the way.
+            pi for the entries of the conversation and shows the way from the first one to the
+            one pi continues from, its leaf. A branch pi is not on is left out, and so are tool
+            calls and their results, which were steps on the way. Each message keeps pi's id.
         """
         expect:
-            PiProtocol.read(JsonOutput([type: 'response', command: 'get_messages', success: true, data: [messages: [
-                    [role: 'user', content: 'Make me a chart', timestamp: 1],
-                    [role: 'assistant', content: [[type: 'toolCall', id: 'c', name: 'bash', arguments: [:]]]],
-                    [role: 'toolResult', toolCallId: 'c', content: [[type: 'text', text: 'done']]],
-                    [role: 'assistant', content: [[type: 'text', text: 'It is in ~/outbox/chart.png']]]]]])) ==
+            PiProtocol.read(JsonOutput([type: 'response', command: 'get_entries', success: true, data: [leafId: 'a2', entries: [
+                    [type: 'model_change', id: 'm', parentId: null],
+                    [type: 'message', id: 'q1', parentId: 'm', message: [role: 'user', content: 'Make me a chart']],
+                    [type: 'message', id: 'a1', parentId: 'q1', message: [role: 'assistant', content: [[type: 'text', text: 'A pie?']]]],
+                    [type: 'message', id: 'q2', parentId: 'a1', message: [role: 'user', content: 'Bars, please']],
+                    [type: 'message', id: 'c', parentId: 'q2', message: [role: 'assistant', content: [[type: 'toolCall', id: 'c', name: 'bash', arguments: [:]]]]],
+                    [type: 'message', id: 'r', parentId: 'c', message: [role: 'toolResult', toolCallId: 'c', content: [[type: 'text', text: 'done']]]],
+                    [type: 'message', id: 'a2', parentId: 'r', message: [role: 'assistant', content: [[type: 'text', text: 'It is in ~/outbox/chart.png']]]],
+                    [type: 'message', id: 'q2b', parentId: 'a1', message: [role: 'user', content: 'Lines, please']]]]])) ==
                     Optional.of(new PiEvent.History(Tuple.of(PiEvent.History.Line,
-                            new PiEvent.History.Line(true, 'Make me a chart'),
-                            new PiEvent.History.Line(false, 'It is in ~/outbox/chart.png'))))
-            new JsonSlurper().parseText(PiProtocol.askForHistory()) == [type: 'get_messages']
+                            new PiEvent.History.Line(true, 'Make me a chart', 'q1'),
+                            new PiEvent.History.Line(false, 'A pie?', 'a1'),
+                            new PiEvent.History.Line(true, 'Bars, please', 'q2'),
+                            new PiEvent.History.Line(false, 'It is in ~/outbox/chart.png', 'a2')), 'a2'))
+            new JsonSlurper().parseText(PiProtocol.askForHistory()) == [type: 'get_entries']
+    }
+
+    def 'Genies moves pi within a conversation through an extension of its own'() {
+        reportInfo """
+            pi's RPC mode can list a conversation's entries but cannot move among them; only a
+            command of an extension may. Genies starts pi with a small extension of its own,
+            whose commands are sent as prompts: one to continue after an entry, one to ask
+            something else instead of a question. The extension says when pi has moved, or
+            why it could not, as a notification. Other notifications are not for the chat.
+        """
+        expect:
+            new JsonSlurper().parseText(PiProtocol.goTo('a1')) == [type: 'prompt', message: '/genies-goto a1']
+            new JsonSlurper().parseText(PiProtocol.askInstead('q2', 'By bike,\nplease')) ==
+                    [type: 'prompt', message: '/genies-edit q2 By bike,\nplease']
+            PiProtocol.read('{"type":"extension_ui_request","id":"u1","method":"notify","message":"genies: moved","notifyType":"info"}') ==
+                    Optional.of(new PiEvent.Moved(''))
+            PiProtocol.read('{"type":"extension_ui_request","id":"u2","method":"notify","message":"genies: could not move: Entry x not found","notifyType":"error"}') ==
+                    Optional.of(new PiEvent.Moved('Entry x not found'))
+            PiProtocol.read('{"type":"extension_ui_request","id":"u3","method":"notify","message":"Saved!","notifyType":"info"}').isEmpty()
+    }
+
+    def 'Whether pi runs with the extension is asked, not assumed'() {
+        reportInfo """
+            A sandbox built before Genies had its extension starts pi without it, and a command
+            of the extension would then reach the model as an ordinary question. So Genies asks
+            pi which commands it has.
+        """
+        expect:
+            PiProtocol.read('{"type":"response","command":"get_commands","success":true,"data":{"commands":[{"name":"genies-goto","source":"extension"},{"name":"genies-edit","source":"extension"}]}}') ==
+                    Optional.of(new PiEvent.CanMove(true))
+            PiProtocol.read('{"type":"response","command":"get_commands","success":true,"data":{"commands":[{"name":"fix-tests","source":"prompt"}]}}') ==
+                    Optional.of(new PiEvent.CanMove(false))
+    }
+
+    def 'Conversations are opened, started and found by their session file'() {
+        reportInfo """
+            Each conversation is a session file of pi's. Genies opens one by its file, starts a
+            new one, and asks which one pi has open. An extension in the sandbox may refuse to
+            let pi switch; then the chat says so.
+        """
+        expect:
+            new JsonSlurper().parseText(PiProtocol.open('/home/agent/.pi/agent/sessions/--home-agent--/s.jsonl')) ==
+                    [type: 'switch_session', sessionPath: '/home/agent/.pi/agent/sessions/--home-agent--/s.jsonl']
+            new JsonSlurper().parseText(PiProtocol.startAfresh()) == [type: 'new_session']
+            PiProtocol.read('{"type":"response","command":"new_session","success":true,"data":{"cancelled":false}}') ==
+                    Optional.of(new PiEvent.Switched())
+            PiProtocol.read('{"type":"response","command":"switch_session","success":true,"data":{"cancelled":true}}').get() instanceof PiEvent.Refused
+            PiProtocol.read('{"type":"response","command":"get_state","success":true,"data":{"sessionFile":"/home/agent/.pi/agent/sessions/--home-agent--/s.jsonl","sessionId":"s"}}') ==
+                    Optional.of(new PiEvent.Opened('/home/agent/.pi/agent/sessions/--home-agent--/s.jsonl'))
     }
 
     def 'A command pi refuses is reported with pi\'s reason'() {
