@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import dev.lamp.ExitStatus;
@@ -39,6 +40,10 @@ final class Invocation {
         Optional<String> open = Optional.empty();
         // `save` only.
         String message = "";
+        // `schedule <dir> add` only.
+        Optional<String> cron = Optional.empty();
+        Optional<String> at = Optional.empty();
+        Optional<String> expires = Optional.empty();
         // `at` only: where model requests go, and which variable holds the key.
         Optional<String> modelService = Optional.empty();
         Optional<String> modelKeyEnv = Optional.empty();
@@ -50,7 +55,17 @@ final class Invocation {
         // Every option other than the four that apply to all commands, as it is spelt in usage(),
         // so that a command given one it does not take can refuse it.
         List<String> commandOptions = new ArrayList<>();
+        // After `--`, everything is taken as it is written, so a prompt may start with a dash.
+        boolean literal = false;
         for (String argument : arguments) {
+            if (literal) {
+                positional.add(argument);
+                continue;
+            }
+            if (argument.equals("--") && pending.isEmpty()) {
+                literal = true;
+                continue;
+            }
             String option = VALUE_OPTIONS.stream().filter(taking -> argument.startsWith(taking + "="))
                     .findFirst().orElse(argument.equals("-y") ? "--yes"
                                       : argument.equals("-m") ? "--message" : argument);
@@ -59,6 +74,9 @@ final class Invocation {
                     case "--open"          -> open = Optional.of(argument);
                     case "--model-service" -> modelService = Optional.of(argument);
                     case "--message"       -> message = argument;
+                    case "--cron"          -> cron = Optional.of(argument);
+                    case "--at"            -> at = Optional.of(argument);
+                    case "--expires"       -> expires = Optional.of(argument);
                     default                -> modelKeyEnv = Optional.of(argument);
                 }
                 pending = Optional.empty();
@@ -71,6 +89,9 @@ final class Invocation {
                     case "--open"          -> open = Optional.of(value);
                     case "--model-service" -> modelService = Optional.of(value);
                     case "--message"       -> message = value;
+                    case "--cron"          -> cron = Optional.of(value);
+                    case "--at"            -> at = Optional.of(value);
+                    case "--expires"       -> expires = Optional.of(value);
                     default                -> modelKeyEnv = Optional.of(value);
                 }
                 continue;
@@ -90,7 +111,8 @@ final class Invocation {
                 case "--view-only"     -> viewOnly = true;
                 case "--yes", "-y"     -> confirmed = true;
                 case "--prune"         -> prune = true;
-                case "--open", "--model-service", "--model-key-env" -> pending = Optional.of(argument);
+                case "--open", "--model-service", "--model-key-env",
+                     "--cron", "--at", "--expires" -> pending = Optional.of(argument);
                 case "--message", "-m" -> pending = Optional.of("--message");
                 default -> {
                     if (argument.startsWith("-")) {
@@ -110,6 +132,16 @@ final class Invocation {
             sink.accept(new LampEvent.Failure(Problems.usage(
                     "--message needs the text to save with, for example --message \"before the upgrade\"",
                     usageOf("save"))));
+            return ExitStatus.USAGE;
+        }
+        if (pending.isPresent() && Set.of("--cron", "--at", "--expires").contains(pending.get())) {
+            console.banner(version, "");
+            sink.accept(new LampEvent.Failure(Problems.usage(
+                    pending.get() + " needs a value, for example " + switch (pending.get()) {
+                        case "--cron" -> "--cron \"0 9 * * 1-5\"";
+                        case "--at"   -> "--at \"2026-10-01 09:00\"";
+                        default       -> "--expires \"in 14d\"";
+                    }, usageOf("schedule"))));
             return ExitStatus.USAGE;
         }
         if (pending.isPresent() && !pending.get().equals("--open")) {
@@ -254,6 +286,32 @@ final class Invocation {
                 yield commands.save(Path.of(rest.get(0)), message);
             }
             case "history" -> commands.history(Path.of(rest.get(0)));
+
+            // The schedule, and the agent it wakes. `schedule` works with or without a session;
+            // `ask` needs one, since the session is what holds the agent.
+            case "schedule" -> {
+                String action = rest.size() > 1 ? rest.get(1) : "list";
+                Optional<String> argument = rest.size() > 2 ? Optional.of(rest.get(2)) : Optional.empty();
+                boolean needsArgument = Set.of("add", "remove", "enable", "disable").contains(action);
+                if (needsArgument && argument.isEmpty())
+                    yield misused(console, sink, version, "schedule", action.equals("add")
+                            ? "`oillamp schedule <dir> add` needs the prompt the agent is woken with, in quotes"
+                            : "`oillamp schedule <dir> " + action + "` needs the job, such as job-3");
+                if (!needsArgument && argument.isPresent())
+                    yield misused(console, sink, version, "schedule", "`oillamp schedule <dir> " + action
+                            + "` takes nothing more, but was given '" + argument.get() + "'");
+                if (!action.equals("add") && (cron.isPresent() || at.isPresent() || expires.isPresent()))
+                    yield misused(console, sink, version, "schedule",
+                            "--cron, --at and --expires only go with `oillamp schedule <dir> add`");
+                yield commands.schedule(Path.of(rest.get(0)),
+                        new Commands.ScheduleAction(action, argument, cron, at, expires));
+            }
+            case "ask" -> {
+                if (rest.size() < 2)
+                    yield misused(console, sink, version, "ask",
+                            "`oillamp ask` needs something to ask the agent, in quotes");
+                yield commands.ask(Path.of(rest.get(0)), rest.get(1));
+            }
             case "restore" -> {
                 if (rest.size() < 2)
                     yield misused(console, sink, version, "restore",
@@ -309,6 +367,8 @@ final class Invocation {
             java.util.Map.entry("config",     java.util.Set.of("--dry-run", "--no-install")),
             java.util.Map.entry("save",       java.util.Set.of("--message", "--embedded")),
             java.util.Map.entry("history",    java.util.Set.of("--embedded")),
+            java.util.Map.entry("schedule",   java.util.Set.of("--cron", "--at", "--expires", "--embedded")),
+            java.util.Map.entry("ask",        java.util.Set.of("--embedded")),
             java.util.Map.entry("restore",    java.util.Set.of("--embedded")),
             java.util.Map.entry("shell",      java.util.Set.of()),
             java.util.Map.entry("stop",       java.util.Set.of()),
@@ -322,12 +382,12 @@ final class Invocation {
 
     /// The options that take a value.
     private static final java.util.Set<String> VALUE_OPTIONS = java.util.Set.of(
-            "--open", "--model-service", "--model-key-env", "--message");
+            "--open", "--model-service", "--model-key-env", "--message", "--cron", "--at", "--expires");
 
     /// The commands that take a lamp directory and cannot do without it.
     private static final java.util.Set<String> NEEDS_A_LAMP = java.util.Set.of(
             "at", "view", "shell", "stop", "status", "recordings", "config", "remove",
-            "save", "history", "restore");
+            "save", "history", "restore", "schedule", "ask");
 
     /// The commands that work on one lamp. `remove` takes several, since a pattern such as
     /// `test*` is the natural way to clean up after experiments.
@@ -336,7 +396,7 @@ final class Invocation {
 
     /// How many arguments may follow the other commands.
     private static final java.util.Map<String, Integer> MOST_ARGUMENTS = java.util.Map.of(
-            "config", 2, "completion", 1, "restore", 2,
+            "config", 2, "completion", 1, "restore", 2, "schedule", 3, "ask", 2,
             "list", 0, "version", 0, "help", 0, "about", 0, "guide", 0);
 
     private static ExitStatus misused(ConsoleRenderer console, Consumer<LampEvent> sink,
@@ -378,6 +438,8 @@ final class Invocation {
     static String usage() {
         return """
             oillamp [--verbose] [--debug] [--no-color] <command>
+
+            After `--`, every argument is taken as written, so a prompt may start with a dash.
 
             New here? `oillamp guide` walks through a first session; `oillamp about` says what
             oillamp is for and what it is built from.
@@ -425,6 +487,15 @@ final class Invocation {
               restore <dir> <snapshot>
                     Bring the lamp back to a snapshot, named by the start of its id. The
                     session must be stopped. The lamp is saved first, so this can be undone.
+              schedule <dir> [add | remove <job> | enable <job> | disable <job> | pause | resume]
+                    List the jobs that wake the agent while a session runs, or change them.
+                    Needs `enabled = true` under [schedule] in oillamp.toml before any job runs.
+                      add (--cron "<expression>" | --at <time>) [--expires <time>] "<prompt>"
+                                      --cron "0 9 * * 1-5" repeats, as cron would; --at runs once,
+                                      at "2026-10-01 09:00" on this machine's clock or "in 2h"
+              ask <dir> "<prompt>"
+                    Wake the agent in a running session with a prompt, and print its answer.
+                    If it is busy, the prompt waits its turn. The lamp is saved before and after.
               recordings <dir> [--open <session>] [--prune]
                     List this lamp's screen recordings. --open plays one, --prune
                     applies the configured retention now instead of at the next start.

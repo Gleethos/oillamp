@@ -103,6 +103,12 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     /// Held while a save or a restore runs, so that two never write the history at once.
     public Path historyLock()   { return stateDir().resolve("history.lock"); }
 
+    /// The lamp's schedule: the jobs that wake the agent while a session runs. Never mounted
+    /// into the container; the agent asks the session to change it.
+    public Path scheduleFile()  { return stateDir().resolve("schedule.json"); }
+    /// Held for the moment a change to the schedule takes.
+    public Path scheduleLock()  { return stateDir().resolve("schedule.lock"); }
+
     public Path logsDir()       { return stateDir().resolve("logs"); }
     public Path sessionLog(SessionId s)   { return logsDir().resolve("oillamp-" + s.value() + ".log"); }
     public Path containerLog(SessionId s) { return logsDir().resolve("container-" + s.value() + ".log"); }
@@ -116,6 +122,11 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path libs()       { return agentDir().resolve("libs"); }
     public Path screenshots(){ return agentDir().resolve("screenshots"); }
     public Path agentsMd()   { return agentDir().resolve("AGENTS.md"); }
+    /// The pi extension that gives the agent its scheduling tools. pi loads every extension in
+    /// this directory. Written while `schedule.enabled` is on, removed while it is off.
+    public Path scheduleTools() {
+        return agentDir().resolve(".pi").resolve("agent").resolve("extensions").resolve("oillamp-schedule.js");
+    }
     /// The agent's own `~/.bashrc`, written once and then left alone.
     ///
     /// It exists because `/etc/profile` is read by _login_ shells only. An agent
@@ -134,6 +145,8 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path proxySocket()       { return shortSockets().resolve("host").resolve("proxy.sock"); }
     /// Where the sandbox's model requests arrive on the host, to be sent on with the key.
     public Path modelSocket()       { return shortSockets().resolve("host").resolve("model.sock"); }
+    /// Where the agent reads and changes the lamp's schedule, through the session.
+    public Path scheduleSocket()    { return shortSockets().resolve("host").resolve("schedule.sock"); }
     public Path forwardSocket(String name) {
         return shortSockets().resolve("host").resolve("fwd-" + name + ".sock");
     }

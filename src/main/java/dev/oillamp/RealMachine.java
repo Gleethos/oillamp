@@ -35,6 +35,8 @@ final class RealMachine implements Machine {
 
     @Override public Instant now() { return Instant.now(); }
 
+    @Override public java.time.ZoneId zone() { return java.time.ZoneId.systemDefault(); }
+
     @Override public String operatingSystemName() { return System.getProperty("os.name", "unknown"); }
 
     @Override public Optional<String> environmentVariable(String name) {
@@ -143,6 +145,112 @@ final class RealMachine implements Machine {
             return Window.refused(command.executable(), reasonFor(e));
         }
         return new ProcessWindow(process, stdio);
+    }
+
+    @Override public Conversation converse(Command command) {
+        ProcessBuilder builder = new ProcessBuilder(shield(command));
+        for (Pair<String, String> variable : command.environment())
+            builder.environment().put(variable.first(), variable.second());
+        command.workingDirectory().ifPresent(directory -> builder.directory(directory.toFile()));
+        try {
+            return new ProcessConversation(builder.start());
+        } catch (IOException e) {
+            return new EndedConversation(command.executable() + ": " + reasonFor(e));
+        }
+    }
+
+    /// A conversation with a started process. One thread reads its output into a queue, so that
+    /// waiting for a line can have a time limit; another keeps the last lines of its errors.
+    private static final class ProcessConversation implements Conversation {
+
+        /// How many of its last error lines are kept.
+        private static final int ERROR_LINES = 20;
+        private final Process process;
+        private final java.io.Writer input;
+        /// Each line it wrote, and then an empty one for the end of its output.
+        private final java.util.concurrent.BlockingQueue<Optional<String>> lines =
+                new java.util.concurrent.LinkedBlockingQueue<>();
+        private final java.util.ArrayDeque<String> errors = new java.util.ArrayDeque<>();
+        private volatile boolean ended;
+
+        private ProcessConversation(Process process) {
+            this.process = process;
+            this.input = new java.io.OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8);
+            Thread.ofVirtual().name("conversation-output").start(() -> {
+                try (java.io.BufferedReader reader = process.inputReader(StandardCharsets.UTF_8)) {
+                    for (String line; (line = reader.readLine()) != null; ) lines.add(Optional.of(line));
+                } catch (IOException gone) {
+                    // The pipe broke: the process ended.
+                }
+                lines.add(Optional.empty());
+            });
+            Thread.ofVirtual().name("conversation-errors").start(() -> {
+                try (java.io.BufferedReader reader = process.errorReader(StandardCharsets.UTF_8)) {
+                    for (String line; (line = reader.readLine()) != null; ) {
+                        if (line.isBlank()) continue;
+                        synchronized (errors) {
+                            errors.addLast(line);
+                            if (errors.size() > ERROR_LINES) errors.removeFirst();
+                        }
+                    }
+                } catch (IOException gone) {
+                    // Ended.
+                }
+            });
+        }
+
+        @Override public void send(String line) throws IOException {
+            synchronized (input) {
+                input.write(line + "\n");
+                input.flush();
+            }
+        }
+
+        @Override public Optional<String> receive(Duration limit) throws IOException, InterruptedException {
+            if (ended) throw new java.io.EOFException("it has ended");
+            Optional<String> line = lines.poll(limit.toMillis(), TimeUnit.MILLISECONDS);
+            if (line == null) return Optional.empty();
+            if (line.isEmpty()) {
+                ended = true;
+                throw new java.io.EOFException("it has ended");
+            }
+            return line;
+        }
+
+        @Override public boolean isRunning() { return process.isAlive(); }
+
+        @Override public String errorOutput() {
+            synchronized (errors) {
+                return String.join("\n", errors);
+            }
+        }
+
+        @Override public void close() {
+            try {
+                synchronized (input) {
+                    input.close();
+                }
+            } catch (IOException alreadyGone) {
+                // Ended already.
+            }
+            try {
+                if (!process.waitFor(5, TimeUnit.SECONDS)) destroyTree(process);
+            } catch (InterruptedException e) {
+                destroyTree(process);
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /// A conversation with a program that could not be started at all.
+    private record EndedConversation(String why) implements Conversation {
+        @Override public void send(String line) throws IOException { throw new IOException(why); }
+        @Override public Optional<String> receive(Duration limit) throws IOException {
+            throw new java.io.EOFException(why);
+        }
+        @Override public boolean isRunning() { return false; }
+        @Override public String errorOutput() { return why; }
+        @Override public void close() { }
     }
 
     private static String reasonFor(IOException e) {

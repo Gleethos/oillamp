@@ -104,8 +104,9 @@ public sealed interface LampEvent {
     /// @param kind    what made it
     /// @param message what the person who saved it wrote, or empty
     /// @param session the session running at the time, such as `20260928-120000`, or empty
+    /// @param run     for a snapshot made as a run began or ended, the run, such as `run-12`
     record Snapshot(String id, java.time.Instant at, SaveKind kind, String message,
-                    java.util.Optional<String> session) {
+                    java.util.Optional<String> session, java.util.Optional<String> run) {
 
         /// The first eight characters of [#id()], which is how oillamp shows a snapshot.
         public String shortId() { return id.substring(0, Math.min(8, id.length())); }
@@ -125,7 +126,12 @@ public sealed interface LampEvent {
         /// oillamp saved just before a restore, so that the restore can be undone.
         BEFORE_RESTORE("safety save before a restore"),
         /// A restore: the lamp was brought back to an earlier snapshot.
-        RESTORE("restore");
+        RESTORE("restore"),
+        /// oillamp saved just before waking the agent, so that what the user changed and what
+        /// the agent then did are two separate snapshots.
+        BEFORE_RUN("save before a run"),
+        /// oillamp saved as a run ended. The message holds the agent's last words.
+        RUN("run");
 
         private final String label;
 
@@ -147,6 +153,79 @@ public sealed interface LampEvent {
     /// The lamp was brought back to `target`, and `result` is the snapshot that records it.
     /// When the lamp already was as `target` holds it, nothing changed and `result` is `target`.
     record Restored(Snapshot target, Snapshot result)   implements LampEvent {}
+
+    // ─── the schedule, and the runs that wake the agent ───────────────────────────────────
+
+    /// One job on a lamp's schedule: a prompt that wakes the agent at a set time, or again and
+    /// again. Jobs only run while a session runs.
+    ///
+    /// @param id      the job's name, such as `job-3`
+    /// @param when    when it runs, as it was written: a cron expression such as `0 9 * * 1-5`,
+    ///                or `once at` and a time
+    /// @param next    when it runs next; empty when it will not run again, or is disabled
+    /// @param prompt  what the agent is asked when it wakes
+    /// @param author  who added it
+    /// @param created when it was added
+    /// @param expires when it is taken off the schedule; empty for a job that stays until removed
+    /// @param enabled false for a job the user switched off, which keeps its place but does not run
+    record Job(String id, String when, java.util.Optional<java.time.Instant> next, String prompt,
+               JobAuthor author, java.time.Instant created,
+               java.util.Optional<java.time.Instant> expires, boolean enabled) {}
+
+    /// Who added a job. The user's jobs are theirs alone: the agent may read them but not change
+    /// or remove them.
+    enum JobAuthor { USER, AGENT }
+
+    /// A lamp's schedule. What `oillamp schedule` answers.
+    ///
+    /// @param enabled whether `schedule.enabled` is on in `oillamp.toml`. When it is off, no job runs
+    /// @param paused  whether the user paused the schedule with `oillamp schedule <dir> pause`
+    /// @param zone    the time zone the jobs' times are read in, such as `Europe/Berlin`
+    record Schedule(boolean enabled, boolean paused, String zone, sprouts.Tuple<Job> jobs)
+            implements LampEvent {}
+
+    /// A job was added to the schedule, by the user or by the agent.
+    record JobAdded(Job job)                            implements LampEvent {}
+    /// A job was taken off the schedule.
+    ///
+    /// @param why for example "removed by the user", "expired" or "ran once, as it was meant to"
+    record JobRemoved(Job job, String why)              implements LampEvent {}
+    /// A job was switched on or off, or the whole schedule paused or resumed.
+    record ScheduleChanged(String what)                 implements LampEvent {}
+
+    /// One time the agent was woken: by a job, or by someone asking it something.
+    ///
+    /// @param id  the run's name, such as `run-12`. A run's snapshot carries it, so
+    ///            `oillamp history` shows which snapshot a run made
+    /// @param job the job that woke the agent, or empty when someone asked
+    record Run(String id, java.util.Optional<String> job, String prompt) {}
+
+    /// A run has to wait, because the agent is busy with another one.
+    ///
+    /// @param ahead how many runs are before it
+    record RunQueued(Run run, int ahead)                implements LampEvent {}
+    /// The agent was woken and given the prompt.
+    record RunStarted(Run run)                          implements LampEvent {}
+    /// A run ended.
+    ///
+    /// @param outcome  how it ended
+    /// @param answer   the agent's last message, which usually says what it did
+    /// @param snapshot the snapshot of the lamp made as it ended, or empty when that save failed
+    /// @param took     how long the agent worked
+    record RunFinished(Run run, RunOutcome outcome, String answer,
+                       java.util.Optional<Snapshot> snapshot, Duration took) implements LampEvent {}
+
+    /// How a run ended.
+    enum RunOutcome {
+        /// The agent finished and said so.
+        FINISHED,
+        /// The agent, or the model behind it, failed. The answer says why.
+        FAILED,
+        /// The run took longer than `schedule.max_run_minutes` and was stopped.
+        TIMED_OUT,
+        /// The session ended while the agent was working.
+        INTERRUPTED
+    }
 
     /// Something went wrong but oillamp carried on.
     record Warning(Problem problem)                     implements LampEvent {}

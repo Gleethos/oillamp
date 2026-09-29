@@ -105,6 +105,14 @@ sealed interface Result<T> {
     }
 
     /// For tests and for the top of the shell, where a failure is a bug.
+    /// The value, or what `onError` makes of the problems.
+    default T orElseGet(Function<Tuple<Problem>, T> onError) {
+        return switch (this) {
+            case Ok<T> ok -> ok.value();
+            case Err<T> err -> onError.apply(err.problems());
+        };
+    }
+
     default T orElseThrow(Supplier<String> context) {
         return switch (this) {
             case Ok<T> ok   -> ok.value();

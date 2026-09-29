@@ -76,6 +76,11 @@ final class Supervisor {
     private volatile Optional<Relay> extras = Optional.empty();
     private volatile Optional<Control.Server> control = Optional.empty();
     private volatile Optional<Egress> egress = Optional.empty();
+    /// The socket through which the agent reads and changes the schedule. Open only while
+    /// `schedule.enabled` is on.
+    private volatile Optional<Control.Server> scheduleDesk = Optional.empty();
+    /// Every time the agent is woken, by a job or by `oillamp ask`.
+    private final Runs runs;
     private volatile Optional<Machine.Window> terminal = Optional.empty();
     /// What the last health check found, so that only a _change_ is reported.
     private boolean desktopAnswering = true;
@@ -104,6 +109,7 @@ final class Supervisor {
                 !context.options().embedded() && context.options().openWindows()));
         this.sessionStarted = machine.now();
         this.state = new SessionState.Starting(sessionStarted);
+        this.runs = new Runs(machine, context, prepared.layout(), prepared.config().schedule(), prepared.session());
     }
 
     /// Runs the session to its end and reports how it ended.
@@ -343,6 +349,13 @@ final class Supervisor {
         if (proxy instanceof Result.Err<Egress>(Tuple<Problem> problems)) return Result.err(problems);
         egress = Optional.of(((Result.Ok<Egress>) proxy).value());
 
+        // The agent's way to the schedule, in the directory of sockets the host serves to the sandbox.
+        if (prepared.config().schedule().enabled()) {
+            Result<Control.Server> desk = Control.Server.open(layout.scheduleSocket(), runs::answerAgent);
+            if (desk instanceof Result.Err<Control.Server>(Tuple<Problem> problems)) return Result.err(problems);
+            scheduleDesk = Optional.of(((Result.Ok<Control.Server>) desk).value());
+        }
+
         Tuple<Problem> warnings = Tuple.of(Problem.class);
         try {
             Filesystem.writeFile(layout.sessionMeta(), sessionJson(), PosixMode.PRIVATE_FILE);
@@ -380,6 +393,11 @@ final class Supervisor {
     private Tuple<Problem> shutDown(SessionState.ShutdownReason reason) {
         Tuple<Problem> problems = Tuple.of(Problem.class);
         context.info("session", "shutting down — " + reason.describe());
+
+        // 0. Stop the agent's run, if one is going, and save it, while the sandbox still runs.
+        if (runs.busy()) context.info("run", "stopping the agent's run and saving what it did");
+        scheduleDesk.ifPresent(Control.Server::close);
+        runs.stop();
 
         // 1. Stop accepting shells, and drop the ones that are open.
         primary.ifPresent(Relay::close);
@@ -593,6 +611,8 @@ final class Supervisor {
     private void dispatchUserBriefing() {
         if (briefed) return;
         briefed = true;
+        // The sandbox is up, so the agent can be woken from now on.
+        runs.begin();
         LampLayout layout = prepared.layout();
         LampConfig config = prepared.config();
         context.emit(new LampEvent.SessionOpened(prepared.session().value(), Ssh.commandArgv(layout),
@@ -621,6 +641,7 @@ final class Supervisor {
                     "               then point a VNC viewer there at localhost:5901",
                     "the agent sees " + layout.agentDir() + " and nothing else of this lamp",
                     "network log    " + layout.networkLog(prepared.session()),
+                    scheduleLine(),
                     "this terminal  keeps reporting the sandbox's health until the session ends",
                     "to finish      press Ctrl-C here, close this terminal, "
                             + "or run `oillamp stop " + layout.root() + "`")));
@@ -643,7 +664,8 @@ final class Supervisor {
                         + config.forwards().size() + " forward(s))",
                 "               the host's own loopback and private ranges stay out of reach"
                         + (config.network().consoleDenied() ? "; denials are printed here" : ""),
-                "network log    " + layout.networkLog(prepared.session()));
+                "network log    " + layout.networkLog(prepared.session()),
+                scheduleLine());
         // Recording is off by default, so say whether it is on, and how to turn it on if not.
         lines = config.recording().enabled()
                 ? lines.add("recording      " + layout.recording(prepared.session()))
@@ -654,6 +676,16 @@ final class Supervisor {
                         + "or run `oillamp stop " + layout.root() + "`");
         lines = lines.add("               closing the shell or viewer windows leaves the session running");
         context.emit(new LampEvent.Summary("your session is up", lines));
+    }
+
+    /// What the briefing says about the schedule: whether jobs wake the agent in this session.
+    private String scheduleLine() {
+        String lamp = prepared.layout().root().toString();
+        if (!prepared.config().schedule().enabled())
+            return "schedule       off — jobs do not run; `oillamp ask " + lamp + " \"…\"` still wakes the agent";
+        int jobs = new ScheduleBook(prepared.layout()).read().map(schedule -> schedule.jobs().size()).orElseGet(problems -> 0);
+        return "schedule       on — " + jobs + (jobs == 1 ? " job" : " jobs") + " may wake the agent while this "
+             + "session runs; `oillamp schedule " + lamp + "` lists them";
     }
 
     /// Whether the container is running, or empty when podman could not say.
@@ -746,7 +778,7 @@ final class Supervisor {
     /// history as it was, so a limit here costs a snapshot, never the history.
     private Duration longestShutdown() {
         return prepared.config().timeouts().stop().plus(STOP_GRACE).plus(REMOVE_TIMEOUT)
-                       .plus(SAVE_ALLOWANCE).plusSeconds(15);
+                       .plus(SAVE_ALLOWANCE).plus(Runs.WIND_DOWN).plusSeconds(15);
     }
 
     // ─── the control socket ────────────────────────────────────────────────────────────────
@@ -775,6 +807,7 @@ final class Supervisor {
                     .with("desktop", prepared.config().display().size())
                     .with("uptime", describe(uptime()))
                     .with("shells", String.valueOf(state.extraShells()))
+                    .with("agent", runs.describe())
                     .with("viewer", prepared.layout().vncSocket().toString());
             case "stop" -> {
                 post(new SessionEvent.StopRequested("oillamp stop"));
@@ -791,9 +824,36 @@ final class Supervisor {
                     ? Control.Reply.ok().withArgv(
                             Ssh.clientArgv(prepared.layout(), Ssh.SocketRole.EXTRA))
                     : Control.Reply.failed("this session is already ending");
+            // Answered once the run has ended, which is what `oillamp ask` waits for.
+            case "ask" -> {
+                if (!state.isLive()) yield Control.Reply.failed("this session is already ending");
+                try {
+                    LampEvent.RunFinished finished = runs.ask(request.arguments().get("prompt").orElse("")).get();
+                    String answer = finished.answer();
+                    Control.Reply reply = Control.Reply.ok()
+                            .with("run", finished.run().id())
+                            .with("outcome", finished.outcome().name())
+                            .with("answer", answer.length() <= ANSWER_SENT ? answer : answer.substring(0, ANSWER_SENT) + "\n[…]")
+                            .with("seconds", String.valueOf(finished.took().toSeconds()));
+                    yield finished.snapshot().map(snapshot -> reply.with("snapshot", snapshot.id())).orElse(reply);
+                } catch (java.util.concurrent.ExecutionException failed) {
+                    yield Control.Reply.failed(Problems.reason(failed.getCause() == null ? failed : failed.getCause()));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    yield Control.Reply.failed("the session is ending");
+                }
+            }
+            case "schedule-changed" -> {
+                runs.scheduleChanged();
+                yield Control.Reply.ok();
+            }
             default -> Control.Reply.failed("unknown request: " + request.op());
         };
     }
+
+    /// The most of an agent's answer sent back to `oillamp ask`. The whole of it is in the event
+    /// the session reports, and a control reply is one line of limited length.
+    private static final int ANSWER_SENT = 64 * 1024;
 
     private static void sleep(Duration duration) {
         try {

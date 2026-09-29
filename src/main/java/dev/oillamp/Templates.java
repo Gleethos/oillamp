@@ -141,6 +141,18 @@ final class Templates {
             container_ready_seconds  = 60
             terminal_connect_seconds = 60
             stop_seconds             = 15
+
+            # Jobs that wake the agent at set times, while a session runs: `oillamp schedule` adds
+            # and lists them, and the agent can add its own. Off unless you turn it on, because every
+            # run costs model tokens. The limits apply only to the jobs the agent adds for itself.
+            [schedule]
+            enabled                    = false
+            max_agent_jobs             = 10   # how many jobs the agent may have at once
+            min_agent_interval_minutes = 15   # the shortest time between two runs of one agent job
+            max_agent_days             = 14   # an agent job is removed this many days after it was added
+            max_agent_runs_per_day     = 48   # agent jobs due beyond this, in any 24 hours, are skipped
+            max_run_minutes            = 30   # any run that takes longer is stopped, yours included
+            notes_max_kb               = 8    # how large the agent's ~/workspace/NOTES.md may grow
             """;
     }
 
@@ -159,7 +171,7 @@ final class Templates {
             # For this shell only:      eval "$(oillamp completion bash)"
             # For every future shell:   echo 'eval "$(oillamp completion bash)"' >> ~/.bashrc
             _oillamp() {
-                local commands='at view shell stop status list remove save history restore recordings doctor config completion guide about version help'
+                local commands='at view shell stop status list remove save history restore schedule ask recordings doctor config completion guide about version help'
                 local current="${COMP_WORDS[COMP_CWORD]}"
                 local before=""
                 [ "$COMP_CWORD" -ge 2 ] && before="${COMP_WORDS[COMP_CWORD-2]}"
@@ -167,6 +179,11 @@ final class Templates {
                 # `oillamp config <dir> check`: the lamp comes first, then what to do with it.
                 if [ "$before" = config ]; then
                     COMPREPLY=($(compgen -W 'check show-effective path' -- "$current"))
+                    return
+                fi
+                # `oillamp schedule <dir> add`: the same.
+                if [ "$before" = schedule ]; then
+                    COMPREPLY=($(compgen -W 'add remove enable disable pause resume' -- "$current"))
                     return
                 fi
 
@@ -185,6 +202,7 @@ final class Templates {
                             view)          options="$options --view-only" ;;
                             remove)        options="$options --yes --dry-run" ;;
                             save)          options="$options --message" ;;
+                            schedule)      options="$options --cron --at --expires" ;;
                             recordings)    options="$options --open --prune --dry-run" ;;
                             doctor|config) options="$options --dry-run --no-install" ;;
                         esac

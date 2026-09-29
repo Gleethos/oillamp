@@ -89,13 +89,86 @@ final class History {
 
     /// Saves the lamp as it is now, unless nothing changed since the last snapshot.
     Result<Saving> save(SaveKind kind, String message, Optional<SessionId> session, Instant now) {
+        return save(kind, message, session, Association.between(String.class, String.class), false, now);
+    }
+
+    /// Saves the lamp as it is now.
+    ///
+    /// @param trailers more trailers for the commit's message, such as the run it belongs to
+    /// @param always   whether to make a snapshot even when nothing changed. A run's last
+    ///                 snapshot is made either way, because it records what the agent said
+    Result<Saving> save(SaveKind kind, String message, Optional<SessionId> session,
+                        Association<String, String> trailers, boolean always, Instant now) {
         return locked(() -> {
             try {
-                return Result.ok(saveUnlocked(kind, message, session, now));
+                return Result.ok(saveUnlocked(kind, message, session, trailers, always, now));
             } catch (IOException | RuntimeException e) {
                 return Result.err(Problems.saveFailed(layout.root(), Problems.reason(e)));
             }
         });
+    }
+
+    /// Every commit, newest first, with the trailers that say what made each one.
+    Result<Tuple<GitFormat.Commit>> commitList() {
+        try {
+            return Result.ok(commits());
+        } catch (IOException | RuntimeException e) {
+            return Result.err(Problems.historyDamaged(repository, Problems.reason(e)));
+        }
+    }
+
+    /// One path that differs between two snapshots.
+    ///
+    /// @param kind `added`, `changed` or `removed`
+    /// @param path as the agent sees it, such as `~/workspace/app.py`; a directory that is new or
+    ///             gone as a whole ends in `/` and is listed once, not file by file
+    record Change(String kind, String path) {}
+
+    /// What differs between two snapshots' trees, as far as `limit` paths.
+    ///
+    /// @param more whether there were more than `limit`
+    record Changes(Tuple<Change> shown, boolean more) {}
+
+    /// Lists what differs from the tree `before` (or from nothing) to the tree `after`.
+    Result<Changes> changes(Optional<String> before, String after, int limit) {
+        try {
+            java.util.List<Change> found = new java.util.ArrayList<>();
+            boolean more = compare(before, Optional.of(after), "", found, limit, true);
+            return Result.ok(new Changes(Tuple.of(Change.class, found), more));
+        } catch (IOException | RuntimeException e) {
+            return Result.err(Problems.historyDamaged(repository, Problems.reason(e)));
+        }
+    }
+
+    /// Adds what differs between two trees to `found`. True once there were more than `limit`.
+    private boolean compare(Optional<String> before, Optional<String> after, String prefix,
+                            java.util.List<Change> found, int limit, boolean top) throws IOException {
+        Association<String, GitFormat.Entry> old = entriesOf(before);
+        Association<String, GitFormat.Entry> now = entriesOf(after);
+        java.util.SortedSet<String> names = new java.util.TreeSet<>();
+        for (GitFormat.Entry entry : old.values()) names.add(entry.name());
+        for (GitFormat.Entry entry : now.values()) names.add(entry.name());
+        for (String name : names) {
+            if (top && name.equals(MODES_FILE)) continue;
+            // The agent's home, whatever its name in the lamp, is `~` to the agent.
+            String path = top && name.startsWith(LampLayout.AGENT_DIR_PREFIX) ? "~"
+                        : top ? name : prefix + "/" + name;
+            Optional<GitFormat.Entry> was = old.get(name);
+            Optional<GitFormat.Entry> is = now.get(name);
+            if (was.equals(is)) continue;
+            boolean wasDirectory = was.filter(GitFormat.Entry::isDirectory).isPresent();
+            boolean isDirectory = is.filter(GitFormat.Entry::isDirectory).isPresent();
+            if (wasDirectory && isDirectory) {
+                if (compare(was.map(GitFormat.Entry::id), is.map(GitFormat.Entry::id), path, found, limit, false))
+                    return true;
+                continue;
+            }
+            if (found.size() >= limit) return true;
+            if (was.isEmpty()) found.add(new Change("added", path + (isDirectory ? "/" : "")));
+            else if (is.isEmpty()) found.add(new Change("removed", path + (wasDirectory ? "/" : "")));
+            else found.add(new Change("changed", path + (isDirectory ? "/" : "")));
+        }
+        return false;
     }
 
     /// Every snapshot, newest first. Empty for a lamp that has never been saved.
@@ -173,6 +246,12 @@ final class History {
 
     private Saving saveUnlocked(SaveKind kind, String message, Optional<SessionId> session, Instant now)
             throws IOException {
+        return saveUnlocked(kind, message, session, Association.between(String.class, String.class), false, now);
+    }
+
+    private Saving saveUnlocked(SaveKind kind, String message, Optional<SessionId> session,
+                                Association<String, String> trailers, boolean always, Instant now)
+            throws IOException {
         ensureRepository();
         Tally tally = new Tally();
         Tuple<GitFormat.Entry> top = Tuple.of(GitFormat.Entry.class);
@@ -189,10 +268,10 @@ final class History {
         String tree = storeSmall("tree", GitFormat.tree(top));
 
         Optional<GitFormat.Commit> head = headCommit();
-        if (head.isPresent() && head.get().tree().equals(tree))
+        if (!always && head.isPresent() && head.get().tree().equals(tree))
             return new Saving(Optional.empty(), head.map(GitFormat.Commit::snapshot), tally.files, tally.skipped);
         Snapshot made = commit(tree, head.map(GitFormat.Commit::id), now,
-                GitFormat.message(kind, message, session));
+                GitFormat.message(kind, message, session, trailers));
         return new Saving(Optional.of(made), Optional.of(made), tally.files, tally.skipped);
     }
 

@@ -218,12 +218,15 @@ final class LampPlanner {
     /// @param runtimeEnv      the contents of `runtime.env`
     /// @param agentGuide      the guide the agent reads as `~/AGENTS.md`
     /// @param gitConfig       the agent's git identity, see [GitConfig]
+    /// @param scheduleTools   the pi extension with the agent's scheduling tools, or empty when
+    ///                        the schedule is off and the agent should have none
     public static Result<Plan> planSession(LampLayout layout,
                                            String clientPublicKey,
                                            String hostPublicKey,
                                            String runtimeEnv,
                                            String agentGuide,
-                                           String gitConfig) {
+                                           String gitConfig,
+                                           Optional<String> scheduleTools) {
         Tuple<Step> steps = Tuple.of(Step.class);
         steps = steps.add(new Step.WriteFile(layout.runtimeEnvFile(), runtimeEnv,
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
@@ -241,6 +244,12 @@ final class LampPlanner {
 
         steps = steps.add(new Step.WriteFile(layout.gitConfig(), gitConfig,
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
+        // Rewritten every session, like the guide, so that it always matches this oillamp. The
+        // agent could change it, but it only asks the host, which decides.
+        steps = steps.add(scheduleTools.<Step>map(tools -> new Step.WriteFile(layout.scheduleTools(), tools,
+                        PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS))
+                .orElseGet(() -> new Step.RemovePath(layout.scheduleTools(),
+                        "the schedule is off, so the agent has no scheduling tools")));
 
         steps = steps.add(new Step.WriteFile(layout.sshConfig(), Ssh.renderClientConfig(layout),
                 PosixMode.PRIVATE_FILE, Step.WritePolicy.ALWAYS));

@@ -126,7 +126,8 @@ final class LampPhase {
                                           SessionId session, Gpu.Decision gpu) {
         if (context.options().dryRun())
             return LampPlanner.planSession(layout, "(generated client key)", "(generated host key)",
-                    "(rendered per session)", "(rendered per session)", "(rendered per session)");
+                    "(rendered per session)", "(rendered per session)", "(rendered per session)",
+                    config.schedule().enabled() ? Optional.of("(the scheduling tools)") : Optional.empty());
 
         Optional<String> clientKey = Filesystem.readString(layout.clientKeyPub());
         Optional<String> hostKey = Filesystem.readString(layout.hostKeyPub());
@@ -142,7 +143,8 @@ final class LampPhase {
 
         return LampPlanner.planSession(layout, clientKey.get(), hostKey.get(),
                 ((Result.Ok<String>) environment).value(), AgentGuide.render(config, layout),
-                GitConfig.render(gitAuthor(config.git(), layout)));
+                GitConfig.render(gitAuthor(config.git(), layout)),
+                config.schedule().enabled() ? Optional.of(AgentGuide.scheduleTools()) : Optional.empty());
     }
 
     /// The name and email the agent's commits carry, as `[git]` chooses, said on the console

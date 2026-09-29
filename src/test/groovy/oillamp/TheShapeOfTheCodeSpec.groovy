@@ -140,6 +140,11 @@ class TheShapeOfTheCodeSpec extends Specification {
                            // objects, as Filesystem does the lamp's other files. What a
                            // snapshot looks like is decided by GitFormat, which is pure.
                            'History',
+                           // The agent the session holds, and the runs that wake it: a process
+                           // in the sandbox, and threads that wait for it. What a run's
+                           // prompt says is decided by WakePrompt, and the rules of the
+                           // schedule by Schedule, which are both pure.
+                           'Harness', 'Runs',
                            // An application's handle on a lamp: starts the engine's process
                            // and reads its output. It decides nothing about the sandbox.
                            'Lamp'] as Set

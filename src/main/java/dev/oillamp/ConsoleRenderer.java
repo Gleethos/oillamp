@@ -220,9 +220,79 @@ final class ConsoleRenderer {
                         : "restored " + restored.target().shortId() + " (" + restored.target().kind().label()
                           + " of " + when(restored.target().at()) + " UTC), recorded as "
                           + restored.result().shortId()));
+            case LampEvent.Schedule schedule -> line(describe(schedule));
+            case LampEvent.JobAdded added -> line(area("schedule") + colour(GREEN, "✓ ") + "added "
+                    + added.job().id() + " — " + added.job().when()
+                    + added.job().next().map(next -> ", first runs " + when(next) + " UTC").orElse(""));
+            case LampEvent.JobRemoved removed -> line(area("schedule") + dim("· " + removed.job().id()
+                    + " is off the schedule — " + removed.why()));
+            case LampEvent.ScheduleChanged changed -> line(area("schedule") + colour(GREEN, "✓ ") + changed.what());
+            case LampEvent.RunQueued queued -> line(area("run") + dim("· " + queued.run().id() + " ("
+                    + describe(queued.run()) + ") waits: the agent is busy, and "
+                    + (queued.ahead() == 0 ? "no other run is" : queued.ahead() + " more "
+                       + (queued.ahead() == 1 ? "run is" : "runs are")) + " ahead of it"));
+            case LampEvent.RunStarted started -> line(area("run") + dim("→ ") + "waking the agent for "
+                    + started.run().id() + " (" + describe(started.run()) + "): "
+                    + shortened(started.run().prompt(), 100));
+            case LampEvent.RunFinished finished -> {
+                boolean fine = finished.outcome() == LampEvent.RunOutcome.FINISHED;
+                line(area("run") + (fine ? colour(GREEN, "✓ ") : colour(YELLOW, "! ")) + finished.run().id() + " "
+                        + switch (finished.outcome()) {
+                              case FINISHED -> "finished";
+                              case FAILED -> "failed";
+                              case TIMED_OUT -> "was stopped: it ran out of time";
+                              case INTERRUPTED -> "was interrupted: the session ended";
+                          }
+                        + " after " + seconds(finished.took())
+                        + finished.snapshot().map(snapshot -> ", saved as " + snapshot.shortId()).orElse(""));
+                // The agent wrote this, so nothing in it may reach the terminal as a control sequence.
+                for (String answerLine : finished.answer().strip().lines().toList())
+                    line("  " + NOT_PRINTABLE.matcher(answerLine).replaceAll(" "));
+            }
             case LampEvent.Warning warning -> problem(warning.problem());
             case LampEvent.Failure failure -> problem(failure.problem());
         }
+    }
+
+    /// What woke the agent: a job, or someone asking.
+    private static String describe(LampEvent.Run run) {
+        return run.job().map(job -> "job " + job).orElse("asked");
+    }
+
+    /// One line of text someone wrote, such as a job's prompt, which the agent may have written:
+    /// without control characters, and at most `most` characters long.
+    private static String shortened(String text, int most) {
+        String line = printable(text.replaceAll("\\s+", " "));
+        return line.length() <= most ? line : line.substring(0, most - 1) + "…";
+    }
+
+    private static String seconds(java.time.Duration took) {
+        long seconds = Math.max(0, took.toSeconds());
+        return seconds < 60 ? seconds + "s" : seconds / 60 + "m " + seconds % 60 + "s";
+    }
+
+    /// The jobs `oillamp schedule` lists, as a table, with a line saying whether they run.
+    private static String describe(LampEvent.Schedule schedule) {
+        java.time.ZoneId zone = java.time.ZoneId.of(schedule.zone());
+        StringBuilder out = new StringBuilder();
+        out.append(!schedule.enabled() ? "the schedule is off: set `enabled = true` under [schedule] in "
+                                         + "oillamp.toml for these jobs to run"
+                 : schedule.paused() ? "the schedule is paused: no job runs until `oillamp schedule <dir> resume`"
+                 : "jobs run while a session runs; times are on this machine's clock (" + zone + ")");
+        if (schedule.jobs().isEmpty())
+            return out.append("\nno jobs yet — add one with `oillamp schedule <dir> add`").toString();
+        out.append("\n\n").append(String.format("%-8s %-18s %-17s %-6s %s", "JOB", "WHEN", "NEXT", "BY", "PROMPT"));
+        java.time.format.DateTimeFormatter shown = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+                .withZone(zone);
+        for (LampEvent.Job job : schedule.jobs()) {
+            String when = job.when().startsWith("once at ") ? "once" : job.when();
+            String next = !job.enabled() ? "(switched off)" : job.next().map(shown::format).orElse("—");
+            out.append('\n').append(String.format("%-8s %-18s %-17s %-6s %s", job.id(), when, next,
+                    job.author() == LampEvent.JobAuthor.AGENT ? "agent" : "you", shortened(job.prompt(), 60)));
+            job.expires().ifPresent(end -> out.append('\n').append(" ".repeat(53))
+                    .append("(until ").append(shown.format(end)).append(')'));
+        }
+        return out.toString();
     }
 
     /// The snapshots `oillamp history` lists, as a table, newest first.

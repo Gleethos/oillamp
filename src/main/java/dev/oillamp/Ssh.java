@@ -63,6 +63,20 @@ final class Ssh {
                 "-T", layout.sshHostAlias());
     }
 
+    /// The argv that runs pi for the session's runs: in RPC mode, in `~/workspace`, speaking over
+    /// ssh's standard input and output.
+    ///
+    /// It connects to the sandbox's SSH socket directly, not through a relay, because the
+    /// session itself opens it, and so it does not count as one of the user's shells.
+    public static Tuple<String> harnessArgv(LampLayout layout) {
+        return Tuple.of(String.class,
+                "ssh",
+                "-F", layout.sshConfig().toString(),
+                "-o", "ProxyCommand=socat - UNIX-CONNECT:" + layout.agentSshSocket(),
+                "-T", layout.sshHostAlias(),
+                "cd ~/workspace 2>/dev/null; exec pi --mode rpc");
+    }
+
     public static Tuple<String> clientArgv(LampLayout layout, SocketRole role) {
         java.nio.file.Path socket = role == SocketRole.PRIMARY
                 ? layout.primarySshSocket()

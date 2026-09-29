@@ -32,6 +32,9 @@ final class SimulatedMachine implements Machine {
     private final Map<String, List<Path>> systemDirectories;
     private final Instant clock;
     private final boolean clockRuns;
+    /// How many simulated seconds pass in one real second, when the clock runs.
+    private final long clockSpeed;
+    private final java.time.ZoneId zone;
     /// Wall-clock reference for a running clock, taken once so that `now()` stays monotonic.
     private final Instant built = Instant.now();
     private final String randomToken;
@@ -46,6 +49,7 @@ final class SimulatedMachine implements Machine {
     private final Duration applicationLeavesAfter;
     private final Optional<java.io.InputStream> standardInput;
     private final RealMachine realMachine = new RealMachine();
+    private final Optional<SimulatedAgent> agent;
 
     /// The sockets the simulated container is listening on, and whether it is still up.
     ///
@@ -75,8 +79,11 @@ final class SimulatedMachine implements Machine {
         this.systemDirectories = Map.copyOf(builder.systemDirectories);
         this.clock = builder.clock;
         this.clockRuns = builder.clockRuns;
+        this.clockSpeed = builder.clockSpeed;
+        this.zone = builder.zone;
         this.randomToken = builder.randomToken;
         this.interactive = builder.interactive;
+        this.agent = builder.agent;
     }
 
     /// A clock that stands still, unless a scenario asked for one that moves.
@@ -85,8 +92,10 @@ final class SimulatedMachine implements Machine {
     /// But a supervisor is the one part of oillamp whose job includes waiting, and a timeout that
     /// can never be reached cannot be tested at all, so a scenario about waiting can ask for time
     /// to pass, and only those scenarios pay for it.
+    @Override public java.time.ZoneId zone() { return zone; }
+
     @Override public Instant now() {
-        return clockRuns ? clock.plus(Duration.between(built, Instant.now())) : clock;
+        return clockRuns ? clock.plus(Duration.between(built, Instant.now()).multipliedBy(clockSpeed)) : clock;
     }
 
     @Override public String operatingSystemName() { return operatingSystemName; }
@@ -433,6 +442,117 @@ final class SimulatedMachine implements Machine {
                 terminalConnects ? stopThrough : Optional.empty(), stopsAfterClosingTheShell);
     }
 
+    /// pi in RPC mode, if the command runs it and the machine has an agent; otherwise a program
+    /// that ends at once, as `pi` does in a sandbox that has none.
+    @Override public Conversation converse(Command command) {
+        boolean pi = command.argv().any(argument -> argument.contains("pi --mode rpc"));
+        if (!pi || agent.isEmpty())
+            return new SimulatedPi.Gone(pi ? "bash: line 1: pi: command not found" : "not simulated: " + command.commandLine());
+        return new SimulatedPi(agent.get());
+    }
+
+    /// pi in RPC mode, as far as oillamp uses it: it starts a new conversation, takes a prompt,
+    /// hands it to the scenario's [SimulatedAgent], and reports the answer the way pi does.
+    private static final class SimulatedPi implements Conversation {
+
+        private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        private final SimulatedAgent agent;
+        private final java.util.concurrent.BlockingQueue<Optional<String>> output = new java.util.concurrent.LinkedBlockingQueue<>();
+        private volatile Optional<Thread> working = Optional.empty();
+        private volatile boolean closed;
+
+        SimulatedPi(SimulatedAgent agent) { this.agent = agent; }
+
+        @Override public void send(String line) throws java.io.IOException {
+            if (closed) throw new java.io.IOException("pi has ended");
+            com.fasterxml.jackson.databind.JsonNode command = JSON.readTree(line);
+            String type = command.path("type").asText();
+            String id = command.path("id").asText("");
+            switch (type) {
+                case "new_session" -> say(response(id, type, true).set("data", JSON.createObjectNode().put("cancelled", false)));
+                case "abort" -> {
+                    say(response(id, type, true));
+                    working.ifPresent(Thread::interrupt);
+                }
+                case "prompt" -> {
+                    if (working.filter(Thread::isAlive).isPresent()) {
+                        say(response(id, type, false).put("error", "the agent is busy"));
+                        return;
+                    }
+                    say(response(id, type, true));
+                    String prompt = command.path("message").asText();
+                    working = Optional.of(Thread.ofVirtual().name("simulated-pi").start(() -> work(prompt)));
+                }
+                default -> say(response(id, type, false).put("error", "not simulated: " + type));
+            }
+        }
+
+        private void work(String prompt) {
+            say(JSON.createObjectNode().put("type", "agent_start"));
+            String stop = "stop";
+            String text = "";
+            String error = "";
+            try {
+                text = agent.work(prompt);
+            } catch (InterruptedException aborted) {
+                stop = "aborted";
+                error = "Request was aborted";
+            } catch (Exception failed) {
+                stop = "error";
+                error = String.valueOf(failed.getMessage());
+            }
+            com.fasterxml.jackson.databind.node.ObjectNode message = JSON.createObjectNode()
+                    .put("role", "assistant").put("stopReason", stop);
+            message.putArray("content").addObject().put("type", "text").put("text", text);
+            if (!error.isEmpty()) message.put("errorMessage", error);
+            com.fasterxml.jackson.databind.node.ObjectNode end = JSON.createObjectNode().put("type", "message_end");
+            end.set("message", message);
+            say(end);
+            say(JSON.createObjectNode().put("type", "agent_end"));
+            say(JSON.createObjectNode().put("type", "agent_settled"));
+        }
+
+        private static com.fasterxml.jackson.databind.node.ObjectNode response(String id, String command, boolean success) {
+            com.fasterxml.jackson.databind.node.ObjectNode node = JSON.createObjectNode();
+            if (!id.isEmpty()) node.put("id", id);
+            return node.put("type", "response").put("command", command).put("success", success);
+        }
+
+        private void say(com.fasterxml.jackson.databind.JsonNode record) { output.add(Optional.of(record.toString())); }
+
+        @Override public Optional<String> receive(Duration limit) throws java.io.IOException, InterruptedException {
+            Optional<String> line = output.poll(limit.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (line == null) return Optional.empty();
+            if (line.isEmpty()) {
+                output.add(line);
+                throw new java.io.EOFException("pi has ended");
+            }
+            return line;
+        }
+
+        @Override public boolean isRunning() { return !closed; }
+
+        @Override public String errorOutput() { return ""; }
+
+        @Override public void close() {
+            closed = true;
+            working.ifPresent(Thread::interrupt);
+            output.add(Optional.empty());
+        }
+
+        /// A pi that is not there.
+        record Gone(String why) implements Conversation {
+            @Override public void send(String line) throws java.io.IOException { throw new java.io.IOException(why); }
+            @Override public Optional<String> receive(Duration limit) throws java.io.IOException {
+                throw new java.io.EOFException(why);
+            }
+            @Override public boolean isRunning() { return false; }
+            @Override public String errorOutput() { return why; }
+            @Override public void close() { }
+        }
+    }
+
     /// A window that is open for a while, holding a connection if it was given one to hold.
     private static final class SimulatedWindow implements Window {
 
@@ -546,9 +666,12 @@ final class SimulatedMachine implements Machine {
         /// session to come up and say so.
         private Duration applicationLeavesAfter = Duration.ofMillis(500);
         private Optional<java.io.InputStream> standardInput = Optional.empty();
+        private Optional<SimulatedAgent> agent = Optional.empty();
 
         private Instant clock = Instant.parse("2026-09-22T14:15:03Z");
+        private java.time.ZoneId zone = java.time.ZoneOffset.UTC;
         private boolean clockRuns = false;
+        private long clockSpeed = 1;
         // Valid base32: the alphabet has no 0, 1, 8 or 9.
         private String randomToken = "k3v7x2ab";
         private boolean interactive = true;
@@ -631,6 +754,9 @@ final class SimulatedMachine implements Machine {
         public void clearRenderNodes() { renderNodes.clear(); }
         public void clock(Instant instant) { this.clock = instant; }
         public void clockRuns() { this.clockRuns = true; }
+        public void clockRunsFaster(long times) { this.clockRuns = true; this.clockSpeed = times; }
+        public void zone(java.time.ZoneId zone) { this.zone = zone; }
+        public void agent(SimulatedAgent agent) { this.agent = Optional.of(agent); }
         public void randomToken(String token) { this.randomToken = token; }
         public void scriptCommand(String prefix, Outcome outcome) { scriptedCommands.put(prefix, outcome); }
         public void filesystemType(String type) { this.filesystemType = type; }

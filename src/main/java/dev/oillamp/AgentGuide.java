@@ -219,6 +219,8 @@ final class AgentGuide {
             out.append('\n');
         }
 
+        if (config.schedule().enabled()) out.append(scheduleSection(config.schedule()));
+
         out.append("""
             ## What you cannot do
 
@@ -229,6 +231,61 @@ final class AgentGuide {
             rest.
             """);
         return out.toString();
+    }
+
+    /// How the agent works on a schedule, for a lamp that has one: the tools, the rules the host
+    /// holds it to, and its notes, which are its only memory from one run to the next.
+    private static String scheduleSection(LampConfig.Schedule schedule) {
+        return """
+            ## Working on a schedule
+
+            This sandbox has a schedule. While the user's session runs, oillamp can wake you at set
+            times with a task, each time in a new pi conversation. The user adds jobs with
+            `oillamp schedule` on their machine. You can add your own with these tools, which pi
+            has here:
+
+            | Tool | What it does |
+            |---|---|
+            | `schedule_add` | add a job: `cron` for one that repeats (`0 9 * * 1-5`), or `at` for one that runs once (`in 2h`), and the `prompt` you will be woken with |
+            | `schedule_list` | list every job, yours and the user's, with when each runs next |
+            | `schedule_remove` | remove one of your own jobs |
+            | `run_history` | list earlier runs, or show what one changed and what you said at its end |
+
+            oillamp holds your jobs to these limits, and the tools say so when a request breaks
+            one: at most %d jobs at once, each running at most every %d minutes, each removed
+            after %d days at the latest, and at most %d runs of your jobs in any 24 hours. Every
+            run is stopped after %d minutes. The user's jobs are theirs: you can see them, but not
+            change or remove them.
+
+            ### Your notes
+
+            You remember nothing from one run to the next except what you write down. Keep your
+            notes in `~/workspace/NOTES.md`:
+
+            - When oillamp wakes you, the prompt contains your notes, what the last runs changed,
+              and what you said at the end of the last one. Read them before you start.
+            - If the file does not exist yet, create it.
+            - Before you finish every run, rewrite it: what you did, what you found out, and what
+              is left to do. Keep it under %d KB. Replace what is out of date rather than adding
+              to it: it is not a log. The lamp's history already is one, and `run_history`
+              reads it.
+
+            oillamp saves your home just before and just after every run, so the user can see
+            what each run changed, and undo it.
+
+            """.formatted(schedule.maxAgentJobs(), schedule.minAgentIntervalMinutes(), schedule.maxAgentDays(),
+                          schedule.maxAgentRunsPerDay(), schedule.maxRunMinutes(), schedule.notesMaxKb());
+    }
+
+    /// The pi extension that gives the agent its scheduling tools. They send requests to the
+    /// session over a socket; see `src/main/resources/agent/oillamp-schedule.js`.
+    static String scheduleTools() {
+        try (java.io.InputStream in = AgentGuide.class.getResourceAsStream("/agent/oillamp-schedule.js")) {
+            if (in == null) throw new IllegalStateException("the scheduling tools are missing from this build of oillamp");
+            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
     }
 
     /// Whether the lamp's network policy refuses Eden AI's global endpoint. It does by default, but

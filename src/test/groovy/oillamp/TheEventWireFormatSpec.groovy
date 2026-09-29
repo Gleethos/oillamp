@@ -43,7 +43,14 @@ class TheEventWireFormatSpec extends Specification {
     static final LampEvent.Snapshot SNAPSHOT = new LampEvent.Snapshot(
             '3f2a9c1d00000000000000000000000000000000', Instant.parse('2026-09-29T18:14:03Z'),
             LampEvent.SaveKind.BEFORE_RESTORE, 'before the upgrade\nand the "migration"',
-            Optional.of('20260929-181200'))
+            Optional.of('20260929-181200'), Optional.of('run-12'))
+
+    static final LampEvent.Job JOB = new LampEvent.Job('job-3', '0 9 * * 1-5',
+            Optional.of(Instant.parse('2026-09-30T07:00:00Z')), 'Check the build\nand say "why"',
+            LampEvent.JobAuthor.AGENT, Instant.parse('2026-09-29T18:14:03Z'),
+            Optional.of(Instant.parse('2026-10-13T18:14:03Z')), true)
+
+    static final LampEvent.Run RUN = new LampEvent.Run('run-12', Optional.of('job-3'), 'Check the build')
 
     static final List<LampEvent> EXAMPLES = [
             new LampEvent.PhaseStarted(LampEvent.Phase.SESSION),
@@ -64,10 +71,21 @@ class TheEventWireFormatSpec extends Specification {
             new LampEvent.Saved(SNAPSHOT, 1234),
             new LampEvent.History(Tuple.of(LampEvent.Snapshot, SNAPSHOT,
                     new LampEvent.Snapshot('0123456789abcdef0123456789abcdef01234567', Instant.EPOCH,
-                                           LampEvent.SaveKind.IDLE, '', Optional.empty()))),
+                                           LampEvent.SaveKind.IDLE, '', Optional.empty(), Optional.empty()))),
             new LampEvent.Restored(SNAPSHOT, new LampEvent.Snapshot('fedcba9876543210fedcba9876543210fedcba98',
                     Instant.parse('2026-09-29T19:00:00Z'), LampEvent.SaveKind.RESTORE, 'back to 3f2a9c1d',
-                    Optional.empty())),
+                    Optional.empty(), Optional.empty())),
+            new LampEvent.Schedule(true, false, 'Europe/Berlin', Tuple.of(LampEvent.Job, JOB,
+                    new LampEvent.Job('job-4', 'once at 2026-10-01 09:00', Optional.empty(), 'x',
+                                      LampEvent.JobAuthor.USER, Instant.EPOCH, Optional.empty(), false))),
+            new LampEvent.JobAdded(JOB),
+            new LampEvent.JobRemoved(JOB, 'it expired'),
+            new LampEvent.ScheduleChanged('the schedule is paused'),
+            new LampEvent.RunQueued(new LampEvent.Run('run-13', Optional.empty(), 'what now?'), 0),
+            new LampEvent.RunStarted(RUN),
+            new LampEvent.RunFinished(RUN, LampEvent.RunOutcome.FINISHED, 'All green.\n\nNothing to do.',
+                    Optional.of(SNAPSHOT), Duration.ofSeconds(95)),
+            new LampEvent.RunFinished(RUN, LampEvent.RunOutcome.TIMED_OUT, '', Optional.empty(), Duration.ofMinutes(30)),
             new LampEvent.Warning(PROBLEM.withFix(Problem.Fix.of('another'))),
             new LampEvent.Failure(new Problem(new Problem.Code('OIL-LOCK-001'), Problem.Severity.ERROR,
                     'busy', '', '', Tuple.of(Problem.Evidence), Tuple.of(Problem.Fix), Optional.empty())),

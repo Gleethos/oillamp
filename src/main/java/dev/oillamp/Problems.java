@@ -54,6 +54,11 @@ final class Problems {
     public static final Code RESTORE_WHILE_RUNNING = new Code("OIL-HISTORY-005");
     public static final Code RESTORE_FAILED        = new Code("OIL-HISTORY-006");
     public static final Code HISTORY_BUSY          = new Code("OIL-HISTORY-007");
+    public static final Code SCHEDULE_REFUSED      = new Code("OIL-SCHEDULE-001");
+    public static final Code SCHEDULE_DAMAGED      = new Code("OIL-SCHEDULE-002");
+    public static final Code NO_SUCH_JOB           = new Code("OIL-SCHEDULE-003");
+    public static final Code SCHEDULE_OFF          = new Code("OIL-SCHEDULE-004");
+    public static final Code RUN_FAILED            = new Code("OIL-SCHEDULE-005");
     public static final Code LOCK_BUSY             = new Code("OIL-LOCK-001");
     public static final Code LOCK_RECOVERED        = new Code("OIL-LOCK-002");
     public static final Code CONFIG_UNPARSEABLE    = new Code("OIL-CONFIG-001");
@@ -484,6 +489,51 @@ final class Problems {
                           + "several minutes"));
     }
 
+    // ─── the schedule and its runs ─────────────────────────────────────────────────────────
+
+    /// A job was not added or changed: its time could not be read, or it breaks one of the
+    /// rules, such as the agent's limit on jobs. Said the same way to the user and to the agent.
+    public static Problem scheduleRefused(String why) {
+        return error(SCHEDULE_REFUSED, "The schedule was not changed",
+                why,
+                "the schedule is as it was before");
+    }
+
+    /// The file that holds a lamp's schedule could not be read or written.
+    public static Problem scheduleDamaged(Path file, String reason) {
+        return error(SCHEDULE_DAMAGED, "The schedule cannot be read",
+                reason,
+                "no job can run or be changed until oillamp can read the schedule again")
+            .withEvidence(new Evidence.File(file, "the schedule"))
+            .withFix(Fix.of("if the file was edited by hand, undo that edit; if it is beyond repair, "
+                          + "move it aside, and oillamp starts an empty schedule"));
+    }
+
+    public static Problem noSuchJob(String id, Path lamp) {
+        return error(NO_SUCH_JOB, "There is no such job",
+                "the schedule of " + lamp + " has no job called '" + id + "'",
+                "nothing was changed")
+            .withFix(Fix.run("see the jobs there are", "oillamp schedule " + lamp));
+    }
+
+    /// Jobs are on the schedule, but `schedule.enabled` is off, so none of them will run.
+    public static Problem scheduleOff(Path config) {
+        return warning(SCHEDULE_OFF, "The schedule is switched off",
+                "`schedule.enabled` is not true in " + config,
+                "jobs stay on the schedule, but none of them runs")
+            .withEvidence(new Evidence.File(config, "the lamp's configuration"))
+            .withFix(Fix.of("set `enabled = true` under [schedule] in " + config
+                          + ", and start the session again"));
+    }
+
+    /// The agent could not be woken for a run, or stopped answering in the middle of one.
+    public static Problem runFailed(String run, String reason) {
+        return warning(RUN_FAILED, "The agent could not do " + run,
+                reason,
+                "the run ended without the agent finishing it; the next run starts the agent again")
+            .withFix(Fix.of("check that pi works in the sandbox: run `pi` in the lamp's shell"));
+    }
+
     // ─── configuration ─────────────────────────────────────────────────────────────────────
 
     public static Problem configUnparseable(Path file, String detail) {
@@ -780,6 +830,13 @@ final class Problems {
         return message == null || message.isBlank()
                 ? failure.getClass().getSimpleName()
                 : message;
+    }
+
+    /// The same problem, reported as a warning: for a session that carries on after it, such as
+    /// a save that failed at the start of a run.
+    public static Problem asWarning(Problem problem) {
+        return new Problem(problem.code(), Severity.WARNING, problem.title(), problem.whatHappened(),
+                problem.whyItMatters(), problem.evidence(), problem.fixes(), problem.logFile());
     }
 
     private static Problem warning(Code code, String title, String whatHappened, String whyItMatters) {

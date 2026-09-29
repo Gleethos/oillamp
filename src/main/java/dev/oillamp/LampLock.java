@@ -54,6 +54,27 @@ final class LampLock implements AutoCloseable {
         }
     }
 
+    /// Claims a lock that is only ever held for moments, such as the one on a lamp's schedule,
+    /// waiting for whoever holds it.
+    ///
+    /// Waits by trying again, rather than by the operating system's blocking lock, because two
+    /// threads of one process asking for the same file lock is an error, not a wait.
+    ///
+    /// @return the held lock, or empty if it was still taken after `patience`
+    public static Optional<LampLock> acquireWithin(Path lockFile, java.time.Duration patience) throws IOException {
+        long deadline = System.nanoTime() + patience.toNanos();
+        while (true) {
+            Optional<LampLock> lock = tryAcquire(lockFile);
+            if (lock.isPresent() || System.nanoTime() > deadline) return lock;
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
+        }
+    }
+
     @Override public void close() throws IOException {
         try {
             if (lock.isValid()) lock.release();

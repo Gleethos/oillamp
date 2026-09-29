@@ -215,11 +215,17 @@ final class Control {
     /// `oillamp stop` can fix. A session that answers but says no, for example because it is
     /// already shutting down, is alive (`OIL-SESSION-003`).
     static Result<Reply> ask(Path socket, Path lamp, Request request, String command) {
+        return ask(socket, lamp, request, command, ANSWER_TIME);
+    }
+
+    /// The same, for a request whose answer takes longer, such as `ask`, which is answered once
+    /// the agent is done.
+    static Result<Reply> ask(Path socket, Path lamp, Request request, String command, Duration patience) {
         if (!Files.exists(socket)) return Result.err(Problems.noSessionRunning(lamp, command));
         try (SocketChannel channel = SocketChannel.open(UnixDomainSocketAddress.of(socket))) {
             write(channel, request.render() + "\n");
             channel.shutdownOutput();
-            Reply reply = Reply.parse(within(ANSWER_TIME, channel, () -> readLine(channel)));
+            Reply reply = Reply.parse(within(patience, channel, () -> readLine(channel)));
             return reply.succeeded() ? Result.ok(reply)
                               : Result.err(Problems.sessionRefused(lamp, command, reply.error()));
         } catch (IOException e) {

@@ -82,7 +82,8 @@ final class ConfigLoader {
     private static LampConfig read(ConfigSection root) {
         LampConfig defaults = ConfigDefaults.lampConfig();
         root.allowOnly("schema_version", "display", "viewer", "terminal", "recording",
-                       "limits", "network", "llm", "model", "git", "agent_tools", "image", "host", "timeouts");
+                       "limits", "network", "llm", "model", "git", "agent_tools", "image", "host", "timeouts",
+                       "schedule");
 
         LampConfig.Display display   = readDisplay(root.table("display"), defaults.display());
         LampConfig.Viewer viewer     = readViewer(root.table("viewer"), defaults.viewer());
@@ -102,9 +103,10 @@ final class ConfigLoader {
         LampConfig.Image image       = readImage(root.table("image"), defaults.image());
         LampConfig.Host host         = readHost(root.table("host"), defaults.host());
         LampConfig.Timeouts timeouts = readTimeouts(root.table("timeouts"), defaults.timeouts());
+        LampConfig.Schedule schedule = readSchedule(root.table("schedule"), defaults.schedule());
 
         return new LampConfig(display, viewer, terminal, recording, limits,
-                              network, forwards, llm, model, git, tools, image, host, timeouts);
+                              network, forwards, llm, model, git, tools, image, host, timeouts, schedule);
     }
 
     private static LampConfig.Display readDisplay(ConfigSection s, LampConfig.Display fallback) {
@@ -404,6 +406,22 @@ final class ConfigLoader {
                 bounded(s, "container_ready_seconds", fallback.containerReadySeconds(), 1, 3600, "a number of seconds"),
                 bounded(s, "terminal_connect_seconds", fallback.terminalConnectSeconds(), 1, 3600, "a number of seconds"),
                 bounded(s, "stop_seconds", fallback.stopSeconds(), 1, 600, "a number of seconds"));
+    }
+
+    private static LampConfig.Schedule readSchedule(ConfigSection s, LampConfig.Schedule fallback) {
+        s.allowOnly("enabled", "max_agent_jobs", "min_agent_interval_minutes", "max_agent_days",
+                    "max_agent_runs_per_day", "max_run_minutes", "notes_max_kb");
+        return new LampConfig.Schedule(
+                s.bool("enabled", fallback.enabled()),
+                bounded(s, "max_agent_jobs", fallback.maxAgentJobs(), 0, 100, "a number of jobs from 0 to 100"),
+                bounded(s, "min_agent_interval_minutes", fallback.minAgentIntervalMinutes(), 1, 7 * 24 * 60,
+                        "a number of minutes, at least 1"),
+                bounded(s, "max_agent_days", fallback.maxAgentDays(), 1, 366, "a number of days from 1 to 366"),
+                bounded(s, "max_agent_runs_per_day", fallback.maxAgentRunsPerDay(), 0, 1440,
+                        "a number of runs from 0 to 1440"),
+                bounded(s, "max_run_minutes", fallback.maxRunMinutes(), 1, 24 * 60,
+                        "a number of minutes from 1 to 1440"),
+                bounded(s, "notes_max_kb", fallback.notesMaxKb(), 1, 1024, "a size in kilobytes from 1 to 1024"));
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────────────────

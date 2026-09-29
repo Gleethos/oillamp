@@ -451,7 +451,7 @@ final class Commands {
         Control.Reply answer = ((Result.Ok<Control.Reply>) reply).value();
         StringBuilder out = new StringBuilder();
         for (String key : Tuple.of(String.class, "state", "detail", "lamp", "session", "container",
-                                            "desktop", "renderer", "uptime", "shells", "viewer"))
+                                            "desktop", "renderer", "uptime", "shells", "agent", "viewer"))
             answer.values().get(key).ifPresent(value ->
                     out.append(pad(key, 12)).append(value).append('\n'));
         context.emit(new LampEvent.Answer(out.toString().stripTrailing()));
@@ -592,6 +592,121 @@ final class Commands {
         return saving.skipped().isEmpty() ? Tuple.of(Problem.class)
                 : Tuple.of(Problem.class, Problems.filesNotSaved(layout.root(), saving.skipped()));
     }
+
+    // ─── the schedule, and asking the agent ────────────────────────────────────────────────
+
+    /// What `oillamp schedule` was asked to do.
+    ///
+    /// @param action   `list`, `add`, `remove`, `enable`, `disable`, `pause` or `resume`
+    /// @param argument the job for `remove`, `enable` and `disable`; the prompt for `add`
+    record ScheduleAction(String action, Optional<String> argument, Optional<String> cron,
+                          Optional<String> at, Optional<String> expires) {}
+
+    /// `oillamp schedule <dir> [<action>]`: list the lamp's jobs, or change them.
+    ///
+    /// Works whether or not a session runs. A running session reads the schedule again when it
+    /// changes, so a job added now can run straight away.
+    public ExitStatus schedule(Path lampPath, ScheduleAction request) {
+        Result<LampLayout> found = layoutOf(lampPath);
+        if (found instanceof Result.Err<LampLayout> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        LampLayout layout = ((Result.Ok<LampLayout>) found).value();
+        Result<LampConfig> config = loadConfig(layout.root());
+        if (config instanceof Result.Err<LampConfig> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        LampConfig.Schedule limits = ((Result.Ok<LampConfig>) config).value().schedule();
+        ScheduleBook book = new ScheduleBook(layout);
+        java.time.ZoneId zone = machine.zone();
+        java.time.Instant now = machine.now();
+        String action = request.action();
+        Result<LampEvent> done = switch (action) {
+            case "list" -> book.read().map(schedule -> describe(schedule, limits, zone));
+            case "add" -> book.update(schedule -> schedule.add(new Schedule.Request(request.cron(), request.at(),
+                            request.argument().orElse(""), request.expires()),
+                            LampEvent.JobAuthor.USER, now, zone, limits), Schedule.Changed::schedule)
+                    .map(added -> new LampEvent.JobAdded(added.job().describe(zone)));
+            case "remove" -> book.update(schedule -> schedule.remove(request.argument().orElse(""),
+                            LampEvent.JobAuthor.USER, layout.root()), Schedule.Changed::schedule)
+                    .map(removed -> new LampEvent.JobRemoved(removed.job().describe(zone), "removed by you"));
+            case "enable", "disable" -> book.update(schedule -> schedule.enable(request.argument().orElse(""),
+                            action.equals("enable"), now, layout.root()), Schedule.Changed::schedule)
+                    .map(changed -> new LampEvent.ScheduleChanged(changed.job().id() + " is switched "
+                            + (changed.job().enabled() ? "on" : "off")));
+            case "pause", "resume" -> book.update(schedule -> Result.ok(schedule.paused(action.equals("pause"))),
+                            java.util.function.Function.<Schedule>identity())
+                    .map(changed -> new LampEvent.ScheduleChanged(changed.paused()
+                            ? "the schedule is paused: no job runs until `oillamp schedule " + layout.root() + " resume`"
+                            : "the schedule runs again"));
+            default -> Result.err(Problems.usage("'" + action + "' is not something `oillamp schedule` does",
+                    Invocation.usageOf("schedule")));
+        };
+        if (done instanceof Result.Err<LampEvent> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        context.emit(((Result.Ok<LampEvent>) done).value());
+        if (!action.equals("list")) {
+            if (!limits.enabled()) context.report(Tuple.of(Problem.class, Problems.scheduleOff(layout.config())));
+            // A running session looks at the schedule every half minute; this makes it look now.
+            // Without a session there is nothing to tell, and that is fine.
+            if (Filesystem.exists(layout.controlSocket()))
+                Control.ask(layout.controlSocket(), layout.root(), Control.Request.of("schedule-changed"), "schedule");
+        }
+        return ExitStatus.SUCCESS;
+    }
+
+    private static LampEvent describe(Schedule schedule, LampConfig.Schedule limits, java.time.ZoneId zone) {
+        Tuple<LampEvent.Job> jobs = Tuple.of(LampEvent.Job.class);
+        for (ScheduledJob job : schedule.jobs()) jobs = jobs.add(job.describe(zone));
+        return new LampEvent.Schedule(limits.enabled(), schedule.paused(), zone.getId(), jobs);
+    }
+
+    /// `oillamp ask <dir> <prompt>`: wake the agent with a prompt, and wait for its answer.
+    ///
+    /// The session does the work, because it is the one that holds the agent: this sends the
+    /// prompt over the control socket and waits. When the agent is busy, the prompt waits its turn.
+    public ExitStatus ask(Path lampPath, String prompt) {
+        if (prompt.isBlank()) {
+            Tuple<Problem> refused = Tuple.of(Problem.class, Problems.usage(
+                    "`oillamp ask` needs something to ask the agent", Invocation.usageOf("ask")));
+            context.report(refused);
+            return ExitStatus.USAGE;
+        }
+        Result<LampLayout> found = layoutOf(lampPath);
+        if (found instanceof Result.Err<LampLayout> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        LampLayout layout = ((Result.Ok<LampLayout>) found).value();
+        context.info("run", "asking the agent; its answer comes once it is done, which can take a while");
+        Result<Control.Reply> reply = Control.ask(layout.controlSocket(), layout.root(),
+                Control.Request.of("ask").with("prompt", prompt), "ask", ASK_PATIENCE);
+        if (reply instanceof Result.Err<Control.Reply> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        Control.Reply answer = ((Result.Ok<Control.Reply>) reply).value();
+        LampEvent.RunOutcome outcome = LampEvent.RunOutcome.valueOf(answer.values().get("outcome").orElse("FAILED"));
+        Optional<LampEvent.Snapshot> snapshot = Optional.empty();
+        Optional<String> saved = answer.values().get("snapshot");
+        if (saved.isPresent() && new History(layout).snapshots() instanceof Result.Ok<Tuple<LampEvent.Snapshot>>(
+                Tuple<LampEvent.Snapshot> all, var _))
+            snapshot = all.stream().filter(s -> s.id().equals(saved.get())).findFirst();
+        context.emit(new LampEvent.RunFinished(
+                new LampEvent.Run(answer.values().get("run").orElse("run"), Optional.empty(), prompt),
+                outcome, answer.values().get("answer").orElse(""), snapshot,
+                java.time.Duration.ofSeconds(Long.parseLong(answer.values().get("seconds").orElse("0")))));
+        return outcome == LampEvent.RunOutcome.FINISHED ? ExitStatus.SUCCESS : ExitStatus.ERROR;
+    }
+
+    /// How long `oillamp ask` waits for its answer. The agent may be busy with other runs first,
+    /// each of which may take up to `schedule.max_run_minutes`. If the session ends meanwhile,
+    /// the connection closes, and the wait ends with it.
+    private static final java.time.Duration ASK_PATIENCE = java.time.Duration.ofDays(1);
 
     private static void release(LampLock lock) {
         try {

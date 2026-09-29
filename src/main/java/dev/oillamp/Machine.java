@@ -38,6 +38,10 @@ public interface Machine {
     /// The current instant. Taken from here so that session ids and retention are testable.
     Instant now();
 
+    /// The time zone this machine's clock shows. A schedule such as "at nine every weekday" means
+    /// nine on this clock.
+    java.time.ZoneId zone();
+
     /// What this machine calls itself, as `os.name` reports it. oillamp requires Linux.
     String operatingSystemName();
 
@@ -131,6 +135,46 @@ public interface Machine {
                 @Override public void close() { }
             };
         }
+    }
+
+    /// Starts a program that oillamp talks to one line at a time, over its standard input and
+    /// output, for as long as it runs: pi in RPC mode, in the sandbox, reached through ssh.
+    ///
+    /// Like [#launch], there is no timeout: the conversation lasts until one side closes it.
+    Conversation converse(Command command);
+
+    /// A running program, and the lines it and oillamp exchange.
+    interface Conversation {
+
+        /// Writes one line to the program's standard input.
+        ///
+        /// @throws java.io.IOException when the program has ended
+        void send(String line) throws java.io.IOException;
+
+        /// The next line the program wrote, waiting at most `limit` for it.
+        ///
+        /// @return the line, or empty when none came in time
+        /// @throws java.io.EOFException when the program has ended and said everything it had to
+        Optional<String> receive(Duration limit) throws java.io.IOException, InterruptedException;
+
+        boolean isRunning();
+
+        /// The last lines of its error output, which say why it ended when it ends early.
+        String errorOutput();
+
+        /// Ends it: closes its input, which is how pi asks to be ended, and stops it if it has not
+        /// ended a few seconds later. Never throws.
+        void close();
+    }
+
+    /// What a simulated agent does when it is woken, for scenarios about runs.
+    @FunctionalInterface
+    interface SimulatedAgent {
+        /// Does the work the prompt asks for, and returns the agent's last message.
+        ///
+        /// @throws InterruptedException when the run is stopped while it works
+        /// @throws Exception            for an agent, or a model, that fails
+        String work(String prompt) throws Exception;
     }
 
     /// Reads a system file such as `/etc/os-release`, `/etc/subuid` or a
@@ -521,6 +565,27 @@ public interface Machine {
         /// retention decisions are the same on every run. Scenarios about timeouts need it to move.
         public Simulation clockRuns() {
             builder.clockRuns();
+            return this;
+        }
+
+        /// An agent in the sandbox: pi, answering prompts the way `agent` does. Without one, the
+        /// sandbox has no pi, and waking the agent fails as it would then.
+        public Simulation agent(SimulatedAgent agent) {
+            builder.agent(agent);
+            return this;
+        }
+
+        /// Lets the clock move `times` as fast as a real one, so that a scenario can wait for a
+        /// minute to pass in a second. Only what oillamp measures with its clock is sped up, such as
+        /// how long a run has taken; waiting itself takes real time.
+        public Simulation clockRunsFaster(long times) {
+            builder.clockRunsFaster(times);
+            return this;
+        }
+
+        /// The time zone the machine's clock shows, such as `Europe/Berlin`. UTC unless set.
+        public Simulation timeZone(String zone) {
+            builder.zone(java.time.ZoneId.of(zone));
             return this;
         }
 

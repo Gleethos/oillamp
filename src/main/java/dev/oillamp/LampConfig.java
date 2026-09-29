@@ -28,13 +28,14 @@ record LampConfig(
     AgentTools agentTools,
     Image image,
     Host host,
-    Timeouts timeouts
+    Timeouts timeouts,
+    Schedule schedule
 ) {
     /// The same configuration with other `[model]` settings, such as those an application gave
     /// on the command line for one session.
     public LampConfig withModel(Model changed) {
         return new LampConfig(display, viewer, terminal, recording, limits, network, forwards, llm,
-                              changed, git, agentTools, image, host, timeouts);
+                              changed, git, agentTools, image, host, timeouts, schedule);
     }
 
     /// The version of the config schema this build writes and understands.
@@ -146,6 +147,31 @@ record LampConfig(
         public java.time.Duration containerReady()  { return java.time.Duration.ofSeconds(containerReadySeconds); }
         public java.time.Duration terminalConnect() { return java.time.Duration.ofSeconds(terminalConnectSeconds); }
         public java.time.Duration stop()            { return java.time.Duration.ofSeconds(stopSeconds); }
+    }
+
+    /// `[schedule]`: whether jobs may wake the agent while a session runs, and the limits on the
+    /// jobs the agent adds for itself. The user's own jobs have no limits besides the run time.
+    ///
+    /// @param maxAgentJobs            how many jobs the agent may have on the schedule at once
+    /// @param minAgentIntervalMinutes the shortest time between two runs of one of the agent's jobs
+    /// @param maxAgentDays            how long one of the agent's jobs may stay on the schedule
+    /// @param maxAgentRunsPerDay      how many of the agent's jobs may run in any 24 hours
+    /// @param maxRunMinutes           how long any run may take before it is stopped
+    /// @param notesMaxKb              how large the agent's notes may grow, in kilobytes
+    public record Schedule(boolean enabled, int maxAgentJobs, int minAgentIntervalMinutes,
+                           int maxAgentDays, int maxAgentRunsPerDay, int maxRunMinutes,
+                           int notesMaxKb) {
+        public Schedule {
+            if (maxAgentJobs < 0)            throw new IllegalArgumentException("schedule.max_agent_jobs cannot be negative");
+            if (minAgentIntervalMinutes < 1) throw new IllegalArgumentException("schedule.min_agent_interval_minutes");
+            if (maxAgentDays < 1)            throw new IllegalArgumentException("schedule.max_agent_days");
+            if (maxAgentRunsPerDay < 0)      throw new IllegalArgumentException("schedule.max_agent_runs_per_day cannot be negative");
+            if (maxRunMinutes < 1)           throw new IllegalArgumentException("schedule.max_run_minutes");
+            if (notesMaxKb < 1)              throw new IllegalArgumentException("schedule.notes_max_kb");
+        }
+        public java.time.Duration minAgentInterval() { return java.time.Duration.ofMinutes(minAgentIntervalMinutes); }
+        public java.time.Duration maxAgentLife()     { return java.time.Duration.ofDays(maxAgentDays); }
+        public java.time.Duration maxRun()           { return java.time.Duration.ofMinutes(maxRunMinutes); }
     }
 
     public Optional<Forward> forwardNamed(String name) {

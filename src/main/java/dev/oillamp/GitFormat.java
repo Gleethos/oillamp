@@ -11,6 +11,7 @@ import java.util.Optional;
 import dev.lamp.LampEvent.SaveKind;
 import dev.lamp.LampEvent.Snapshot;
 
+import sprouts.Association;
 import sprouts.Tuple;
 
 /// The parts of git's storage format that a lamp's history uses, as pure functions over bytes.
@@ -156,8 +157,17 @@ final class GitFormat {
 
     /// The last lines of a commit message, which say what made it. git calls lines like these
     /// trailers; `git log` shows them as part of the message.
-    static final String KIND_TRAILER = "Oillamp-Save: ";
-    static final String SESSION_TRAILER = "Oillamp-Session: ";
+    static final String KIND_TRAILER = "Oillamp-Save";
+    static final String SESSION_TRAILER = "Oillamp-Session";
+    static final String RUN_TRAILER = "Oillamp-Run";
+    static final String JOB_TRAILER = "Oillamp-Job";
+    static final String OUTCOME_TRAILER = "Oillamp-Outcome";
+    /// On a run's snapshots: who added the job that woke the agent, `user` or `agent`. The agent's
+    /// runs per day are counted from these.
+    static final String AUTHOR_TRAILER = "Oillamp-Author";
+    /// On a run's last snapshot: the snapshot the lamp was in as the run began, so that what the
+    /// run changed can be told apart from what anyone else changed before it.
+    static final String BASE_TRAILER = "Oillamp-Base";
 
     /// A commit's content.
     static byte[] commit(String tree, Optional<String> parent, Instant at, String message) {
@@ -173,11 +183,22 @@ final class GitFormat {
     /// The message of a commit that records a save. The first line is what `git log --oneline`
     /// shows, so it says the kind of save and what the person wrote.
     static String message(SaveKind kind, String written, Optional<SessionId> session) {
+        return message(kind, written, session, Association.between(String.class, String.class));
+    }
+
+    /// The same, with more trailers, such as the run a snapshot belongs to.
+    ///
+    /// @param more trailer names and values; a value is one line
+    static String message(SaveKind kind, String written, Optional<SessionId> session,
+                          Association<String, String> more) {
         String subject = written.isBlank() ? kind.label() : kind.label() + ": " + firstLine(written);
         StringBuilder text = new StringBuilder(subject).append("\n\n");
         if (written.strip().contains("\n")) text.append(written.strip()).append("\n\n");
-        text.append(KIND_TRAILER).append(kind.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-')).append('\n');
-        session.ifPresent(id -> text.append(SESSION_TRAILER).append(id.value()).append('\n'));
+        text.append(KIND_TRAILER).append(": ")
+            .append(kind.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-')).append('\n');
+        session.ifPresent(id -> text.append(SESSION_TRAILER).append(": ").append(id.value()).append('\n'));
+        for (var trailer : more)
+            text.append(trailer.first()).append(": ").append(firstLine(trailer.second())).append('\n');
         return text.toString();
     }
 
@@ -186,7 +207,10 @@ final class GitFormat {
     }
 
     /// A commit read back.
-    record Commit(String id, String tree, Optional<String> parent, Snapshot snapshot) {}
+    ///
+    /// @param trailers the trailers at the end of its message, by name, such as `Oillamp-Job`
+    record Commit(String id, String tree, Optional<String> parent, Snapshot snapshot,
+                  Association<String, String> trailers) {}
 
     /// Reads a commit this format wrote.
     ///
@@ -206,8 +230,11 @@ final class GitFormat {
         String message = text.substring(blank + 2);
         String treeId = tree.filter(GitFormat::isObjectId)
                 .orElseThrow(() -> new IllegalArgumentException("a commit names no tree"));
+        Split split = split(message);
         return new Commit(id, treeId, parent,
-                new Snapshot(id, at.orElse(Instant.EPOCH), kindIn(message), writtenIn(message), sessionIn(message)));
+                new Snapshot(id, at.orElse(Instant.EPOCH), kindIn(split.trailers()), writtenIn(split.text()),
+                        split.trailers().get(SESSION_TRAILER), split.trailers().get(RUN_TRAILER)),
+                split.trailers());
     }
 
     private static Instant timeOf(String committerLine) {
@@ -219,35 +246,37 @@ final class GitFormat {
         }
     }
 
-    private static Tuple<String> trailerLines(String message) {
-        Tuple<String> found = Tuple.of(String.class);
-        for (String line : message.lines().toList())
-            if (line.startsWith(KIND_TRAILER) || line.startsWith(SESSION_TRAILER)) found = found.add(line);
-        return found;
+    /// A message cut into what was written and the trailers after it.
+    private record Split(String text, Association<String, String> trailers) {}
+
+    /// Only the last paragraph can hold trailers, and only when every line in it is one. A run's
+    /// snapshot carries the agent's own words in its message, and a line in them that looks like
+    /// a trailer must not count as one.
+    private static Split split(String message) {
+        String trimmed = message.stripTrailing();
+        int last = trimmed.lastIndexOf("\n\n");
+        String paragraph = last < 0 ? trimmed : trimmed.substring(last + 2);
+        Association<String, String> trailers = Association.between(String.class, String.class);
+        for (String line : paragraph.lines().toList()) {
+            int colon = line.indexOf(": ");
+            if (!line.startsWith("Oillamp-") || colon < 0)
+                return new Split(trimmed, Association.between(String.class, String.class));
+            trailers = trailers.put(line.substring(0, colon), line.substring(colon + 2).strip());
+        }
+        return new Split(last < 0 ? "" : trimmed.substring(0, last), trailers);
     }
 
     /// A commit made by hand with git, without the trailer, counts as a save made while no session ran.
-    private static SaveKind kindIn(String message) {
-        for (String line : trailerLines(message))
-            if (line.startsWith(KIND_TRAILER)) {
-                String name = line.substring(KIND_TRAILER.length()).strip().toUpperCase(java.util.Locale.ROOT).replace('-', '_');
-                for (SaveKind kind : SaveKind.values()) if (kind.name().equals(name)) return kind;
-            }
+    private static SaveKind kindIn(Association<String, String> trailers) {
+        String name = trailers.get(KIND_TRAILER).orElse("")
+                .toUpperCase(java.util.Locale.ROOT).replace('-', '_');
+        for (SaveKind kind : SaveKind.values()) if (kind.name().equals(name)) return kind;
         return SaveKind.IDLE;
     }
 
-    private static Optional<String> sessionIn(String message) {
-        for (String line : trailerLines(message))
-            if (line.startsWith(SESSION_TRAILER)) return Optional.of(line.substring(SESSION_TRAILER.length()).strip());
-        return Optional.empty();
-    }
-
-    /// What the person wrote: the message without the kind in front of it and without the trailers.
+    /// What the person wrote: the message without the kind in front of it.
     private static String writtenIn(String message) {
-        StringBuilder body = new StringBuilder();
-        for (String line : message.lines().toList())
-            if (!line.startsWith(KIND_TRAILER) && !line.startsWith(SESSION_TRAILER)) body.append(line).append('\n');
-        String text = body.toString().strip();
+        String text = message.strip();
         String subject = text.lines().findFirst().orElse("");
         String rest = text.substring(subject.length()).strip();
         for (SaveKind kind : SaveKind.values()) {

@@ -217,6 +217,41 @@ public final class Lamp implements AutoCloseable {
                 if (event instanceof LampEvent.Restored restored) return restored.result();
             throw new Failed(ran.status(), internal("the engine reported no restore"));
         }
+
+        /// This lamp's schedule: the jobs that wake the agent while a session runs.
+        ///
+        /// @throws Failed      when the schedule could not be read; the problem says why
+        /// @throws IOException when the engine's process could not be started at all
+        public LampEvent.Schedule schedule() throws IOException, InterruptedException, Failed {
+            return Lamp.schedule(launcher, listeners, directory);
+        }
+
+        /// Adds a job that wakes the agent again and again, as `cron` says.
+        ///
+        /// @param cron   five fields, as cron has them, on this machine's clock, such as
+        ///               `0 9 * * 1-5` for nine on every weekday
+        /// @param prompt what the agent is asked each time
+        /// @throws Failed when the expression cannot be read; the problem says why
+        public LampEvent.Job repeat(String cron, String prompt) throws IOException, InterruptedException, Failed {
+            return Lamp.addJob(launcher, listeners, directory, "--cron", cron, prompt);
+        }
+
+        /// Adds a job that wakes the agent once.
+        ///
+        /// @param at when: `2026-10-01 09:00` on this machine's clock, `2026-10-01T07:00Z`, or
+        ///           `in 2h`
+        /// @throws Failed when the time cannot be read or has passed; the problem says why
+        public LampEvent.Job once(String at, String prompt) throws IOException, InterruptedException, Failed {
+            return Lamp.addJob(launcher, listeners, directory, "--at", at, prompt);
+        }
+
+        /// Takes a job off the schedule, whoever added it.
+        ///
+        /// @param job such as `job-3`
+        /// @throws Failed when there is no such job
+        public void unschedule(String job) throws IOException, InterruptedException, Failed {
+            runToEnd(launcher, listeners, "schedule", directory.toString(), "remove", job).orThrow();
+        }
     }
 
     /// The engine said no, or could not do what was asked. [#problem()] says why, in full.
@@ -264,7 +299,9 @@ public final class Lamp implements AutoCloseable {
     private static Ran runToEnd(Launcher launcher, List<Consumer<LampEvent>> listeners, String... command)
             throws IOException, InterruptedException {
         List<String> arguments = new ArrayList<>(List.of(command));
-        arguments.add("--embedded");
+        // Before `--`, after which the engine takes every argument as text, such as a prompt.
+        int literal = arguments.indexOf("--");
+        arguments.add(literal < 0 ? arguments.size() : literal, "--embedded");
         Process engine = launcher.launch(List.copyOf(arguments), Map.of());
         engine.getOutputStream().close();
         List<LampEvent> events = new ArrayList<>();
@@ -290,6 +327,25 @@ public final class Lamp implements AutoCloseable {
         for (LampEvent event : ran.events())
             if (event instanceof LampEvent.Saved saved) return Optional.of(saved.snapshot());
         return Optional.empty();
+    }
+
+    private static LampEvent.Schedule schedule(Launcher launcher, List<Consumer<LampEvent>> listeners, Path directory)
+            throws IOException, InterruptedException, Failed {
+        Ran ran = runToEnd(launcher, listeners, "schedule", directory.toString());
+        ran.orThrow();
+        for (LampEvent event : ran.events())
+            if (event instanceof LampEvent.Schedule schedule) return schedule;
+        throw new Failed(ran.status(), internal("the engine reported no schedule"));
+    }
+
+    private static LampEvent.Job addJob(Launcher launcher, List<Consumer<LampEvent>> listeners, Path directory,
+                                        String option, String when, String prompt)
+            throws IOException, InterruptedException, Failed {
+        Ran ran = runToEnd(launcher, listeners, "schedule", directory.toString(), "add", option, when, "--", prompt);
+        ran.orThrow();
+        for (LampEvent event : ran.events())
+            if (event instanceof LampEvent.JobAdded added) return added.job();
+        throw new Failed(ran.status(), internal("the engine reported no job"));
     }
 
     /// The prefix of the agent directory's name in a lamp. Written out, because this package must
@@ -326,6 +382,46 @@ public final class Lamp implements AutoCloseable {
     /// @throws IOException when the engine's process could not be started at all
     public Optional<LampEvent.Snapshot> save(String message) throws IOException, InterruptedException, Failed {
         return save(launcher, listeners, directory, message);
+    }
+
+    /// This lamp's schedule, as [Starting#schedule] reads it.
+    public LampEvent.Schedule schedule() throws IOException, InterruptedException, Failed {
+        return schedule(launcher, listeners, directory);
+    }
+
+    /// Adds a repeating job, as [Starting#repeat] does. The running session sees it at once.
+    public LampEvent.Job repeat(String cron, String prompt) throws IOException, InterruptedException, Failed {
+        return addJob(launcher, listeners, directory, "--cron", cron, prompt);
+    }
+
+    /// Adds a job that runs once, as [Starting#once] does. The running session sees it at once.
+    public LampEvent.Job once(String at, String prompt) throws IOException, InterruptedException, Failed {
+        return addJob(launcher, listeners, directory, "--at", at, prompt);
+    }
+
+    /// Takes a job off the schedule, as [Starting#unschedule] does.
+    public void unschedule(String job) throws IOException, InterruptedException, Failed {
+        runToEnd(launcher, listeners, "schedule", directory.toString(), "remove", job).orThrow();
+    }
+
+    /// Wakes the agent with `prompt`, and waits until it has answered.
+    ///
+    /// The session holds one agent, which works on one thing at a time. When it is busy, with a
+    /// job or with another question, this waits its turn. The lamp is saved just before and just
+    /// after, so what the agent changed is one snapshot of its own, named in the result.
+    ///
+    /// Blocks until the agent is done, which can take minutes. What the engine reports goes to
+    /// this lamp's listeners.
+    ///
+    /// @return how it ended, and what the agent said at the end
+    /// @throws Failed      when the session is not running or is ending; the problem says why
+    /// @throws IOException when the engine's process could not be started at all
+    public LampEvent.RunFinished ask(String prompt) throws IOException, InterruptedException, Failed {
+        Ran ran = runToEnd(launcher, listeners, "ask", directory.toString(), "--", prompt);
+        for (LampEvent event : ran.events())
+            if (event instanceof LampEvent.RunFinished finished) return finished;
+        ran.orThrow();
+        throw new Failed(ran.status(), internal("the engine reported no answer"));
     }
 
     /// Waits until the session is running, the engine has ended, or `limit` has passed.
