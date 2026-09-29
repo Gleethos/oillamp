@@ -108,4 +108,21 @@ class EmbeddingASessionSpec extends Specification {
             outcome.status() == ExitStatus.SUCCESS
             !outcome.reported('OIL-TERM-002')
     }
+
+    def 'An embedded session needs no graphical session on the host'() {
+        reportInfo """
+            An embedded session opens no windows, so it has no use for the host's display. An
+            application may well run where there is none: under tmux, on a server, over a plain
+            SSH login. Refusing to start there would be refusing for a reason that does not apply.
+        """
+        given: 'a machine with no desktop session'
+            sandbox.machine { it.noGraphicalSession() }
+
+        when:
+            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--embedded')
+
+        then: 'the session runs, and nobody is told a display is missing'
+            outcome.status() == ExitStatus.SUCCESS
+            !outcome.reported('OIL-HOST-003')
+    }
 }

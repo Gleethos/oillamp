@@ -52,7 +52,9 @@ final class Commands {
     /// does not return when the sandbox is up, but when the session is over, so that one Ctrl-C,
     /// one closed window or one `oillamp stop` takes down everything it created.
     public ExitStatus at(Path lampPath) {
-        HostPhase.Outcome host = new HostPhase(machine, context).prepare(lampPath, true, installing(lampPath));
+        // Only a session that opens windows needs the host's display.
+        boolean opensWindows = !context.options().embedded();
+        HostPhase.Outcome host = new HostPhase(machine, context).prepare(lampPath, opensWindows, installing(lampPath));
         if (!host.succeeded()) {
             context.report(host.result().problems());
             return HostPhase.exitStatusFor(host.result().problems());
