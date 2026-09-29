@@ -13,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 
-import com.formdev.flatlaf.FlatDarkLaf;
 
 import dev.gui.genie.GenieRunner;
 import dev.gui.genie.LampLighter;
@@ -55,6 +54,8 @@ public final class Genies implements Actions {
     /// Each genie's id and name. Kept as a field: when it changes, the genies are put on the
     /// shelf, and a view nobody holds would be forgotten.
     private final Val<Tuple<String>> names;
+    /// The page on show. Kept as a field for the same reason: leaving the settings keeps them.
+    private final Val<GeniesState.Page> page;
 
     Genies(Var<GeniesState> state, Shelf shelf, Lighter lighter) {
         this.state = state;
@@ -63,10 +64,15 @@ public final class Genies implements Actions {
         this.names = state.viewAs(Tuple.classTyped(String.class),
                 it -> it.genies().mapTo(String.class, genie -> genie.id() + " " + genie.name()));
         Viewable.cast(names).onChange(From.ALL, it -> keepGenies());
+        // The settings are kept however the user leaves them: with Done, or by clicking a genie.
+        this.page = state.viewAs(GeniesState.Page.class, GeniesState::page);
+        Viewable.cast(page).onChange(From.ALL, it -> {
+            if (it.currentValue().orElseNull() != GeniesState.Page.SETTINGS) keepSettings();
+        });
     }
 
     public static void main(String[] args) {
-        FlatDarkLaf.setup();
+        GeniesView.setUpLook();
         SwingUtilities.invokeLater(Genies::open);
     }
 
@@ -211,12 +217,8 @@ public final class Genies implements Actions {
 
     @Override public void save(UUID id, String name, Path target) { runner(id).save(name, target); }
 
+    /// Leaving the page keeps the settings.
     @Override public void settingsDone() {
-        try {
-            shelf.keep(state.get().settings());
-        } catch (IOException failed) {
-            System.err.println("genies: could not keep the settings in " + shelf.root() + ": " + failed.getMessage());
-        }
         state.update(From.VIEW, it -> it.withPage(GeniesState.Page.CHAT));
     }
 
@@ -248,6 +250,14 @@ public final class Genies implements Actions {
                 change -> SwingUtilities.invokeLater(() -> state.update(it -> it.update(genie, change)))));
     }
 
+    private void keepSettings() {
+        try {
+            shelf.keep(state.get().settings());
+        } catch (IOException failed) {
+            System.err.println("genies: could not keep the settings in " + shelf.root() + ": " + failed.getMessage());
+        }
+    }
+
     private void keepGenies() {
         try {
             shelf.keep(state.get().genies());
@@ -262,6 +272,7 @@ public final class Genies implements Actions {
     private void quit(JFrame frame) {
         frame.setTitle("Genies — putting the genies to sleep…");
         keepGenies();
+        keepSettings();
         Thread.ofVirtual().name("quit").start(() -> {
             for (GenieRunner runner : runners.values()) {
                 try {

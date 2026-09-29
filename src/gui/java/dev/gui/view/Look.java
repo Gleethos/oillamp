@@ -84,14 +84,6 @@ final class Look extends StyleSheet {
             .padding(3, 8, 3, 8)
             .componentFont(f -> f.family(FONT).size(14).color(SUBTEXT))
             .cursor(UI.Cursor.HAND));
-        add(type(AbstractButton.class).group(Skin.DANGER_BUTTON), it -> it
-            .backgroundColor(TROUBLE_WASH)
-            .foregroundColor(TROUBLE)
-            .borderRadius(10)
-            .border(1, TROUBLE)
-            .padding(6, 13, 6, 13)
-            .componentFont(f -> f.family(FONT).size(12).color(TROUBLE))
-            .cursor(UI.Cursor.HAND));
 
         add(type(JTextComponent.class).group(Skin.INPUT), it -> it
             .backgroundColor(RAISED)

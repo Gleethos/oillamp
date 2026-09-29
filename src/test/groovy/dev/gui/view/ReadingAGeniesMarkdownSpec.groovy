@@ -62,15 +62,34 @@ class ReadingAGeniesMarkdownSpec extends Specification {
         reportInfo """
             Models put commands and programs in fenced blocks. Inside one, nothing is Markdown:
             `**` in a program stays `**`. The fences, with their language name, are not shown;
-            the code is set in a font of even widths. Tables are too, so their columns line up.
+            the code is set in a font of even widths.
         """
         expect:
-            runs('Try:\n```bash\necho **hi**\n\nls\n```\n| a | b |') == [
+            runs('Try:\n```bash\necho **hi**\n\nls\n```') == [
                     ['Try:', PARAGRAPH, PLAIN], ['\n', PARAGRAPH, PLAIN],
                     ['echo **hi**', CODE_LINE, CODE_SPAN], ['\n', PARAGRAPH, PLAIN],
                     [' ', CODE_LINE, CODE_SPAN], ['\n', PARAGRAPH, PLAIN],
-                    ['ls', CODE_LINE, CODE_SPAN], ['\n', PARAGRAPH, PLAIN],
-                    ['| a | b |', CODE_LINE, CODE_SPAN]]
+                    ['ls', CODE_LINE, CODE_SPAN]]
+    }
+
+    def 'A table has its columns lined up, a bold header and thin lines instead of pipes'() {
+        reportInfo """
+            Models answer with tables often. Written in Markdown, a table is rows of cells
+            between pipes, with a row of dashes under the header. The chat lines the columns
+            up in a font of even widths, turns the pipes into thin lines and the dashes into a
+            line across, sets the header in bold, and drops Markdown markers inside cells. A
+            colon at the right end of the dashes aligns that column to the right, as numbers
+            usually want.
+        """
+        expect:
+            text('| Train | Price |\n|---|---:|\n| **Railjet** | €29.90 |\n| ICE | €9 |') ==
+                    'Train   │  Price\n' +
+                    '────────┼───────\n' +
+                    'Railjet │ €29.90\n' +
+                    'ICE     │     €9'
+
+        and: 'the header is bold, the lines are drawn quietly'
+            runs('| a | b |\n|---|---|\n| 1 | 2 |').take(3) == [['a', TABLE, BOLD], [' │ ', TABLE, MARKER], ['b', TABLE, BOLD]]
     }
 
     def 'The newest characters fade in, and are fully there once they have settled'() {
@@ -93,6 +112,10 @@ class ReadingAGeniesMarkdownSpec extends Specification {
         and: 'a settled answer is one styled run per Markdown run'
             Typeset.of(Markdown.parse('plain **bold**'), 1).size() == 2
             Typeset.of(Markdown.parse('x' * 100), 0).size() == 8
+    }
+
+    private static String text(String markdown) {
+        Markdown.parse(markdown).toList().collect { it.text() }.join('')
     }
 
     private static List<List> runs(String markdown) {

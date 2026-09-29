@@ -16,7 +16,7 @@ final class Markdown {
     private Markdown() {}
 
     /// What a line is.
-    enum Block { PARAGRAPH, H1, H2, H3, QUOTE, CODE, RULE }
+    enum Block { PARAGRAPH, H1, H2, H3, QUOTE, CODE, RULE, TABLE }
 
     /// How a run within a line looks.
     enum Inline { PLAIN, BOLD, ITALIC, BOLD_ITALIC, STRIKE, CODE, LINK, MARKER }
@@ -33,23 +33,94 @@ final class Markdown {
     private static final Pattern NUMBERED = Pattern.compile("^(\\s*)(\\d+)[.)]\\s+(.*)");
     private static final Pattern HEADING = Pattern.compile("^(#{1,6})\\s+(.*?)\\s*#*\\s*$");
 
+    private static final Pattern DIVIDER = Pattern.compile("^\\s*:?-+:?\\s*$");
+
     static Tuple<Run> parse(String markdown) {
         Tuple<Run> runs = Tuple.of(Run.class);
         boolean inCode = false, first = true;
-        for (String raw : markdown.split("\n", -1)) {
-            String line = raw.replace("\r", "");
+        String[] lines = markdown.replace("\r", "").split("\n", -1);
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
             if (FENCE.matcher(line).matches()) {
                 inCode = !inCode;
                 continue;                               // the fence itself is not shown
             }
             if (!first) runs = runs.add(Run.of("\n", Block.PARAGRAPH, Inline.PLAIN));
             first = false;
-            // Code, and tables, whose columns only line up in a font of even widths.
-            runs = inCode || line.startsWith("|")
-                    ? runs.add(Run.of(line.isEmpty() ? " " : line, Block.CODE, Inline.CODE))
-                    : line(line, runs);
+            if (inCode) {
+                runs = runs.add(Run.of(line.isEmpty() ? " " : line, Block.CODE, Inline.CODE));
+            } else if (line.startsWith("|")) {
+                int end = i;
+                while (end + 1 < lines.length && lines[end + 1].startsWith("|")) end++;
+                runs = table(java.util.Arrays.asList(lines).subList(i, end + 1), runs);
+                i = end;
+            } else {
+                runs = line(line, runs);
+            }
         }
         return runs;
+    }
+
+    /// A table, with its columns lined up, which takes a font of even widths. The pipes become
+    /// thin lines, the row of dashes under the header a line across, and the header is bold. A
+    /// cell keeps its words without their Markdown markers, and the alignment the dashes ask for.
+    private static Tuple<Run> table(java.util.List<String> lines, Tuple<Run> runs) {
+        java.util.List<java.util.List<String>> rows = new java.util.ArrayList<>();
+        for (String line : lines) rows.add(cells(line));
+        int divider = rows.size() > 1 && rows.get(1).stream().allMatch(cell -> DIVIDER.matcher(cell).matches()) ? 1 : -1;
+        int columns = rows.stream().mapToInt(java.util.List::size).max().orElse(0);
+        int[] widths = new int[columns];
+        char[] align = new char[columns];
+        java.util.Arrays.fill(align, 'l');
+        for (int r = 0; r < rows.size(); r++) {
+            for (int c = 0; c < rows.get(r).size(); c++) {
+                String cell = rows.get(r).get(c);
+                if (r == divider) {
+                    align[c] = cell.startsWith(":") && cell.endsWith(":") ? 'c' : cell.endsWith(":") ? 'r' : 'l';
+                } else {
+                    widths[c] = Math.max(widths[c], cell.length());
+                }
+            }
+        }
+        for (int r = 0; r < rows.size(); r++) {
+            if (r > 0) runs = runs.add(Run.of("\n", Block.PARAGRAPH, Inline.PLAIN));
+            if (r == divider) {
+                StringBuilder across = new StringBuilder();
+                for (int c = 0; c < columns; c++) across.append(c == 0 ? "" : "─┼─").append("─".repeat(widths[c]));
+                runs = runs.add(Run.of(across.toString(), Block.TABLE, Inline.MARKER));
+                continue;
+            }
+            Inline look = r < divider ? Inline.BOLD : Inline.PLAIN;
+            for (int c = 0; c < columns; c++) {
+                if (c > 0) runs = runs.add(Run.of(" │ ", Block.TABLE, Inline.MARKER));
+                String cell = c < rows.get(r).size() ? rows.get(r).get(c) : "";
+                runs = runs.add(Run.of(padded(cell, widths[c], align[c]), Block.TABLE, look));
+            }
+        }
+        return runs;
+    }
+
+    /// The cells of a table's row, trimmed, without their Markdown markers.
+    private static java.util.List<String> cells(String line) {
+        String inner = line.strip();
+        inner = inner.substring(1);                     // the leading pipe
+        if (inner.endsWith("|")) inner = inner.substring(0, inner.length() - 1);
+        java.util.List<String> cells = new java.util.ArrayList<>();
+        for (String cell : inner.split("\\|", -1)) {
+            StringBuilder words = new StringBuilder();
+            for (Run run : inline(cell.strip(), Block.TABLE, Tuple.of(Run.class))) words.append(run.text());
+            cells.add(words.toString());
+        }
+        return cells;
+    }
+
+    private static String padded(String cell, int width, char align) {
+        int room = width - cell.length();
+        return switch (align) {
+            case 'r' -> " ".repeat(room) + cell;
+            case 'c' -> " ".repeat(room / 2) + cell + " ".repeat(room - room / 2);
+            default -> cell + " ".repeat(room);
+        };
     }
 
     private static Tuple<Run> line(String line, Tuple<Run> runs) {
