@@ -191,7 +191,8 @@ session log**: what it reports exists only in the terminal it runs in, apart fro
 │   │   ├── runtime.env          settings the entrypoint and every shell read
 │   │   ├── authorized_keys      the client public key
 │   │   ├── ssh_host_ed25519_key a copy of the host key for sshd (0600)
-│   │   └── agent-guide.md       the same text as ~/AGENTS.md
+│   │   ├── agent-guide.md       the same text as ~/AGENTS.md
+│   │   └── gitconfig            the name and email on the agent's commits
 │   ├── image/context/           the image build files, extracted from the jar before a build
 │   ├── sockets/                 not attached itself; each directory below is, on its own
 │   │   ├── host/                you;        proxy.sock, fwd-*.sock; read-only in the container
@@ -386,7 +387,7 @@ The same, step by step:
    - `LampPlanner.planSkeleton` plans the directory tree, identity file, SSH keys, ownership
      changes, recording retention and the runtime directory. `StepRunner` runs it.
    - `LampPlanner.planSession` then plans the per-session files: `runtime.env`, the agent guide,
-     `authorized_keys`, `ssh_config`, `known_hosts`. It is a second plan because it needs the
+     the agent's git identity (`GitConfig`), `authorized_keys`, `ssh_config`, `known_hosts`. It is a second plan because it needs the
      public keys the first one generated.
 5. **`--dry-run` stops here**, after also planning the image and container steps, so the full
    `podman run` command is printed. A dry run takes no lock and changes nothing.
@@ -954,6 +955,7 @@ line** by the entrypoint or the supervisor.
 | socat bridges | command-line arguments | every start, the entrypoint (`OILLAMP_PROXY_PORT`, `OILLAMP_FORWARDS`) |
 | sshd | `/etc/oillamp/sshd_config`; `HostKey` and `AuthorizedKeysFile` point into `/oillamp/session/` | config in the image; keys copied by `LampPlanner` every start |
 | every shell | `/etc/profile.d/oillamp.sh`, reached from `/etc/profile` and from `~/.bashrc` | the script is in the image; it reads `runtime.env`; `.bashrc` is written once by `LampPlanner` |
+| git | `/etc/gitconfig`, which includes `/oillamp/session/gitconfig` | the include is in the image; the file is written every start by `GitConfig`, from `git.*`; git on the host never reads it |
 | outbound ssh | `/etc/ssh/ssh_config.d/50-oillamp-proxy.conf` | in the image |
 | foot (in-sandbox terminal) | `/etc/xdg/foot/foot.ini` | in the image |
 | pi | `~/.pi/agent/` plus `EDENAI_*` from the profile | installed in the image, copied into the home by the entrypoint once |
@@ -1161,6 +1163,8 @@ checked but have no effect yet; they are listed under "Known gaps" in STATUS.md.
 | `[[network.forwards]]` | none | see "Forwards" above | yes |
 | `model.service` | `"https://api.eu.edenai.run"` | where oillamp sends the sandbox's model requests, with the key; `https://`, or `http://` only on this machine's loopback; a path, such as `/v1`, replaces the sandbox's `/v3`; harnesses keep only EU models when it is Eden AI | yes |
 | `model.key_env` | `"EDENAI_API_KEY"` | the host environment variable holding the model key, read when a session starts | yes |
+| `git.identity` | `"genie"` | the name and email on the agent's commits: `"genie"` is `genie agent <genie@<lamp id>>`, `"host"` copies your global `user.name` and `user.email` each start, `"custom"` uses `git.name` and `git.email`, `"none"` gives none, so git in the sandbox cannot commit; the agent's `~/.gitconfig` and a repository's own setting still override it | yes |
+| `git.name`, `git.email` | `""` | the identity for `identity = "custom"`, which needs both | yes |
 | `llm.forward` | `""` | name of a forward; sets `OILLAMP_LLM_BASE_URL`, `OILLAMP_LLM_MODELS`, `OILLAMP_LLM_PROVIDER` | yes |
 | `llm.base_path` | `"/v1"` | appended to the forward's URL | yes |
 | `llm.models` | `[]` | put into `OILLAMP_LLM_MODELS` | yes |
