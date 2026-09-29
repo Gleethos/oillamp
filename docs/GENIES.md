@@ -143,13 +143,18 @@ hold control characters, are refused.
 
 ## The chat
 
-Answers are Markdown as models write it: headings, emphasis, lists, quotes, links, inline code and
-fenced code blocks (`Markdown`, pure), set in the lamp's colours (`Typeset`) and painted by
+Answers are Markdown as models write it: headings, emphasis, lists, quotes, links, inline code,
+fenced code blocks and tables, whose columns are lined up (`Markdown`, pure), set in the lamp's
+colours (`Typeset`) and painted by
 SwingTree's style engine, which wraps them to the room they get while they stream in. The newest
 characters of a streaming answer fade in. A genie that works with nothing streaming yet shows a
 moving bar; a model that shares its thoughts gets a row of its own, which opens to watch them, as
 a tool's row opens to show what the tool printed. The conversation follows its end while the user
 is there, and leaves them be when they scroll up to read.
+
+Genies brings its own fonts, Inter for text and JetBrains Mono for code, so it looks the same
+whatever font the desktop uses. Where JetBrains Mono is also installed on the desktop, in weights
+that make Java draw it bold, Genies uses Roboto Mono, which it also brings, instead.
 
 The chat and the desktop share a responsive grid: side by side in a wide window, the desktop below
 the chat in a narrow one. The settings form is a grid too, with its labels above the fields when

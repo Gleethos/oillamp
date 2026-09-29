@@ -49,7 +49,7 @@ public interface Actions {
     /// Asks the model server on this computer, named in the settings, which models it has.
     void lookUpModels();
 
-    /// The settings page closes: keep the settings.
+    /// The settings page closes. Leaving it, however, keeps the settings.
     void settingsDone();
 
     /// The socket of the genie's desktop, while it is awake.

@@ -15,7 +15,7 @@ import static swingtree.UI.*;
 /// The settings: where the genies' model runs, and how they reach it.
 ///
 /// Every field is a lens onto one value of the [GeniesState]'s [Settings], so the page keeps
-/// nothing of its own; Done asks the app to keep what is there.
+/// nothing of its own. The app keeps what is there when the page is left, by Done or otherwise.
 final class SettingsPage {
 
     private SettingsPage() {}
@@ -83,10 +83,10 @@ final class SettingsPage {
                     .add(LABEL, label("The model runs"))
                     .add(FIELD,
                         box("fill, wrap 1, ins 0, gap 6")
-                        .add("wmin 0", radioButton("at a hosted service (Eden AI in the EU by default)",
-                                Settings.Place.HOSTED, place))
-                        .add("wmin 0", radioButton("on this computer (Ollama, LM Studio, llama.cpp)",
-                                Settings.Place.THIS_MACHINE, place)))
+                        .add("wmin 0", radioButton("at a hosted service", Settings.Place.HOSTED, place))
+                        .add("growx, wmin 0, gapleft 24", Parts.note("Eden AI in the EU, by default.", Val.of(true)))
+                        .add("wmin 0", radioButton("on this computer", Settings.Place.THIS_MACHINE, place))
+                        .add("growx, wmin 0, gapleft 24", Parts.note("A model server such as Ollama, LM Studio or llama.cpp.", Val.of(true))))
 
                     // ── a hosted service ──
                     .add(LABEL, label("Service").isVisibleIf(isHosted))
@@ -98,8 +98,9 @@ final class SettingsPage {
                     .add(LABEL, label("Key").isVisibleIf(isHosted))
                     .add(FIELD,
                         box("fill, wrap 1, ins 0, gap 6").isVisibleIf(isHosted)
-                        .add("wmin 0", radioButton("Use " + Settings.KEY_VARIABLE + " from the environment ("
-                                + (found ? "found" : "not set") + ")", Settings.KeySource.ENVIRONMENT, source))
+                        .add("wmin 0", radioButton("Use " + Settings.KEY_VARIABLE, Settings.KeySource.ENVIRONMENT, source))
+                        .add("growx, wmin 0, gapleft 24", Parts.note(found ? "Found where Genies was started."
+                                : "Not set where Genies was started.", Val.of(true)))
                         .add("wmin 0", radioButton("Use this key:", Settings.KeySource.ENTERED, source))
                         .add("growx, wmin 0", passwordField(key).group(Skin.INPUT)
                              .isEnabledIf(source.viewAs(Boolean.class, it -> it == Settings.KeySource.ENTERED)))
@@ -127,11 +128,11 @@ final class SettingsPage {
                             .add(button("Look up").group(Skin.QUIET_BUTTON)
                                  .withTooltip("Ask the model server which models it has")
                                  .onClick(it -> actions.lookUpModels())))
-                        .add("growx, wmin 0", label(lookUpNote).group(Skin.META)
-                             .isVisibleIf(lookUpNote.viewAs(Boolean.class, it -> !it.isEmpty()))))
+                        .add("growx, wmin 0", Parts.wrapped(lookUpNote, Palette.SUBTEXT,
+                             lookUpNote.viewAs(Boolean.class, it -> !it.isEmpty()))))
 
                     .add(WHOLE, label("Changes take effect when a genie wakes.").group(Skin.META))
-                    .add(WHOLE, label(problem).group(Skin.PROBLEM).isVisibleIf(hasProblem).withMinSize(0, 0))
+                    .add(WHOLE, Parts.wrapped(problem, Palette.TROUBLE, hasProblem))
                     .add(WHOLE, label("✓  Your genies can reach their model.").group(Skin.FINE)
                          .isVisibleIf(hasProblem.viewAs(Boolean.class, it -> !it)))
                     .add(WHOLE,

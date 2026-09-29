@@ -1,11 +1,16 @@
 package gui
 
+import dev.gui.Genies
+import dev.gui.genie.Lighter
 import dev.gui.genie.Shelf
+import dev.gui.model.GeniesState
 import dev.gui.model.Genie
 import dev.gui.model.Settings
 import spock.lang.Specification
 import spock.lang.TempDir
+import sprouts.From
 import sprouts.Tuple
+import sprouts.Var
 
 import java.nio.file.Files
 import java.nio.file.Path
@@ -51,6 +56,26 @@ class KeepingGeniesBetweenRunsSpec extends Specification {
 
         expect:
             new Shelf(tmp).lampOf(genie.id()) == tmp.resolve('lamps').resolve(genie.id().toString())
+    }
+
+    def 'Settings are kept however the user leaves the settings page'() {
+        reportInfo """
+            The settings page has a Done button, but a user may just as well click a genie in
+            the list to get back to it. Either way, what they entered is kept, so it is still
+            there the next time Genies starts, not only until then.
+        """
+        given:
+            var genie = Genie.named('Genie 1')
+            var state = Var.of(GeniesState.of(Tuple.of(Genie, genie), Settings.defaults(), Optional.of('sk-env'))
+                    .withPage(GeniesState.Page.SETTINGS))
+            new Genies(state, new Shelf(tmp), { directory, settings, key, progress -> throw new IOException('no lamps here') } as Lighter)
+
+        when: 'the user changes the model, then clicks the genie instead of Done'
+            state.update(From.VIEW, { it.withSettings(it.settings().withModel('mistral/mistral-large-latest')) })
+            state.update(From.VIEW, { it.select(genie.id()) })
+
+        then:
+            new Shelf(tmp).settings().model() == 'mistral/mistral-large-latest'
     }
 
     def 'The settings are kept where only this user can read them, the key only when it is used'() {

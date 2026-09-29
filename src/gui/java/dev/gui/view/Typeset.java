@@ -60,7 +60,7 @@ final class Typeset {
             case CODE -> run.block() == Markdown.Block.CODE ? TEXT : CODE_TEXT;
             case LINK -> FLAME;
             case STRIKE -> SUBTEXT;
-            case MARKER -> run.block() == Markdown.Block.RULE ? BORDER : BRASS;
+            case MARKER -> run.block() == Markdown.Block.RULE || run.block() == Markdown.Block.TABLE ? BORDER : BRASS;
             default -> run.block() == Markdown.Block.QUOTE ? SUBTEXT : TEXT;
         };
         int size = switch (run.block()) { case H1 -> 20; case H2 -> 17; case H3 -> 15; default -> BODY; };
@@ -69,9 +69,10 @@ final class Typeset {
         boolean italic = run.inline() == Markdown.Inline.ITALIC || run.inline() == Markdown.Inline.BOLD_ITALIC
                       || (run.block() == Markdown.Block.QUOTE && run.inline() != Markdown.Inline.MARKER);
         boolean code = run.inline() == Markdown.Inline.CODE;
+        boolean even = code || run.block() == Markdown.Block.TABLE;
         Color shown = faded(colour, alpha);
         return f -> {
-            FontConf set = f.family(code ? MONO : FONT).size(code ? size - 1 : size).color(shown)
+            FontConf set = f.family(even ? MONO : FONT).size(even ? size - 1 : size).color(shown)
                             .weight(bold ? 2 : 1).posture(italic ? 0.2f : 0f);
             if (code) set = set.backgroundColor(faded(run.block() == Markdown.Block.CODE ? SMOKE : RAISED, alpha));
             if (run.inline() == Markdown.Inline.STRIKE) set = set.strikeThrough(true);

@@ -129,8 +129,8 @@ public final class GeniesView extends JPanel {
                 .addAll(genies, this::genieChip))
             .add("growx",
                 box("fill, wrap 1, ins 0, gap 6, hidemode 3")
-                .add("growx, wmin 0", label(state.viewAsString(it -> it.settingsProblem().orElse("")))
-                        .group(Skin.PROBLEM).isVisibleIf(state.viewAs(Boolean.class, it -> it.settingsProblem().isPresent())))
+                .add("growx, wmin 0", Parts.wrapped(state.viewAsString(it -> it.settingsProblem().orElse("")), TROUBLE,
+                        state.viewAs(Boolean.class, it -> it.settingsProblem().isPresent())))
                 .add("growx",
                     button("⚙  Settings").group(Skin.QUIET_BUTTON)
                     .onClick(it -> page.set(From.VIEW, GeniesState.Page.SETTINGS))));
@@ -149,11 +149,15 @@ public final class GeniesView extends JPanel {
             .withStyle(isSelected, (on, it) -> it
                 .backgroundColor(on ? RAISED : TRANSPARENT)
                 .border(1, on ? BORDER : TRANSPARENT)
-                .borderAt(UI.Edge.LEFT, on ? 3 : 0, FLAME)
+                // Always there, lit when selected, so selecting a genie moves nothing.
+                .borderAt(UI.Edge.LEFT, 3, on ? FLAME : TRANSPARENT)
                 .borderRadius(10))
             .withCursor(UI.Cursor.HAND)
-            .withTooltip(shown.viewAsString(it -> it.name() + " — " + it.activity()))
-            .onMouseClick(it -> state.update(From.VIEW, s -> s.select(id)))
+            .withTooltip(shown.viewAsString(it -> it.name() + " — " + it.activity() + ". Right-click for more."))
+            .onMouseClick(it -> {
+                state.update(From.VIEW, s -> s.select(id));
+                if (it.isRightMouseButton()) genieMenu(id).show(it.getComponent(), it.mouseX(), it.mouseY());
+            })
             .add("top", Parts.lamp(shown.viewAs(Genie.Phase.class, Genie::phase), 26))
             .add("growx, wmin 0, wrap",
                 box("fill, wrap 1, ins 0, gap 0")
@@ -261,21 +265,24 @@ public final class GeniesView extends JPanel {
     private UIForAnySwing<?, ?> header(Val<Boolean> visible) {
         Val<Boolean> awake = phase.viewAs(Boolean.class, Genie.Phase::isAwake);
         Val<Boolean> working = phase.viewAs(Boolean.class, it -> it == Genie.Phase.WORKING);
-        Val<Boolean> wide = state.viewAs(Boolean.class, it -> !it.narrow());
+        Val<Boolean> wide = state.viewAs(Boolean.class, GeniesState::roomForWords);
         return
-            panel("fill, ins 0, gap 10, hidemode 3", "[][30!][grow][][][][][][]").group(Skin.HEADER)
+            panel("fill, ins 0, gap 10, hidemode 3", "[][30!][grow][]").group(Skin.HEADER)
             .isVisibleIf(visible)
             .add(button("☰").group(Skin.ICON_BUTTON).withTooltip("Show or hide your genies")
                  .onClick(it -> sidebarShown.update(From.VIEW, shown -> !shown)))
             .add(Parts.lamp(phase, 30))
             .add("growx, wmin 0",
                 box("fill, wrap 1, ins 0, gap 0")
-                .add("growx, wmin 0", label(name).group(Skin.TITLE))
+                .add("growx, wmin 0", label(name).group(Skin.TITLE)
+                     .withTooltip("Double-click to rename")
+                     .onMouseClick(it -> { if (it.clickCount() == 2) rename(genie.get().id()); }))
                 .add("growx, wmin 0", label(genie.viewAsString(it -> it.activity())).group(Skin.SUBTITLE)))
+            // One group on the right, so buttons that are hidden leave no gap behind.
+            .add(box("ins 0, gap 10, hidemode 3, aligny center")
             .add(label(genie.viewAsString(it -> it.tokens() == 0 ? "" : String.format("%,d tokens", it.tokens()))).group(Skin.META)
                  .isVisibleIf(wide)
                  .withTooltip("Tokens the model counted for this genie since Genies started"))
-            .add(button("✎").group(Skin.ICON_BUTTON).withTooltip("Rename this genie").onClick(it -> rename()))
             .add(toggleButton(worded("▣  Desktop", "▣"), desktopShown).group(Skin.QUIET_BUTTON).isVisibleIf(awake)
                  .withTooltip("Watch the genie's desktop, and use it"))
             .add(button(worded("■  Stop", "■")).group(Skin.QUIET_BUTTON).isVisibleIf(working)
@@ -284,9 +291,9 @@ public final class GeniesView extends JPanel {
             .add(button(worded("☾  Sleep", "☾")).group(Skin.QUIET_BUTTON).isVisibleIf(awake)
                  .withTooltip("End the genie's sandbox. Its home and this conversation are kept.")
                  .onClick(it -> actions.sleep(genie.get().id())))
-            .add(button(worded("Delete", "✕")).group(Skin.DANGER_BUTTON)
-                 .withTooltip("Delete this genie and everything in its home, for good")
-                 .onClick(it -> confirmDelete()));
+            .add(button("⋯").group(Skin.ICON_BUTTON)
+                 .withTooltip("Rename, start a new conversation, or delete this genie")
+                 .onClick(it -> below(genieMenu(genie.get().id()), it.getComponent()))));
     }
 
     /*
@@ -387,11 +394,18 @@ public final class GeniesView extends JPanel {
                 box("wrap 1, ins 30, gap 8, align center center", "[center, grow, fill]")
                 .isVisibleIf(empty)
                 .add("align center", Parts.lamp(phase, 96))
-                .add("align center", label(genie.viewAsString(it -> it.phase().isAwake()
-                        ? it.name() + " is listening." : it.name() + " is in the lamp.")).group(Skin.EMPTY_TITLE))
-                .add("align center, wmin 0", label(genie.viewAsString(it -> it.phase().isAwake()
-                        ? "Ask for anything. It has a desktop and a shell of its own, and hands you files it makes."
-                        : "Wake it to talk. It keeps its own desktop, safely away from yours.")).group(Skin.EMPTY_TEXT)));
+                .add("growx, wmin 0", label(genie.viewAsString(it -> switch (it.phase()) {
+                        case READY, WORKING -> it.name() + " is listening.";
+                        case WAKING -> it.name() + " is waking.";
+                        case ASLEEP -> it.name() + " is in the lamp.";
+                        case BROKEN -> it.name() + " could not wake.";
+                    })).group(Skin.EMPTY_TITLE).withHorizontalAlignment(UI.HorizontalAlignment.CENTER))
+                .add("growx, wmin 0", label(genie.viewAsString(it -> switch (it.phase()) {
+                        case READY, WORKING -> "Ask for anything. It has a desktop and a shell of its own, and hands you files it makes.";
+                        case WAKING -> "Its sandbox is starting. The very first time, the sandbox is made, which takes several minutes.";
+                        case ASLEEP -> "Wake it to talk. It keeps its own desktop, safely away from yours.";
+                        case BROKEN -> "What went wrong is said below. Try again once that is sorted out.";
+                    })).group(Skin.EMPTY_TEXT).withHorizontalAlignment(UI.HorizontalAlignment.CENTER)));
     }
 
     /// The files in the genie's outbox, any of which the user can save.
@@ -414,7 +428,6 @@ public final class GeniesView extends JPanel {
     private UIForAnySwing<?, ?> bottomBar() {
         Val<Boolean> awake = phase.viewAs(Boolean.class, Genie.Phase::isAwake);
         Val<Boolean> canWake = phase.viewAs(Boolean.class, it -> it == Genie.Phase.ASLEEP || it == Genie.Phase.BROKEN);
-        Val<Boolean> waking = phase.viewAs(Boolean.class, it -> it == Genie.Phase.WAKING);
         Val<Boolean> canSend = genie.viewAs(Boolean.class, Genie::canSend);
         return
             box("fill, wrap 1, ins 6 18 16 18, gap 0, hidemode 3", "[grow]")
@@ -428,6 +441,8 @@ public final class GeniesView extends JPanel {
                     .withStyle(it -> it.backgroundColor(TRANSPARENT))
                     .add(
                         textArea(draft).group(Skin.INPUT).peek(Parts::softWrap)
+                        // The composer is the box; the text in it needs no second one.
+                        .withStyle(it -> it.backgroundColor(TRANSPARENT).border(0, TRANSPARENT))
                         .withTooltip("Return sends; Shift and Return starts a new line")
                         .onKeyPress(it -> {
                             java.awt.event.KeyEvent key = it.getEvent();
@@ -437,6 +452,9 @@ public final class GeniesView extends JPanel {
                             }
                         })))
                 .add(button("Send  ➤").group(Skin.FLAME_BUTTON).isEnabledIf(canSend)
+                     // With nothing to send, it steps back rather than glowing half-lit.
+                     .withStyle(canSend, (on, it) -> on ? it : it.backgroundColor(RAISED).foregroundColor(SUBTEXT)
+                         .componentFont(f -> f.color(SUBTEXT)).cursor(UI.Cursor.DEFAULT))
                      .onClick(it -> actions.send())))
             .add("growx, wmin 0",
                 panel("fill, ins 4 8 4 4, gap 12, hidemode 3", "[grow][][]").group(Skin.COMPOSER)
@@ -445,13 +463,11 @@ public final class GeniesView extends JPanel {
                         case WAKING -> "Waking " + it.name() + ": " + it.activity() + "…";
                         default -> it.name() + " is asleep. Its sandbox is off, its home and conversation are kept.";
                     })).group(Skin.SUBTITLE).isVisibleIf(phase.viewAs(Boolean.class, it -> it != Genie.Phase.BROKEN)))
-                .add("growx, wmin 0", label(genie.viewAsString(it -> it.name() + " could not wake: " + it.activity()))
-                     .group(Skin.PROBLEM).isVisibleIf(phase.viewAs(Boolean.class, it -> it == Genie.Phase.BROKEN)))
+                .add("growx, wmin 0", Parts.wrapped(genie.viewAsString(it -> it.name() + " could not wake: " + it.activity()),
+                     TROUBLE, phase.viewAs(Boolean.class, it -> it == Genie.Phase.BROKEN)))
                 .add(button(genie.viewAsString(it -> it.phase() == Genie.Phase.BROKEN ? "Try again" : "✦  Wake"))
                      .group(Skin.FLAME_BUTTON).isVisibleIf(canWake)
-                     .onClick(it -> actions.wake(genie.get().id())))
-                .add(label("the first wake builds the sandbox, which takes a few minutes").group(Skin.META)
-                     .isVisibleIf(waking)));
+                     .onClick(it -> actions.wake(genie.get().id()))));
     }
 
     private UIForAnySwing<?, ?> firstGenie(Val<Boolean> visible) {
@@ -469,6 +485,62 @@ public final class GeniesView extends JPanel {
 
     // ─── small parts ───────────────────────────────────────────────────────────────────────
 
+    /// Sets up the look before any window opens: Genies' own fonts, bundled so it looks the
+    /// same on every desktop, then the dark look-and-feel in the lamp's colours. Those also
+    /// reach what the style sheet does not paint: dialogs, the tree of conversations, lists
+    /// of choices, scroll bars.
+    public static void setUpLook() {
+        com.formdev.flatlaf.FlatLaf.setPreferredFontFamily(FONT);
+        com.formdev.flatlaf.FlatLaf.setPreferredMonospacedFontFamily(MONO);
+        com.formdev.flatlaf.FlatLaf.setGlobalExtraDefaults(java.util.Map.ofEntries(
+            java.util.Map.entry("@background", hex(CARD)),
+            java.util.Map.entry("@foreground", hex(TEXT)),
+            java.util.Map.entry("@accentColor", hex(FLAME)),
+            java.util.Map.entry("@selectionBackground", hex(YOURS)),
+            java.util.Map.entry("@selectionForeground", hex(TEXT)),
+            java.util.Map.entry("@selectionInactiveBackground", hex(YOURS)),
+            java.util.Map.entry("@selectionInactiveForeground", hex(TEXT)),
+            java.util.Map.entry("Component.borderColor", hex(BORDER)),
+            java.util.Map.entry("Component.focusColor", hex(FLAME)),
+            java.util.Map.entry("Component.focusedBorderColor", hex(BRASS)),
+            java.util.Map.entry("Component.arc", "10"),
+            java.util.Map.entry("Button.arc", "10"),
+            java.util.Map.entry("TextComponent.arc", "10"),
+            java.util.Map.entry("ComboBox.background", hex(RAISED)),
+            java.util.Map.entry("ComboBox.editableBackground", hex(RAISED)),
+            java.util.Map.entry("ComboBox.buttonBackground", hex(RAISED)),
+            java.util.Map.entry("ComboBox.buttonEditableBackground", hex(RAISED)),
+            java.util.Map.entry("ComboBox.popupBackground", hex(CARD)),
+            java.util.Map.entry("TextField.background", hex(RAISED)),
+            java.util.Map.entry("PasswordField.background", hex(RAISED)),
+            java.util.Map.entry("TextArea.background", hex(RAISED)),
+            java.util.Map.entry("Tree.selectionArc", "6"),
+            java.util.Map.entry("CheckBox.icon.selectedBackground", hex(FLAME)),
+            java.util.Map.entry("CheckBox.icon.selectedBorderColor", hex(FLAME)),
+            java.util.Map.entry("CheckBox.icon.checkmarkColor", hex(ON_FLAME)),
+            java.util.Map.entry("CheckBox.icon.focusedSelectedBackground", hex(FLAME)),
+            java.util.Map.entry("CheckBox.icon.hoverSelectedBackground", hex(FLAME)),
+            java.util.Map.entry("ScrollBar.width", "10"),
+            java.util.Map.entry("ScrollBar.showButtons", "false"),
+            java.util.Map.entry("ScrollBar.track", hex(NIGHT)),
+            java.util.Map.entry("ScrollBar.thumb", hex(BORDER)),
+            java.util.Map.entry("ScrollBar.hoverThumbColor", hex(SUBTEXT)),
+            java.util.Map.entry("ScrollBar.pressedThumbColor", hex(BRASS)),
+            java.util.Map.entry("ScrollBar.thumbArc", "999"),
+            java.util.Map.entry("ScrollBar.thumbInsets", "2,2,2,2"),
+            java.util.Map.entry("ToolTip.background", hex(RAISED)),
+            java.util.Map.entry("ToolTip.foreground", hex(TEXT))));
+        com.formdev.flatlaf.FlatDarkLaf.setup();
+        // The size of the window's own text, rather than the desktop's, for menus and dialogs too.
+        // Derived from FlatLaf's font, which falls back to other fonts for signs Inter lacks.
+        java.awt.Font base = javax.swing.UIManager.getFont("defaultFont");
+        if (base != null) javax.swing.UIManager.put("defaultFont", new javax.swing.plaf.FontUIResource(base.deriveFont(13f)));
+    }
+
+    private static String hex(java.awt.Color colour) {
+        return String.format("#%02x%02x%02x", colour.getRed(), colour.getGreen(), colour.getBlue());
+    }
+
     /// The lamp, lit, for the window's icon.
     public static java.awt.Image windowIcon() {
         return swingtree.style.SvgIcon.of(Art.lamp(Genie.Phase.READY)).withIconSize(64, 64).getImage();
@@ -479,23 +551,59 @@ public final class GeniesView extends JPanel {
                 .withStyle(it -> it.componentFont(f -> f.family(FONT).size(12).color(TEXT)));
     }
 
-    /// A button's words while the window is wide, and just its sign while it is narrow.
+    /// A button's words while the header has room for them, and just its sign otherwise.
     private Val<String> worded(String wide, String narrow) {
-        return state.viewAsString(it -> it.narrow() ? narrow : wide);
+        return state.viewAsString(it -> it.roomForWords() ? wide : narrow);
     }
 
-    private void rename() {
-        Genie named = genie.get();
-        Object answer = javax.swing.JOptionPane.showInputDialog(this, "A new name for " + named.name() + ":",
-                "Rename a genie", javax.swing.JOptionPane.PLAIN_MESSAGE, null, null, named.name());
-        if (answer instanceof String text && !text.isBlank()) name.set(From.VIEW, text.strip());
+    /// What can be done with a genie beyond its everyday buttons: behind "⋯" in the header,
+    /// and a right-click on its card. Deleting it is last, away from the rest.
+    private javax.swing.JPopupMenu genieMenu(UUID id) {
+        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+        state.get().find(id).ifPresent(shown -> {
+            Genie.Phase now = shown.phase();
+            boolean idle = now != Genie.Phase.WORKING && now != Genie.Phase.WAKING;
+            menu.add(item("Rename…", true, () -> rename(id)));
+            menu.add(item("New conversation", idle, () -> actions.startAfresh(id)));
+            menu.addSeparator();
+            if (now.isAwake()) menu.add(item("Sleep", true, () -> actions.sleep(id)));
+            else menu.add(item(now == Genie.Phase.BROKEN ? "Try waking again" : "Wake", now != Genie.Phase.WAKING, () -> actions.wake(id)));
+            menu.addSeparator();
+            javax.swing.JMenuItem delete = item("Delete " + shown.name() + "…", true, () -> confirmDelete(id));
+            delete.setForeground(TROUBLE);
+            menu.add(delete);
+        });
+        return menu;
     }
 
-    private void confirmDelete() {
-        Genie doomed = genie.get();
-        swingtree.dialogs.ConfirmAnswer answer = UI.confirmation("Delete " + doomed.name() + " for good? Its home, everything it made "
-                + "and your conversation with it are deleted.").titled("Delete a genie").yesOption("Delete").noOption("Keep").cancelOption("").show();
-        if (answer == swingtree.dialogs.ConfirmAnswer.YES) actions.delete(doomed.id());
+    /// Opens `menu` under `button`, its right edge on the button's: the button is at the
+    /// window's right edge, and a menu opening rightwards would leave the window.
+    private static void below(javax.swing.JPopupMenu menu, java.awt.Component button) {
+        menu.show(button, button.getWidth() - menu.getPreferredSize().width, button.getHeight());
+    }
+
+    private static javax.swing.JMenuItem item(String text, boolean enabled, Runnable action) {
+        javax.swing.JMenuItem item = new javax.swing.JMenuItem(text);
+        item.setEnabled(enabled);
+        item.addActionListener(event -> action.run());
+        return item;
+    }
+
+    private void rename(UUID id) {
+        state.get().find(id).ifPresent(named -> {
+            Object answer = javax.swing.JOptionPane.showInputDialog(this, "A new name for " + named.name() + ":",
+                    "Rename a genie", javax.swing.JOptionPane.PLAIN_MESSAGE, null, null, named.name());
+            if (answer instanceof String text && !text.isBlank())
+                state.update(From.VIEW, it -> it.update(id, genie -> genie.withName(text.strip())));
+        });
+    }
+
+    private void confirmDelete(UUID id) {
+        state.get().find(id).ifPresent(doomed -> {
+            swingtree.dialogs.ConfirmAnswer answer = UI.confirmation("Delete " + doomed.name() + " for good? Its home, everything it made "
+                    + "and your conversations with it are deleted.").titled("Delete a genie").yesOption("Delete").noOption("Keep").cancelOption("").show();
+            if (answer == swingtree.dialogs.ConfirmAnswer.YES) actions.delete(id);
+        });
     }
 
     /// Lets the user change a question they asked, in a dialog holding the question as it was.
