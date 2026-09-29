@@ -136,6 +136,10 @@ class TheShapeOfTheCodeSpec extends Specification {
                            // The egress proxy: sockets, DNS and byte copying. Whether a
                            // connection is allowed is decided by Policy, a pure function.
                            'Egress',
+                           // The lamp's history: reads the agent's home and writes git
+                           // objects, as Filesystem does the lamp's other files. What a
+                           // snapshot looks like is decided by GitFormat, which is pure.
+                           'History',
                            // An application's handle on a lamp: starts the engine's process
                            // and reads its output. It decides nothing about the sandbox.
                            'Lamp'] as Set

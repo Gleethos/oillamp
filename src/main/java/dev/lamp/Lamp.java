@@ -54,6 +54,7 @@ public final class Lamp implements AutoCloseable {
     static final String MODEL_KEY_VARIABLE = "OILLAMP_MODEL_KEY";
 
     private final Path directory;
+    private final Launcher launcher;
     private final Process engine;
     private final List<Consumer<LampEvent>> listeners;
     private final CountDownLatch runningOrEnded = new CountDownLatch(1);
@@ -62,8 +63,9 @@ public final class Lamp implements AutoCloseable {
     private volatile Optional<LampEvent.SessionOpened> opened = Optional.empty();
     private volatile Optional<ExitStatus> exit = Optional.empty();
 
-    private Lamp(Path directory, Process engine, List<Consumer<LampEvent>> listeners) {
+    private Lamp(Path directory, Launcher launcher, Process engine, List<Consumer<LampEvent>> listeners) {
         this.directory = directory;
+        this.launcher = launcher;
         this.engine = engine;
         this.listeners = listeners;
     }
@@ -146,7 +148,7 @@ public final class Lamp implements AutoCloseable {
             modelKey.ifPresent(key -> arguments.addAll(List.of("--model-key-env", MODEL_KEY_VARIABLE)));
             Process engine = launcher.launch(List.copyOf(arguments),
                     modelKey.map(key -> Map.of(MODEL_KEY_VARIABLE, key)).orElse(Map.of()));
-            Lamp lamp = new Lamp(directory, engine, listeners);
+            Lamp lamp = new Lamp(directory, launcher, engine, listeners);
             Thread.ofVirtual().name("lamp-events-" + directory.getFileName()).start(lamp::readEvents);
             return lamp;
         }
@@ -164,17 +166,130 @@ public final class Lamp implements AutoCloseable {
         /// @return [ExitStatus#SUCCESS] once the lamp is gone; otherwise the events said why
         /// @throws IOException when the engine's process could not be started at all
         public ExitStatus remove() throws IOException, InterruptedException {
-            Process engine = launcher.launch(
-                    List.of("remove", directory.toString(), "--yes", "--embedded"), Map.of());
-            engine.getOutputStream().close();
-            try (BufferedReader output = new BufferedReader(
-                    new InputStreamReader(engine.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = output.readLine()) != null)
-                    LampEvent.fromJson(line).ifPresent(event -> listeners.forEach(listener -> listener.accept(event)));
-            }
-            return ExitStatus.ofCode(engine.waitFor()).orElse(ExitStatus.ERROR);
+            return runToEnd(launcher, listeners, "remove", directory.toString(), "--yes").status();
         }
+
+        /// Takes a snapshot of this lamp: the agent's home and its `oillamp.toml`, as they are
+        /// now. [#restore] brings the lamp back to it later. Works whether or not the lamp's
+        /// sandbox is running; see [Lamp#save] for one this application holds.
+        ///
+        /// Blocks until the engine is done. What it reports goes to the listeners.
+        ///
+        /// @param message what to remember the snapshot by; may be empty
+        /// @return the snapshot, or empty when nothing changed since the last one
+        /// @throws Failed      when the lamp could not be saved; the problem says why
+        /// @throws IOException when the engine's process could not be started at all
+        public Optional<LampEvent.Snapshot> save(String message) throws IOException, InterruptedException, Failed {
+            return Lamp.save(launcher, listeners, directory, message);
+        }
+
+        /// Every snapshot of this lamp, newest first.
+        ///
+        /// @throws Failed      when the lamp's history could not be read; the problem says why
+        /// @throws IOException when the engine's process could not be started at all
+        public List<LampEvent.Snapshot> history() throws IOException, InterruptedException, Failed {
+            Ran ran = runToEnd(launcher, listeners, "history", directory.toString());
+            ran.orThrow();
+            for (LampEvent event : ran.events())
+                if (event instanceof LampEvent.History history) {
+                    List<LampEvent.Snapshot> snapshots = new ArrayList<>();
+                    for (LampEvent.Snapshot snapshot : history.snapshots()) snapshots.add(snapshot);
+                    return List.copyOf(snapshots);
+                }
+            return List.of();
+        }
+
+        /// Brings this lamp back to `snapshot`: the agent's home and `oillamp.toml` become what
+        /// they were when it was saved. The lamp is saved first, so a restore can be undone by
+        /// restoring that save. A lamp whose sandbox is running is refused: close it first.
+        ///
+        /// @param snapshot a snapshot's [id][LampEvent.Snapshot#id()], or a unique beginning of
+        ///                 it of at least four characters
+        /// @return the snapshot that records the restore, or the one restored when the lamp
+        ///         already was in that state
+        /// @throws Failed      when there is no such snapshot, the sandbox is running, or the
+        ///                     restore did not finish; the problem says which
+        /// @throws IOException when the engine's process could not be started at all
+        public LampEvent.Snapshot restore(String snapshot) throws IOException, InterruptedException, Failed {
+            Ran ran = runToEnd(launcher, listeners, "restore", directory.toString(), snapshot);
+            ran.orThrow();
+            for (LampEvent event : ran.events())
+                if (event instanceof LampEvent.Restored restored) return restored.result();
+            throw new Failed(ran.status(), internal("the engine reported no restore"));
+        }
+    }
+
+    /// The engine said no, or could not do what was asked. [#problem()] says why, in full.
+    public static final class Failed extends Exception {
+
+        private static final long serialVersionUID = 1L;
+
+        private final transient Problem problem;
+        private final ExitStatus status;
+
+        Failed(ExitStatus status, Problem problem) {
+            super(problem.code() + " " + problem.title() + ": " + problem.whatHappened());
+            this.problem = problem;
+            this.status = status;
+        }
+
+        public Problem problem() { return problem; }
+
+        /// The engine's exit status: [ExitStatus#LAMP_BUSY] for a lamp whose sandbox is running,
+        /// [ExitStatus#USAGE] for a snapshot that does not exist.
+        public ExitStatus status() { return status; }
+    }
+
+    /// Everything an engine said, and how it ended.
+    private record Ran(ExitStatus status, List<LampEvent> events) {
+
+        /// Throws the first error the engine reported, if it did not succeed.
+        void orThrow() throws Failed {
+            if (status.isSuccess()) return;
+            for (LampEvent event : events)
+                if (event instanceof LampEvent.Failure failure) throw new Failed(status, failure.problem());
+            throw new Failed(status, internal("the engine exited with " + status + " without saying why"));
+        }
+    }
+
+    private static Problem internal(String what) {
+        return new Problem(new Problem.Code("OIL-INTERNAL-001"), Problem.Severity.ERROR,
+                "Unexpected internal error (please report)", what,
+                "this is a bug in oillamp, not something you did wrong",
+                sprouts.Tuple.of(Problem.Evidence.class), sprouts.Tuple.of(Problem.Fix.class), Optional.empty());
+    }
+
+    /// Runs the engine for one command that ends by itself, passes each event to the listeners,
+    /// and waits for it to exit.
+    private static Ran runToEnd(Launcher launcher, List<Consumer<LampEvent>> listeners, String... command)
+            throws IOException, InterruptedException {
+        List<String> arguments = new ArrayList<>(List.of(command));
+        arguments.add("--embedded");
+        Process engine = launcher.launch(List.copyOf(arguments), Map.of());
+        engine.getOutputStream().close();
+        List<LampEvent> events = new ArrayList<>();
+        try (BufferedReader output = new BufferedReader(
+                new InputStreamReader(engine.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = output.readLine()) != null)
+                LampEvent.fromJson(line).ifPresent(event -> {
+                    events.add(event);
+                    listeners.forEach(listener -> listener.accept(event));
+                });
+        }
+        return new Ran(ExitStatus.ofCode(engine.waitFor()).orElse(ExitStatus.ERROR), List.copyOf(events));
+    }
+
+    private static Optional<LampEvent.Snapshot> save(Launcher launcher, List<Consumer<LampEvent>> listeners,
+                                                     Path directory, String message)
+            throws IOException, InterruptedException, Failed {
+        Ran ran = message.isBlank()
+                ? runToEnd(launcher, listeners, "save", directory.toString())
+                : runToEnd(launcher, listeners, "save", directory.toString(), "--message", message);
+        ran.orThrow();
+        for (LampEvent event : ran.events())
+            if (event instanceof LampEvent.Saved saved) return Optional.of(saved.snapshot());
+        return Optional.empty();
     }
 
     /// The prefix of the agent directory's name in a lamp. Written out, because this package must
@@ -200,6 +315,18 @@ public final class Lamp implements AutoCloseable {
 
     /// The lamp directory.
     public Path directory() { return directory; }
+
+    /// Takes a snapshot of this lamp while its sandbox runs, as [Starting#save] does. Programs in
+    /// the sandbox may be writing at that moment, so the snapshot is marked as a running save.
+    ///
+    /// Blocks until it is done. What the engine reports goes to this lamp's listeners.
+    ///
+    /// @return the snapshot, or empty when nothing changed since the last one
+    /// @throws Failed      when the lamp could not be saved; the problem says why
+    /// @throws IOException when the engine's process could not be started at all
+    public Optional<LampEvent.Snapshot> save(String message) throws IOException, InterruptedException, Failed {
+        return save(launcher, listeners, directory, message);
+    }
 
     /// Waits until the session is running, the engine has ended, or `limit` has passed.
     ///

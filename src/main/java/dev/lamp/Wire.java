@@ -6,6 +6,7 @@ import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 
 import com.fasterxml.jackson.core.JacksonException;
@@ -28,7 +29,8 @@ import sprouts.Tuple;
 /// - a record becomes an object with one field per component, plus `"type"` (its simple name)
 ///   when it is one of the cases of a sealed interface, such as `{"type":"Ok","area":…,"text":…}`;
 /// - a `Tuple` becomes an array, an `Optional` its value or nothing, an enum its name;
-/// - a `Path` becomes its text, a `Duration` its ISO-8601 text such as `"PT1.5S"`.
+/// - a `Path` becomes its text, a `Duration` and an `Instant` their ISO-8601 text such as
+///   `"PT1.5S"`.
 ///
 /// Reading accepts only the types a [LampEvent] is made of, and anything it does not understand
 /// (for example an event kind from a newer oillamp) is read as nothing rather than as an error.
@@ -63,6 +65,7 @@ final class Wire {
             case Enum<?> constant     -> NODES.textNode(constant.name());
             case Path path            -> NODES.textNode(path.toString());
             case Duration duration    -> NODES.textNode(duration.toString());
+            case Instant instant      -> NODES.textNode(instant.toString());
             case Tuple<?> tuple       -> {
                 ArrayNode array = NODES.arrayNode();
                 for (Object element : tuple) array.add(encode(element));
@@ -124,6 +127,7 @@ final class Wire {
         if (target == boolean.class)  return node.asBoolean();
         if (target == Path.class)     return Path.of(node.asText());
         if (target == Duration.class) return Duration.parse(node.asText());
+        if (target == Instant.class)  return Instant.parse(node.asText());
         if (target.isEnum())          return enumConstant(target, node.asText());
         if (target.isSealed())        return decode(node, caseNamed(target, node.path("type").asText()));
         if (target.isRecord())        return decodeRecord(node, target);

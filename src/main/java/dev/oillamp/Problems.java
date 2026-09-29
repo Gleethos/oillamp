@@ -47,6 +47,13 @@ final class Problems {
     public static final Code NO_SUCH_RECORDING     = new Code("OIL-LAMP-009");
     public static final Code RECORDING_NOT_OPENED  = new Code("OIL-LAMP-010");
     public static final Code LAMP_TAMPERED         = new Code("OIL-LAMP-011");
+    public static final Code NO_SUCH_SNAPSHOT      = new Code("OIL-HISTORY-001");
+    public static final Code HISTORY_DAMAGED       = new Code("OIL-HISTORY-002");
+    public static final Code SAVE_FAILED           = new Code("OIL-HISTORY-003");
+    public static final Code FILES_NOT_SAVED       = new Code("OIL-HISTORY-004");
+    public static final Code RESTORE_WHILE_RUNNING = new Code("OIL-HISTORY-005");
+    public static final Code RESTORE_FAILED        = new Code("OIL-HISTORY-006");
+    public static final Code HISTORY_BUSY          = new Code("OIL-HISTORY-007");
     public static final Code LOCK_BUSY             = new Code("OIL-LOCK-001");
     public static final Code LOCK_RECOVERED        = new Code("OIL-LOCK-002");
     public static final Code CONFIG_UNPARSEABLE    = new Code("OIL-CONFIG-001");
@@ -392,6 +399,89 @@ final class Problems {
                 Tuple.of(Evidence.class, new Evidence.File(root, "stale session state")),
                 Tuple.of(Fix.class),
                 Optional.empty());
+    }
+
+    // ─── history ───────────────────────────────────────────────────────────────────────────
+
+    /// `oillamp restore` named a snapshot that is not there, or not only one.
+    public static Problem noSuchSnapshot(String given, Path lamp, String why) {
+        return error(NO_SUCH_SNAPSHOT, "No such snapshot",
+                "'" + given + "' does not name one snapshot of " + lamp + ": " + why,
+                "a restore replaces the agent's home, so oillamp only does it for a snapshot "
+              + "it is sure you meant")
+            .withFix(Fix.run("see this lamp's snapshots", "oillamp history " + lamp));
+    }
+
+    /// The history could not be read: a file in it is missing or not what oillamp wrote.
+    public static Problem historyDamaged(Path history, String detail) {
+        return error(HISTORY_DAMAGED, "The lamp's history cannot be read",
+                detail,
+                "without it oillamp cannot list or restore snapshots; the agent's home itself "
+              + "is untouched")
+            .withEvidence(new Evidence.File(history, "the history, a git repository"))
+            .withFix(Fix.run("ask git what is wrong with it", "git --git-dir=" + history + " fsck"))
+            .withFix(Fix.of("oillamp reads only the files it writes itself, one per object. "
+                          + "`git gc` or `git repack` packs them into one file, which oillamp "
+                          + "cannot read; never run either on this repository"));
+    }
+
+    /// A save stopped part of the way. Nothing it wrote counts until the last step, so the
+    /// history is as it was before.
+    public static Problem saveFailed(Path lamp, String reason) {
+        return error(SAVE_FAILED, "The lamp could not be saved",
+                reason,
+                "no snapshot was made, so the lamp's state right now cannot be restored later; "
+              + "the history holds what it held before")
+            .withEvidence(new Evidence.File(lamp, "the lamp"))
+            .withFix(Fix.run("try again once the cause is fixed", "oillamp save " + lamp));
+    }
+
+    /// A save made its snapshot, but had to leave some files out.
+    public static Problem filesNotSaved(Path lamp, Tuple<String> skipped) {
+        int shown = Math.min(skipped.size(), 10);
+        StringBuilder list = new StringBuilder();
+        for (int i = 0; i < shown; i++) list.append(i == 0 ? "" : "\n").append(skipped.get(i));
+        if (skipped.size() > shown) list.append("\n… and ").append(skipped.size() - shown).append(" more");
+        return warning(FILES_NOT_SAVED, "Some files were left out of the snapshot",
+                skipped.size() + " file(s) in " + lamp + " could not be read, or kept changing "
+              + "while they were read",
+                "restoring this snapshot will bring back everything else, but not these")
+            .withEvidence(new Evidence.Excerpt("left out", list.toString()))
+            .withFix(Fix.of("a file the agent made unreadable (`chmod 000`) can be made readable "
+                          + "again with `chmod u+r`; a file that kept changing is usually a log or "
+                          + "a database of a program that was running"));
+    }
+
+    /// `oillamp restore` on a lamp whose session is running.
+    public static Problem restoreWhileRunning(Path lamp) {
+        return error(RESTORE_WHILE_RUNNING, "Stop the session before restoring",
+                "a session is running on " + lamp,
+                "a restore rewrites the agent's home, and programs in the sandbox would go on "
+              + "working in files that were replaced under them")
+            .withFix(Fix.run("shut the session down", "oillamp stop " + lamp))
+            .withFix(Fix.of("then run the restore again"));
+    }
+
+    /// A restore stopped part of the way. The safety save before it holds the lamp as it was.
+    public static Problem restoreFailed(Path lamp, String reason, String safetySnapshot) {
+        return error(RESTORE_FAILED, "The restore did not finish",
+                reason,
+                "the agent's home is now partly restored; oillamp saved it just before it began, "
+              + "as snapshot " + safetySnapshot)
+            .withEvidence(new Evidence.File(lamp, "the lamp"))
+            .withFix(Fix.run("put it back as it was before the restore",
+                    "oillamp restore " + lamp + " " + safetySnapshot));
+    }
+
+    /// Another save or restore held the history for longer than oillamp waited.
+    public static Problem historyBusy(Path lamp, java.time.Duration waited) {
+        return error(HISTORY_BUSY, "Another save is still running",
+                "another oillamp process has been saving or restoring " + lamp + " for over "
+              + waited.toSeconds() + " seconds",
+                "two saves writing the history at once could each lose what the other wrote, "
+              + "so oillamp waits for the first to finish")
+            .withFix(Fix.of("wait for it and try again; the first save of a large home can take "
+                          + "several minutes"));
     }
 
     // ─── configuration ─────────────────────────────────────────────────────────────────────

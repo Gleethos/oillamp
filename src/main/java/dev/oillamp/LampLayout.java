@@ -97,6 +97,12 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path recordingsDir() { return stateDir().resolve("recordings"); }
     public Path recording(SessionId session) { return recordingsDir().resolve(session.value() + ".mkv"); }
 
+    /// The lamp's history: a git repository of snapshots of the agent directory and
+    /// `oillamp.toml`. Never mounted into the container, so the agent cannot rewrite its past.
+    public Path historyDir()    { return stateDir().resolve("history"); }
+    /// Held while a save or a restore runs, so that two never write the history at once.
+    public Path historyLock()   { return stateDir().resolve("history.lock"); }
+
     public Path logsDir()       { return stateDir().resolve("logs"); }
     public Path sessionLog(SessionId s)   { return logsDir().resolve("oillamp-" + s.value() + ".log"); }
     public Path containerLog(SessionId s) { return logsDir().resolve("container-" + s.value() + ".log"); }

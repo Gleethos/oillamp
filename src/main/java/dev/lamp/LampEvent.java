@@ -94,6 +94,60 @@ public sealed interface LampEvent {
     /// A block of lines with a title, such as the briefing when a session starts or the summary when it ends.
     record Summary(String title, sprouts.Tuple<String> lines) implements LampEvent {}
 
+    /// One saved state of a lamp: the agent's home and the lamp's `oillamp.toml`, as they were
+    /// at one moment. `oillamp restore` brings a lamp back to it.
+    ///
+    /// @param id      the snapshot's name, 40 hexadecimal characters. Any unique beginning of it
+    ///                of at least four characters names it too, such as the eight `oillamp
+    ///                history` shows
+    /// @param at      when it was saved
+    /// @param kind    what made it
+    /// @param message what the person who saved it wrote, or empty
+    /// @param session the session running at the time, such as `20260928-120000`, or empty
+    record Snapshot(String id, java.time.Instant at, SaveKind kind, String message,
+                    java.util.Optional<String> session) {
+
+        /// The first eight characters of [#id()], which is how oillamp shows a snapshot.
+        public String shortId() { return id.substring(0, Math.min(8, id.length())); }
+    }
+
+    /// What made a snapshot.
+    enum SaveKind {
+        /// oillamp saved as a session started, before the sandbox ran.
+        STARTUP("startup save"),
+        /// Someone saved while a session was running. Programs in the sandbox may have been
+        /// writing at that moment.
+        RUNNING("running save"),
+        /// oillamp saved as a session ended, after the sandbox had stopped.
+        SHUTDOWN("shutdown save"),
+        /// Someone saved while no session was running.
+        IDLE("idle save"),
+        /// oillamp saved just before a restore, so that the restore can be undone.
+        BEFORE_RESTORE("safety save before a restore"),
+        /// A restore: the lamp was brought back to an earlier snapshot.
+        RESTORE("restore");
+
+        private final String label;
+
+        SaveKind(String label) { this.label = label; }
+
+        /// How oillamp names it, such as `startup save`.
+        public String label() { return label; }
+    }
+
+    /// A save made a snapshot. A save that finds nothing changed makes none, and reports an
+    /// [Info] instead.
+    ///
+    /// @param files how many files the snapshot holds; 0 where that was not counted
+    record Saved(Snapshot snapshot, int files)          implements LampEvent {}
+
+    /// A lamp's snapshots, newest first. What `oillamp history` answers.
+    record History(sprouts.Tuple<Snapshot> snapshots)   implements LampEvent {}
+
+    /// The lamp was brought back to `target`, and `result` is the snapshot that records it.
+    /// When the lamp already was as `target` holds it, nothing changed and `result` is `target`.
+    record Restored(Snapshot target, Snapshot result)   implements LampEvent {}
+
     /// Something went wrong but oillamp carried on.
     record Warning(Problem problem)                     implements LampEvent {}
     /// Something went wrong and oillamp stopped.

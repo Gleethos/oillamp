@@ -37,6 +37,8 @@ final class Invocation {
         boolean confirmed = false;
         // `recordings` only.
         Optional<String> open = Optional.empty();
+        // `save` only.
+        String message = "";
         // `at` only: where model requests go, and which variable holds the key.
         Optional<String> modelService = Optional.empty();
         Optional<String> modelKeyEnv = Optional.empty();
@@ -50,22 +52,25 @@ final class Invocation {
         List<String> commandOptions = new ArrayList<>();
         for (String argument : arguments) {
             String option = VALUE_OPTIONS.stream().filter(taking -> argument.startsWith(taking + "="))
-                    .findFirst().orElse(argument.equals("-y") ? "--yes" : argument);
+                    .findFirst().orElse(argument.equals("-y") ? "--yes"
+                                      : argument.equals("-m") ? "--message" : argument);
             if (pending.isPresent()) {
                 switch (pending.get()) {
                     case "--open"          -> open = Optional.of(argument);
                     case "--model-service" -> modelService = Optional.of(argument);
+                    case "--message"       -> message = argument;
                     default                -> modelKeyEnv = Optional.of(argument);
                 }
                 pending = Optional.empty();
                 continue;
             }
-            if (VALUE_OPTIONS.contains(option) && !option.equals(argument)) {
+            if (VALUE_OPTIONS.contains(option) && argument.startsWith(option + "=")) {
                 commandOptions.add(option);
                 String value = argument.substring(option.length() + 1);
                 switch (option) {
                     case "--open"          -> open = Optional.of(value);
                     case "--model-service" -> modelService = Optional.of(value);
+                    case "--message"       -> message = value;
                     default                -> modelKeyEnv = Optional.of(value);
                 }
                 continue;
@@ -86,6 +91,7 @@ final class Invocation {
                 case "--yes", "-y"     -> confirmed = true;
                 case "--prune"         -> prune = true;
                 case "--open", "--model-service", "--model-key-env" -> pending = Optional.of(argument);
+                case "--message", "-m" -> pending = Optional.of("--message");
                 default -> {
                     if (argument.startsWith("-")) {
                         console.banner(version, "");
@@ -99,6 +105,13 @@ final class Invocation {
             }
         }
 
+        if (pending.isPresent() && pending.get().equals("--message")) {
+            console.banner(version, "");
+            sink.accept(new LampEvent.Failure(Problems.usage(
+                    "--message needs the text to save with, for example --message \"before the upgrade\"",
+                    usageOf("save"))));
+            return ExitStatus.USAGE;
+        }
         if (pending.isPresent() && !pending.get().equals("--open")) {
             console.banner(version, "");
             sink.accept(new LampEvent.Failure(Problems.usage(
@@ -235,6 +248,20 @@ final class Invocation {
 
             case "recordings" -> commands.recordings(Path.of(rest.get(0)), open, prune);
 
+            // The lamp's history. `restore` needs the lamp stopped; the other two do not.
+            case "save" -> {
+                console.banner(version, rest.get(0));
+                yield commands.save(Path.of(rest.get(0)), message);
+            }
+            case "history" -> commands.history(Path.of(rest.get(0)));
+            case "restore" -> {
+                if (rest.size() < 2)
+                    yield misused(console, sink, version, "restore",
+                            "`oillamp restore` needs the snapshot to go back to, as `oillamp history` names it");
+                console.banner(version, rest.get(0));
+                yield commands.restore(Path.of(rest.get(0)), rest.get(1));
+            }
+
             case "completion" -> {
                 String shell = rest.isEmpty() ? "bash" : rest.get(0);
                 if (!shell.equals("bash")) {
@@ -280,6 +307,9 @@ final class Invocation {
             java.util.Map.entry("recordings", java.util.Set.of("--open", "--prune", "--dry-run")),
             java.util.Map.entry("doctor",     java.util.Set.of("--dry-run", "--no-install")),
             java.util.Map.entry("config",     java.util.Set.of("--dry-run", "--no-install")),
+            java.util.Map.entry("save",       java.util.Set.of("--message", "--embedded")),
+            java.util.Map.entry("history",    java.util.Set.of("--embedded")),
+            java.util.Map.entry("restore",    java.util.Set.of("--embedded")),
             java.util.Map.entry("shell",      java.util.Set.of()),
             java.util.Map.entry("stop",       java.util.Set.of()),
             java.util.Map.entry("status",     java.util.Set.of()),
@@ -292,20 +322,21 @@ final class Invocation {
 
     /// The options that take a value.
     private static final java.util.Set<String> VALUE_OPTIONS = java.util.Set.of(
-            "--open", "--model-service", "--model-key-env");
+            "--open", "--model-service", "--model-key-env", "--message");
 
     /// The commands that take a lamp directory and cannot do without it.
     private static final java.util.Set<String> NEEDS_A_LAMP = java.util.Set.of(
-            "at", "view", "shell", "stop", "status", "recordings", "config", "remove");
+            "at", "view", "shell", "stop", "status", "recordings", "config", "remove",
+            "save", "history", "restore");
 
     /// The commands that work on one lamp. `remove` takes several, since a pattern such as
     /// `test*` is the natural way to clean up after experiments.
     private static final java.util.Set<String> ONE_LAMP_ONLY = java.util.Set.of(
-            "at", "view", "shell", "stop", "status", "recordings", "doctor");
+            "at", "view", "shell", "stop", "status", "recordings", "doctor", "save", "history");
 
     /// How many arguments may follow the other commands.
     private static final java.util.Map<String, Integer> MOST_ARGUMENTS = java.util.Map.of(
-            "config", 2, "completion", 1,
+            "config", 2, "completion", 1, "restore", 2,
             "list", 0, "version", 0, "help", 0, "about", 0, "guide", 0);
 
     private static ExitStatus misused(ConsoleRenderer console, Consumer<LampEvent> sink,
@@ -385,6 +416,15 @@ final class Invocation {
                     --yes it only says what would go. Every lamp is checked first; if any cannot
                     be removed, none is. Needed because parts of a lamp belong to the sandbox's
                     own users and `rm -rf` cannot remove them.
+              save <dir> [--message <text>]
+                    Take a snapshot of the lamp: the agent's home and oillamp.toml. Works while
+                    a session runs. oillamp also saves as each session starts and ends, when
+                    anything changed.
+              history <dir>
+                    List the lamp's snapshots, newest first.
+              restore <dir> <snapshot>
+                    Bring the lamp back to a snapshot, named by the start of its id. The
+                    session must be stopped. The lamp is saved first, so this can be undone.
               recordings <dir> [--open <session>] [--prune]
                     List this lamp's screen recordings. --open plays one, --prune
                     applies the configured retention now instead of at the next start.

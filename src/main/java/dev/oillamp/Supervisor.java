@@ -45,6 +45,9 @@ final class Supervisor {
     /// How much longer than `timeouts.stop_seconds` `podman stop` itself may take.
     private static final Duration STOP_GRACE = Duration.ofSeconds(15);
     private static final Duration REMOVE_TIMEOUT = Duration.ofSeconds(30);
+    /// How long the shutdown save may take. A save reads every file in the agent's home, and the
+    /// first one also stores them all: a few hundred megabytes once a JDK is in there.
+    private static final Duration SAVE_ALLOWANCE = Duration.ofMinutes(5);
 
     /// How a signal is described in the closing summary. The JVM runs the same shutdown hook for all
     /// three, so it cannot say which one it was.
@@ -423,6 +426,12 @@ final class Supervisor {
             problems = problems.add(Problems.internal("session.json", Problems.reason(e)));
         }
         problems = problems.addAll(recordLastSession());
+
+        // 6. Save the lamp as the session left it. The container is gone, so nothing is writing.
+        //    Here rather than after the session, because after Ctrl-C this sequence is the last
+        //    thing that runs before the JVM exits.
+        problems = problems.addAll(Commands.saveLamp(context, prepared.layout(),
+                dev.lamp.LampEvent.SaveKind.SHUTDOWN, "", Optional.of(prepared.session()), machine.now()));
         return problems;
     }
 
@@ -732,9 +741,12 @@ final class Supervisor {
     }
 
     /// The longest the shutdown sequence can take, with a margin for everything besides podman.
+    ///
+    /// The save at the end has [#SAVE_ALLOWANCE]. A save cut short by the JVM exiting leaves the
+    /// history as it was, so a limit here costs a snapshot, never the history.
     private Duration longestShutdown() {
         return prepared.config().timeouts().stop().plus(STOP_GRACE).plus(REMOVE_TIMEOUT)
-                       .plusSeconds(15);
+                       .plus(SAVE_ALLOWANCE).plusSeconds(15);
     }
 
     // ─── the control socket ────────────────────────────────────────────────────────────────

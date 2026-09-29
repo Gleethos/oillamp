@@ -210,9 +210,41 @@ final class ConsoleRenderer {
                 for (String detail : summary.lines()) line("  " + dim(detail));
                 line("");
             }
+            case LampEvent.Saved saved -> line(area("history") + colour(GREEN, "✓ ") + "saved "
+                    + saved.snapshot().shortId() + " — " + saved.snapshot().kind().label()
+                    + (saved.files() > 0 ? ", " + saved.files() + " files" : ""));
+            case LampEvent.History history -> line(describe(history.snapshots()));
+            case LampEvent.Restored restored -> line(area("history") + colour(GREEN, "✓ ")
+                    + (restored.result().equals(restored.target())
+                        ? "the lamp already is as " + restored.target().shortId() + " holds it, so nothing changed"
+                        : "restored " + restored.target().shortId() + " (" + restored.target().kind().label()
+                          + " of " + when(restored.target().at()) + " UTC), recorded as "
+                          + restored.result().shortId()));
             case LampEvent.Warning warning -> problem(warning.problem());
             case LampEvent.Failure failure -> problem(failure.problem());
         }
+    }
+
+    /// The snapshots `oillamp history` lists, as a table, newest first.
+    private static String describe(sprouts.Tuple<LampEvent.Snapshot> snapshots) {
+        if (snapshots.isEmpty())
+            return "no snapshots yet — oillamp saves when a session starts and ends, "
+                 + "or run `oillamp save <dir>`";
+        StringBuilder out = new StringBuilder("SNAPSHOT  SAVED (UTC)          KIND                          MESSAGE");
+        for (LampEvent.Snapshot snapshot : snapshots) {
+            String note = !snapshot.message().isBlank() ? snapshot.message().lines().findFirst().orElse("")
+                        : snapshot.session().map(session -> "session " + session).orElse("");
+            out.append('\n').append(snapshot.shortId()).append("  ")
+               .append(when(snapshot.at())).append("  ")
+               .append(String.format("%-30s", snapshot.kind().label()))
+               .append(note);
+        }
+        return out.toString().stripTrailing();
+    }
+
+    private static String when(java.time.Instant at) {
+        return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                .withZone(java.time.ZoneOffset.UTC).format(at);
     }
 
     /// A problem, in full. Errors and warnings share the layout so that a user learns to read it

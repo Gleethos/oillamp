@@ -7,6 +7,7 @@ import sprouts.Tuple
 
 import java.nio.file.Path
 import java.time.Duration
+import java.time.Instant
 
 /**
  *  How events travel from an embedded oillamp to the application that started it: one line of
@@ -38,6 +39,12 @@ class TheEventWireFormatSpec extends Specification {
     static final LampEvent.StepInfo STEP = new LampEvent.StepInfo('WriteFile', 'write a file', 'because')
 
     /** One of every kind of event, with every optional part both present and absent somewhere. */
+    /** A snapshot with every part present, a message with a line break in it among them. */
+    static final LampEvent.Snapshot SNAPSHOT = new LampEvent.Snapshot(
+            '3f2a9c1d00000000000000000000000000000000', Instant.parse('2026-09-29T18:14:03Z'),
+            LampEvent.SaveKind.BEFORE_RESTORE, 'before the upgrade\nand the "migration"',
+            Optional.of('20260929-181200'))
+
     static final List<LampEvent> EXAMPLES = [
             new LampEvent.PhaseStarted(LampEvent.Phase.SESSION),
             new LampEvent.PhaseFinished(LampEvent.Phase.IMAGE, Duration.ofSeconds(3)),
@@ -54,6 +61,13 @@ class TheEventWireFormatSpec extends Specification {
                                         Path.of('/run/user/1000/oillamp/k3v7x2ab/sockets/infra/vnc.sock')),
             new LampEvent.WindowOpened('the desktop viewer', Tuple.of(String, 'vncviewer', '/run/x.sock')),
             new LampEvent.Summary('session 20260928-120000', Tuple.of(String)),
+            new LampEvent.Saved(SNAPSHOT, 1234),
+            new LampEvent.History(Tuple.of(LampEvent.Snapshot, SNAPSHOT,
+                    new LampEvent.Snapshot('0123456789abcdef0123456789abcdef01234567', Instant.EPOCH,
+                                           LampEvent.SaveKind.IDLE, '', Optional.empty()))),
+            new LampEvent.Restored(SNAPSHOT, new LampEvent.Snapshot('fedcba9876543210fedcba9876543210fedcba98',
+                    Instant.parse('2026-09-29T19:00:00Z'), LampEvent.SaveKind.RESTORE, 'back to 3f2a9c1d',
+                    Optional.empty())),
             new LampEvent.Warning(PROBLEM.withFix(Problem.Fix.of('another'))),
             new LampEvent.Failure(new Problem(new Problem.Code('OIL-LOCK-001'), Problem.Severity.ERROR,
                     'busy', '', '', Tuple.of(Problem.Evidence), Tuple.of(Problem.Fix), Optional.empty())),

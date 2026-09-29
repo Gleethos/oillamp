@@ -5,6 +5,7 @@ import java.util.Optional;
 
 import dev.lamp.ExitStatus;
 import dev.lamp.LampEvent;
+import dev.lamp.LampEvent.SaveKind;
 import dev.lamp.Problem;
 
 import sprouts.Tuple;
@@ -99,6 +100,12 @@ final class Commands {
         }
 
         LampLock held = lock.get();
+        // Before the sandbox runs, so the snapshot holds the lamp exactly as the last session
+        // left it, and this session can always be undone. A save that fails is a warning: the
+        // session is still worth having.
+        for (Problem problem : saveLamp(context, prepared.layout(), SaveKind.STARTUP, "",
+                                        Optional.of(prepared.session()), machine.now()))
+            context.emit(new LampEvent.Warning(problem));
         // Until the supervisor takes over, nothing else would remove a container this run started:
         // not a failed start, and not a Ctrl-C while the image builds or the desktop comes up.
         ContainerName container = prepared.layout().containerName();
@@ -472,6 +479,128 @@ final class Commands {
     }
 
 
+    // ─── the lamp's history ────────────────────────────────────────────────────────────────
+
+    /// `oillamp save <dir> [--message <text>]`: take a snapshot of the lamp now.
+    ///
+    /// Works while a session is running, so a person can save just before letting the agent try
+    /// something risky. The snapshot then says it was taken while the session ran, because a
+    /// program writing at that moment may have left a file half written.
+    public ExitStatus save(Path lampPath, String message) {
+        Result<LampLayout> found = layoutOf(lampPath);
+        if (found instanceof Result.Err<LampLayout> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        LampLayout layout = ((Result.Ok<LampLayout>) found).value();
+        // Holding the lamp's lock while saving also keeps a session from starting halfway through.
+        Optional<LampLock> idle;
+        try {
+            idle = LampLock.tryAcquire(layout.lockFile());
+        } catch (java.io.IOException e) {
+            context.report(Tuple.of(Problem.class, Problems.lampNotWritable(layout.root(), Problems.reason(e))));
+            return ExitStatus.ERROR;
+        }
+        try {
+            Optional<SessionId> session = idle.isPresent() ? Optional.empty()
+                    : Filesystem.readString(layout.sessionMeta()).flatMap(Json::parse)
+                                .flatMap(json -> SessionId.parse(Json.text(json, "session")));
+            if (idle.isEmpty())
+                context.info("history", "a session is running, so programs in the sandbox may be "
+                        + "writing while this saves; the snapshot is marked as a running save");
+            Tuple<Problem> problems = saveLamp(context, layout,
+                    idle.isPresent() ? SaveKind.IDLE : SaveKind.RUNNING, message, session, machine.now());
+            context.report(problems);
+            return exitStatusFor(problems);
+        } finally {
+            idle.ifPresent(Commands::release);
+        }
+    }
+
+    /// `oillamp history <dir>`: every snapshot of the lamp, newest first.
+    public ExitStatus history(Path lampPath) {
+        Result<LampLayout> found = layoutOf(lampPath);
+        if (found instanceof Result.Err<LampLayout> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        Result<Tuple<LampEvent.Snapshot>> snapshots = new History(((Result.Ok<LampLayout>) found).value()).snapshots();
+        if (snapshots instanceof Result.Err<Tuple<LampEvent.Snapshot>> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        context.emit(new LampEvent.History(((Result.Ok<Tuple<LampEvent.Snapshot>>) snapshots).value()));
+        return ExitStatus.SUCCESS;
+    }
+
+    /// `oillamp restore <dir> <snapshot>`: bring the lamp back to an earlier snapshot.
+    ///
+    /// Refused while a session runs. The lamp is saved first, so every restore can be undone by
+    /// restoring that save.
+    public ExitStatus restore(Path lampPath, String snapshot) {
+        Result<LampLayout> found = layoutOf(lampPath);
+        if (found instanceof Result.Err<LampLayout> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        LampLayout layout = ((Result.Ok<LampLayout>) found).value();
+        Optional<LampLock> lock;
+        try {
+            lock = LampLock.tryAcquire(layout.lockFile());
+        } catch (java.io.IOException e) {
+            context.report(Tuple.of(Problem.class, Problems.lampNotWritable(layout.root(), Problems.reason(e))));
+            return ExitStatus.ERROR;
+        }
+        if (lock.isEmpty()) {
+            Tuple<Problem> refused = Tuple.of(Problem.class, Problems.restoreWhileRunning(layout.root()));
+            context.report(refused);
+            return exitStatusFor(refused);
+        }
+        try {
+            Result<History.Restoring> restored = new History(layout).restore(snapshot, machine.now());
+            context.report(restored.warnings());
+            if (restored instanceof Result.Err<History.Restoring> failure) {
+                context.report(failure.problems());
+                return exitStatusFor(failure.problems());
+            }
+            History.Restoring done = ((Result.Ok<History.Restoring>) restored).value();
+            done.safety().ifPresent(safety -> context.emit(new LampEvent.Saved(safety, 0)));
+            context.emit(new LampEvent.Restored(done.target(), done.result().orElse(done.target())));
+            if (done.result().isEmpty()) return ExitStatus.SUCCESS;
+            done.safety().ifPresent(safety -> context.info("history", "to undo this, run: oillamp restore "
+                    + layout.root() + " " + safety.shortId()));
+            return ExitStatus.SUCCESS;
+        } finally {
+            release(lock.get());
+        }
+    }
+
+    /// Saves a lamp, reports the snapshot or that nothing changed, and returns the problems to
+    /// report. Also used by `at` as a session starts and by the supervisor as it ends.
+    static Tuple<Problem> saveLamp(Context context, LampLayout layout, SaveKind kind, String message,
+                                   Optional<SessionId> session, java.time.Instant now) {
+        Result<History.Saving> saved = new History(layout).save(kind, message, session, now);
+        if (saved instanceof Result.Err<History.Saving> failure) return failure.problems();
+        History.Saving saving = ((Result.Ok<History.Saving>) saved).value();
+        if (saving.made().isPresent())
+            context.emit(new LampEvent.Saved(saving.made().get(), saving.files()));
+        else
+            context.info("history", saving.latest()
+                    .map(latest -> "nothing changed since " + latest.shortId() + " (" + latest.kind().label()
+                                 + "), so there was nothing to save")
+                    .orElse("nothing to save yet"));
+        return saving.skipped().isEmpty() ? Tuple.of(Problem.class)
+                : Tuple.of(Problem.class, Problems.filesNotSaved(layout.root(), saving.skipped()));
+    }
+
+    private static void release(LampLock lock) {
+        try {
+            lock.close();
+        } catch (java.io.IOException ignored) {
+            // The kernel releases it when this process ends, moments from now.
+        }
+    }
+
     // ─── reaching the supervisor ───────────────────────────────────────────────────────────
 
     private ExitStatus askTheSession(Path lampPath, String command, Control.Request request,
@@ -744,7 +873,8 @@ final class Commands {
     public static ExitStatus exitStatusFor(Tuple<Problem> problems) {
         for (Problem problem : problems) {
             String code = problem.code().value();
-            if (code.equals("OIL-LOCK-001")) return ExitStatus.LAMP_BUSY;
+            if (code.equals("OIL-LOCK-001") || code.equals("OIL-HISTORY-005")) return ExitStatus.LAMP_BUSY;
+            if (code.equals("OIL-HISTORY-001")) return ExitStatus.USAGE;
             if (code.startsWith("OIL-CONFIG-")) return ExitStatus.USAGE;
         }
         for (Problem problem : problems)
