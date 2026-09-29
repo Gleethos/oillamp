@@ -32,49 +32,57 @@ final class Context {
     /// @param autoInstall whether oillamp may install host packages; `--no-install` turns it off
     /// @param init        `--init`: accept a non-empty directory as a new lamp
     /// @param openViewer  false with `--no-viewer`
+    /// @param openWindows false with `--no-windows`: neither the shell window nor the viewer
+    ///                    opens, so no display is needed; the user attaches with `oillamp shell`
+    ///                    and `oillamp view`, or forwards the desktop's socket over ssh
     /// @param embedded    `--embedded`: an application started oillamp and owns the session. No
     ///                    windows open, events go to standard output as JSON lines, and the
     ///                    session ends when standard input closes
     /// @param model       `--model-service` and `--model-key-env`: where model requests go and
     ///                    which variable holds the key, in place of the lamp's `[model]` settings
     public record Options(boolean verbose, boolean debug, boolean dryRun,
-                          boolean autoInstall, boolean init, boolean openViewer, boolean embedded,
+                          boolean autoInstall, boolean init, boolean openViewer, boolean openWindows,
+                          boolean embedded,
                           ModelOverride model) {
 
         public static Options defaults() {
-            return new Options(false, false, false, true, false, true, false, ModelOverride.NONE);
+            return new Options(false, false, false, true, false, true, true, false, ModelOverride.NONE);
         }
 
         public Options withModel(ModelOverride model) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
         }
 
         public Options withDryRun(boolean dryRun) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
         }
 
         public Options withAutoInstall(boolean autoInstall) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
         }
 
         public Options withInit(boolean init) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
         }
 
         public Options withVerbose(boolean verbose) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
         }
 
         public Options withDebug(boolean debug) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
         }
 
         public Options withViewer(boolean openViewer) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
+        }
+
+        public Options withWindows(boolean openWindows) {
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
         }
 
         public Options withEmbedded(boolean embedded) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
         }
     }
 

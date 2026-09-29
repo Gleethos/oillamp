@@ -53,7 +53,7 @@ final class Commands {
     /// one closed window or one `oillamp stop` takes down everything it created.
     public ExitStatus at(Path lampPath) {
         // Only a session that opens windows needs the host's display.
-        boolean opensWindows = !context.options().embedded();
+        boolean opensWindows = !context.options().embedded() && context.options().openWindows();
         HostPhase.Outcome host = new HostPhase(machine, context).prepare(lampPath, opensWindows, installing(lampPath));
         if (!host.succeeded()) {
             context.report(host.result().problems());

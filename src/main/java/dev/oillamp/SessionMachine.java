@@ -32,10 +32,10 @@ record SessionMachine(Settings settings) {
     /// @param openViewer      `viewer.open_on_start`, unless `--no-viewer` was given
     /// @param viewOnly        `viewer.view_only`: the user watches but cannot type
     /// @param lamp            the lamp directory, for the commands the messages suggest
-    /// @param embedded        an application started this session (`--embedded`): it opens no
-    ///                        windows and is up as soon as the sandbox is
+    /// @param openWindows     false for a session that opens no windows (`--no-windows`, or
+    ///                        `--embedded`): it is up as soon as the sandbox is
     record Settings(Duration terminalTimeout, boolean openViewer, boolean viewOnly, String lamp,
-                    boolean embedded) {}
+                    boolean openWindows) {}
 
     /// Where the session goes next, and what should be done on the way.
     record Transition(SessionState next, Tuple<SessionAction> actions) {
@@ -119,13 +119,13 @@ record SessionMachine(Settings settings) {
     /// The sandbox is ready, so both windows open now. The terminal oillamp was started from is left
     /// alone; it keeps showing what the session is doing.
     ///
-    /// An embedded session opens no windows: the application that started it has its own ways in,
-    /// so there is no terminal to wait for and the session is up at once.
+    /// A session without windows (embedded, or `--no-windows`) has nobody to wait for: whoever
+    /// started it gets in their own way, so the session is up at once.
     private Transition started(SessionEvent.ContainerReady ready, Instant now) {
         Tuple<SessionAction> actions = Tuple.of(SessionAction.class,
                 new SessionAction.Announce(new LampEvent.Ok("session",
                         "the desktop is up — " + ready.info().describe())));
-        if (settings.embedded())
+        if (!settings.openWindows())
             return new Transition(new SessionState.Running(now, ready.info(), false, 0), actions);
         if (settings.openViewer())
             actions = actions.add(new SessionAction.LaunchViewer(settings.viewOnly()));

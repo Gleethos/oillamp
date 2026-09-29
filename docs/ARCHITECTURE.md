@@ -578,7 +578,7 @@ stateDiagram-v2
 | In state | Event | Goes to | Actions |
 |---|---|---|---|
 | Starting | `ContainerReady` | AwaitingTerminal | announce, open viewer (unless disabled), open terminal |
-| Starting | `ContainerReady`, embedded session | Running | announce; no windows open |
+| Starting | `ContainerReady`, session without windows (`--no-windows` or embedded) | Running | announce; no windows open |
 | Starting | `ContainerExited` | ShuttingDown (startup failed) | report, shut down |
 | AwaitingTerminal | `PrimaryConnected` | Running | announce |
 | AwaitingTerminal | `Tick` after the terminal timeout | ShuttingDown (startup failed, `OIL-TERM-002`) | report, shut down |
@@ -598,6 +598,16 @@ else: no banner, no colour, no activity line.
 The supervisor reads its standard input until it closes, then posts `StopRequested`: the
 application closes it when it is done, and the operating system closes it when the application
 dies.
+
+**A session without windows** (`oillamp at <dir> --no-windows`) is for a person who wants to attach
+on their own terms, for example one who starts oillamp under tmux so that it outlives their
+desktop. Like an embedded session it opens no windows, goes straight to `Running` and does not
+need a display on the host. Otherwise it is an ordinary session: the launching terminal shows the
+usual readable log, and the session ends with Ctrl-C, closing that terminal, or `oillamp stop`.
+Instead of the windows, the briefing lists the ways in: `oillamp shell`, `oillamp view`, and,
+from another machine, forwarding the desktop's socket with `ssh -L 5901:<vnc.sock> ...` and
+pointing any VNC viewer at `localhost:5901`. The desktop stays on a Unix socket even then: a
+TCP port would let anyone on the network watch and type, while ssh only lets in who may log in.
 
 **Closing a window never ends a session**: not the shell window, not a viewer, not an extra shell.
 A session ends where it was started (Ctrl-C, or closing that terminal) or with `oillamp stop`.

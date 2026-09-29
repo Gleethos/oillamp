@@ -130,6 +130,46 @@ class TheSessionCommandsSpec extends Specification {
             reported.every { !(it instanceof LampEvent.Summary && it.title().startsWith('session ')) }
     }
 
+    def '--no-windows runs a session where there is no display, and says how to get in'() {
+        reportInfo """
+            For someone who starts oillamp under tmux, so that it outlives the desktop they are
+            logged into, and who attaches to it on their own terms. oillamp opens nothing, so it
+            does not need a display, and the terminal it runs in lists the ways in instead: a
+            shell with `oillamp shell`, the desktop with `oillamp view`, or from another machine
+            by forwarding the desktop's socket over ssh. The session ends the usual way.
+        """
+        given: 'a machine with no desktop session'
+            var lamp = sandbox.lampPath()
+            sandbox.machine { it.noGraphicalSession() }
+            var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
+
+        when:
+            session = Thread.start { sessionOutcome = oillamp.run('at', lamp.toString(), '--no-windows') }
+            waitUntil { reported.any { it instanceof LampEvent.Summary &&
+                                       it.title() == 'your session is up' } }
+
+        then: 'no window opened, and the missing display was not held against it'
+            reported.findAll { it instanceof LampEvent.WindowOpened }.isEmpty()
+            reported.every { !(it instanceof LampEvent.Failure) }
+
+        and: 'the terminal says how to get in, including from another machine'
+            var briefing = reported.find { it instanceof LampEvent.Summary &&
+                                           it.title() == 'your session is up' }.lines().join('\n')
+            briefing.contains("oillamp shell ${lamp}")
+            briefing.contains("oillamp view ${lamp}")
+            briefing.contains('ssh -L 5901:') && briefing.contains('vnc.sock')
+
+        and: 'the session is running without anyone having connected'
+            sandbox.oillamp.run('status', lamp.toString()).console().contains('no windows opened')
+
+        when: 'the user ends it'
+            sandbox.oillamp.run('stop', lamp.toString())
+            session.join(20_000)
+
+        then:
+            sessionOutcome.status() == ExitStatus.SUCCESS
+    }
+
     def 'after the shell window closes, the session keeps running and another shell can attach'() {
         reportInfo """
             The user closed the shell window oillamp opened, perhaps because a program in it hung.

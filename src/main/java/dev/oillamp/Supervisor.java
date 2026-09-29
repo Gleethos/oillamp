@@ -98,7 +98,7 @@ final class Supervisor {
                 prepared.config().viewer().openOnStart() && context.options().openViewer(),
                 prepared.config().viewer().viewOnly(),
                 prepared.layout().root().toString(),
-                context.options().embedded()));
+                !context.options().embedded() && context.options().openWindows()));
         this.sessionStarted = machine.now();
         this.state = new SessionState.Starting(sessionStarted);
     }
@@ -191,6 +191,8 @@ final class Supervisor {
             case SessionState.AwaitingTerminal ignored -> "waiting for your terminal window";
             case SessionState.Running running -> context.options().embedded()
                     ? "running, for the application that started it"
+                    : !context.options().openWindows()
+                    ? "running, with no windows opened"
                     : running.shellWindowOpen()
                     ? "your shell is connected"
                     : "running; the shell window oillamp opened is closed";
@@ -594,6 +596,22 @@ final class Supervisor {
                             + layout.root() + "`",
                     "network log     " + layout.networkLog(prepared.session()),
                     "to finish early `oillamp stop " + layout.root() + "`")));
+            return;
+        }
+        if (!context.options().openWindows()) {
+            // Nothing opened, so these lines are the only way the user learns how to get in.
+            context.emit(new LampEvent.Summary("your session is up", Tuple.of(String.class,
+                    "windows        none opened (--no-windows); attach from any terminal:",
+                    "shell          `oillamp shell " + layout.root() + "`",
+                    "desktop        `oillamp view " + layout.root() + "` where there is a display, or from",
+                    "               another machine forward the desktop's socket and point any VNC",
+                    "               viewer at localhost:5901:",
+                    "               ssh -L 5901:" + layout.vncSocket() + " <you>@<this machine>",
+                    "the agent sees " + layout.agentDir() + " and nothing else of this lamp",
+                    "network log    " + layout.networkLog(prepared.session()),
+                    "this terminal  keeps reporting the sandbox's health until the session ends",
+                    "to finish      press Ctrl-C here, close this terminal, "
+                            + "or run `oillamp stop " + layout.root() + "`")));
             return;
         }
         Tuple<String> lines = Tuple.of(String.class,

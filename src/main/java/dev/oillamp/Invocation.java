@@ -80,6 +80,7 @@ final class Invocation {
                 case "--no-install"    -> options = options.withAutoInstall(false);
                 case "--init"          -> options = options.withInit(true);
                 case "--no-viewer"     -> options = options.withViewer(false);
+                case "--no-windows"    -> options = options.withWindows(false);
                 case "--embedded"      -> options = options.withEmbedded(true);
                 case "--view-only"     -> viewOnly = true;
                 case "--yes", "-y"     -> confirmed = true;
@@ -272,8 +273,8 @@ final class Invocation {
     /// every command takes. `doctor` and `config` change nothing anyway, so they accept the two
     /// options that promise that.
     private static final java.util.Map<String, java.util.Set<String>> OPTIONS_OF = java.util.Map.ofEntries(
-            java.util.Map.entry("at",         java.util.Set.of("--init", "--dry-run", "--no-install", "--no-viewer", "--embedded",
-                                                        "--model-service", "--model-key-env")),
+            java.util.Map.entry("at",         java.util.Set.of("--init", "--dry-run", "--no-install", "--no-viewer", "--no-windows",
+                                                        "--embedded", "--model-service", "--model-key-env")),
             java.util.Map.entry("view",       java.util.Set.of("--view-only")),
             java.util.Map.entry("remove",     java.util.Set.of("--yes", "--dry-run", "--embedded")),
             java.util.Map.entry("recordings", java.util.Set.of("--open", "--prune", "--dry-run")),
@@ -350,9 +351,11 @@ final class Invocation {
             New here? `oillamp guide` walks through a first session; `oillamp about` says what
             oillamp is for and what it is built from.
 
-              at <dir> [--init] [--dry-run] [--no-install] [--no-viewer] [--embedded]
-                       [--model-service <url>] [--model-key-env <name>]
+              at <dir> [--init] [--dry-run] [--no-install] [--no-viewer] [--no-windows]
+                       [--embedded] [--model-service <url>] [--model-key-env <name>]
                     Set up (if needed) and run a session. Stays in the foreground until it ends.
+                    --no-windows opens neither the shell nor the viewer, so it runs without a
+                    display, under tmux for example; attach with `shell` and `view`.
                     --embedded is for applications that start oillamp themselves: no windows,
                     and the session ends when standard input closes. --model-service and
                     --model-key-env replace the lamp's [model] settings for this session.
