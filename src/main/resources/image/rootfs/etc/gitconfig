@@ -1,0 +1,4 @@
+# The name and email the agent's commits carry, written by oillamp at the start of each session
+# from [git] in the lamp's oillamp.toml. git skips an include whose file does not exist.
+[include]
+	path = /oillamp/session/gitconfig

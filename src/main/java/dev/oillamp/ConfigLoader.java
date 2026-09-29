@@ -82,7 +82,7 @@ final class ConfigLoader {
     private static LampConfig read(ConfigSection root) {
         LampConfig defaults = ConfigDefaults.lampConfig();
         root.allowOnly("schema_version", "display", "viewer", "terminal", "recording",
-                       "limits", "network", "llm", "model", "agent_tools", "image", "host", "timeouts");
+                       "limits", "network", "llm", "model", "git", "agent_tools", "image", "host", "timeouts");
 
         LampConfig.Display display   = readDisplay(root.table("display"), defaults.display());
         LampConfig.Viewer viewer     = readViewer(root.table("viewer"), defaults.viewer());
@@ -97,13 +97,14 @@ final class ConfigLoader {
 
         Optional<LampConfig.Llm> llm = readLlm(root.table("llm"), forwards);
         LampConfig.Model model       = readModel(root.table("model"), defaults.model());
+        LampConfig.Git git           = readGit(root.table("git"), defaults.git());
         LampConfig.AgentTools tools  = readAgentTools(root.table("agent_tools"), defaults.agentTools());
         LampConfig.Image image       = readImage(root.table("image"), defaults.image());
         LampConfig.Host host         = readHost(root.table("host"), defaults.host());
         LampConfig.Timeouts timeouts = readTimeouts(root.table("timeouts"), defaults.timeouts());
 
         return new LampConfig(display, viewer, terminal, recording, limits,
-                              network, forwards, llm, model, tools, image, host, timeouts);
+                              network, forwards, llm, model, git, tools, image, host, timeouts);
     }
 
     private static LampConfig.Display readDisplay(ConfigSection s, LampConfig.Display fallback) {
@@ -358,6 +359,24 @@ final class ConfigLoader {
         return Optional.empty();
     }
 
+    private static LampConfig.Git readGit(ConfigSection s, LampConfig.Git fallback) {
+        s.allowOnly("identity", "name", "email");
+        GitIdentity identity = s.oneOf("identity", fallback.identity(), ConfigLoader::parseGitIdentity,
+                                       "\"genie\", \"host\", \"custom\" or \"none\"");
+        String name = oneLine(s, "name", fallback.name());
+        String email = oneLine(s, "email", fallback.email());
+        if (identity == GitIdentity.CUSTOM && (name.isBlank() || email.isBlank()))
+            s.invalid("identity", "\"custom\"", "a custom identity needs both git.name and git.email");
+        return new LampConfig.Git(identity, name, email);
+    }
+
+    private static String oneLine(ConfigSection s, String key, String fallback) {
+        String value = s.string(key, fallback);
+        if (value.indexOf('\n') < 0 && value.indexOf('\r') < 0) return value;
+        s.invalid(key, "(several lines)", "expected a single line");
+        return fallback;
+    }
+
     private static LampConfig.AgentTools readAgentTools(ConfigSection s, LampConfig.AgentTools fallback) {
         s.allowOnly("install", "versions");
         Tuple<String> install = s.strings("install", fallback.install());
@@ -407,6 +426,12 @@ final class ConfigLoader {
     private static Optional<WindowLayout> parseWindowLayout(String text) {
         for (WindowLayout layout : WindowLayout.values())
             if (layout.configName().equals(text.toLowerCase(Locale.ROOT))) return Optional.of(layout);
+        return Optional.empty();
+    }
+
+    private static Optional<GitIdentity> parseGitIdentity(String text) {
+        for (GitIdentity identity : GitIdentity.values())
+            if (identity.configName().equals(text.toLowerCase(Locale.ROOT))) return Optional.of(identity);
         return Optional.empty();
     }
 

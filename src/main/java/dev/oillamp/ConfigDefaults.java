@@ -25,6 +25,7 @@ final class ConfigDefaults {
             Tuple.of(Forward.class),
             Optional.empty(),
             new LampConfig.Model(java.net.URI.create("https://api.eu.edenai.run"), "EDENAI_API_KEY"),
+            new LampConfig.Git(GitIdentity.GENIE, "", ""),
             new LampConfig.AgentTools(
                     Tuple.of(String.class, "opencode", "pi"),
                     Association.betweenSorted(String.class, String.class)

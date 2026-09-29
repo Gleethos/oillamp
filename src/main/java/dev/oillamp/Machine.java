@@ -406,6 +406,17 @@ public interface Machine {
             return this;
         }
 
+        /// The user's own git identity, as `git config --global` reports it. Without this the
+        /// machine has no git at all.
+        public Simulation gitIdentity(String name, String email) {
+            builder.executables(Tuple.of(String.class, "git"));
+            builder.scriptCommand("git config --global --includes --get user.name",
+                    new Outcome.Finished(0, name + "\n", "", Duration.ofMillis(1)));
+            builder.scriptCommand("git config --global --includes --get user.email",
+                    new Outcome.Finished(0, email + "\n", "", Duration.ofMillis(1)));
+            return this;
+        }
+
         public Simulation withoutPackages(String... packages) {
             builder.removePackages(Tuple.of(String.class, packages));
             return this;

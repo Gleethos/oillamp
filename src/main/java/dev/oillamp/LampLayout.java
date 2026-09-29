@@ -80,6 +80,7 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path authorizedKeys()   { return sessionDir().resolve("authorized_keys"); }
     public Path sshdHostKey()      { return sessionDir().resolve("ssh_host_ed25519_key"); }
     public Path agentGuide()       { return sessionDir().resolve("agent-guide.md"); }
+    public Path gitConfig()        { return sessionDir().resolve("gitconfig"); }
 
     public Path imageDir()      { return stateDir().resolve("image"); }
     public Path imageContext()  { return imageDir().resolve("context"); }

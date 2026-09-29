@@ -112,6 +112,18 @@ final class Templates {
                                                     # "http://127.0.0.1:11434/v1" for Ollama
             key_env = "EDENAI_API_KEY"              # the variable holding the key, where oillamp starts
 
+            # The name and email on the agent's commits. Without one, git in the sandbox refuses to
+            # commit, and an agent then sets one itself inside your repository, where your own tools
+            # pick it up too. The agent can still set its own in ~/.gitconfig or in a repository.
+            # Commits you make on the host are not affected: they use your own git configuration.
+            [git]
+            identity = "genie"        # "genie": genie agent <genie@<lamp id>>
+                                      # "host": your own user.name and user.email, read at each start
+                                      # "custom": the name and email below
+                                      # "none": no identity, so git in the sandbox cannot commit
+            name     = ""
+            email    = ""
+
             [agent_tools]
             install  = ["opencode", "pi"]
             versions = { opencode = "latest", pi = "latest" }

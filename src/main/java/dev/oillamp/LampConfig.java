@@ -24,6 +24,7 @@ record LampConfig(
     Tuple<Forward> forwards,
     Optional<Llm> llm,
     Model model,
+    Git git,
     AgentTools agentTools,
     Image image,
     Host host,
@@ -33,7 +34,7 @@ record LampConfig(
     /// on the command line for one session.
     public LampConfig withModel(Model changed) {
         return new LampConfig(display, viewer, terminal, recording, limits, network, forwards, llm,
-                              changed, agentTools, image, host, timeouts);
+                              changed, git, agentTools, image, host, timeouts);
     }
 
     /// The version of the config schema this build writes and understands.
@@ -110,6 +111,20 @@ record LampConfig(
         public boolean euOnly() {
             String host = java.util.Optional.ofNullable(service.getHost()).orElse("");
             return host.equals("edenai.run") || host.endsWith(".edenai.run");
+        }
+    }
+
+    /// `[git]`: the name and email on the commits the agent makes.
+    ///
+    /// Without one, git in the sandbox refuses to commit, and an agent then tends to set one
+    /// itself inside the repository, where it stays and is used by the user's own tools too.
+    ///
+    /// @param name  used only with [GitIdentity#CUSTOM]
+    /// @param email used only with [GitIdentity#CUSTOM]
+    public record Git(GitIdentity identity, String name, String email) {
+        public Git {
+            if (name.matches("(?s).*[\\r\\n].*") || email.matches("(?s).*[\\r\\n].*"))
+                throw new IllegalArgumentException("git.name and git.email are one line each");
         }
     }
 

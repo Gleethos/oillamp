@@ -126,7 +126,7 @@ final class LampPhase {
                                           SessionId session, Gpu.Decision gpu) {
         if (context.options().dryRun())
             return LampPlanner.planSession(layout, "(generated client key)", "(generated host key)",
-                    "(rendered per session)", "(rendered per session)");
+                    "(rendered per session)", "(rendered per session)", "(rendered per session)");
 
         Optional<String> clientKey = Filesystem.readString(layout.clientKeyPub());
         Optional<String> hostKey = Filesystem.readString(layout.hostKeyPub());
@@ -141,7 +141,41 @@ final class LampPhase {
         if (environment instanceof Result.Err<String> failure) return Result.err(failure.problems());
 
         return LampPlanner.planSession(layout, clientKey.get(), hostKey.get(),
-                ((Result.Ok<String>) environment).value(), AgentGuide.render(config, layout));
+                ((Result.Ok<String>) environment).value(), AgentGuide.render(config, layout),
+                GitConfig.render(gitAuthor(config.git(), layout)));
+    }
+
+    /// The name and email the agent's commits carry, as `[git]` chooses, said on the console
+    /// either way. Without one, git in the sandbox refuses to commit, so that is said too.
+    private Optional<GitConfig.Author> gitAuthor(LampConfig.Git git, LampLayout layout) {
+        Optional<GitConfig.Author> author = switch (git.identity()) {
+            case GENIE  -> Optional.of(GitConfig.genie(layout.agentId()));
+            case CUSTOM -> Optional.of(new GitConfig.Author(git.name(), git.email()));
+            case NONE   -> Optional.empty();
+            case HOST   -> hostGitValue("user.name").flatMap(name ->
+                           hostGitValue("user.email").map(email -> new GitConfig.Author(name, email)));
+        };
+        if (author.isPresent())
+            context.info("lamp", "the agent's commits will carry " + author.get().name()
+                    + " <" + author.get().email() + ">"
+                    + (git.identity() == GitIdentity.HOST ? ", from your git configuration" : ""));
+        else if (git.identity() == GitIdentity.HOST)
+            context.info("lamp", "your git configuration has no user.name and user.email, so the agent "
+                    + "cannot commit; set them with `git config --global`, or set [git] in oillamp.toml");
+        else
+            context.info("lamp", "the agent has no git identity, as [git] in oillamp.toml says");
+        return author;
+    }
+
+    /// One value from the user's own git configuration, the one `git commit` uses outside any
+    /// repository. `--global` so that a repository oillamp happens to be started from cannot
+    /// lend its identity, and `--includes` because many people keep theirs in an included file.
+    private Optional<String> hostGitValue(String key) {
+        Machine.Outcome outcome = machine.run(Machine.Command.of(
+                "git", "config", "--global", "--includes", "--get", key));
+        if (!outcome.succeeded()) return Optional.empty();
+        String value = outcome.output().strip();
+        return value.isEmpty() || value.contains("\n") ? Optional.empty() : Optional.of(value);
     }
 
     // ─── configuration ─────────────────────────────────────────────────────────────────────

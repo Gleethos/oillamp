@@ -217,11 +217,13 @@ final class LampPlanner {
     /// @param hostPublicKey   the generated host public key, pinned so the user is never prompted
     /// @param runtimeEnv      the contents of `runtime.env`
     /// @param agentGuide      the guide the agent reads as `~/AGENTS.md`
+    /// @param gitConfig       the agent's git identity, see [GitConfig]
     public static Result<Plan> planSession(LampLayout layout,
                                            String clientPublicKey,
                                            String hostPublicKey,
                                            String runtimeEnv,
-                                           String agentGuide) {
+                                           String agentGuide,
+                                           String gitConfig) {
         Tuple<Step> steps = Tuple.of(Step.class);
         steps = steps.add(new Step.WriteFile(layout.runtimeEnvFile(), runtimeEnv,
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
@@ -235,6 +237,9 @@ final class LampPlanner {
         // than a symlink to /oillamp/session, which would be a broken link on the host. Rewritten
         // every session because it describes this session's configuration.
         steps = steps.add(new Step.WriteFile(layout.agentsMd(), agentGuide,
+                PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
+
+        steps = steps.add(new Step.WriteFile(layout.gitConfig(), gitConfig,
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
 
         steps = steps.add(new Step.WriteFile(layout.sshConfig(), Ssh.renderClientConfig(layout),
