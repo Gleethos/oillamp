@@ -137,7 +137,35 @@ Closing the shell window or the viewer does **not** end the session. Open new on
 The files stay on disk. `oillamp at ~/lamps/first` brings everything back, including what the
 agent put in its home directory.
 
-### 6. Delete it when you are done 🧹
+### 6. Go back in time ⏪
+
+oillamp saves the agent's home and the lamp's `oillamp.toml` every time a session starts and ends,
+if anything changed. Save by hand whenever you like, even while the session runs:
+
+```sh
+oillamp save ~/lamps/first -m "before the big refactor"
+oillamp history ~/lamps/first
+```
+
+```
+SNAPSHOT  SAVED (UTC)          KIND                          MESSAGE
+5e6f7a8b  2026-09-29 18:40:12  running save                  before the big refactor
+3f2a9c1d  2026-09-29 18:14:03  startup save                  session 20260929-181400
+```
+
+If the agent wrecks something, stop the session and go back:
+
+```sh
+oillamp stop ~/lamps/first
+oillamp restore ~/lamps/first 3f2a9c1d
+```
+
+Everything comes back as it was, including projects the agent cloned (with their own git history),
+file permissions and links. Whatever the agent made after the snapshot is removed. Before it
+changes anything, `restore` saves the lamp once more and prints how to undo the restore. The
+agent cannot see or change these snapshots.
+
+### 7. Delete it when you are done 🧹
 
 ```sh
 oillamp remove ~/lamps/first           # shows what would be deleted, deletes nothing
@@ -161,6 +189,9 @@ oillamp status <dir>             # what a running session is doing
 oillamp stop <dir>               # end a session from anywhere
 oillamp list                     # every oillamp sandbox running on this machine
 oillamp remove <dir>... [--yes]  # delete one or more lamps
+oillamp save <dir> [-m <text>]   # take a snapshot of the lamp, even while it runs
+oillamp history <dir>            # list the lamp's snapshots
+oillamp restore <dir> <snapshot> # go back to a snapshot (stop the session first)
 oillamp recordings <dir>         # list screen recordings (if recording is on)
 oillamp config <dir> check       # validate the lamp's oillamp.toml
 oillamp guide                    # a first session, step by step, in your terminal
@@ -233,7 +264,9 @@ from talking to the internet.
   key is not in the sandbox: oillamp adds it to model requests on their way out.
 - **Your machine's own public addresses are not blocked.** If a service on your machine listens
   on every address (`0.0.0.0`), add a deny rule for your addresses, or bind it to `127.0.0.1`.
-- **Disk space has no limit.** An agent that downloads without end can fill your disk.
+- **Disk space has no limit.** An agent that downloads without end can fill your disk. The
+  history keeps every version of every file that was ever saved, and nothing removes old
+  snapshots yet.
 
 ---
 

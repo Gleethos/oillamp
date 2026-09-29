@@ -45,6 +45,9 @@ The fast test suite passes. The spikes pass on the development machine.
 | `oillamp list` | Works. |
 | `oillamp remove <dir> [--yes]` | Works. Without `--yes`, lists what would be deleted and exits 2. |
 | `oillamp recordings <dir> [--open <session>] [--prune]` | Works. |
+| `oillamp save <dir> [--message <text>]` | Works in the scenarios and on a lamp made by hand (see below). |
+| `oillamp history <dir>` | Works. |
+| `oillamp restore <dir> <snapshot>` | Works in the scenarios and on a lamp made by hand. Refused while a session runs. |
 | `oillamp config <dir> check \| show-effective \| path` | Works. Reads the global file and the lamp's, as `at` does. |
 | `oillamp completion bash` | Works. |
 | `oillamp version`, `oillamp help`, `oillamp guide`, `oillamp about` | Work. |
@@ -272,6 +275,9 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 
 ### Disk space
 
+- The history keeps every version of every file ever saved, and nothing removes old snapshots.
+  There is no way yet to leave parts of the agent's home out of a snapshot, such as `~/.cache`.
+
 - oillamp never removes old sandbox images. Every change to anything that goes into the image (a
   new oillamp build, `image.extra_apt_packages`, `agent_tools.install`) creates a new image of
   about 3.5 GB, and the old one stays. On the development machine this reached about 25 GB in two
@@ -294,6 +300,17 @@ suggests. Each is a decision for the team: implement it, or remove the option.
   specification calls it `oillamp.lamp-path`. The code is correct; the archive is not.
 
 ### Not yet tested
+
+- The startup and shutdown saves in a real session with podman. Scenarios cover both with a
+  simulated container, ending the session with `oillamp stop`. After Ctrl-C the same shutdown
+  sequence runs, with the save in it; that was checked by reading the code, not by a test.
+  `save`, `history` and `restore` were tried on a lamp directory made by hand, with a JDK
+  (330 MB, 5,000 files) and a cloned git repository in the agent directory: the first save took 5
+  seconds, a save with nothing changed 0.6 seconds, a restore 1.2 seconds. The JDK came back
+  byte-identical and the cloned repository with a clean `git status`.
+- Saving or restoring a home with hundreds of thousands of files, such as several `node_modules`.
+- The Genies app has no buttons for the history yet; `dev.lamp.Lamp` offers `save`, `history` and
+  `restore`.
 
 - Ubuntu 26.04, and any distribution other than Ubuntu 24.04.
 - A Java Swing modal dialog on the sandbox desktop. (A Swing window works; see the lessons table.)

@@ -60,6 +60,8 @@ These words have one meaning each, in the code and in the documents.
 | **plan**, **step** | A step describes one change oillamp intends to make, such as "create this directory with mode 0700". A plan is a list of steps. |
 | **problem** | oillamp's structured error: a code, what happened, why it matters, evidence, and fixes. |
 | **spike** | A test that runs real podman to confirm an assumption about a third-party tool. |
+| **snapshot** | The agent directory and `oillamp.toml` as they were at one moment, kept in the lamp's history. One git commit. |
+| **history** | `<lamp>/.oillamp/history/`: a git repository holding a lamp's snapshots, oldest to newest on one branch. |
 
 ---
 
@@ -159,6 +161,8 @@ known lifetime:
 | `<lamp>/.oillamp/sockets/*/` | the proxy (host); wayvnc and the ssh listener (container) | relays, viewer, socat | files outlive their servers; deleted before the next session |
 | `<lamp>/.oillamp/recordings/` | wf-recorder | you, the agent (read only) | until retention deletes them |
 | `<lamp>/.oillamp/logs/network-<session>.jsonl` | the egress proxy | you | until you delete them |
+| `<lamp>/.oillamp/history/` | `History`: at the start and end of every session, `oillamp save`, `oillamp restore` | `oillamp history`, `oillamp restore`, git by hand | until `oillamp remove`; only ever grows |
+| `<lamp>/.oillamp/history.lock` | `History`; the kernel holds the lock while one save or restore runs | every other save and restore, which wait for it | the lock ends with the process |
 | `<lamp>/agent-lamp-<id>/` | the agent; `LampPlanner` writes `AGENTS.md` and `.bashrc` | the agent, you | until `oillamp remove` |
 | `$XDG_RUNTIME_DIR/oillamp/<id>/sockets` (a symlink) | `LampPlanner.planSkeleton`, every start | every host-side socket path | in memory: gone at reboot, made again next start |
 | `$XDG_RUNTIME_DIR/oillamp/<id>/run/*.sock` | `Supervisor` (relays, control socket) | `oillamp stop/status/view/shell`, the shell window | deleted at shutdown; a killed supervisor leaves them |
@@ -199,7 +203,9 @@ session log**: what it reports exists only in the terminal it runs in, apart fro
 │   │   ├── infra/               infra user; vnc.sock, ready.json
 │   │   └── agent/               you;        ssh.sock
 │   ├── recordings/              infra user; <session>.mkv; attached at /oillamp/recordings
-│   └── logs/                    network-<session>.jsonl
+│   ├── logs/                    network-<session>.jsonl
+│   ├── history/                 the lamp's snapshots, a bare git repository; never attached
+│   └── history.lock             locked while a save or a restore runs
 └── agent-lamp-<agent id>/       attached read-write at /home/agent
     ├── AGENTS.md                rewritten each session
     ├── .bashrc                  written once, then left alone
@@ -222,6 +228,76 @@ The paths come from `LampLayout`. Why it is laid out like this:
 - **A lamp cannot be deleted with `rm -rf`**, because those infra-owned files belong to a
   subordinate id. `oillamp remove` deletes them with `podman unshare rm -rf`.
 - The name **`agent-lamp-<id>`** means a copied agent directory is never mistaken for a lamp.
+
+### The history
+
+A lamp keeps snapshots of itself in `.oillamp/history/`, a git repository. A snapshot is one
+commit, and its tree mirrors the lamp:
+
+```
+agent-lamp-<agent id>/     the whole agent directory, nested .git directories included
+oillamp.toml
+.oillamp-modes             the exact permissions git cannot hold
+```
+
+The container's root filesystem is read-only and made new each session, so the agent directory is
+everything the sandbox keeps. `.oillamp/` is left out: it holds keys, sockets and logs, and some of
+it belongs to the infra user, which the host user cannot even read.
+
+**How it is written.** `History` writes git's objects itself; it does not run `git`. That is for
+two reasons. `git add` stores a directory that contains its own `.git` as a bare pointer to a
+commit and leaves out its files. `git checkout` and `git archive` refuse any path through `.git`.
+The agent clones projects into its home, so with git's own commands a restore would lose exactly
+the work it is for. The object format is simple, and `GitFormat` holds all of it as pure functions:
+
+- a **blob** is one file's content, and is compressed with zlib into
+  `objects/<first 2 hex digits>/<other 38>`, named by the SHA-1 of its content;
+- a **tree** is one directory: sorted names, each with a mode (file, executable, link or
+  directory) and the name of a blob or tree;
+- a **commit** names the top tree and the commit before it, and holds a message.
+
+git itself still reads the result: `git --git-dir=<lamp>/.oillamp/history log` lists the snapshots.
+git only knows "executable or not", so the other permissions, such as 0600 on a private key or 0555
+on a read-only directory, go in `.oillamp-modes`: one `<octal> <path>` per path that differs from
+git's defaults (0644, 0755 for executables and directories), each ended by a NUL byte, because a
+name may contain a line break.
+
+**Saving** walks the agent directory without following links, stores each file that is not stored
+yet, builds the trees, and compares the top tree with the newest commit's. If they are equal,
+nothing changed and no commit is made. Otherwise it writes a commit and moves `refs/heads/main` to
+it, last. Every object goes to a temporary file first and is renamed into place, so a save that
+is cut short leaves the history as it was, plus some objects nothing refers to. Unreadable files
+are left out and reported (`OIL-HISTORY-004`). So are files that keep changing while they are read.
+Sockets, pipes and devices are skipped without a word.
+
+**Restoring** takes the lamp's lock (so no session can run), saves first (a "safety save"), then
+compares the target snapshot's trees with the safety save's, directory by directory. A directory
+whose tree is the same in both is skipped whole, which is why restoring a large home takes about a
+second. Everything else is deleted and rewritten, then the permissions from `.oillamp-modes` are
+applied, directories last and deepest first. Finally a commit records the restore, with the
+target's tree. Nothing is ever removed from the history.
+
+**What made each snapshot** is in its commit message:
+
+```
+startup save
+
+Oillamp-Save: startup
+Oillamp-Session: 20260929-181200
+```
+
+| Kind | Made by |
+|---|---|
+| `startup` | `Commands.at`, after taking the lock and before the sandbox starts |
+| `shutdown` | `Supervisor.shutDown`, after the container is removed; also after Ctrl-C |
+| `running` | `oillamp save` while a session runs; a program may have been writing |
+| `idle` | `oillamp save` while no session runs |
+| `before-restore` | `oillamp restore`, just before it changes anything |
+| `restore` | `oillamp restore`, recording which snapshot it went back to |
+
+oillamp reads only what it writes: one file per object. `git gc` would pack them into a single
+file, which oillamp cannot read, so the repository's config sets `gc.auto = 0` to keep git from
+doing that by itself.
 
 ### Why sockets have two paths
 
@@ -344,6 +420,7 @@ sequenceDiagram
     L-->>O: skeleton + session files written
     Note over O: --dry-run stops here
     O->>O: take .oillamp/lock
+    O->>O: startup save, if anything changed
     O->>S: image and container
     S->>P: podman build (only if tag missing)
     S->>P: podman rm -f leftover, podman run
@@ -357,6 +434,7 @@ sequenceDiagram
     W->>V: primary SSH connection arrives
     Note over V: Running, until Ctrl-C, closed terminal or oillamp stop
     V->>P: podman stop, podman rm
+    V->>V: shutdown save, if anything changed
     V-->>O: exit status
     O->>O: release lock
 ```
@@ -394,6 +472,8 @@ The same, step by step:
 6. **Lock.** `LampLock.tryAcquire` takes an exclusive OS file lock on `.oillamp/lock`. If another
    session holds it, oillamp reports `OIL-LOCK-001` and exits with code 4. The OS releases the lock
    when the process dies, however it dies.
+   Then the lamp is saved, if anything changed since its last snapshot (a startup save). A save
+   that fails is a warning, and the session starts anyway.
 7. **Image and sandbox phase (`SandboxPhase`).**
    - Computes the image tag. If podman does not have it, extracts the image files from the jar and
      runs `podman build`, showing its output on the activity line.
@@ -411,7 +491,9 @@ replaces it once the session is up.
 The other commands reuse these parts. `doctor` runs the host phase as a dry run with installing
 forbidden. `view`, `shell`, `stop` and `status` send one request to the control socket. `remove`
 and `recordings --prune` build a plan and run it with `StepRunner`. `list` asks podman for
-containers labelled `oillamp.agent-id`.
+containers labelled `oillamp.agent-id`. `save`, `history` and `restore` use `History` directly
+and talk to no session; `save` and `restore` try the lamp's lock only to find out whether a
+session is running.
 
 ---
 
@@ -637,7 +719,7 @@ Exit codes by shutdown reason (`ShutdownReason.exitStatus`): `oillamp stop` → 
   single writer thread for the network log.
 - **Shutdown thread.** Runs the shutdown sequence so the event loop stays responsive.
 - **JVM shutdown hook.** On Ctrl-C or SIGTERM it posts `Interrupted` and waits for `Stopped`, for up
-  to `timeouts.stop_seconds` plus a minute. If the sequence never began, it runs it itself. If it
+  to `timeouts.stop_seconds` plus six minutes, five of them for the shutdown save. If the sequence never began, it runs it itself. If it
   began but has not finished, it does not start a second one, which would force-remove the
   container while the recording is being finished.
 
@@ -652,7 +734,8 @@ Exit codes by shutdown reason (`ShutdownReason.exitStatus`): `oillamp stop` → 
    information. If both failed, `OIL-SANDBOX-005`.
 4. Close the egress proxy, the control socket and the windows oillamp opened.
 5. Delete `session.json` and update `lastSessionAt` in `lamp.json`.
-6. Print the summary: why it ended, how long it ran, the session id, the recording path.
+6. Save the lamp, if anything changed (a shutdown save; see "The history").
+7. Print the summary: why it ended, how long it ran, the session id, the recording path.
 
 ### Crash recovery
 
@@ -1093,6 +1176,7 @@ removed.
 | The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `Filesystem`, `LampLock` |
 | Host phase | `HostPhase`, `HostProbe`, `HostPlanner`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
 | Lamp phase | `LampPhase`, `LampPlanner`, `LampClassifier`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
+| History | `History` (reads the agent directory, writes and reads the repository), `GitFormat` (git's object format and the commit messages, pure) |
 | Configuration | `ConfigLoader`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `Templates`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
@@ -1209,7 +1293,7 @@ as `oillamp at` does (`LampPhase.configurationFiles`).
 | 1 | `ERROR` | Any error not covered below. |
 | 2 | `USAGE` | Bad command line or bad configuration. Also `remove` without `--yes`. |
 | 3 | `PREREQUISITES_MISSING` | Host packages, subordinate ids or podman are not ready. |
-| 4 | `LAMP_BUSY` | Another session holds this lamp, or `remove` found it still in use. |
+| 4 | `LAMP_BUSY` | Another session holds this lamp, `remove` found it still in use, or `restore` found a session running. |
 | 5 | `SESSION_FAILED` | The container or the session failed. |
 | 130 | `INTERRUPTED` | Interrupted before the session was running. |
 
@@ -1239,6 +1323,13 @@ as `oillamp at` does (`LampPhase.configurationFiles`).
 | `OIL-LAMP-008` | `remove` could not delete part of the lamp. |
 | `OIL-LAMP-009` | `recordings --open` named a session with no recording. |
 | `OIL-LAMP-010` | The desktop could not open a recording. |
+| `OIL-HISTORY-001` | `restore` named no snapshot, or more than one. |
+| `OIL-HISTORY-002` | The history cannot be read. |
+| `OIL-HISTORY-003` | The lamp could not be saved. |
+| `OIL-HISTORY-004` | Warning: some files were left out of a snapshot. |
+| `OIL-HISTORY-005` | `restore` refused: a session is running. |
+| `OIL-HISTORY-006` | A restore stopped part of the way; the safety save holds the lamp as it was. |
+| `OIL-HISTORY-007` | Another save or restore has held the history for over ten minutes. |
 | `OIL-LOCK-001` | Lamp already running. |
 | `OIL-LOCK-002` | Warning: cleaned up after a previous session that crashed. |
 | `OIL-CONFIG-001` | TOML syntax error. |

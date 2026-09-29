@@ -230,6 +230,46 @@ oillamp knows nine terminal emulators and prefers your desktop's own. `terminal.
 *Why:* terminal emulators disagree on how to set a title and run a command. Keeping the differences
 as data means adding one is a new table row. *(D-22)*
 
+### A lamp keeps a history, and goes back to it
+
+A lamp can be saved (`oillamp save`), listed (`oillamp history`) and brought back to an earlier
+snapshot (`oillamp restore`). oillamp also saves as each session starts and as it ends, when
+anything changed. A snapshot holds the agent directory and `oillamp.toml`, never `.oillamp/`.
+
+*Why:* the sandbox keeps an agent away from the host, but inside its home an agent can still
+delete a project or break its tools, and that work is lost. Nobody remembers to save before the
+mistake, so the saves at the start and end of a session happen by themselves. *(added on
+2026-09-29)*
+
+### The history is a git repository that oillamp writes itself
+
+The history is a bare git repository in `.oillamp/history/`, never mounted into the container.
+oillamp writes git's objects directly, in Java, and never runs `git`.
+
+*Why:* git's format gives content-addressed storage that keeps each version of a file once, and a
+repository anyone can read with `git log`. But git's own commands cannot do the job: `git add`
+stores a directory with its own `.git` as a pointer and drops its files, and `git checkout` refuses
+to write a path through `.git`. Agents clone projects into their home, so those would be lost on a
+restore. Writing the objects directly also means the host needs no `git`, and the history is part
+of the lamp like every other file oillamp reads and writes itself.
+
+*Given up:* git packs objects to save space and delta-compresses similar files; oillamp writes one
+compressed file per object and reads only those, so the history is larger than git's would be, and
+running `git gc` on it by hand would make it unreadable to oillamp. File times, owners and hard
+links are not kept; exact permissions are, in a list of their own. *(added on 2026-09-29)*
+
+### A restore needs the session stopped; a save does not
+
+`oillamp restore` refuses while a session runs (`OIL-HISTORY-005`). `oillamp save` works either
+way, and a save made while a session runs is marked as a running save. A restore always saves
+first, and records itself as a new snapshot, so the history only grows and every restore can be
+undone.
+
+*Why:* rewriting the agent's home under running programs would leave them working in files that
+changed beneath them. Saving while the session runs is the case that matters most, just before
+letting the agent try something risky, and the worst it can do is catch a file half written, which
+the mark warns about. *(added on 2026-09-29)*
+
 ---
 
 ## Host setup
