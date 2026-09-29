@@ -223,6 +223,7 @@ window against real lamps, with a real Eden AI key (checked on 2026-09-28):
 | a file given to the genie | arrives in `~/inbox` |
 | a message, answered through the model relay; a tool call writing `~/outbox/hello.txt` | the answer streams in; the file is announced and saved on the host where asked, unchanged |
 | the genie put to sleep and woken again | the conversation comes back from pi |
+| a conversation that forked, put into the genie's home; the genie sent to one branch, then the other (checked on 2026-09-29) | pi 0.87.1 starts with Genies' extension and moves; the chat shows the way to each branch, and the tree marks it. The image rebuilt itself with the extension in seconds |
 | deleting the genie | its lamp is removed through the engine; nothing left |
 | the key in the spikes' output | never |
 

@@ -2,9 +2,12 @@ package gui
 
 import dev.gui.genie.GenieRunner
 import dev.gui.genie.Lighter
+import dev.gui.model.Conversations
 import dev.gui.model.Entry
 import dev.gui.model.Genie
 import dev.gui.model.Settings
+import dev.gui.pi.PiProtocol
+import groovy.json.JsonSlurper
 import spock.lang.Specification
 import spock.lang.TempDir
 import spock.lang.Timeout
@@ -38,7 +41,8 @@ class KeepingAGenieAliveSpec extends Specification {
     GenieRunner runner
 
     def setup() {
-        home = Files.createDirectories(tmp.resolve('home'))
+        // Where a lamp keeps the agent's home, so the runner finds the conversations in it.
+        home = Files.createDirectories(tmp.resolve('lamp/agent-lamp-test'))
         runner = new GenieRunner(tmp.resolve('lamp'), lighter(), { UnaryOperator<Genie> change ->
             synchronized (this) { genie = change.apply(genie) }
         } as Consumer)
@@ -64,12 +68,15 @@ class KeepingAGenieAliveSpec extends Specification {
             Files.isDirectory(home.resolve('inbox'))
 
         and: 'pi, as the harness, on the chosen model, continuing, with the genie\'s instructions'
-            var harness = commands.find { it.first() == 'pi' }
-            harness.subList(0, 8) == ['pi', '--mode', 'rpc', '--provider', 'edenai', '--model',
-                                      'mistral/mistral-small-latest', '--continue']
-            harness[8] == '--append-system-prompt'
-            harness[9].startsWith('You are Jafar, a genie')
-            harness[9].contains('~/outbox')
+            var harness = commands.find { it.contains('--mode') }
+            harness.subList(4, 12) == ['--mode', 'rpc', '--provider', 'edenai', '--model',
+                                       'mistral/mistral-small-latest', '--continue', '--append-system-prompt']
+            harness[12].startsWith('You are Jafar, a genie')
+            harness[12].contains('~/outbox')
+
+        and: 'with Genies\' extension, when the sandbox has it'
+            harness.subList(0, 2) == ['sh', '-c']
+            harness[3] == PiProtocol.EXTENSION
 
         and: 'the conversation it had before'
             waitUntil { genie.transcript().entries()*.text() == ['remember me?', 'I do.'] }
@@ -83,7 +90,7 @@ class KeepingAGenieAliveSpec extends Specification {
             conversation is back. Here pi takes a second to send it.
         """
         given:
-            pi = STAND_IN_PI.replace('*get_messages*)', '*get_messages*) sleep 1;')
+            pi = STAND_IN_PI.replace('*get_entries*)', '*get_entries*) sleep 1;')
 
         when:
             runner.wake('Jafar', Settings.defaults(), 'sk-key')
@@ -202,6 +209,122 @@ class KeepingAGenieAliveSpec extends Specification {
             !genie.transcript().isEmpty()
     }
 
+    // ─── conversations ─────────────────────────────────────────────────────────────────────
+
+    def 'A genie\'s conversations are read from its home, asleep or awake, with where it is in them'() {
+        reportInfo """
+            pi keeps every conversation as a file in the genie's home, which is in the lamp on
+            this computer. The runner reads them from there, so the tree under a sleeping genie
+            is full too. Once awake, pi says which conversation it has open and which entry it
+            continues from, and the tree marks that place.
+        """
+        given:
+            conversation('first.jsonl', 's1', '2026-09-29T10:00:00.000Z', 'remember me?')
+            conversation('second.jsonl', 's2', '2026-09-28T10:00:00.000Z', 'plan a trip')
+
+        when: 'asleep'
+            runner.lookAtConversations()
+
+        then:
+            waitUntil { genie.conversations().all()*.id() == ['s1', 's2'] }
+            genie.conversations().here() == Conversations.Here.UNKNOWN
+
+        when: 'awake'
+            runner.wake('Jafar', Settings.defaults(), 'sk-key')
+
+        then:
+            waitUntil { genie.phase() == Genie.Phase.READY }
+            genie.conversations().here() == new Conversations.Here(Conversations.DIRECTORY + '/first.jsonl', 'a1')
+            genie.conversations().herePath().toList() == ['s1']
+    }
+
+    def 'Going to another branch opens its conversation, moves there, and shows what was said on the way'() {
+        reportInfo """
+            The user clicks a branch in the tree. pi answers commands side by side, so the
+            runner asks one thing at a time and waits for each answer: open the conversation,
+            unless it is open already; move to the branch's last entry, through Genies'
+            extension; then ask where pi is now and what was said on the way, for the chat.
+        """
+        given:
+            runner.wake('Jafar', Settings.defaults(), 'sk-key')
+            waitUntil { genie.phase() == Genie.Phase.READY }
+            var before = heard().size()
+
+        when:
+            runner.goTo(Conversations.DIRECTORY + '/second.jsonl', 'a7')
+
+        then:
+            waitUntil { heard().size() >= before + 4 }
+            heard().subList(before, before + 4)*.type == ['switch_session', 'prompt', 'get_state', 'get_entries']
+            heard()[before].sessionPath == '/home/agent/' + Conversations.DIRECTORY + '/second.jsonl'
+            heard()[before + 1].message == '/genies-goto a7'
+
+        when: 'somewhere in the conversation pi has open already'
+            before = heard().size()
+            runner.goTo(Conversations.DIRECTORY + '/first.jsonl', 'q1')
+
+        then: 'it is not opened again'
+            waitUntil { heard().size() >= before + 3 }
+            heard().subList(before, before + 3)*.type == ['prompt', 'get_state', 'get_entries']
+    }
+
+    def 'A question asked differently goes to pi through Genies\' extension'() {
+        reportInfo """
+            pi's extension command moves back to just before the old question and asks the new
+            one there, in one step, so nothing can come between the two.
+        """
+        given:
+            runner.wake('Jafar', Settings.defaults(), 'sk-key')
+            waitUntil { genie.phase() == Genie.Phase.READY }
+
+        when:
+            runner.askInstead('q1', 'do you remember me?')
+
+        then:
+            waitUntil { heard().any { it.message == '/genies-edit q1 do you remember me?' } }
+    }
+
+    def 'Deleting the conversation the genie is in starts a new one, then deletes the old one\'s file'() {
+        reportInfo """
+            A conversation is deleted for good, by deleting its file. pi still holds the one it
+            has open, so for that one it is first asked to start a new conversation; the old
+            one's file is deleted after, and the tree read again.
+        """
+        given:
+            conversation('first.jsonl', 's1', '2026-09-29T10:00:00.000Z', 'remember me?')
+            conversation('second.jsonl', 's2', '2026-09-28T10:00:00.000Z', 'plan a trip')
+            runner.wake('Jafar', Settings.defaults(), 'sk-key')
+            waitUntil { genie.phase() == Genie.Phase.READY && genie.conversations().all().size() == 2 }
+
+        when:
+            runner.forget(Conversations.DIRECTORY + '/first.jsonl')
+
+        then:
+            waitUntil { genie.conversations().all()*.id() == ['s2'] }
+            heard()*.type.contains('new_session')
+            !Files.exists(home.resolve(Conversations.DIRECTORY + '/first.jsonl'))
+    }
+
+    def 'A sandbox without Genies\' extension cannot move, and the chat says how to get it'() {
+        reportInfo """
+            A sandbox image built before Genies had its extension starts pi without it. Such a
+            genie still wakes and talks, but a move is refused in the chat, with what to do,
+            and never sent: pi would pass the command on to the model as a question.
+        """
+        given:
+            pi = STAND_IN_PI.replace('{"name":"genies-goto"},{"name":"genies-edit"}', '')
+            runner.wake('Jafar', Settings.defaults(), 'sk-key')
+            waitUntil { genie.phase() == Genie.Phase.READY }
+
+        when:
+            runner.goTo(Conversations.DIRECTORY + '/first.jsonl', 'q1')
+
+        then:
+            waitUntil { genie.transcript().entries().any { it.isFailed() && it.text() == GenieRunner.CANNOT_MOVE } }
+            !runner.canMove()
+            !heard().any { it.message?.startsWith('/genies-goto') }
+    }
+
     // ─── the stand-in lamp and harness ─────────────────────────────────────────────────────
 
     /**
@@ -210,9 +333,21 @@ class KeepingAGenieAliveSpec extends Specification {
      */
     static final String STAND_IN_PI = '''
         while IFS= read -r line; do
+          printf '%s\\n' "$line" >> "$HOME/.pi-heard"
           case "$line" in
-            *get_messages*)
-              echo '{"type":"response","command":"get_messages","success":true,"data":{"messages":[{"role":"user","content":"remember me?"},{"role":"assistant","content":[{"type":"text","text":"I do."}]}]}}' ;;
+            *get_entries*)
+              echo '{"type":"response","command":"get_entries","success":true,"data":{"leafId":"a1","entries":[{"type":"message","id":"q1","parentId":null,"message":{"role":"user","content":"remember me?"}},{"type":"message","id":"a1","parentId":"q1","message":{"role":"assistant","content":[{"type":"text","text":"I do."}]}}]}}' ;;
+            *get_state*)
+              echo '{"type":"response","command":"get_state","success":true,"data":{"sessionFile":"/home/agent/.pi/agent/sessions/--home-agent--/first.jsonl"}}' ;;
+            *get_commands*)
+              echo '{"type":"response","command":"get_commands","success":true,"data":{"commands":[{"name":"genies-goto"},{"name":"genies-edit"}]}}' ;;
+            *switch_session*)
+              echo '{"type":"response","command":"switch_session","success":true,"data":{"cancelled":false}}' ;;
+            *new_session*)
+              echo '{"type":"response","command":"new_session","success":true,"data":{"cancelled":false}}' ;;
+            *genies-goto*)
+              echo '{"type":"extension_ui_request","id":"n","method":"notify","message":"genies: moved","notifyType":"info"}'
+              echo '{"type":"response","command":"prompt","success":true}' ;;
             *prompt*)
               echo '{"type":"response","command":"prompt","success":true}'
               echo '{"type":"tool_execution_start","toolCallId":"c1","toolName":"bash","args":{"command":"draw-map > ~/outbox/map.svg"}}'
@@ -233,7 +368,7 @@ class KeepingAGenieAliveSpec extends Specification {
             new Lighter.Lit() {
                 Process exec(String... command) {
                     commands << (command as List<String>)
-                    var local = command[0] == 'pi' ? ['bash', '-c', pi] : (command as List<String>)
+                    var local = command.contains('--mode') ? ['bash', '-c', pi] : (command as List<String>)
                     var builder = new ProcessBuilder(local)
                     builder.environment().put('HOME', home.toString())
                     builder.start()
@@ -242,6 +377,21 @@ class KeepingAGenieAliveSpec extends Specification {
                 void close() { closed << 'closed' }
             }
         } as Lighter
+    }
+
+    /** Every command the stand-in pi received, in order. */
+    private List<Map> heard() {
+        var file = home.resolve('.pi-heard')
+        Files.exists(file) ? Files.readAllLines(file).findAll { !it.isBlank() }.collect { new JsonSlurper().parseText(it) as Map } : []
+    }
+
+    /** A session file of pi's, with one question and its answer in it. */
+    private void conversation(String name, String id, String timestamp, String question) {
+        var directory = Files.createDirectories(home.resolve(Conversations.DIRECTORY))
+        Files.writeString(directory.resolve(name), """{"type":"session","version":3,"id":"$id","timestamp":"$timestamp","cwd":"/home/agent"}
+{"type":"message","id":"q1","parentId":null,"timestamp":"$timestamp","message":{"role":"user","content":"$question"}}
+{"type":"message","id":"a1","parentId":"q1","timestamp":"$timestamp","message":{"role":"assistant","content":"Hello."}}
+""")
     }
 
     private void waitUntil(Closure<Boolean> condition) {
