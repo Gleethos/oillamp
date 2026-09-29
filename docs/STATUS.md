@@ -48,6 +48,8 @@ The fast test suite passes. The spikes pass on the development machine.
 | `oillamp save <dir> [--message <text>]` | Works in the scenarios and on a lamp made by hand (see below). |
 | `oillamp history <dir>` | Works. |
 | `oillamp restore <dir> <snapshot>` | Works in the scenarios and on a lamp made by hand. Refused while a session runs. |
+| `oillamp schedule <dir> [add \| remove \| enable \| disable \| pause \| resume]` | Works in the scenarios and in a real session (see "Runs and the schedule"). |
+| `oillamp ask <dir> "<prompt>"` | Works in the scenarios and in a real session with pi. |
 | `oillamp config <dir> check \| show-effective \| path` | Works. Reads the global file and the lamp's, as `at` does. |
 | `oillamp completion bash` | Works. |
 | `oillamp version`, `oillamp help`, `oillamp guide`, `oillamp about` | Work. |
@@ -80,6 +82,24 @@ All on Ubuntu 24.04.5, GNOME on Wayland, podman 4.9.3, AMD Phoenix graphics.
 - After the supervisor was killed with `kill -9`, `oillamp stop` found the orphaned container and
   removed it.
 - A second Ctrl-C during shutdown no longer interrupts the cleanup.
+
+### Runs and the schedule
+
+Checked on 2026-09-29, in a real session started with `oillamp at <dir> --no-windows`, with
+`schedule.enabled = true` and the sandbox's own pi:
+
+| What | Result |
+|---|---|
+| `oillamp ask` with pi's default model | pi started over ssh and took the prompt; the model service refused the model (403, the account's guardrail), and the run was reported as failed with that message and saved as a `run` snapshot |
+| the same, with `defaultModel` set in the lamp's pi settings | pi, restarted for the next run, created the file asked for and answered in 4 seconds; the agent also wrote `~/workspace/NOTES.md` without being asked, as `AGENTS.md` tells it to |
+| asking the agent to schedule a job for itself `in 1m` with `schedule_add` | the host accepted it, with an end 14 days out, and `oillamp schedule` listed it as the agent's |
+| waiting | a minute later the job woke the agent in a new conversation; it did the work, the job came off the schedule, and the run was saved |
+| `oillamp stop` | no run was in progress; the session ended as usual, with nothing left to save |
+
+`oillamp history` then read as a log of the runs, and `git show --stat` of the last run's snapshot
+listed its trailers, the agent's last message, the files it changed and pi's own record of the
+conversation. Not tried for real: a run stopped by `schedule.max_run_minutes`, a run interrupted
+by the session ending, and Ctrl-C during a run; the scenarios cover all three against a stand-in pi.
 
 ### The agent cannot reach the infrastructure
 
@@ -311,6 +331,13 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 - Saving or restoring a home with hundreds of thousands of files, such as several `node_modules`.
 - The Genies app has no buttons for the history yet; `dev.lamp.Lamp` offers `save`, `history` and
   `restore`.
+- Genies still starts its own pi, and does not use the session's. A lamp that Genies holds and
+  that has jobs on its schedule runs two pis in one home. Genies should become a client of the
+  session's harness, through `Lamp.ask`.
+- The scheduling tools are pi's only. Another harness in the sandbox, such as opencode, has none.
+- A run uses whatever model pi is configured with in the sandbox. A lamp whose pi has no default
+  model, or one the model service refuses, fails every run, and says so; oillamp has no setting
+  of its own for the model of a run.
 
 - Ubuntu 26.04, and any distribution other than Ubuntu 24.04.
 - A Java Swing modal dialog on the sandbox desktop. (A Swing window works; see the lessons table.)
@@ -357,5 +384,6 @@ the code that would otherwise look unnecessary.
 | A 403 sometimes arrived without the sentence naming the rule. | Head and body were written separately; some clients read once. | One write. |
 | A lamp could not be deleted. | Infra-owned files are a subordinate id on the host. | `oillamp remove`. |
 | `oillamp remove` deleted a lamp whose container was still running, when `lamp.json` was already gone. | It looked for the container by a name derived from `lamp.json`. | It asks podman for a container labelled with the lamp's path. |
+| The first real run failed with a 403: "Model(s) 'vertex/claude-sonnet-5-5' not allowed by your guardrail policy". | pi's default model, in a lamp whose pi had no model set, was one the account's Eden AI policy refuses. | Not a bug in oillamp: the run reported it, with the service's message. Set `defaultProvider` and `defaultModel` in the agent's `~/.pi/agent/settings.json`. |
 | `pi` and `opencode` seemed to be missing. | Not a bug: the locally installed oillamp was older than the change. | Remember to run `./gradlew installDist` (or `singleFile`) after changing the image. |
 

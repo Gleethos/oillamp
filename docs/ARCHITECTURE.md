@@ -62,6 +62,10 @@ These words have one meaning each, in the code and in the documents.
 | **spike** | A test that runs real podman to confirm an assumption about a third-party tool. |
 | **snapshot** | The agent directory and `oillamp.toml` as they were at one moment, kept in the lamp's history. One git commit. |
 | **history** | `<lamp>/.oillamp/history/`: a git repository holding a lamp's snapshots, oldest to newest on one branch. |
+| **harness** | The agent program a session holds and prompts: pi, in RPC mode, started over ssh by the supervisor. One per session. |
+| **run** | One time the harness is woken with a prompt, by a job or by `oillamp ask`. Named `run-<n>`, counted per lamp. |
+| **job** | An entry on a lamp's schedule: a prompt, and a cron expression or a single time. Named `job-<n>`. Added by the user or by the agent. |
+| **schedule** | `<lamp>/.oillamp/schedule.json`: a lamp's jobs. Jobs only run while a session runs, and only with `schedule.enabled` on. |
 
 ---
 
@@ -162,8 +166,10 @@ known lifetime:
 | `<lamp>/.oillamp/recordings/` | wf-recorder | you, the agent (read only) | until retention deletes them |
 | `<lamp>/.oillamp/logs/network-<session>.jsonl` | the egress proxy | you | until you delete them |
 | `<lamp>/.oillamp/history/` | `History`: at the start and end of every session, `oillamp save`, `oillamp restore` | `oillamp history`, `oillamp restore`, git by hand | until `oillamp remove`; only ever grows |
+| `<lamp>/.oillamp/schedule.json` | `ScheduleBook`, for `oillamp schedule`, for the session as runs start, and for the agent's requests | `oillamp schedule`, the session every 30 s | until `oillamp remove` |
+| `<lamp>/.oillamp/schedule.lock` | `ScheduleBook`; held for the moment one change takes | every other change | the lock ends with the process |
 | `<lamp>/.oillamp/history.lock` | `History`; the kernel holds the lock while one save or restore runs | every other save and restore, which wait for it | the lock ends with the process |
-| `<lamp>/agent-lamp-<id>/` | the agent; `LampPlanner` writes `AGENTS.md` and `.bashrc` | the agent, you | until `oillamp remove` |
+| `<lamp>/agent-lamp-<id>/` | the agent; `LampPlanner` writes `AGENTS.md`, `.bashrc` and, with the schedule on, `.pi/agent/extensions/oillamp-schedule.js` | the agent, you | until `oillamp remove` |
 | `$XDG_RUNTIME_DIR/oillamp/<id>/sockets` (a symlink) | `LampPlanner.planSkeleton`, every start | every host-side socket path | in memory: gone at reboot, made again next start |
 | `$XDG_RUNTIME_DIR/oillamp/<id>/run/*.sock` | `Supervisor` (relays, control socket) | `oillamp stop/status/view/shell`, the shell window | deleted at shutdown; a killed supervisor leaves them |
 | `~/.config/oillamp/config.toml` | you (optional) | every command that reads configuration | until you delete it |
@@ -199,17 +205,23 @@ session log**: what it reports exists only in the terminal it runs in, apart fro
 │   │   └── gitconfig            the name and email on the agent's commits
 │   ├── image/context/           the image build files, extracted from the jar before a build
 │   ├── sockets/                 not attached itself; each directory below is, on its own
-│   │   ├── host/                you;        proxy.sock, fwd-*.sock; read-only in the container
+│   │   ├── host/                you;        proxy.sock, model.sock, fwd-*.sock, schedule.sock;
+│   │   │                        read-only in the container
 │   │   ├── infra/               infra user; vnc.sock, ready.json
 │   │   └── agent/               you;        ssh.sock
 │   ├── recordings/              infra user; <session>.mkv; attached at /oillamp/recordings
 │   ├── logs/                    network-<session>.jsonl
 │   ├── history/                 the lamp's snapshots, a bare git repository; never attached
-│   └── history.lock             locked while a save or a restore runs
+│   ├── history.lock             locked while a save or a restore runs
+│   ├── schedule.json            the jobs that wake the agent; never attached
+│   └── schedule.lock            locked while the schedule is changed
 └── agent-lamp-<agent id>/       attached read-write at /home/agent
     ├── AGENTS.md                rewritten each session
     ├── .bashrc                  written once, then left alone
+    ├── .pi/agent/extensions/oillamp-schedule.js
+    │                            the scheduling tools; written each session while the schedule is on
     ├── workspace/
+    │   └── NOTES.md             the agent's notes between runs, written by the agent
     ├── libs/                    on LD_LIBRARY_PATH, and so on java.library.path
     └── screenshots/
 ```
@@ -294,6 +306,15 @@ Oillamp-Session: 20260929-181200
 | `idle` | `oillamp save` while no session runs |
 | `before-restore` | `oillamp restore`, just before it changes anything |
 | `restore` | `oillamp restore`, recording which snapshot it went back to |
+| `before-run` | `Runs`, just before the agent is woken, if anything changed since the last snapshot |
+| `run` | `Runs`, as a run ends, always, even when nothing changed: its message holds the agent's last message |
+
+A run's snapshots carry more trailers: `Oillamp-Run` (`run-12`), and on the `run` snapshot
+`Oillamp-Job`, `Oillamp-Author` (`user` or `agent`: who added the job), `Oillamp-Outcome`
+(`finished`, `failed`, `timed out`, `interrupted`) and `Oillamp-Base` (the snapshot the lamp was in
+as the run began, so that what the run changed can be listed). Trailers are read only from a
+message's last paragraph, and only when every line in it is one: the agent's own words are in the
+message, and a line in them that looks like a trailer must not count.
 
 oillamp reads only what it writes: one file per object. `git gc` would pack them into a single
 file, which oillamp cannot read, so the repository's config sets `gc.auto = 0` to keep git from
@@ -719,7 +740,8 @@ Exit codes by shutdown reason (`ShutdownReason.exitStatus`): `oillamp stop` → 
   single writer thread for the network log.
 - **Shutdown thread.** Runs the shutdown sequence so the event loop stays responsive.
 - **JVM shutdown hook.** On Ctrl-C or SIGTERM it posts `Interrupted` and waits for `Stopped`, for up
-  to `timeouts.stop_seconds` plus six minutes, five of them for the shutdown save. If the sequence never began, it runs it itself. If it
+  to `timeouts.stop_seconds` plus about twelve minutes: six for a run in progress to stop and be
+  saved, five for the shutdown save. If the sequence never began, it runs it itself. If it
   began but has not finished, it does not start a second one, which would force-remove the
   container while the recording is being finished.
 
@@ -727,6 +749,9 @@ Exit codes by shutdown reason (`ShutdownReason.exitStatus`): `oillamp stop` → 
 
 `Supervisor.shutDown` runs every step, even if an earlier one failed:
 
+0. Close the schedule socket, tell pi to stop the run in progress, and wait for that run to be
+   saved (at most six minutes); runs still waiting end as interrupted. The sandbox still runs here,
+   so pi can wind down.
 1. Close both SSH relays and all their connections.
 2. `podman stop --time <timeouts.stop_seconds> oillamp-<id>`, shielded from Ctrl-C (it runs under
    `setsid --wait`). This lets the entrypoint finish the recording.
@@ -755,12 +780,84 @@ the container, and the next start cleans up the rest.
 | `{"op":"stop"}` | `{"ok":true,"state":"shutting-down"}`, and the session begins to shut down |
 | `{"op":"view","view_only":"true"}` | `{"ok":true}`, and another viewer opens |
 | `{"op":"shell"}` | `{"ok":true,"argv":["ssh","-F",…]}`; the *asking* process runs that ssh in its own terminal |
+| `{"op":"ask","prompt":…}` | answered once the run has ended: `{"ok":true,"run":"run-3","outcome":"FINISHED","answer":…,"seconds":…,"snapshot":…}`; `oillamp ask` waits up to a day for it |
+| `{"op":"schedule-changed"}` | `{"ok":true}`, and the session looks at the schedule now rather than at its next half minute |
+
+`status` also answers `"agent"`: `idle`, or which run the agent is working on and how many wait.
 
 A missing socket means no session is running (`OIL-SESSION-001`). A socket that refuses
 connections, or accepts but answers nothing within 5 s, is `OIL-SESSION-002`. In the first case
 the supervisor is dead and `oillamp stop` cleans up; in the second it is alive but stuck, and
 `stop` removes nothing. A session that answers `{"ok":false,…}` is alive and has refused
 (`OIL-SESSION-003`).
+
+### Runs and the schedule
+
+`Runs` holds everything about waking the agent. Where the state is:
+
+| Place | What it holds |
+|---|---|
+| `<lamp>/.oillamp/schedule.json` | the jobs, whether the schedule is paused, and the numbers the next job and run get |
+| `Runs.queue`, `Runs.current` (memory) | runs waiting, and the one in progress; lost when the session ends, which is fine: a job that did not run is still due next session |
+| the pi process (`Harness`) | one per session, started with the first run, kept for the next |
+| `<lamp>/.oillamp/history/` | every run's `before-run` and `run` snapshots: the only lasting record of runs |
+| `~/workspace/NOTES.md` (the agent's) | what the agent wants to remember from one run to the next |
+
+**The harness.** `Harness` runs `ssh … lamp-<id> 'cd ~/workspace; exec pi --mode rpc'` through the
+sandbox's SSH socket directly, not through a relay, so it is not counted as one of your shells. pi
+speaks one JSON object per line (its documentation is in the sandbox, under
+`/usr/lib/node_modules/@earendil-works/pi-coding-agent/docs/rpc.md`). Each run sends `new_session`,
+`set_session_name` (`run-12 (job-3)`), then `prompt`, and reads events until `agent_settled`, which
+means pi will not continue by itself (`agent_end` can be followed by retries). The last assistant
+message is the answer; its `stopReason` says whether it failed. pi uses the model it is configured
+with in the sandbox. An extension's question (`extension_ui_request` for `confirm`, `select`,
+`input`, `editor`) is answered with "cancelled", since no one is there to answer during a run.
+When the time is up, or the session is ending, it sends `abort` and waits 30 s for pi to settle;
+then it ends pi, and the next run starts a new one. If pi dies, the run fails with pi's last error
+lines (`OIL-SCHEDULE-005`), and the next run starts it again.
+
+**A run**, on the `oillamp-runs` thread, one at a time:
+
+1. A job's `last_run` is set to now (a `once` job is removed instead), so it is not due again.
+2. `before-run` save, if anything changed.
+3. The prompt. With `schedule.enabled` on, `WakePrompt` writes it: why the agent was woken (and,
+   for its own job, that it wrote the task itself), the task, `NOTES.md` (cut at
+   `schedule.notes_max_kb`), the last three runs with the files each changed (diffing the `run`
+   snapshot's tree against its `Oillamp-Base`), the last run's final message, and a reminder to
+   rewrite the notes. With the schedule off, `oillamp ask` sends the prompt as it is.
+4. `Harness.run`, for at most `schedule.max_run_minutes`.
+5. `run` save, always, with the answer (cut at 16 KB) and the trailers above.
+6. `RunFinished` is reported, and handed to `oillamp ask` if it asked.
+
+**The schedule** is read by the `oillamp-schedule` thread every 30 s, and at once after
+`oillamp schedule` or the agent changed it. That thread only runs with `schedule.enabled` on. It
+removes jobs that expired or will never run again, and queues each job that is due and not
+already queued. A repeating job is due when its cron expression names a moment after its
+`last_run` (or its creation) that has passed. So a job missed while no session ran runs once when
+one does, not once for every time it missed. A job of the agent's is skipped when the agent's jobs
+already ran `schedule.max_agent_runs_per_day` times in the last 24 hours, counted from the history.
+Nothing runs while the schedule is paused. Cron expressions (`CronExpression`) have the usual five
+fields, names for months and days, steps and ranges, and `@hourly`, `@daily`, `@weekly`; they and
+`--at` times are read in the host's time zone (`Machine.zone`).
+
+**The rules** are in `Schedule.add`, the same for everyone who asks: a prompt of at most 4000
+characters, either `cron` or `at`, a time in the future. The agent's jobs also have to keep to
+`[schedule]`: at most `max_agent_jobs`, no two runs of one job closer than
+`min_agent_interval_minutes`, never more than `max_agent_days` ahead, and an end at most that far
+off, which they get whether they asked for one or not. The agent may remove only its own jobs.
+
+**The agent's side.** With the schedule on, the session serves `sockets/host/schedule.sock`,
+which the sandbox sees as `/oillamp/sockets/host/schedule.sock`, with `Control.Server` and
+`Runs.answerAgent`: one JSON line in, one out. Requests are `list`, `add` (`cron`, `at`, `prompt`,
+`expires`), `remove` (`id`) and `history` (`run`, or nothing for the recent runs). Replies have a
+`text` or an `error`, written for the agent to read. The extension
+`src/main/resources/agent/oillamp-schedule.js`, which `LampPlanner` writes into pi's extension
+directory each session, turns these into the tools `schedule_add`, `schedule_list`,
+`schedule_remove` and `run_history`. It checks nothing itself: the host decides. `AGENTS.md` gets
+a section on the tools, the limits and the notes.
+
+Everything the agent wrote that reaches your terminal, its answers and its jobs' prompts, is
+printed with escape sequences and control characters removed.
 
 ### The windows
 
@@ -1177,6 +1274,7 @@ removed.
 | Host phase | `HostPhase`, `HostProbe`, `HostPlanner`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
 | Lamp phase | `LampPhase`, `LampPlanner`, `LampClassifier`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
 | History | `History` (reads the agent directory, writes and reads the repository), `GitFormat` (git's object format and the commit messages, pure) |
+| Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `Moments` (times as people write them), `WakePrompt` (a run's prompt, pure) |
 | Configuration | `ConfigLoader`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `Templates`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
@@ -1276,6 +1374,13 @@ checked but have no effect yet; they are listed under "Known gaps" in STATUS.md.
 | `timeouts.container_ready_seconds` | 60 | wait for `ready.json`; twice as long straight after an image build | yes |
 | `timeouts.terminal_connect_seconds` | 60 | wait for the terminal to connect | yes |
 | `timeouts.stop_seconds` | 15 | `podman stop --time` | yes |
+| `schedule.enabled` | false | jobs wake the agent while a session runs; the agent gets its scheduling tools | yes |
+| `schedule.max_agent_jobs` | 10 | how many jobs the agent may have at once (0–100) | yes |
+| `schedule.min_agent_interval_minutes` | 15 | the shortest time between two runs of one of the agent's jobs | yes |
+| `schedule.max_agent_days` | 14 | how far ahead the agent may schedule, and when its jobs end at the latest (1–366) | yes |
+| `schedule.max_agent_runs_per_day` | 48 | runs of the agent's jobs in any 24 hours; more are skipped (0–1440) | yes |
+| `schedule.max_run_minutes` | 30 | any run, yours too, is stopped after this (1–1440) | yes |
+| `schedule.notes_max_kb` | 8 | how large the agent's `NOTES.md` may be; the prompt shows no more (1–1024) | yes |
 
 `oillamp config <dir> check` validates, `show-effective` prints a summary of the merged result,
 `path` prints the file's path. `check` and `show-effective` merge the global file and the lamp's,
@@ -1330,6 +1435,11 @@ as `oillamp at` does (`LampPhase.configurationFiles`).
 | `OIL-HISTORY-005` | `restore` refused: a session is running. |
 | `OIL-HISTORY-006` | A restore stopped part of the way; the safety save holds the lamp as it was. |
 | `OIL-HISTORY-007` | Another save or restore has held the history for over ten minutes. |
+| `OIL-SCHEDULE-001` | A job was refused: its time could not be read, has passed, or breaks one of the agent's limits. |
+| `OIL-SCHEDULE-002` | The schedule file could not be read or written. |
+| `OIL-SCHEDULE-003` | No job has that name. |
+| `OIL-SCHEDULE-004` | Warning: the schedule is changed, but `schedule.enabled` is off, so no job runs. |
+| `OIL-SCHEDULE-005` | Warning: the agent could not be woken for a run, or pi stopped in the middle of one. |
 | `OIL-LOCK-001` | Lamp already running. |
 | `OIL-LOCK-002` | Warning: cleaned up after a previous session that crashed. |
 | `OIL-CONFIG-001` | TOML syntax error. |

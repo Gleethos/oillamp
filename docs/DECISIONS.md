@@ -270,6 +270,56 @@ changed beneath them. Saving while the session runs is the case that matters mos
 letting the agent try something risky, and the worst it can do is catch a file half written, which
 the mark warns about. *(added on 2026-09-29)*
 
+### The session holds the agent, and wakes it on a schedule only while it runs
+
+A running session owns one harness: pi in RPC mode, which the supervisor starts over ssh and alone
+prompts. Jobs on the lamp's schedule, and `oillamp ask`, wake it; runs happen one at a time, and
+the rest wait. Jobs run only while a session runs. Nothing wakes a lamp that is not running, so
+only a person starts one. The schedule is off unless `schedule.enabled` is on.
+
+*Why:* one owner is the only way to know whether the agent is busy, and the only way two runs
+never write the same files at once. Tying the schedule to a running session keeps the system
+small: there is no daemon, no second process that could start sandboxes behind the user's back,
+and the terminal the session runs in shows everything that happens. Off by default, because every
+run costs model tokens.
+
+*Given up:* a schedule does nothing while the lamp is not running, and the terminal it was started
+from has to stay open. A pi the user starts by hand in the sandbox's shell is not counted as busy;
+running one alongside a run is the user's own risk. *(added on 2026-09-29)*
+
+### Every run starts a fresh conversation, and the agent remembers through its notes
+
+Each run is a new pi conversation. Its prompt carries what the agent needs from before: its own
+notes in `~/workspace/NOTES.md`, which files the last three runs changed, and what the last run
+said at its end. `AGENTS.md` tells the agent to keep the notes short and current. The lamp is saved
+just before and just after every run, the run's snapshot always, with the agent's last message in
+its commit message.
+
+*Why:* a conversation that goes on across runs grows without end, costs more with every run, and
+fills with detail that no longer matters. Notes the agent rewrites stay small, and they are in its
+home, where the user can read and correct them. The two saves make the history a log of runs: what
+the user changed and what each run changed are separate snapshots, and any run can be undone with
+`oillamp restore`. pi uses whatever model it is configured with in the sandbox, so oillamp has no
+model setting of its own for runs.
+
+*Given up:* the agent only knows what it chose to write down. *(added on 2026-09-29)*
+
+### The agent schedules its own jobs by asking the host, which applies the rules
+
+The agent's tools (`schedule_add`, `schedule_list`, `schedule_remove`, `run_history`) are a small pi
+extension that sends requests over a socket to the session, never touching the schedule file,
+which is outside the sandbox. The session applies the same rules to the agent as to the user, plus
+limits from `[schedule]`: how many jobs, how often each may run, how far ahead, when they end, and
+how many runs a day. The agent cannot change or remove the user's jobs. Its jobs always end.
+
+*Why:* the agent must not be able to give itself unlimited work, which costs the user money, or
+undo what the user set up. Keeping the rules on the host means the extension can be as simple as
+possible, and changing it in the sandbox gains the agent nothing. The limits are in `oillamp.toml`,
+which the agent cannot see.
+
+*Given up:* the tools are pi's only; another harness in the sandbox gets none, although it could
+speak the socket's protocol itself. *(added on 2026-09-29)*
+
 ---
 
 ## Host setup

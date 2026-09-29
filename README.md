@@ -165,7 +165,45 @@ file permissions and links. Whatever the agent made after the snapshot is remove
 changes anything, `restore` saves the lamp once more and prints how to undo the restore. The
 agent cannot see or change these snapshots.
 
-### 7. Delete it when you are done 🧹
+### 7. Let the agent work on a schedule ⏰
+
+While a session runs, oillamp can wake the agent at set times with a task. Turn it on in the lamp's
+`oillamp.toml` (it is off by default, because every run costs model tokens), start the session,
+and add jobs:
+
+```toml
+[schedule]
+enabled = true
+```
+
+```sh
+oillamp schedule ~/lamps/first add --cron "0 9 * * 1-5" "Check the nightly build and fix what broke"
+oillamp schedule ~/lamps/first add --at "in 2h" "Write up what you found today"
+oillamp schedule ~/lamps/first                       # list the jobs, and when each runs next
+oillamp ask ~/lamps/first "What are you working on?" # wake it now, and print its answer
+```
+
+The agent is pi, which the session starts and keeps. It works on one thing at a time; anything that
+comes while it is busy waits its turn. Each run starts a fresh pi conversation, so the agent
+keeps notes for itself in `~/workspace/NOTES.md`, and oillamp puts those notes, what the last few
+runs changed, and the last run's final message into the prompt. pi uses whatever model it is
+configured with in the sandbox.
+
+Every run is saved just before and just after, so `oillamp history` reads as a log of what the agent
+did, and `oillamp restore` undoes any run:
+
+```
+SNAPSHOT  SAVED (UTC)          KIND                          MESSAGE
+0c1c81ec  2026-09-29 09:00:27  run                           run-4 (job job-1) finished
+04b875f4  2026-09-29 09:00:01  save before a run             before run-4
+```
+
+The agent can add jobs for itself with its `schedule_add` tool. oillamp decides whether to accept
+them: the agent may have only a few jobs, which run at most every 15 minutes and expire after 14
+days, and it cannot touch yours. Jobs only run while the session runs: nothing wakes a lamp that
+is not lit. `oillamp schedule <dir> pause` stops all runs without stopping the session.
+
+### 8. Delete it when you are done 🧹
 
 ```sh
 oillamp remove ~/lamps/first           # shows what would be deleted, deletes nothing
@@ -192,6 +230,8 @@ oillamp remove <dir>... [--yes]  # delete one or more lamps
 oillamp save <dir> [-m <text>]   # take a snapshot of the lamp, even while it runs
 oillamp history <dir>            # list the lamp's snapshots
 oillamp restore <dir> <snapshot> # go back to a snapshot (stop the session first)
+oillamp schedule <dir> [add ...] # list or change the jobs that wake the agent
+oillamp ask <dir> "<prompt>"     # wake the agent in a running session, print its answer
 oillamp recordings <dir>         # list screen recordings (if recording is on)
 oillamp config <dir> check       # validate the lamp's oillamp.toml
 oillamp guide                    # a first session, step by step, in your terminal
@@ -223,6 +263,9 @@ enabled = false              # true records the whole desktop session to a video
 
 [image]
 extra_apt_packages = []      # system packages to bake into the sandbox image
+
+[schedule]
+enabled = false              # true lets jobs wake the agent while a session runs
 
 [network]
 default = "allow"            # what happens when no rule matches
