@@ -1,6 +1,6 @@
 # Status
 
-Version 0.1.0, as of 23 September 2026.
+Version 0.2.0, as of 29 September 2026.
 
 This page says what works, what has been checked on a real machine, and where the code and the
 configuration do not yet match. Keep it current: when you close a gap, remove it here; when you

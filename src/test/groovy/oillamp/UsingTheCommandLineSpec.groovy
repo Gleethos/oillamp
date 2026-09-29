@@ -118,7 +118,7 @@ class UsingTheCommandLineSpec extends Specification {
 
         then:
             outcome.status() == ExitStatus.SUCCESS
-            outcome.console().contains('oillamp 0.1.0')
+            outcome.console().contains('oillamp 0.2.0')
     }
 
     def 'Someone new can learn what oillamp is for, and how to use it, from oillamp itself'() {
@@ -134,7 +134,7 @@ class UsingTheCommandLineSpec extends Specification {
             about.status() == ExitStatus.SUCCESS
             about.console().contains('WHY IT EXISTS')
             about.console().contains('podman')
-            about.console().contains('oillamp 0.1.0')
+            about.console().contains('oillamp 0.2.0')
 
         when: 'and how to get going'
             var guide = sandbox.oillamp.run('guide')

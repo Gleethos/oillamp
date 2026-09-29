@@ -247,7 +247,7 @@ cannot take the primary SSH slot or send commands to the supervisor.
   "schemaVersion": 1,
   "agentId": "v4elchzj",
   "createdAt": "2026-09-22T14:15:03Z",
-  "createdBy": "oillamp 0.1.0",
+  "createdBy": "oillamp 0.2.0",
   "lastSessionAt": "2026-09-22T16:40:10Z"
 }
 ```

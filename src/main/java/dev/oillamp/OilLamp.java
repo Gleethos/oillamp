@@ -24,7 +24,7 @@ import sprouts.Tuple;
 public final class OilLamp {
 
     /// Reported by `oillamp version`, and written into every lamp's identity file.
-    public static final String VERSION = "0.1.0";
+    public static final String VERSION = "0.2.0";
 
     private final Machine machine;
     private final List<Consumer<LampEvent>> listeners;
