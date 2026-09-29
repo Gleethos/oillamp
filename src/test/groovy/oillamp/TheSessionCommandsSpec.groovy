@@ -157,7 +157,11 @@ class TheSessionCommandsSpec extends Specification {
                                            it.title() == 'your session is up' }.lines().join('\n')
             briefing.contains("oillamp shell ${lamp}")
             briefing.contains("oillamp view ${lamp}")
-            briefing.contains('ssh -L 5901:') && briefing.contains('vnc.sock')
+            briefing.contains('ssh -N -L 5901:') && briefing.contains('vnc.sock')
+
+        and: 'and it says which machine each way in is run on, since an ssh forward to itself does nothing'
+            briefing.contains('on this machine')
+            briefing.contains('from another machine')
 
         and: 'the session is running without anyone having connected'
             sandbox.oillamp.run('status', lamp.toString()).console().contains('no windows opened')

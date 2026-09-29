@@ -605,8 +605,10 @@ desktop. Like an embedded session it opens no windows, goes straight to `Running
 need a display on the host. Otherwise it is an ordinary session: the launching terminal shows the
 usual readable log, and the session ends with Ctrl-C, closing that terminal, or `oillamp stop`.
 Instead of the windows, the briefing lists the ways in: `oillamp shell`, `oillamp view`, and,
-from another machine, forwarding the desktop's socket with `ssh -L 5901:<vnc.sock> ...` and
-pointing any VNC viewer at `localhost:5901`. The desktop stays on a Unix socket even then: a
+`vncviewer <vnc.sock>` on the same machine, and, from another machine, forwarding the desktop's
+socket with `ssh -N -L 5901:<vnc.sock> <you>@<this machine>`, run on that other machine, and
+pointing a VNC viewer there at `localhost:5901`. The user and host stay placeholders: oillamp
+cannot know how the other machine reaches this one. The desktop stays on a Unix socket even then: a
 TCP port would let anyone on the network watch and type, while ssh only lets in who may log in.
 
 **Closing a window never ends a session**: not the shell window, not a viewer, not an extra shell.

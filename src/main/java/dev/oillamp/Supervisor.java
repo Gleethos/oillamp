@@ -603,10 +603,13 @@ final class Supervisor {
             context.emit(new LampEvent.Summary("your session is up", Tuple.of(String.class,
                     "windows        none opened (--no-windows); attach from any terminal:",
                     "shell          `oillamp shell " + layout.root() + "`",
-                    "desktop        `oillamp view " + layout.root() + "` where there is a display, or from",
-                    "               another machine forward the desktop's socket and point any VNC",
-                    "               viewer at localhost:5901:",
-                    "               ssh -L 5901:" + layout.vncSocket() + " <you>@<this machine>",
+                    // Said per machine: the ssh line run on this machine only fails, and says why
+                    // in a way that does not point back here.
+                    "desktop        on this machine: `oillamp view " + layout.root() + "`, or any VNC viewer",
+                    "               given the socket: vncviewer " + layout.vncSocket(),
+                    "               from another machine (needs an ssh server here), run there:",
+                    "               ssh -N -L 5901:" + layout.vncSocket() + " <you>@<this machine>",
+                    "               then point a VNC viewer there at localhost:5901",
                     "the agent sees " + layout.agentDir() + " and nothing else of this lamp",
                     "network log    " + layout.networkLog(prepared.session()),
                     "this terminal  keeps reporting the sandbox's health until the session ends",
