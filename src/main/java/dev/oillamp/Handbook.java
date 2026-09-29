@@ -138,6 +138,26 @@ final class Handbook {
                Use this rather than rm -rf: parts of a lamp belong to the sandbox's own users,
                and rm cannot remove them.
 
+            WITHOUT A DISPLAY, OR UNDER TMUX
+
+              A session can run where no window can open: over a plain ssh login, or in
+              tmux, so that it keeps running after you log out of your desktop.
+
+                 oillamp at ~/lamps/first --no-windows
+
+              Nothing opens, and the terminal lists the ways in. From any terminal:
+
+                 oillamp shell ~/lamps/first     a shell; needs no display
+                 oillamp view  ~/lamps/first     the desktop; needs a display
+
+              To watch the desktop from another machine, copy the `ssh -N -L 5901:...` line
+              the session printed when it started, and run it on that other machine. Then
+              point a VNC viewer there at localhost:5901. The machine running oillamp needs
+              an ssh server for this.
+
+              --no-viewer is not the same: it still opens the shell window, so it still
+              needs a display.
+
             WHEN SOMETHING GOES WRONG
 
               oillamp doctor ~/lamps/first     checks your machine and that lamp

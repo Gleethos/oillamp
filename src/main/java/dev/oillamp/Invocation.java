@@ -353,16 +353,27 @@ final class Invocation {
 
               at <dir> [--init] [--dry-run] [--no-install] [--no-viewer] [--no-windows]
                        [--embedded] [--model-service <url>] [--model-key-env <name>]
-                    Set up (if needed) and run a session. Stays in the foreground until it ends.
-                    --no-windows opens neither the shell nor the viewer, so it runs without a
-                    display, under tmux for example; attach with `shell` and `view`.
-                    --embedded is for applications that start oillamp themselves: no windows,
-                    and the session ends when standard input closes. --model-service and
-                    --model-key-env replace the lamp's [model] settings for this session.
+                    Set up (if needed) and run a session. Opens a shell window and a viewer
+                    onto the sandbox's desktop, and stays in the foreground until the session
+                    ends: Ctrl-C here, closing this terminal, or `oillamp stop <dir>`.
+                      --init          accept a directory that is not empty as a new lamp
+                      --dry-run       show every step and change nothing; with --verbose, also
+                                      the full podman command
+                      --no-install    report missing host packages instead of installing them
+                      --no-viewer     open the shell window, but no viewer
+                      --no-windows    open no windows at all, so no display is needed (under
+                                      tmux, or over ssh); get in with `shell` and `view`
+                      --embedded      for applications that start oillamp themselves: no
+                                      windows, events as JSON lines, ends when stdin closes
+                      --model-service <url>, --model-key-env <name>
+                                      use this model service, and the key in this variable,
+                                      instead of the lamp's [model] settings, for this session
               view <dir> [--view-only]
-                    Open another window onto a running session's desktop.
+                    Open another viewer onto a running session's desktop. Needs a display.
+                    --view-only lets you watch without typing.
               shell <dir>
-                    Open an extra shell in this terminal. Closing it does not end the session.
+                    Open an extra shell in this terminal. Needs no display. Closing it does
+                    not end the session.
               stop <dir>
                     Ask a running session to shut down, or clean up after one that crashed.
               status <dir>

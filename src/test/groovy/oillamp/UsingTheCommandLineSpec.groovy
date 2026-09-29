@@ -98,6 +98,7 @@ class UsingTheCommandLineSpec extends Specification {
 
         where:
             line << ['--verbose doctor', 'doctor --dry-run', 'at LAMP --dry-run --init --no-viewer --no-install',
+                     'at LAMP --dry-run --no-windows',
                      'remove LAMP --dry-run', 'recordings LAMP --prune --dry-run', '--no-color list',
                      'config LAMP check', 'completion bash']
     }
@@ -144,6 +145,10 @@ class UsingTheCommandLineSpec extends Specification {
                          'oillamp remove ~/lamps/first --yes'].collect { guide.console().indexOf(it) }
             steps.every { it >= 0 }
             steps == steps.sort(false)
+
+        and: 'it says how to run a session where no window can open, since --no-viewer is not that'
+            guide.console().contains('oillamp at ~/lamps/first --no-windows')
+            guide.console().contains('--no-viewer is not the same')
 
         and: 'the command list sends newcomers to both'
             var help = sandbox.oillamp.run('help')
