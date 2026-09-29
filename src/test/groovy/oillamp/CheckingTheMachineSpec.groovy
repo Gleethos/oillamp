@@ -276,6 +276,9 @@ class CheckingTheMachineSpec extends Specification {
             `oillamp at` opens two windows, so it refuses to run without a graphical session.
             `doctor` must not: "I am on a plain SSH login and oillamp will not start" is exactly
             the situation a user runs doctor to diagnose. Refusing to diagnose it would be absurd.
+
+            The refusal also names the way round it. Someone who asked for `--no-viewer` still
+            gets a shell window, which is easy to miss; `--no-windows` opens nothing at all.
         """
         given: 'a machine reached over SSH, with no desktop session'
             sandbox.machine { it.noGraphicalSession() }
@@ -291,6 +294,9 @@ class CheckingTheMachineSpec extends Specification {
 
         then: 'that is refused, because there is nowhere to put the terminal and the viewer'
             session.reported('OIL-HOST-003')
+
+        and: 'the user is told how to run a session without windows instead'
+            session.errors().first().fixes().any { it.command().orElse('').contains('--no-windows') }
     }
 
     def 'A GPU the user is merely not in the group for is told how to fix that'() {

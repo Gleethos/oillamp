@@ -117,9 +117,11 @@ final class Problems {
     public static Problem hostNoGraphics() {
         return error(HOST_NO_GRAPHICS, "No graphical session found",
                 "neither WAYLAND_DISPLAY nor DISPLAY is set in this environment",
-                "oillamp opens two windows — a terminal and the desktop viewer — and cannot do that "
-              + "without a graphical session")
+                "oillamp opens a shell window, and the desktop viewer unless told not to, and cannot "
+              + "do that without a graphical session; --no-viewer leaves out only the viewer")
             .withFix(Fix.of("run oillamp from a terminal inside your desktop session, not over a plain SSH login"))
+            .withFix(Fix.run("or open no windows at all, and attach with `oillamp shell` and `oillamp view` "
+                           + "(for example under tmux)", "oillamp at <dir> --no-windows"))
             .withFix(Fix.run("host checks that do not need a display still work", "oillamp doctor"));
     }
 
