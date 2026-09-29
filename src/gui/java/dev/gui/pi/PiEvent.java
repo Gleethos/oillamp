@@ -45,12 +45,34 @@ public sealed interface PiEvent {
     /// pi refused a command, such as a prompt it could not accept.
     record Refused(String command, String reason) implements PiEvent {}
 
-    /// The conversation so far, as pi keeps it, in answer to [PiProtocol#askForHistory()].
-    record History(Tuple<Line> lines) implements PiEvent {
+    /// The conversation so far, as pi keeps it, in answer to [PiProtocol#askForHistory()]: what was
+    /// said on the way to where pi is now, leaving out the branches it is not on.
+    ///
+    /// @param leaf pi's id for the entry the next question will follow, or nothing in a
+    ///             conversation with nothing in it yet
+    record History(Tuple<Line> lines, String leaf) implements PiEvent {
 
         /// One message of the conversation.
         ///
         /// @param fromUser true for what the user wrote, false for the genie's answers
-        public record Line(boolean fromUser, String text) {}
+        /// @param id       pi's id for the message, by which it can be asked differently
+        public record Line(boolean fromUser, String text, String id) {}
     }
+
+    /// Which conversation pi has open, in answer to [PiProtocol#askWhere()].
+    ///
+    /// @param file its session file, as the sandbox names it
+    record Opened(String file) implements PiEvent {}
+
+    /// pi opened another conversation, or a new one, as asked.
+    record Switched() implements PiEvent {}
+
+    /// Whether pi can move within a conversation: whether it runs with Genies' extension, in
+    /// answer to [PiProtocol#askWhatItCanDo()].
+    record CanMove(boolean yes) implements PiEvent {}
+
+    /// pi moved within the conversation, as asked by [PiProtocol#goTo] or [PiProtocol#askInstead].
+    ///
+    /// @param failed why it could not, or nothing
+    record Moved(String failed) implements PiEvent {}
 }

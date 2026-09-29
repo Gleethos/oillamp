@@ -14,6 +14,7 @@ import dev.gui.model.Entry;
 import dev.gui.model.Genie;
 import dev.gui.model.GeniesState;
 import dev.gui.model.Handout;
+import dev.gui.model.Talk;
 import dev.gui.model.Transcript;
 
 import sprouts.From;
@@ -93,7 +94,8 @@ public final class GeniesView extends JPanel {
         Viewable.cast(phase).onChange(From.ALL, it -> {
             if (it.currentValue().orElseNull() == Genie.Phase.WORKING) breathe();
         });
-        rows = new ChatRows(look, this::saveHandout, pulse);
+        rows = new ChatRows(look, this::saveHandout, pulse, this::askInstead,
+                           phase.viewAs(Boolean.class, it -> it == Genie.Phase.READY));
 
         UI.use(look, () ->
             of(this).group(Skin.FRAME)
@@ -153,11 +155,93 @@ public final class GeniesView extends JPanel {
             .withTooltip(shown.viewAsString(it -> it.name() + " — " + it.activity()))
             .onMouseClick(it -> state.update(From.VIEW, s -> s.select(id)))
             .add("top", Parts.lamp(shown.viewAs(Genie.Phase.class, Genie::phase), 26))
-            .add("growx, wmin 0",
+            .add("growx, wmin 0, wrap",
                 box("fill, wrap 1, ins 0, gap 0")
                 .add("growx, wmin 0", label(shown.viewAsString(Genie::name)).withStyle(it -> it
                     .componentFont(f -> f.family(FONT).size(13).weight(2f).color(TEXT))))
-                .add("growx, wmin 0", label(shown.viewAsString(Genie::activity)).group(Skin.META)));
+                .add("growx, wmin 0", label(shown.viewAsString(Genie::activity)).group(Skin.META)))
+            .add("span 2, growx, wmin 0", conversationsOf(shown));
+    }
+
+    // ─── a genie's conversations ───────────────────────────────────────────────────────────
+
+    /// The genie's conversations, under its card: a line saying how many, which opens the tree
+    /// of them. A conversation is a row, and below it are its branches, one for each question
+    /// asked differently. Clicking a row goes there; the row the genie is on is selected.
+    private UIForAnySwing<?, ?> conversationsOf(Var<Genie> shown) {
+        UUID id = shown.get().id();
+        Val<Boolean> open = shown.viewAs(Boolean.class, it -> it.conversations().shown());
+        Val<Tuple<Talk>> talks = shown.viewAs(Tuple.classTyped(Talk.class), it -> it.conversations().tree());
+        Val<Tuple<String>> here = shown.viewAs(Tuple.classTyped(String.class), it -> it.conversations().herePath());
+        Val<Boolean> idle = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING && it.phase() != Genie.Phase.WAKING);
+        Val<Boolean> canForget = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING
+                && it.phase() != Genie.Phase.WAKING && it.conversations().current().isPresent());
+        return
+            box("fill, wrap 1, ins 0, gap 2, hidemode 3", "[grow]")
+            .add("growx, wmin 0",
+                label(shown.viewAsString(it -> (it.conversations().shown() ? "▾  " : "▸  ") + howMany(it.conversations().all().size())))
+                .group(Skin.META).withCursor(UI.Cursor.HAND)
+                .withTooltip("Show or hide this genie's conversations")
+                .onMouseClick(it -> shown.update(From.VIEW, genie -> genie.withConversations(
+                        genie.conversations().withShown(!genie.conversations().shown())))))
+            .add("growx, wmin 0",
+                UI.trees(talks, conf -> conf
+                    .nodesOf(Talk.Chat.class, it -> it
+                        .children(Talk.Chat::branches)
+                        .text(Talk.Chat::title)
+                        .toolTip(chat -> chat.title() + " — " + (chat.turns() == 0 ? "its first question was asked differently"
+                                                                                  : questions(chat.turns(), chat.branches()))))
+                    .nodesOf(Talk.Branch.class, it -> it
+                        .children(Talk.Branch::forks)
+                        .text(Talk.Branch::title)
+                        .toolTip(branch -> branch.title() + " — " + questions(branch.turns(), branch.forks())))
+                    .leafWhenEmpty(true))
+                .isVisibleIf(open)
+                .isEnabledIf(idle)
+                .withSelection(here)
+                .onSelection(it -> goTo(id, it.leadPath(), it.lead()))
+                .withStyle(it -> it.backgroundColor(TRANSPARENT).componentFont(f -> f.family(FONT).size(12).color(TEXT))))
+            .add("growx, wmin 0",
+                box("ins 0, gap 4, hidemode 3")
+                .isVisibleIf(open)
+                .add(button("＋  New").group(Skin.QUIET_BUTTON).isEnabledIf(idle)
+                     .withTooltip("Start a new conversation with this genie; the others are kept")
+                     .onClick(it -> actions.startAfresh(id)))
+                .add(button("Delete…").group(Skin.QUIET_BUTTON).isEnabledIf(canForget)
+                     .withTooltip("Delete the conversation this genie is in, with all its branches")
+                     .onClick(it -> confirmForget(id))));
+    }
+
+    private static String questions(int turns, Tuple<Talk.Branch> forks) {
+        return (turns == 1 ? "one question" : turns + " questions")
+             + (forks.isEmpty() ? "" : ", then asked differently " + (forks.size() == 2 ? "once" : forks.size() - 1 + " times"));
+    }
+
+    private static String howMany(int conversations) {
+        return switch (conversations) {
+            case 0 -> "no conversations yet";
+            case 1 -> "1 conversation";
+            default -> conversations + " conversations";
+        };
+    }
+
+    /// The user clicked a row of a genie's tree, and goes to the row's last entry. The row the
+    /// genie is on already, which the tree selects by itself, goes nowhere.
+    private void goTo(UUID id, Tuple<String> path, Optional<Talk> row) {
+        state.get().find(id).ifPresent(genie -> {
+            if (path.isEmpty() || row.isEmpty() || path.equals(genie.conversations().herePath())) return;
+            genie.conversations().find(path.first()).ifPresent(conversation ->
+                actions.goTo(id, conversation.file(), row.get().leaf()));
+        });
+    }
+
+    private void confirmForget(UUID id) {
+        state.get().find(id).flatMap(genie -> genie.conversations().current()).ifPresent(doomed -> {
+            swingtree.dialogs.ConfirmAnswer answer = UI.confirmation("Delete the conversation \"" + doomed.title()
+                    + "\" for good, with all its branches?").titled("Delete a conversation")
+                    .yesOption("Delete").noOption("Keep").cancelOption("").show();
+            if (answer == swingtree.dialogs.ConfirmAnswer.YES) actions.forget(id, doomed.file());
+        });
     }
 
     // ─── the main area: a conversation, or the settings ────────────────────────────────────
@@ -412,6 +496,19 @@ public final class GeniesView extends JPanel {
         swingtree.dialogs.ConfirmAnswer answer = UI.confirmation("Delete " + doomed.name() + " for good? Its home, everything it made "
                 + "and your conversation with it are deleted.").titled("Delete a genie").yesOption("Delete").noOption("Keep").cancelOption("").show();
         if (answer == swingtree.dialogs.ConfirmAnswer.YES) actions.delete(doomed.id());
+    }
+
+    /// Lets the user change a question they asked, in a dialog holding the question as it was.
+    private void askInstead(Entry question) {
+        javax.swing.JTextArea text = new javax.swing.JTextArea(question.text(), 6, 48);
+        text.setLineWrap(true);
+        text.setWrapStyleWord(true);
+        int answer = javax.swing.JOptionPane.showConfirmDialog(this, new JScrollPane(text),
+                "Ask " + genie.get().name() + " differently", javax.swing.JOptionPane.OK_CANCEL_OPTION,
+                javax.swing.JOptionPane.PLAIN_MESSAGE);
+        String changed = text.getText().strip();
+        if (answer == javax.swing.JOptionPane.OK_OPTION && !changed.isEmpty() && !changed.equals(question.text().strip()))
+            actions.askInstead(question.ref(), changed);
     }
 
     private void giveFile() {

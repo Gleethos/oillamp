@@ -20,6 +20,8 @@ import dev.gui.genie.LampLighter;
 import dev.gui.genie.Lighter;
 import dev.gui.genie.ModelCatalog;
 import dev.gui.genie.Shelf;
+import dev.gui.model.Conversation;
+import dev.gui.model.Conversations;
 import dev.gui.model.Genie;
 import dev.gui.model.GeniesState;
 import dev.gui.model.Settings;
@@ -80,6 +82,8 @@ public final class Genies implements Actions {
         frame.addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent event) { app.quit(frame); }
         });
+        // The tree of conversations under each genie is there before any genie wakes.
+        app.state.get().genies().forEach(genie -> app.runner(genie.id()).lookAtConversations());
         frame.pack();
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
@@ -104,7 +108,58 @@ public final class Genies implements Actions {
                                              .withPage(GeniesState.Page.SETTINGS));
             return;
         }
-        now.find(id).ifPresent(genie -> runner(id).wake(genie.name(), now.settings(), key.get()));
+        // Where the genie was, if the user moved since it last woke; otherwise its last conversation.
+        now.find(id).ifPresent(genie -> runner(id).wake(genie.name(), now.settings(), key.get(),
+                genie.conversations().current().map(Conversation::file).orElse(""),
+                genie.conversations().current().isPresent() ? genie.conversations().here().leaf() : ""));
+    }
+
+    @Override public void goTo(UUID id, String conversation, String leaf) {
+        Optional<Genie> genie = state.get().find(id);
+        if (genie.isEmpty()) return;
+        state.update(From.VIEW, it -> it.select(id));
+        switch (genie.get().phase()) {
+            case READY -> runner(id).goTo(conversation, leaf);
+            case ASLEEP, BROKEN -> {
+                // Wakes into that conversation, and moves within it once awake.
+                state.update(From.VIEW, it -> it.update(id, sleeping -> sleeping.withConversations(
+                        sleeping.conversations().withHere(new Conversations.Here(conversation, leaf)))));
+                wake(id);
+            }
+            case WAKING, WORKING -> { }   // The tree does not move while the genie is busy.
+        }
+    }
+
+    @Override public void startAfresh(UUID id) {
+        Optional<Genie> genie = state.get().find(id);
+        if (genie.isEmpty()) return;
+        state.update(From.VIEW, it -> it.select(id));
+        if (genie.get().phase() == Genie.Phase.ASLEEP || genie.get().phase() == Genie.Phase.BROKEN) wake(id);
+        // Waking and this take turns on the runner's thread, so this waits until the genie is awake.
+        if (genie.get().phase() != Genie.Phase.WORKING) runner(id).startAfresh();
+    }
+
+    @Override public void forget(UUID id, String conversation) {
+        Optional<Genie> genie = state.get().find(id);
+        if (genie.isEmpty()) return;
+        // A sleeping genie that was in it wakes in its newest conversation instead; an awake one
+        // is moved to a new conversation by its runner first.
+        if (!genie.get().phase().isAwake() && genie.get().conversations().here().file().equals(conversation))
+            state.update(From.VIEW, it -> it.update(id, sleeping -> sleeping.withConversations(
+                    sleeping.conversations().withHere(Conversations.Here.UNKNOWN))));
+        runner(id).forget(conversation);
+    }
+
+    @Override public void askInstead(String question, String text) {
+        Genie genie = state.get().genie();
+        if (text.isBlank() || genie.phase() != Genie.Phase.READY) return;
+        GenieRunner runner = runner(genie.id());
+        if (!runner.canMove()) {
+            state.update(From.VIEW, it -> it.update(genie.id(), g -> g.withTranscript(g.transcript().problem(GenieRunner.CANNOT_MOVE))));
+            return;
+        }
+        state.update(From.VIEW, it -> it.update(genie.id(), g -> g.askInstead(question, text)));
+        runner.askInstead(question, text.strip());
     }
 
     @Override public void sleep(UUID id) {

@@ -3,9 +3,11 @@ package gui
 import dev.gui.desktop.RfbConnection
 import dev.gui.genie.GenieRunner
 import dev.gui.genie.LampLighter
+import dev.gui.model.Conversations
 import dev.gui.model.Entry
 import dev.gui.model.Genie
 import dev.gui.model.Settings
+import dev.lamp.Lamp
 import oillamp.RealLamps
 import oillamp.Spike
 import spock.lang.Requires
@@ -117,6 +119,62 @@ class RunningARealGenieSpec extends Specification {
 
         cleanup:
             Files.deleteIfExists(gift)
+    }
+
+    def 'The genie goes between the branches of a conversation, through Genies\' extension to pi'() {
+        reportInfo '''
+            pi keeps a conversation as a tree, but its RPC mode cannot move within one; the
+            sandbox image carries a small extension of Genies' that can. Here a conversation that
+            forked at its second question is put into the genie's home, as pi would have written
+            it, and the genie is sent to one branch and then the other. The chat shows the way to
+            each, and the tree read from the home marks where the genie is. No model is needed.
+        '''
+        given: 'a conversation whose second question was asked twice'
+            var home = Lamp.agentHome(lamp).get()
+            var sessions = Files.createDirectories(home.resolve(Conversations.DIRECTORY))
+            Files.writeString(sessions.resolve('forked.jsonl'), [
+                    '{"type":"session","version":3,"id":"forked","timestamp":"2026-09-29T10:00:00.000Z","cwd":"/home/agent"}',
+                    said('q1', null, 'user', 'Plan a trip'), said('a1', 'q1', 'assistant', 'Where to?'),
+                    said('q2', 'a1', 'user', 'By train'), said('a2', 'q2', 'assistant', 'Trains it is.'),
+                    said('q2b', 'a1', 'user', 'By bike'), said('a2b', 'q2b', 'assistant', 'Bikes it is.')].join('\n') + '\n')
+            var file = Conversations.DIRECTORY + '/forked.jsonl'
+
+        when:
+            runner.lookAtConversations()
+            RealLamps.eventually(Duration.ofSeconds(20)) { genie.conversations().find('forked').isPresent() }
+            runner.goTo(file, 'a2')
+
+        then: 'pi runs with the extension, and the chat shows the train branch'
+            RealLamps.eventually(Duration.ofSeconds(30)) {
+                genie.transcript().entries()*.text() == ['Plan a trip', 'Where to?', 'By train', 'Trains it is.']
+            }
+            runner.canMove()
+            genie.conversations().here() == new Conversations.Here(file, 'a2')
+
+        when:
+            runner.goTo(file, 'a2b')
+
+        then: 'and then the bike branch, which the tree marks'
+            RealLamps.eventually(Duration.ofSeconds(30)) {
+                genie.transcript().entries()*.text() == ['Plan a trip', 'Where to?', 'By bike', 'Bikes it is.']
+            }
+            RealLamps.eventually(Duration.ofSeconds(20)) { genie.conversations().herePath().toList() == ['forked', 'q2b'] }
+            genie.transcript().entries().every { !it.isFailed() }
+
+        cleanup: 'back to a conversation of its own, for the scenarios after this one'
+            runner.startAfresh()
+            RealLamps.eventually(Duration.ofSeconds(30)) { genie.conversations().here().file() != file }
+    }
+
+    /** One entry of a pi session file, a message, shaped as pi 0.87 writes it. */
+    private static String said(String id, String parent, String role, String text) {
+        var message = role == 'user' ? [role: 'user', content: [[type: 'text', text: text]], timestamp: 1]
+                : [role: 'assistant', content: [[type: 'text', text: text]], api: 'x', provider: 'x', model: 'x',
+                   usage: [input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+                           cost: [input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0]],
+                   stopReason: 'stop', timestamp: 2]
+        groovy.json.JsonOutput.toJson([type: 'message', id: id, parentId: parent,
+                                       timestamp: '2026-09-29T10:00:01.000Z', message: message])
     }
 
     @Requires({ KEY })

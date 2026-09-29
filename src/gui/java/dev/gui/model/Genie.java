@@ -18,8 +18,10 @@ import sprouts.Tuple;
 /// @param tokens    how many tokens its model calls have counted since the app started
 /// @param handouts  the files in its outbox, which the user can save
 /// @param desktopShown whether its desktop is shown next to the chat
+/// @param conversations every conversation with it, and which one the chat shows
 public record Genie(UUID id, String name, Phase phase, String activity, Transcript transcript,
-                    String draft, int tokens, Tuple<Handout> handouts, boolean desktopShown)
+                    String draft, int tokens, Tuple<Handout> handouts, boolean desktopShown,
+                    Conversations conversations)
         implements HasId<UUID> {
 
     public enum Phase {
@@ -43,17 +45,18 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
 
     public static Genie asleep(UUID id, String name) {
         return new Genie(id, name, Phase.ASLEEP, "asleep", Transcript.empty(), "", 0,
-                         Tuple.of(Handout.class), false);
+                         Tuple.of(Handout.class), false, Conversations.NONE);
     }
 
-    public Genie withName(String name)             { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown); }
-    public Genie withPhase(Phase phase)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown); }
-    public Genie withActivity(String activity)     { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown); }
-    public Genie withTranscript(Transcript transcript) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown); }
-    public Genie withDraft(String draft)           { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown); }
-    public Genie withTokens(int tokens)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown); }
-    public Genie withHandouts(Tuple<Handout> handouts) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown); }
-    public Genie withDesktopShown(boolean shown)   { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, shown); }
+    public Genie withName(String name)             { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
+    public Genie withPhase(Phase phase)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
+    public Genie withActivity(String activity)     { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
+    public Genie withTranscript(Transcript transcript) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
+    public Genie withDraft(String draft)           { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
+    public Genie withTokens(int tokens)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
+    public Genie withHandouts(Tuple<Handout> handouts) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
+    public Genie withDesktopShown(boolean shown)   { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, shown, conversations); }
+    public Genie withConversations(Conversations conversations) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
 
     // ─── its lamp ──────────────────────────────────────────────────────────────────────────
 
@@ -94,6 +97,21 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
                 .withPhase(Phase.WORKING).withActivity("thinking");
     }
 
+    /// Whether the user may ask one of their questions differently now: while the genie waits,
+    /// and only a question pi has given an id.
+    public boolean canAskInstead(Entry question) {
+        return phase == Phase.READY && question.kind() == Entry.Kind.YOU && !question.ref().isEmpty();
+    }
+
+    /// The user asks `text` instead of their question `id`. The chat forgets what followed it,
+    /// which pi keeps as a branch of its own, and the genie works on the new question. Whoever
+    /// calls this tells the genie's harness.
+    public Genie askInstead(String id, String text) {
+        if (phase != Phase.READY || text.isBlank()) return this;
+        return withTranscript(transcript.askedInstead(id, text.strip()))
+                .withPhase(Phase.WORKING).withActivity("thinking");
+    }
+
     public Genie hear(PiEvent event) {
         Genie heard = withTranscript(transcript.hear(event));
         return switch (event) {
@@ -102,8 +120,25 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
             case PiEvent.Said ignored      -> heard.withActivity("writing");
             case PiEvent.Thinking ignored  -> heard.withActivity("thinking");
             case PiEvent.Settled ignored   -> phase.isAwake() ? heard.withPhase(Phase.READY).withActivity("ready") : heard;
+            case PiEvent.History history   -> heard.withConversations(conversations.withHere(
+                    new Conversations.Here(conversations.here().file(), history.leaf())));
+            case PiEvent.Opened opened     -> heard.withConversations(conversations.withHere(
+                    new Conversations.Here(Conversations.inHome(opened.file()), conversations.here().leaf())));
+            case PiEvent.Moved moved       -> moved.failed().isEmpty() || phase != Phase.WORKING ? heard
+                    : heard.withPhase(Phase.READY).withActivity("ready");
+            // A question pi could not take is not being worked on, and nothing else will say so.
+            case PiEvent.Refused refused when phase == Phase.WORKING
+                    && (refused.command().equals("prompt") || refused.command().equals("send_user_message"))
+                                           -> heard.withPhase(Phase.READY).withActivity("ready");
             default                        -> heard;
         };
+    }
+
+    /// What pi sent after an answer: the chat learns pi's ids for the questions in it, and the
+    /// genie where it now is. Unlike [#hear], the chat is not replaced.
+    public Genie learn(PiEvent.History history) {
+        return withTranscript(transcript.learn(history)).withConversations(conversations.withHere(
+                new Conversations.Here(conversations.here().file(), history.leaf())));
     }
 
     /// What is in the outbox now. A file that was not there before is announced in the chat;

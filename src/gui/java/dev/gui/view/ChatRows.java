@@ -47,13 +47,20 @@ final class ChatRows {
     private final Look look;
     private final Consumer<String> saveHandout;
     private final Val<Double> pulse;
+    private final Consumer<Entry> askInstead;
+    private final Val<Boolean> waits;
 
     /// @param saveHandout asks the user where to save the outbox file of that name
     /// @param pulse       loops from 0 to 1 while the genie thinks; drives the dots
-    ChatRows(Look look, Consumer<String> saveHandout, Val<Double> pulse) {
+    /// @param askInstead  lets the user ask one of their questions differently
+    /// @param waits       whether the genie waits for the user, the only time a question can be
+    ///                    asked differently
+    ChatRows(Look look, Consumer<String> saveHandout, Val<Double> pulse, Consumer<Entry> askInstead, Val<Boolean> waits) {
         this.look = look;
         this.saveHandout = saveHandout;
         this.pulse = pulse;
+        this.askInstead = askInstead;
+        this.waits = waits;
     }
 
     /// Built later than the window, whenever the conversation changes, so it enters the style
@@ -79,11 +86,14 @@ final class ChatRows {
 
     // ─── what the user wrote ───────────────────────────────────────────────────────────────
 
-    /// A bubble on the right, as wide as its longest line, up to a limit, then wrapped.
+    /// A bubble on the right, as wide as its longest line, up to a limit, then wrapped. Below it,
+    /// while the genie waits, a button to ask it differently; the old question stays in the
+    /// conversation as a branch of its own.
     private UIForAnySwing<?, ?> yours(Var<Entry> entry) {
         String text = entry.get().text();
+        Val<Boolean> editable = Viewable.of(Boolean.class, waits, entry, (waiting, it) -> waiting && !it.ref().isEmpty());
         return
-            panel("fill, ins 8 60 8 0", "[grow]")
+            panel("fill, wrap 1, ins 8 60 8 0, gap 2, hidemode 3", "[grow]")
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
             .add("align right, wmin 0, wmax " + YOURS_WIDTH,
                 box().withMinSize(0, 0)
@@ -93,7 +103,12 @@ final class ChatRows {
                     .padding(9, 14, 9, 14)
                     .prefWidth(Math.min(YOURS_WIDTH, widthOf(text) * 1.08 + 36))
                     .text(t -> t.content(Typeset.of(Markdown.parse(text), 1))
-                                .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true))));
+                                .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true))))
+            .add("align right",
+                button("✎  Edit").group(Skin.ICON_BUTTON).isVisibleIf(editable)
+                .withTooltip("Ask this differently. What followed is kept, as a branch in the genie's conversations.")
+                .withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(SUBTEXT)))
+                .onClick(it -> askInstead.accept(entry.get())));
     }
 
     // ─── what the genie answered ───────────────────────────────────────────────────────────

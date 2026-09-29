@@ -1,6 +1,12 @@
 package dev.gui.pi;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -41,8 +47,49 @@ public final class PiProtocol {
     }
 
     /// Asks for the conversation so far, answered with a [PiEvent.History].
+    ///
+    /// pi's entries come as a flat list, each naming the one before it. pi can also send them as
+    /// a tree, but nested one level per entry, which a long conversation takes deeper than a
+    /// JSON reader will follow.
     public static String askForHistory() {
-        return JSON.createObjectNode().put("type", "get_messages").toString();
+        return JSON.createObjectNode().put("type", "get_entries").toString();
+    }
+
+    /// Asks which conversation pi has open, answered with a [PiEvent.Opened].
+    public static String askWhere() {
+        return JSON.createObjectNode().put("type", "get_state").toString();
+    }
+
+    /// Opens the conversation kept in `file`, as the sandbox names it; answered with a
+    /// [PiEvent.Switched].
+    public static String open(String file) {
+        return JSON.createObjectNode().put("type", "switch_session").put("sessionPath", file).toString();
+    }
+
+    /// Starts a new conversation; answered with a [PiEvent.Switched].
+    public static String startAfresh() {
+        return JSON.createObjectNode().put("type", "new_session").toString();
+    }
+
+    /// The name of the pi extension Genies adds to pi in the sandbox, whose commands move within a
+    /// conversation. pi's RPC mode can show a conversation's tree, but not move within it.
+    public static final String EXTENSION = "/usr/local/share/oillamp/genies/pi-genies.js";
+
+    /// Asks which commands pi has, answered with a [PiEvent.CanMove] saying whether Genies'
+    /// extension is among them.
+    public static String askWhatItCanDo() {
+        return JSON.createObjectNode().put("type", "get_commands").toString();
+    }
+
+    /// Continues the conversation after the entry `id`; answered with a [PiEvent.Moved].
+    public static String goTo(String id) {
+        return prompt("/genies-goto " + id, false);
+    }
+
+    /// Asks `text` instead of the user's message `id`, which stays in the conversation as a branch
+    /// of its own; answered with a [PiEvent.Moved], and then with the genie's answer.
+    public static String askInstead(String id, String text) {
+        return prompt("/genies-edit " + id + " " + text, false);
     }
 
     /// Reads one line pi wrote, or nothing for a line that is not an event the chat shows.
@@ -68,6 +115,9 @@ public final class PiProtocol {
                     record.path("errorMessage").asText()));
             case "agent_settled"        -> Optional.of(new PiEvent.Settled());
             case "response"             -> response(record);
+            case "extension_ui_request" -> notice(record);
+            case "extension_error"      -> Optional.of(new PiEvent.Refused(record.path("event").asText("extension"),
+                                                                           record.path("error").asText()));
             default                     -> Optional.empty();
         };
     }
@@ -97,15 +147,48 @@ public final class PiProtocol {
         String command = record.path("command").asText();
         if (!record.path("success").asBoolean(false))
             return Optional.of(new PiEvent.Refused(command, record.path("error").asText("refused")));
-        if (!command.equals("get_messages")) return Optional.empty();
-        Tuple<PiEvent.History.Line> lines = Tuple.of(PiEvent.History.Line.class);
-        for (JsonNode message : record.path("data").path("messages")) {
+        JsonNode data = record.path("data");
+        return switch (command) {
+            case "get_entries" -> Optional.of(history(data));
+            case "get_state"   -> Optional.of(new PiEvent.Opened(data.path("sessionFile").asText("")));
+            case "get_commands" -> {
+                boolean found = false;
+                for (JsonNode known : data.path("commands")) found |= known.path("name").asText().equals("genies-goto");
+                yield Optional.of(new PiEvent.CanMove(found));
+            }
+            case "switch_session", "new_session" -> Optional.of(data.path("cancelled").asBoolean(false)
+                    ? new PiEvent.Refused(command, "an extension in the sandbox said no")
+                    : new PiEvent.Switched());
+            default -> Optional.empty();
+        };
+    }
+
+    /// The way from the first entry to the one pi is at, found by following each entry to the one
+    /// before it, from the end.
+    private static PiEvent.History history(JsonNode data) {
+        Map<String, JsonNode> byId = new HashMap<>();
+        for (JsonNode entry : data.path("entries"))
+            if (entry.path("id").isTextual()) byId.put(entry.path("id").asText(), entry);
+        String leaf = data.path("leafId").asText("");
+        List<PiEvent.History.Line> lines = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (JsonNode at = byId.get(leaf); at != null && seen.add(at.path("id").asText()); at = byId.get(at.path("parentId").asText())) {
+            JsonNode message = at.path("message");
             String role = message.path("role").asText();
             String text = text(message.path("content"));
-            if ((role.equals("user") || role.equals("assistant")) && !text.isBlank())
-                lines = lines.add(new PiEvent.History.Line(role.equals("user"), text));
+            if (at.path("type").asText().equals("message") && (role.equals("user") || role.equals("assistant")) && !text.isBlank())
+                lines.add(new PiEvent.History.Line(role.equals("user"), text, at.path("id").asText()));
         }
-        return Optional.of(new PiEvent.History(lines));
+        return new PiEvent.History(Tuple.of(PiEvent.History.Line.class, lines.reversed()), leaf);
+    }
+
+    /// What Genies' extension in the sandbox says when it moved, or could not. Other extensions'
+    /// notices are not for the chat.
+    private static Optional<PiEvent> notice(JsonNode record) {
+        String message = record.path("message").asText();
+        if (!record.path("method").asText().equals("notify") || !message.startsWith("genies: ")) return Optional.empty();
+        String couldNot = "genies: could not move: ";
+        return Optional.of(new PiEvent.Moved(message.startsWith(couldNot) ? message.substring(couldNot.length()) : ""));
     }
 
     /// The text of a message's content, which is either a string or a list of blocks of which

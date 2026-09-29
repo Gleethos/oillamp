@@ -13,7 +13,8 @@ import sprouts.HasId;
 /// @param title a short heading: the tool's name, the file's name, or nothing
 /// @param text  the message, or what a tool does, such as the command it runs
 /// @param detail what a tool printed, or nothing
-/// @param ref   pi's id for a tool call, which the call's result refers to, or nothing
+/// @param ref   pi's id for a tool call, which the call's result refers to; for a question of the
+///              user's, pi's id for it, once known; or nothing
 /// @param state whether it is still being written, done, or failed
 /// @param expanded whether its detail, such as what a tool printed, is shown in the chat
 public record Entry(UUID id, Kind kind, String title, String text, String detail, String ref, State state,
