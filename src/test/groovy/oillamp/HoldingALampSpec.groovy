@@ -149,6 +149,29 @@ class HoldingALampSpec extends Specification {
             !received.isEmpty()
     }
 
+    def 'An application finds the agent\'s home in a lamp, whether the lamp runs or not'() {
+        reportInfo """
+            What the agent keeps, such as its harness's saved conversations, is in its home,
+            which is a directory in the lamp named after the agent's id. An application that
+            shows those conversations, even while the sandbox is off, asks the lamp where that
+            home is instead of knowing how oillamp names it. Before the lamp first ran, there is
+            no home yet.
+        """
+        expect: 'no home before the first start'
+            Lamp.agentHome(sandbox.lampPath()).isEmpty()
+
+        when: 'the lamp ran once, and is closed'
+            Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start().withCloseable {
+                assert it.awaitRunning(Duration.ofSeconds(30))
+            }
+
+        then: 'its home is the agent directory, the one holding AGENTS.md'
+            var home = Lamp.agentHome(sandbox.lampPath())
+            home.isPresent()
+            home.get().fileName.toString().startsWith('agent-lamp-')
+            Files.exists(home.get().resolve('AGENTS.md'))
+    }
+
     def 'Deleting a directory that is not a lamp says why, and deletes nothing'() {
         reportInfo """
             An application with a wrong path must not delete the wrong thing. The engine refuses

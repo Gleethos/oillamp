@@ -177,6 +177,27 @@ public final class Lamp implements AutoCloseable {
         }
     }
 
+    /// The prefix of the agent directory's name in a lamp. Written out, because this package must
+    /// not depend on the engine, whose layout says the same.
+    static final String AGENT_DIR_PREFIX = "agent-lamp-";
+
+    /// The agent's home in the lamp at `directory`: the directory the sandbox sees as
+    /// `/home/agent`. Nothing, before the lamp was first started.
+    ///
+    /// For an application that reads what the agent keeps there, such as a harness's saved
+    /// conversations, while the sandbox runs or not. The agent writes it, so read it as the
+    /// agent's work: never follow a link in it, and never trust a name in it to be a plain name.
+    public static Optional<Path> agentHome(Path directory) {
+        try (var entries = java.nio.file.Files.list(directory)) {
+            List<Path> homes = entries.filter(entry -> entry.getFileName().toString().startsWith(AGENT_DIR_PREFIX))
+                    .filter(entry -> java.nio.file.Files.isDirectory(entry, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                    .toList();
+            return homes.size() == 1 ? Optional.of(homes.getFirst()) : Optional.empty();
+        } catch (IOException notThere) {
+            return Optional.empty();
+        }
+    }
+
     /// The lamp directory.
     public Path directory() { return directory; }
 
