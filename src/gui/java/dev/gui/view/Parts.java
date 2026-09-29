@@ -32,6 +32,15 @@ final class Parts {
                         .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true)));
     }
 
+    /// Text that changes, such as a problem, wrapped to the width it is given rather than cut
+    /// short: the end of a message is often the part that says what to do.
+    static UIForAnySwing<?, ?> wrapped(Val<String> text, java.awt.Color colour, Val<Boolean> shown) {
+        return box().withMinSize(0, 0).isVisibleIf(shown)
+                .withStyle(text, (words, it) -> it.padding(2, 0, 2, 0).text(t -> t
+                        .content(swingtree.style.StyledString.of(f -> f.family(FONT).size(12).color(colour), words))
+                        .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true)));
+    }
+
     /// Line wrapping for a text area, which has no SwingTree method, so this one Swing setter is
     /// called directly.
     static void softWrap(JTextArea area) {

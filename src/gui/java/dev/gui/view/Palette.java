@@ -29,6 +29,23 @@ final class Palette {
     static final Color GLOW        = new Color(0xf0, 0xa9, 0x40, 38);
     static final Color TRANSPARENT = new Color(0, 0, 0, 0);
 
-    static final String FONT = "SansSerif";
-    static final String MONO = "Monospaced";
+    /// The fonts Genies brings along, installed before any is named.
+    static {
+        com.formdev.flatlaf.fonts.inter.FlatInterFont.install();
+        com.formdev.flatlaf.fonts.jetbrains_mono.FlatJetBrainsMonoFont.install();
+        com.formdev.flatlaf.fonts.roboto_mono.FlatRobotoMonoFont.install();
+    }
+
+    static final String FONT = "Inter";
+    static final String MONO = regular("JetBrains Mono", "Roboto Mono");
+
+    /// The first of `families` whose plain face is its regular one. A family also installed on
+    /// the desktop, in other weights, wins over the copy Genies brings, and its plain face can
+    /// then be bold or light: JetBrains Mono shows bold everywhere on a desktop that has it as
+    /// a set of separate weights. The last family is used when none fits.
+    private static String regular(String... families) {
+        for (String family : families)
+            if (new java.awt.Font(family, java.awt.Font.PLAIN, 13).getFontName().equals(family + " Regular")) return family;
+        return families[families.length - 1];
+    }
 }

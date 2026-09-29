@@ -88,6 +88,25 @@ class KeepingManyGeniesSpec extends Specification {
             narrow.withViewWidth(1000).sidebarShown()
     }
 
+    def 'The header shows its buttons with words only when they fit'() {
+        reportInfo """
+            The header above a conversation holds the genie's name and buttons such as Desktop,
+            Sleep and Delete. With the list of genies open, a window that is not narrow yet can
+            still leave the header too little room for their words, and the last button would be
+            cut off. So the buttons show only their signs whenever the conversation's area is
+            small, whatever the window's width.
+        """
+        expect: 'a roomy area has words'
+            state.withArea(1000, 700).roomForWords()
+
+        and: 'a window wide enough for the list, but whose area is small, has signs'
+            !state.withArea(520, 700).roomForWords()
+            !state.withArea(520, 700).narrow()
+
+        and: 'a narrow window has signs'
+            !state.withArea(1000, 700).withViewWidth(600).roomForWords()
+    }
+
     def 'Out of the box, genies use Eden AI\'s EU endpoint with the key from the environment'() {
         reportInfo """
             A user who has EDENAI_API_KEY set needs to set nothing: the settings default to Eden
