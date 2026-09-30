@@ -517,6 +517,18 @@ public final class Lamp implements AutoCloseable {
             return "New conversation";
         }
 
+        /// The job whose run had this conversation, such as `job-3`, or nothing for one someone
+        /// asked. The engine names a job's conversation after the run and the job, `run-12 (job-3)`,
+        /// and pi's file keeps nothing else that says so.
+        public Optional<String> job() {
+            java.util.regex.Matcher named = JOB_RUN_NAME.matcher(name);
+            return named.matches() ? Optional.of(named.group(1)) : Optional.empty();
+        }
+
+        /// How the engine names a job run's conversation. Written out, because this package must
+        /// not depend on the engine.
+        private static final java.util.regex.Pattern JOB_RUN_NAME = java.util.regex.Pattern.compile("run-\\d+ \\((job-\\d+)\\)");
+
         /// The entry it stands at: the last one written. Empty for a conversation with none.
         public Optional<String> leaf() {
             return entries.isEmpty() ? Optional.empty() : Optional.of(entries.last().id());

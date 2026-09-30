@@ -44,7 +44,8 @@ class ReadingTheAgentsConversationsSpec extends Specification {
             An application that shows a lamp's conversations, such as a chat app, needs them as
             values it can list and draw, not as pi's files. They are read straight from the agent's
             home, so they are there while the lamp sleeps too, and the list is quick enough to read
-            again whenever something may have changed.
+            again whenever something may have changed. A conversation a scheduled job's run had
+            is named after the run and the job by oillamp, and says which job it was.
         """
         given:
             conversation('01a0ec69-de1c-7234-914c-b970a862c13e', '2026-09-28T10:00:00Z') {
@@ -69,6 +70,9 @@ class ReadingTheAgentsConversationsSpec extends Specification {
             first.line()*.kind() == [Kind.OTHER, Kind.MESSAGE_TO_AGENT, Kind.MESSAGE_FROM_AGENT]
             first.line()*.text().takeRight(2) == ['How big is the repository?', 'About 12,000 lines.']
             first.started() == Instant.parse('2026-09-28T10:00:00Z')
+
+        and: 'the one a job\'s run had says which job, so an application can show it apart'
+            found*.job() == [Optional.of('job-1'), Optional.empty()]
 
         and: 'one is found by the start of its id, as oillamp shows it'
             Lamp.conversation(lamp, '01a0ec69-de1c').map { it.title() } == Optional.of('How big is the repository?')
