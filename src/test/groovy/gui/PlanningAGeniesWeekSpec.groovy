@@ -152,7 +152,10 @@ class PlanningAGeniesWeekSpec extends Specification {
 
         and: 'today, now and then the hourly job, folded'
             timeline.days()[1].moments()*.kind() == [Timeline.Kind.NOW, Timeline.Kind.REPEATING]
-            timeline.days()[1].moments()[1].detail() == 'Every hour at 15 past · 5 times, the last at 19:15'
+            with(timeline.days()[1].moments()[1]) {
+                clock() == '5×'
+                detail() == 'Every hour at 15 past · 15:15, 16:15, 17:15, 18:15, 19:15'
+            }
 
         and: 'tomorrow, the daily job'
             timeline.days()[2].moments()*.clock() == ['09:00']
@@ -163,6 +166,27 @@ class PlanningAGeniesWeekSpec extends Specification {
         then: 'its times stand forward, and the rest step back'
             picked.days()[1].moments()[1].emphasis() == Timeline.Emphasis.PICKED
             picked.days()[2].moments()[0].emphasis() == Timeline.Emphasis.FADED
+    }
+
+    def 'A day with many times of one job says how many, and from when to when, rather than one time'() {
+        reportInfo """
+            A line that stands for several times cannot show one of them where a time goes: that
+            reads as if the job ran only then. It shows how many times instead, and names them,
+            or, when there are more than fit in a line, gives the first and the last.
+        """
+        given: 'a job every 15 minutes, all of tomorrow'
+            var tomorrow = NOW.toLocalDate().plusDays(1).atStartOfDay()
+            var often = new Schedule.Job('job-1', Optional.of(Recurrence.of('*/15 * * * *')), Optional.empty(),
+                    Optional.of(at(tomorrow)), Tuple.of(Instant, (0..<96).collect { at(tomorrow.plusMinutes(15 * it)) } as Instant[]),
+                    'Watch the queue', false, Optional.empty(), true)
+            var schedule = Schedule.unread(BERLIN).readAs(false, BERLIN, Tuple.of(Schedule.Job, often), Tuple.of(Schedule.Run))
+
+        expect:
+            with(Timeline.of(schedule, at(NOW)).days()[1].moments().first()) {
+                kind() == Timeline.Kind.REPEATING
+                clock() == '96×'
+                detail() == 'Every 15 minutes · 96 times, 00:00 to 23:45'
+            }
     }
 
     def 'A job whose time came while the genie slept shows as due, now'() {

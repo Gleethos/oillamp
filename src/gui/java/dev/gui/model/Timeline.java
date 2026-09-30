@@ -28,7 +28,8 @@ public record Timeline(Tuple<Day> days, int hiddenRuns) {
 
     /// A run, now, or a time a job runs: one line of the timeline.
     ///
-    /// @param clock        the time of day, `09:00`; the first of them for [Kind#REPEATING]
+    /// @param clock        the time of day, `09:00`; for [Kind#REPEATING], which stands for several
+    ///                     times, how many, such as `6×`
     /// @param title        what it is about: the job's task on one line
     /// @param detail       more, in a few words, such as how a run ended or how often a job runs
     /// @param job          the job it belongs to; empty for [Kind#NOW]
@@ -50,7 +51,8 @@ public record Timeline(Tuple<Day> days, int hiddenRuns) {
         DUE,
         /// A time a job runs at.
         PLANNED,
-        /// The times one job runs at on one day, when there are too many to list.
+        /// The times one job runs at on one day, when there are too many for a line each. Its
+        /// detail names them, or, past [#LISTED_TIMES], the first and the last.
         REPEATING
     }
 
@@ -62,6 +64,9 @@ public record Timeline(Tuple<Day> days, int hiddenRuns) {
 
     /// From how many times on one day a job's times fold into one [Kind#REPEATING] moment.
     static final int FOLD_FROM = 4;
+
+    /// Up to how many times a [Kind#REPEATING] moment's detail names one by one.
+    static final int LISTED_TIMES = 8;
 
     /// Lays out `schedule` around `now`.
     public static Timeline of(Schedule schedule, Instant now) {
@@ -110,9 +115,12 @@ public record Timeline(Tuple<Day> days, int hiddenRuns) {
             for (List<LocalDateTime> times : byDay.values()) {
                 if (times.size() >= FOLD_FROM) {
                     LocalDateTime first = times.getFirst();
-                    placed.add(new Placed(first, 3, moment(schedule, Kind.REPEATING, Recurrence.clock(first.toLocalTime()),
-                            job.title(), how + " · " + times.size() + " times, the last at "
-                                    + Recurrence.clock(times.getLast().toLocalTime()), job.id(), "",
+                    String which = times.size() <= LISTED_TIMES
+                            ? String.join(", ", times.stream().map(time -> Recurrence.clock(time.toLocalTime())).toList())
+                            : times.size() + " times, " + Recurrence.clock(first.toLocalTime()) + " to "
+                              + Recurrence.clock(times.getLast().toLocalTime());
+                    placed.add(new Placed(first, 3, moment(schedule, Kind.REPEATING, times.size() + "×",
+                            job.title(), how + " · " + which, job.id(), "",
                             Optional.empty(), Optional.empty(), job.byGenie())));
                 } else {
                     for (LocalDateTime at : times)
