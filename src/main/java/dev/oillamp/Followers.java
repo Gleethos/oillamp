@@ -23,6 +23,9 @@ import dev.lamp.LampEvent;
 ///   pieces of text it wrote one after another are joined, so a long answer is a few events;
 /// - the runs waiting their turn.
 ///
+/// The catch-up ends with a [LampEvent.AgentStatus], which the session reports at no other time,
+/// so a follower knows where the present ends and the news begins.
+///
 /// A follower that joins gets those first, then every event as it happens, with nothing missed
 /// and nothing twice: both are done under one lock. Its feed ends once the session has ended.
 final class Followers implements Consumer<LampEvent> {
@@ -64,6 +67,9 @@ final class Followers implements Consumer<LampEvent> {
             queue.addAll(running);
             int ahead = 0;
             for (LampEvent.Run run : waiting.values()) queue.add(new LampEvent.RunQueued(run, ahead++));
+            Optional<LampEvent.Run> current = running.isEmpty() ? Optional.empty()
+                    : Optional.of(((LampEvent.RunStarted) running.getFirst()).run());
+            queue.add(new LampEvent.AgentStatus(current, sprouts.Tuple.of(LampEvent.Run.class, List.copyOf(waiting.values()))));
             if (ended) queue.add(END);
             else following.add(queue);
             return new Feed(this, queue);

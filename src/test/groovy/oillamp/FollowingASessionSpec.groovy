@@ -56,7 +56,8 @@ class FollowingASessionSpec extends Specification {
         reportInfo """
             The agent is working on one question, and another waits its turn, when someone starts
             following. They are not told about the session's past, only about its present: how
-            to reach the sandbox, the run in progress from its start, and the run waiting. Then
+            to reach the sandbox, the run in progress from its start, and the run waiting, and
+            last what the agent is doing, which marks the end of the catching up. Then
             they hear everything else as it happens, both runs finishing, and at last the session
             ending, which ends following too.
         """
@@ -72,6 +73,13 @@ class FollowingASessionSpec extends Specification {
             eventually { followed.any { it instanceof LampEvent.SessionOpened } }
             eventually { followed.any { it instanceof LampEvent.RunStarted && it.run().id() == first.id() } }
             eventually { followed.any { it instanceof LampEvent.RunQueued && it.run().id() == second.id() } }
+
+        and: 'last, what the agent is doing, which ends the catching up'
+            eventually { followed.any { it instanceof LampEvent.AgentStatus } }
+            var status = followed.find { it instanceof LampEvent.AgentStatus }
+            status.current().get().id() == first.id()
+            status.waiting()*.id() == [second.id()]
+            followed.indexOf(status) > followed.findIndexOf { it instanceof LampEvent.RunQueued }
 
         when: 'the agent is done'
             release.countDown()

@@ -180,8 +180,9 @@ public final class Lamp implements AutoCloseable {
         /// The lamp returned is used as one this application started. Its listeners first hear
         /// what the session is doing now: [LampEvent.SessionOpened], after which
         /// [Lamp#awaitRunning] is true; the session's state; the run in progress, from its
-        /// [LampEvent.RunStarted], with what the agent wrote so far; and a [LampEvent.RunQueued]
-        /// for each run waiting. Then they hear every event as it happens. The model settings are
+        /// [LampEvent.RunStarted], with what the agent wrote so far; a [LampEvent.RunQueued]
+        /// for each run waiting; and last a [LampEvent.AgentStatus], which marks the end of the
+        /// catching up. Then they hear every event as it happens. The model settings are
         /// those the session was started with.
         ///
         /// Closing it only stops following; the session goes on. [Lamp#stop()] ends it.
