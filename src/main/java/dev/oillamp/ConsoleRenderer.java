@@ -242,6 +242,7 @@ final class ConsoleRenderer {
                               case FAILED -> "failed";
                               case TIMED_OUT -> "was stopped: it ran out of time";
                               case INTERRUPTED -> "was interrupted: the session ended";
+                              case CANCELLED -> "was cancelled";
                           }
                         + " after " + seconds(finished.took())
                         + finished.snapshot().map(snapshot -> ", saved as " + snapshot.shortId()).orElse(""));
@@ -249,6 +250,26 @@ final class ConsoleRenderer {
                 for (String answerLine : finished.answer().strip().lines().toList())
                     line("  " + NOT_PRINTABLE.matcher(answerLine).replaceAll(" "));
             }
+            case LampEvent.RunAccepted accepted -> line(area("run") + colour(GREEN, "✓ ") + "the agent answers this as "
+                    + accepted.run().id() + "; `oillamp status` says how far it is");
+            // What the agent writes, as it writes it, is for applications; the answer is printed
+            // once it is complete. Its tools are printed as they run, which says what it is doing.
+            case LampEvent.RunProgress progress -> {
+                switch (progress.progress()) {
+                    case LampEvent.Progress.ToolStarted tool -> line(area("run") + dim("· " + progress.run() + " "
+                            + shortened(tool.tool(), 20) + ": " + shortened(tool.summary(), 100)));
+                    case LampEvent.Progress.Retrying retrying -> line(area("run") + dim("· " + progress.run()
+                            + ": the model service failed (" + shortened(retrying.why(), 80) + "); trying again, "
+                            + retrying.attempt() + " of " + retrying.most()));
+                    case LampEvent.Progress.Opened ignored -> { }
+                    case LampEvent.Progress.Said ignored -> { }
+                    case LampEvent.Progress.Thought ignored -> { }
+                    case LampEvent.Progress.Answered ignored -> { }
+                    case LampEvent.Progress.ToolFinished ignored -> { }
+                }
+            }
+            // `status` prints the same as text; this is its form for applications.
+            case LampEvent.AgentStatus ignored -> { }
             case LampEvent.Conversations listed -> line(listing(listed.conversations()));
             case LampEvent.ConversationShown shown -> line(describe(shown.conversation()));
             case LampEvent.Warning warning -> problem(warning.problem());

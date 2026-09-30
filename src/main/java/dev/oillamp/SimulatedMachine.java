@@ -607,6 +607,28 @@ final class SimulatedMachine implements Machine {
                 stop = "error";
                 error = String.valueOf(failed.getMessage());
             }
+            // A line `⚙ tool: what it does` at the start of the answer stands for a tool the agent ran.
+            java.util.List<String> lines = new java.util.ArrayList<>(text.lines().toList());
+            int calls = 0;
+            while (!lines.isEmpty() && lines.getFirst().startsWith("⚙ ") && lines.getFirst().contains(": ")) {
+                String call = lines.removeFirst().substring(2);
+                String id = "call-" + (++calls);
+                com.fasterxml.jackson.databind.node.ObjectNode start = JSON.createObjectNode()
+                        .put("type", "tool_execution_start").put("toolCallId", id)
+                        .put("toolName", call.substring(0, call.indexOf(": ")));
+                start.putObject("args").put("command", call.substring(call.indexOf(": ") + 2));
+                say(start);
+                com.fasterxml.jackson.databind.node.ObjectNode end = JSON.createObjectNode()
+                        .put("type", "tool_execution_end").put("toolCallId", id).put("isError", false);
+                end.putObject("result").putArray("content").addObject().put("type", "text").put("text", "done");
+                say(end);
+            }
+            text = String.join("\n", lines);
+            if (stop.equals("stop")) {
+                say(delta("thinking_delta", "Thinking it over."));
+                for (String word : text.split("(?<= )"))
+                    say(delta("text_delta", word));
+            }
             com.fasterxml.jackson.databind.node.ObjectNode message = message("assistant", text, stop, error);
             synchronized (this) {
                 write(message);
@@ -616,6 +638,12 @@ final class SimulatedMachine implements Machine {
             say(end);
             say(JSON.createObjectNode().put("type", "agent_end"));
             say(JSON.createObjectNode().put("type", "agent_settled"));
+        }
+
+        private static com.fasterxml.jackson.databind.node.ObjectNode delta(String type, String text) {
+            com.fasterxml.jackson.databind.node.ObjectNode update = JSON.createObjectNode().put("type", "message_update");
+            update.putObject("assistantMessageEvent").put("type", type).put("delta", text);
+            return update;
         }
 
         private static com.fasterxml.jackson.databind.node.ObjectNode message(String role, String text, String stop, String error) {

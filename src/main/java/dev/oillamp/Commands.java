@@ -455,6 +455,7 @@ final class Commands {
             answer.values().get(key).ifPresent(value ->
                     out.append(pad(key, 12)).append(value).append('\n'));
         context.emit(new LampEvent.Answer(out.toString().stripTrailing()));
+        answer.values().get("agent_status").flatMap(LampEvent::fromJson).ifPresent(context::emit);
         return ExitStatus.SUCCESS;
     }
 
@@ -696,7 +697,9 @@ final class Commands {
     /// prompt over the control socket and waits. When the agent is busy, the prompt waits its turn.
     ///
     /// @param place where in the agent's conversations the question goes
-    public ExitStatus ask(Path lampPath, String prompt, AskPlace place) {
+    /// @param wait  whether to wait for the answer; without waiting, the run's id is reported, and
+    ///              the answer comes on the session's own events
+    public ExitStatus ask(Path lampPath, String prompt, AskPlace place, boolean wait) {
         if (prompt.isBlank()) {
             Tuple<Problem> refused = Tuple.of(Problem.class, Problems.usage(
                     "`oillamp ask` needs something to ask the agent", Invocation.usageOf("ask")));
@@ -714,9 +717,21 @@ final class Commands {
             context.report(failure.problems());
             return exitStatusFor(failure.problems());
         }
+        Control.Request toSend = ((Result.Ok<Control.Request>) request).value();
+        if (!wait) {
+            Result<Control.Reply> taken = Control.ask(layout.controlSocket(), layout.root(),
+                    toSend.with("no_wait", "true"), "ask");
+            if (taken instanceof Result.Err<Control.Reply> failure) {
+                context.report(failure.problems());
+                return exitStatusFor(failure.problems());
+            }
+            context.emit(new LampEvent.RunAccepted(new LampEvent.Run(
+                    ((Result.Ok<Control.Reply>) taken).value().values().get("run").orElse("run"),
+                    Optional.empty(), prompt, place.conversation())));
+            return ExitStatus.SUCCESS;
+        }
         context.info("run", "asking the agent; its answer comes once it is done, which can take a while");
-        Result<Control.Reply> reply = Control.ask(layout.controlSocket(), layout.root(),
-                ((Result.Ok<Control.Request>) request).value(), "ask", ASK_PATIENCE);
+        Result<Control.Reply> reply = Control.ask(layout.controlSocket(), layout.root(), toSend, "ask", ASK_PATIENCE);
         if (reply instanceof Result.Err<Control.Reply> failure) {
             context.report(failure.problems());
             return exitStatusFor(failure.problems());
@@ -734,6 +749,15 @@ final class Commands {
                 java.time.Duration.ofSeconds(Long.parseLong(answer.values().get("seconds").orElse("0"))),
                 answer.values().get("conversation")));
         return outcome == LampEvent.RunOutcome.FINISHED ? ExitStatus.SUCCESS : ExitStatus.ERROR;
+    }
+
+    /// `oillamp cancel <dir> [<run>]`: stop the run in progress, or one that is waiting.
+    public ExitStatus cancel(Path lampPath, Optional<String> run) {
+        Control.Request request = Control.Request.of("cancel");
+        if (run.isPresent()) request = request.with("run", run.get());
+        return askTheSession(lampPath, "cancel", request, reply -> context.emit(new LampEvent.Ok("run",
+                "cancelled " + reply.values().get("run").orElse("the run")
+              + "; what the agent did until now is saved as the run ends")));
     }
 
     /// Where `oillamp ask` puts its question: a new conversation, unless one is given.

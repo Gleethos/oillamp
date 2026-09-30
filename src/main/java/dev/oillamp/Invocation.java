@@ -55,6 +55,8 @@ final class Invocation {
         // the argument after them; pending is the option still waiting for its value.
         Optional<String> pending = Optional.empty();
         boolean prune = false;
+        // `ask` only.
+        boolean wait = true;
         List<String> positional = new ArrayList<>();
         // Every option other than the four that apply to all commands, as it is spelt in usage(),
         // so that a command given one it does not take can refuse it.
@@ -121,6 +123,7 @@ final class Invocation {
                 case "--view-only"     -> viewOnly = true;
                 case "--yes", "-y"     -> confirmed = true;
                 case "--prune"         -> prune = true;
+                case "--no-wait"       -> wait = false;
                 case "--open", "--model-service", "--model-key-env",
                      "--cron", "--at", "--expires", "--in", "--after", "--instead-of" -> pending = Optional.of(argument);
                 case "--message", "-m" -> pending = Optional.of("--message");
@@ -336,8 +339,10 @@ final class Invocation {
                 if (after.isPresent() && insteadOf.isPresent())
                     yield misused(console, sink, version, "ask",
                             "a question goes either after an entry or instead of a question, not both");
-                yield commands.ask(Path.of(rest.get(0)), rest.get(1), new Commands.AskPlace(in, after, insteadOf));
+                yield commands.ask(Path.of(rest.get(0)), rest.get(1), new Commands.AskPlace(in, after, insteadOf), wait);
             }
+            case "cancel" -> commands.cancel(Path.of(rest.get(0)),
+                    rest.size() > 1 ? Optional.of(rest.get(1)) : Optional.empty());
             case "restore" -> {
                 if (rest.size() < 2)
                     yield misused(console, sink, version, "restore",
@@ -394,12 +399,13 @@ final class Invocation {
             java.util.Map.entry("save",       java.util.Set.of("--message", "--embedded")),
             java.util.Map.entry("history",    java.util.Set.of("--embedded")),
             java.util.Map.entry("schedule",   java.util.Set.of("--cron", "--at", "--expires", "--embedded")),
-            java.util.Map.entry("ask",        java.util.Set.of("--in", "--after", "--instead-of", "--embedded")),
+            java.util.Map.entry("ask",        java.util.Set.of("--in", "--after", "--instead-of", "--no-wait", "--embedded")),
+            java.util.Map.entry("cancel",     java.util.Set.of("--embedded")),
             java.util.Map.entry("conversations", java.util.Set.of("--embedded")),
             java.util.Map.entry("restore",    java.util.Set.of("--embedded")),
             java.util.Map.entry("shell",      java.util.Set.of()),
             java.util.Map.entry("stop",       java.util.Set.of()),
-            java.util.Map.entry("status",     java.util.Set.of()),
+            java.util.Map.entry("status",     java.util.Set.of("--embedded")),
             java.util.Map.entry("list",       java.util.Set.of()),
             java.util.Map.entry("completion", java.util.Set.of()),
             java.util.Map.entry("version",    java.util.Set.of()),
@@ -415,7 +421,7 @@ final class Invocation {
     /// The commands that take a lamp directory and cannot do without it.
     private static final java.util.Set<String> NEEDS_A_LAMP = java.util.Set.of(
             "at", "view", "shell", "stop", "status", "recordings", "config", "remove",
-            "save", "history", "restore", "schedule", "ask", "conversations");
+            "save", "history", "restore", "schedule", "ask", "conversations", "cancel");
 
     /// The commands that work on one lamp. `remove` takes several, since a pattern such as
     /// `test*` is the natural way to clean up after experiments.
@@ -425,7 +431,7 @@ final class Invocation {
     /// How many arguments may follow the other commands.
     private static final java.util.Map<String, Integer> MOST_ARGUMENTS = java.util.Map.ofEntries(
             java.util.Map.entry("config", 2), java.util.Map.entry("completion", 1), java.util.Map.entry("restore", 2),
-            java.util.Map.entry("schedule", 3), java.util.Map.entry("ask", 2), java.util.Map.entry("conversations", 2),
+            java.util.Map.entry("schedule", 3), java.util.Map.entry("ask", 2), java.util.Map.entry("conversations", 2), java.util.Map.entry("cancel", 2),
             java.util.Map.entry("list", 0), java.util.Map.entry("version", 0), java.util.Map.entry("help", 0),
             java.util.Map.entry("about", 0), java.util.Map.entry("guide", 0));
 
@@ -523,7 +529,7 @@ final class Invocation {
                       add (--cron "<expression>" | --at <time>) [--expires <time>] "<prompt>"
                                       --cron "0 9 * * 1-5" repeats, as cron would; --at runs once,
                                       at "2026-10-01 09:00" on this machine's clock or "in 2h"
-              ask <dir> [--in <conversation> [--after <entry> | --instead-of <entry>]] "<prompt>"
+              ask <dir> [--in <conversation> [--after <entry> | --instead-of <entry>]] [--no-wait] "<prompt>"
                     Wake the agent in a running session with a prompt, and print its answer.
                     If it is busy, the prompt waits its turn. The lamp is saved before and after.
                       --in            continue that conversation where it stands, instead of
@@ -531,6 +537,9 @@ final class Invocation {
                       --after         continue after that entry, such as an earlier answer
                       --instead-of    ask this instead of that question, leaving the old one
                                       and its answers as a branch of their own
+                      --no-wait       say which run answers it, and return at once
+              cancel <dir> [<run>]
+                    Stop the run the agent is working on, or a run that is still waiting.
               conversations <dir> [<conversation>]
                     List the agent's conversations, or show one, with the ids of its entries.
               recordings <dir> [--open <session>] [--prune]

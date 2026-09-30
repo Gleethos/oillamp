@@ -397,12 +397,10 @@ public final class Lamp implements AutoCloseable {
             return new Question(prompt, Optional.of(conversation), Optional.empty(), Optional.empty());
         }
 
-        /// In `conversation`, after `entry`.
         public static Question after(String conversation, String entry, String prompt) {
             return new Question(prompt, Optional.of(conversation), Optional.of(entry), Optional.empty());
         }
 
-        /// In `conversation`, instead of the question `entry`.
         public static Question insteadOf(String conversation, String entry, String prompt) {
             return new Question(prompt, Optional.of(conversation), Optional.empty(), Optional.of(entry));
         }
@@ -420,40 +418,45 @@ public final class Lamp implements AutoCloseable {
     ///                 beginning of it of at least four characters names it too
     /// @param name     the name it was given, such as `run-12 (job-3)`, or empty
     /// @param file     where pi keeps it, relative to the agent's home
-    /// @param started  when it began
     /// @param modified when its last entry was written
     /// @param entries  every entry, in the order pi wrote them
     public record Conversation(String id, String name, String file, java.time.Instant started,
                                java.time.Instant modified, sprouts.Tuple<Entry> entries) {
 
-        /// One entry.
+        /// One line of pi's session file.
         ///
-        /// @param parent   the entry it follows; empty for the first
-        /// @param kind     what it is
-        /// @param text     what was said: the question, the answer, the tool's output, the summary
-        /// @param thinking what the model thought before answering, for an answer that shows it
-        /// @param calls    the tools an answer called
-        /// @param tool     for a tool's output, the tool
-        /// @param failed   an answer that failed, or a tool that reported an error
+        /// @param id       unique within the conversation; what [Question#after] and
+        ///                 [Question#insteadOf] take
+        /// @param parent   the entry before this one; empty for the first. Entries with the same
+        ///                 parent are where the conversation forks
+        /// @param text     for a question, the message sent; for an answer, the agent's text, or the
+        ///                 error when it failed; for a tool's output, the output; for a summary, the
+        ///                 summary; otherwise empty
+        /// @param thinking for an answer, the model's thinking; otherwise empty
+        /// @param calls    for an answer, the tools it called; otherwise empty
+        /// @param tool     for a tool's output, the tool's name; otherwise empty
+        /// @param failed   for an answer, the model failed or was stopped; for a tool's output, the
+        ///                 tool reported an error
         public record Entry(String id, Optional<String> parent, java.time.Instant at, Kind kind, String text,
                             String thinking, sprouts.Tuple<ToolCall> calls, Optional<String> tool, boolean failed) {}
 
         public enum Kind {
-            /// Asked by the user, or by oillamp for a run.
+            /// A message to the agent: a person's question, or a job's prompt.
             QUESTION,
-            /// The agent's answer, which may call tools.
+            /// A message from the agent.
             ANSWER,
-            /// What a tool the agent called put out.
+            /// The output of one tool call.
             TOOL_OUTPUT,
-            /// A summary pi wrote of entries that no longer fit, or of a line that was left.
+            /// pi's summary of entries it took out of the model's context.
             SUMMARY,
-            /// Anything else pi keeps, such as its instructions or a change of model.
+            /// Anything else, such as pi's instructions to the model or a change of model.
             OTHER
         }
 
         /// A tool an answer called.
         ///
-        /// @param summary one line: the command for `bash`, the file for the file tools
+        /// @param summary the command for `bash`, the path for the file tools, otherwise the
+        ///                arguments as JSON; one line, at most 160 characters
         public record ToolCall(String id, String name, String summary) {}
 
         /// How the conversation is shown: its name, or its first question.
@@ -671,14 +674,61 @@ public final class Lamp implements AutoCloseable {
         return ask(launcher, listeners, directory, question);
     }
 
-    private static LampEvent.RunFinished ask(Launcher launcher, List<Consumer<LampEvent>> listeners, Path directory,
-                                             Question question) throws IOException, InterruptedException, Failed {
+    /// Hands the agent `question`, and returns at once with the run that will answer it.
+    ///
+    /// For an application that shows the answer as it is written: the run's events, from
+    /// [LampEvent.RunStarted] through each [LampEvent.RunProgress] to [LampEvent.RunFinished],
+    /// arrive at this lamp's listeners, with the returned run's id. When the agent is busy, the
+    /// run waits its turn, and [LampEvent.RunQueued] says so.
+    ///
+    /// @throws Failed when the conversation or the entry is not there, or the session is ending
+    public LampEvent.Run send(Question question) throws IOException, InterruptedException, Failed {
+        Ran ran = runToEnd(launcher, listeners, askCommand(directory, question, "--no-wait"));
+        for (LampEvent event : ran.events())
+            if (event instanceof LampEvent.RunAccepted accepted) return accepted.run();
+        ran.orThrow();
+        throw new Failed(ran.status(), internal("the engine reported no run"));
+    }
+
+    /// Stops the run the agent is working on. What it did until then is saved, as for any run,
+    /// and its [LampEvent.RunFinished] says it was [cancelled][LampEvent.RunOutcome#CANCELLED].
+    ///
+    /// @throws Failed when the agent is not working on anything
+    public void cancel() throws IOException, InterruptedException, Failed {
+        runToEnd(launcher, listeners, "cancel", directory.toString()).orThrow();
+    }
+
+    /// Stops `run`: the one in progress, or one still waiting, which then never starts.
+    ///
+    /// @throws Failed when no such run is in progress or waiting
+    public void cancel(String run) throws IOException, InterruptedException, Failed {
+        runToEnd(launcher, listeners, "cancel", directory.toString(), run).orThrow();
+    }
+
+    /// What the agent is doing: the run in progress, if any, and the runs waiting.
+    ///
+    /// @throws Failed when the session is not running
+    public LampEvent.AgentStatus agentStatus() throws IOException, InterruptedException, Failed {
+        Ran ran = runToEnd(launcher, listeners, "status", directory.toString());
+        ran.orThrow();
+        for (LampEvent event : ran.events())
+            if (event instanceof LampEvent.AgentStatus status) return status;
+        throw new Failed(ran.status(), internal("the engine reported no status of the agent"));
+    }
+
+    private static String[] askCommand(Path directory, Question question, String... options) {
         List<String> command = new ArrayList<>(List.of("ask", directory.toString()));
         question.conversation().ifPresent(id -> command.addAll(List.of("--in", id)));
         question.after().ifPresent(id -> command.addAll(List.of("--after", id)));
         question.insteadOf().ifPresent(id -> command.addAll(List.of("--instead-of", id)));
+        command.addAll(List.of(options));
         command.addAll(List.of("--", question.prompt()));
-        Ran ran = runToEnd(launcher, listeners, command.toArray(String[]::new));
+        return command.toArray(String[]::new);
+    }
+
+    private static LampEvent.RunFinished ask(Launcher launcher, List<Consumer<LampEvent>> listeners, Path directory,
+                                             Question question) throws IOException, InterruptedException, Failed {
+        Ran ran = runToEnd(launcher, listeners, askCommand(directory, question));
         for (LampEvent event : ran.events())
             if (event instanceof LampEvent.RunFinished finished) return finished;
         ran.orThrow();

@@ -193,31 +193,79 @@ public sealed interface LampEvent {
     /// A job was switched on or off, or the whole schedule paused or resumed.
     record ScheduleChanged(String what)                 implements LampEvent {}
 
-    /// One time the agent was woken: by a job, or by someone asking it something.
+    /// One time the agent is woken, by a job or by someone asking. Runs happen one at a time.
     ///
-    /// @param id  the run's name, such as `run-12`. A run's snapshot carries it, so
-    ///            `oillamp history` shows which snapshot a run made
-    /// @param job          the job that woke the agent, or empty when someone asked
-    /// @param conversation the conversation it continues, or empty for a new one
+    /// @param id           `run-` and a number counted per lamp, such as `run-12`. The snapshots
+    ///                     taken as the run began and ended carry it too
+    /// @param job          the job that woke the agent; empty when someone asked
+    /// @param prompt       the job's prompt, or the question, as written
+    /// @param conversation the conversation the run continues; empty for a new one
     record Run(String id, java.util.Optional<String> job, String prompt, java.util.Optional<String> conversation) {}
 
-    /// A run has to wait, because the agent is busy with another one.
+    /// A run waits, because the agent is busy.
     ///
-    /// @param ahead how many runs are before it
+    /// @param ahead runs waiting before this one, not counting the one in progress
     record RunQueued(Run run, int ahead)                implements LampEvent {}
-    /// The agent was woken and given the prompt.
     record RunStarted(Run run)                          implements LampEvent {}
-    /// A run ended.
+    /// A run ended, and the lamp was saved.
     ///
-    /// @param outcome  how it ended
-    /// @param answer   the agent's last message, which usually says what it did
-    /// @param snapshot the snapshot of the lamp made as it ended, or empty when that save failed
-    /// @param took     how long the agent worked
-    /// @param conversation the conversation it happened in, which for a new one is known only
-    ///                 now; empty when pi did not get as far as opening one
+    /// @param answer       the agent's last message; for a failed run, the error
+    /// @param snapshot     the snapshot taken as the run ended; empty only when that save failed
+    /// @param took         from [RunStarted] to this event
+    /// @param conversation the conversation the run happened in; empty when pi failed before it
+    ///                     opened one
     record RunFinished(Run run, RunOutcome outcome, String answer,
                        java.util.Optional<Snapshot> snapshot, Duration took,
                        java.util.Optional<String> conversation) implements LampEvent {}
+
+    /// The session queued a question as `run`. What `oillamp ask --no-wait` and [Lamp#send] report.
+    record RunAccepted(Run run)                         implements LampEvent {}
+
+    /// Something the agent did during a run, as pi reports it.
+    ///
+    /// @param run the run's id
+    record RunProgress(String run, Progress progress)   implements LampEvent {}
+
+    /// In one run: [Opened] once, then per message of the agent's, [Thought] and [Said] pieces and
+    /// an [Answered], followed by a [ToolStarted] and a [ToolFinished] for each tool it calls.
+    sealed interface Progress {
+        /// The conversation the run happens in.
+        record Opened(String conversation) implements Progress {}
+        /// Part of the agent's message. The parts, joined, are the text [Answered] reports.
+        record Said(String text) implements Progress {}
+        /// Part of the model's thinking, for models that show it.
+        record Thought(String text) implements Progress {}
+        /// A message of the agent's is complete. The last one of a run is its answer.
+        ///
+        /// @param text   the message; when it failed, the error
+        /// @param failed the model failed, or the message was stopped
+        record Answered(String text, boolean failed) implements Progress {}
+        /// A tool call began.
+        ///
+        /// @param call    the id the matching [ToolFinished] has
+        /// @param summary the command for `bash`, the path for the file tools, otherwise the
+        ///                arguments as JSON; one line, at most 160 characters
+        record ToolStarted(String call, String tool, String summary) implements Progress {}
+        /// A tool call ended.
+        ///
+        /// @param failed the tool reported an error
+        /// @param output the first 4,000 characters of the output
+        record ToolFinished(String call, boolean failed, String output) implements Progress {}
+        /// A request to the model failed, and pi tries it again.
+        ///
+        /// @param attempt the try this is, from 1
+        /// @param most    the tries pi makes before the run fails
+        /// @param why     what the model service said
+        record Retrying(int attempt, int most, String why) implements Progress {}
+    }
+
+    /// What `oillamp status` and [Lamp#agentStatus] report about the agent.
+    ///
+    /// @param current the run in progress; empty when the agent is idle
+    /// @param waiting the runs waiting, in the order they will run
+    record AgentStatus(java.util.Optional<Run> current, sprouts.Tuple<Run> waiting) implements LampEvent {
+        public boolean busy() { return current.isPresent() || !waiting.isEmpty(); }
+    }
 
     /// How a run ended.
     enum RunOutcome {
@@ -228,7 +276,9 @@ public sealed interface LampEvent {
         /// The run took longer than `schedule.max_run_minutes` and was stopped.
         TIMED_OUT,
         /// The session ended while the agent was working.
-        INTERRUPTED
+        INTERRUPTED,
+        /// Someone stopped it, with `oillamp cancel` or [Lamp#cancel()].
+        CANCELLED
     }
 
     // ─── conversations ─────────────────────────────────────────────────────────────────────

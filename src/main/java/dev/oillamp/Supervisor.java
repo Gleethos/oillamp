@@ -808,6 +808,7 @@ final class Supervisor {
                     .with("uptime", describe(uptime()))
                     .with("shells", String.valueOf(state.extraShells()))
                     .with("agent", runs.describe())
+                    .with("agent_status", runs.status().toJson())
                     .with("viewer", prepared.layout().vncSocket().toString());
             case "stop" -> {
                 post(new SessionEvent.StopRequested("oillamp stop"));
@@ -834,9 +835,14 @@ final class Supervisor {
                 } catch (IllegalArgumentException wrong) {
                     yield Control.Reply.failed(Problems.reason(wrong));
                 }
+                Result<Runs.Asked> asked = runs.ask(request.arguments().get("prompt").orElse(""),
+                        request.arguments().get("conversation"), where);
+                if (!(asked instanceof Result.Ok<Runs.Asked>(Runs.Asked taken, var _)))
+                    yield Control.Reply.failed(asked.problems().first().whatHappened());
+                // Answered at once, for an application that follows the run on the session's events.
+                if (request.flag("no_wait")) yield Control.Reply.ok().with("run", taken.run().id());
                 try {
-                    LampEvent.RunFinished finished = runs.ask(request.arguments().get("prompt").orElse(""),
-                            request.arguments().get("conversation"), where).get();
+                    LampEvent.RunFinished finished = taken.done().get();
                     String answer = finished.answer();
                     Control.Reply reply = Control.Reply.ok()
                             .with("run", finished.run().id())
@@ -851,6 +857,12 @@ final class Supervisor {
                     Thread.currentThread().interrupt();
                     yield Control.Reply.failed("the session is ending");
                 }
+            }
+            case "cancel" -> {
+                Result<String> cancelled = runs.cancel(request.arguments().get("run").filter(run -> !run.isBlank()));
+                yield cancelled instanceof Result.Ok<String>(String run, var _)
+                        ? Control.Reply.ok().with("run", run)
+                        : Control.Reply.failed(cancelled.problems().first().whatHappened());
             }
             case "schedule-changed" -> {
                 runs.scheduleChanged();

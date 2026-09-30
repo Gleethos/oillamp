@@ -82,32 +82,52 @@ final class Runs {
         if (config.enabled()) Thread.ofVirtual().name("oillamp-schedule").start(this::watchTheSchedule);
     }
 
-    /// Wakes the agent with `prompt` as soon as it is free, in a new conversation.
-    CompletableFuture<LampEvent.RunFinished> ask(String prompt) {
-        return ask(prompt, Optional.empty(), Optional.empty());
-    }
+    /// A queued question: its run, and a future completed when the run ends.
+    record Asked(LampEvent.Run run, CompletableFuture<LampEvent.RunFinished> done) {}
 
-    /// Wakes the agent with `prompt` as soon as it is free.
+    /// Queues `prompt` as a new run.
     ///
     /// @param conversation the conversation it continues, or empty for a new one
     /// @param where        where in that conversation the question goes
-    /// @return the run's end, once it has ended
-    CompletableFuture<LampEvent.RunFinished> ask(String prompt, Optional<String> conversation,
-                                                 Optional<Harness.Target> where) {
-        CompletableFuture<LampEvent.RunFinished> done = new CompletableFuture<>();
-        if (stopping) {
-            done.completeExceptionally(new IllegalStateException("the session is ending"));
-            return done;
-        }
+    /// @return the queued run; an error when the session is ending or the schedule file cannot be written
+    Result<Asked> ask(String prompt, Optional<String> conversation, Optional<Harness.Target> where) {
+        if (stopping) return Result.err(Problems.runRefused("the session is ending"));
         Result<Schedule.Numbered> numbered = book.update(schedule -> Result.ok(schedule.numberRun()), Schedule.Numbered::schedule);
-        if (!(numbered instanceof Result.Ok<Schedule.Numbered>(Schedule.Numbered number, var _))) {
-            context.report(numbered.problems());
-            done.completeExceptionally(new IllegalStateException(numbered.problems().first().whatHappened()));
-            return done;
+        if (!(numbered instanceof Result.Ok<Schedule.Numbered>(Schedule.Numbered number, var _)))
+            return Result.err(numbered.problems());
+        CompletableFuture<LampEvent.RunFinished> done = new CompletableFuture<>();
+        LampEvent.Run run = new LampEvent.Run(number.run(), Optional.empty(), prompt.strip(), conversation);
+        enqueue(new Pending(run, Optional.empty(), where, done));
+        return Result.ok(new Asked(run, done));
+    }
+
+    /// Stops a run: the one in progress, or one still waiting, which then never starts.
+    ///
+    /// @param run the run, or empty for the one in progress
+    /// @return what was cancelled, or why nothing was
+    Result<String> cancel(Optional<String> run) {
+        Optional<Pending> working = current;
+        if (working.isPresent() && run.map(id -> id.equals(working.get().run().id())).orElse(true)) {
+            harness.cancel();
+            return Result.ok(working.get().run().id());
         }
-        enqueue(new Pending(new LampEvent.Run(number.run(), Optional.empty(), prompt.strip(), conversation),
-                Optional.empty(), where, done));
-        return done;
+        if (run.isEmpty()) return Result.err(Problems.runRefused("the agent is not working on anything"));
+        for (Pending waiting : queue)
+            if (waiting.run().id().equals(run.get()) && queue.remove(waiting)) {
+                LampEvent.RunFinished finished = new LampEvent.RunFinished(waiting.run(), RunOutcome.CANCELLED,
+                        "cancelled before the agent got to it", Optional.empty(), Duration.ZERO, waiting.run().conversation());
+                context.emit(finished);
+                waiting.done().complete(finished);
+                return Result.ok(run.get());
+            }
+        return Result.err(Problems.runRefused("no run called " + run.get() + " is in progress or waiting"));
+    }
+
+    /// The run in progress and those waiting, for `oillamp status`.
+    LampEvent.AgentStatus status() {
+        Tuple<LampEvent.Run> waiting = Tuple.of(LampEvent.Run.class);
+        for (Pending pending : queue) waiting = waiting.add(pending.run());
+        return new LampEvent.AgentStatus(current.map(Pending::run), waiting);
     }
 
     /// Looks at the schedule now, because it changed.
@@ -261,7 +281,8 @@ final class Runs {
         String prompt = pending.job().isPresent() ? wakePrompt(pending, history, started, zone) : run.prompt();
         // A job's conversation is named after its run; a question someone asked is known by itself.
         Optional<String> name = run.job().map(job -> run.id() + " (" + job + ")");
-        Harness.Answer answer = harness.run(name, prompt, config.maxRun(), pending.where());
+        Harness.Answer answer = harness.run(name, prompt, config.maxRun(), pending.where(),
+                progress -> context.emit(new LampEvent.RunProgress(run.id(), progress)));
         if (answer.outcome() == RunOutcome.FAILED && !answer.text().isBlank() && answer.text().startsWith("pi "))
             context.emit(new LampEvent.Warning(Problems.runFailed(run.id(), answer.text())));
         Instant ended = machine.now();

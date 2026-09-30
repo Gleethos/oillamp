@@ -679,6 +679,12 @@ final class Problems {
     }
 
     /// The session answered, but said no. It is alive, so nothing needs cleaning up.
+    /// What the session says when it will not take or stop a run. The session answers with
+    /// what happened only; the command that asked says it was refused.
+    public static Problem runRefused(String reason) {
+        return error(SESSION_REFUSED, "The running session refused", reason, "nothing was asked or stopped");
+    }
+
     public static Problem sessionRefused(Path lamp, String command, String reason) {
         return error(SESSION_REFUSED, "The running session refused",
                 "`oillamp " + command + "` was refused by the session on " + lamp + ": " + reason,
