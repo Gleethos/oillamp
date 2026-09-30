@@ -171,7 +171,8 @@ public sealed interface Recurrence {
         Matcher every = Pattern.compile("\\*/(\\d+) \\* \\* \\* \\*").matcher(cron);
         if (every.matches()) return "Every " + every.group(1) + " minutes";
         Matcher hours = Pattern.compile("(\\d{1,2}) \\*/(\\d+) \\* \\* \\*").matcher(cron);
-        if (hours.matches()) return "Every " + hours.group(2) + " hours, at " + twoDigits(Integer.parseInt(hours.group(1))) + " past";
+        if (hours.matches()) return "Every " + hours.group(2) + " hours, "
+                + (Integer.parseInt(hours.group(1)) == 0 ? "on the hour" : "at " + twoDigits(Integer.parseInt(hours.group(1))) + " past");
         return "On the cron schedule “" + cron + "”";
     }
 }
