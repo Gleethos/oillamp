@@ -24,6 +24,12 @@ public interface Lighter {
     Lit light(Path directory, Settings settings, String key, Consumer<String> progress, Consumer<LampEvent> events)
             throws IOException, InterruptedException;
 
+    /// The lamp in `directory`, not lit, for what works without its sandbox: its schedule and
+    /// its history.
+    default Lamp.Starting unlit(Path directory) {
+        return Lamp.at(directory);
+    }
+
     /// A lamp whose sandbox runs.
     interface Lit extends AutoCloseable {
 

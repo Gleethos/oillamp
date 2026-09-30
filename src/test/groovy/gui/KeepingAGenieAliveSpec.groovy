@@ -360,7 +360,7 @@ class KeepingAGenieAliveSpec extends Specification {
      */
     private Lighter lighter() {
         var real = new LampLighter(sandbox.launcher)
-        return { Path directory, Settings settings, String key, Consumer<String> progress, Consumer<LampEvent> events ->
+        var light = { Path directory, Settings settings, String key, Consumer<String> progress, Consumer<LampEvent> events ->
             var lit = real.light(directory, settings, key, progress, events)
             new Lighter.Lit() {
                 Process exec(String... command) {
@@ -374,7 +374,8 @@ class KeepingAGenieAliveSpec extends Specification {
                 void cancel(String run) { lit.cancel(run) }
                 void close() { closed << 'closed'; lit.close() }
             }
-        } as Lighter
+        }
+        return [light: light, unlit: { Path directory -> real.unlit(directory) }] as Lighter
     }
 
     private void waitUntil(Closure<Boolean> condition) {

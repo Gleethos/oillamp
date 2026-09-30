@@ -46,6 +46,24 @@ public interface Actions {
     /// Saves a file from the genie's outbox where the user chose.
     void save(UUID genie, String name, Path target);
 
+    /// Adds the job written in the genie's schedule editor, or changes the job it replaces.
+    void saveJob(UUID genie);
+
+    /// Takes a job off the genie's schedule. The window has asked the user already.
+    void removeJob(UUID genie, String job);
+
+    void switchJob(UUID genie, String job, boolean on);
+
+    /// Pauses the genie's whole schedule, or lets it run again.
+    void pauseSchedule(UUID genie, boolean paused);
+
+    /// Stops a run the genie has going, such as a job's.
+    void stopRun(UUID genie, String run);
+
+    /// Shows the genie's chat at the conversation pi knows by `conversation`, such as the one a
+    /// job's run had.
+    void openConversation(UUID genie, String conversation);
+
     /// Asks the model server on this computer, named in the settings, which models it has.
     void lookUpModels();
 

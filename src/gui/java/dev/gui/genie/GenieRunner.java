@@ -59,12 +59,17 @@ public final class GenieRunner {
     private volatile Optional<String> sending = Optional.empty();
     /// The run of `mine` in progress, which the stop button stops.
     private volatile Optional<String> working = Optional.empty();
+    private final ScheduleKeeper schedule;
 
     public GenieRunner(Path directory, Lighter lighter, Consumer<UnaryOperator<Genie>> changes) {
         this.directory = directory;
         this.lighter = lighter;
         this.changes = changes;
+        this.schedule = new ScheduleKeeper(lighter.unlit(directory), changes);
     }
+
+    /// The genie's schedule, which can be read and changed awake or asleep.
+    public ScheduleKeeper schedule() { return schedule; }
 
     /// The genie's lamp directory.
     public Path directory() { return directory; }
@@ -119,12 +124,16 @@ public final class GenieRunner {
 
     /// Stops the run that answers this chat. What the genie did until then stays, and is saved.
     public void stop() {
+        working.ifPresent(this::stop);
+    }
+
+    /// Stops `run`, such as a job's. What the genie did until then stays, and is saved.
+    public void stop(String run) {
         Optional<Lighter.Lit> lit = lamp;
-        Optional<String> run = working;
-        if (lit.isEmpty() || run.isEmpty()) return;
+        if (lit.isEmpty()) return;
         Thread.ofVirtual().name("stop").start(() -> {
             try {
-                lit.get().cancel(run.get());
+                lit.get().cancel(run);
             } catch (IOException | Lamp.Failed failed) {
                 said("The genie could not be stopped: " + reason(failed));
             } catch (InterruptedException interrupted) {
@@ -142,6 +151,12 @@ public final class GenieRunner {
     /// @param leaf         the entry to continue after, or empty for where the conversation stands
     public void goTo(String conversation, String leaf) {
         work.execute(() -> show(conversation, leaf));
+    }
+
+    /// Shows the conversation pi knows by `id`, where it stands, such as the one a job's run had.
+    public void open(String id) {
+        work.execute(() -> Lamp.conversation(directory, id).ifPresentOrElse(conversation -> show(conversation.file(), ""),
+                () -> said("That conversation is not there any more.")));
     }
 
     /// Starts a new conversation: the chat empties, and the next message begins it. The others stay.
@@ -250,6 +265,7 @@ public final class GenieRunner {
 
     /// Every event of the lamp's session, on the thread that reads them.
     private void heard(LampEvent event) {
+        schedule.heard(event, java.time.Instant.now());
         switch (event) {
             case LampEvent.RunStarted started -> {
                 LampEvent.Run run = started.run();
@@ -265,6 +281,7 @@ public final class GenieRunner {
             case LampEvent.RunFinished ignored -> lookAtConversations();
             case LampEvent.SessionStateChanged changed when changed.status().state().equals("stopped") && !sleeping -> {
                 lamp = Optional.empty();
+                schedule.wentOut();
                 changes.accept(genie -> genie.broken("The genie's sandbox stopped: " + changed.status().detail()));
             }
             default -> { }
@@ -320,6 +337,7 @@ public final class GenieRunner {
     public Optional<Path> desktop() { return lamp.map(Lighter.Lit::desktop); }
 
     private void putOut() {
+        schedule.wentOut();
         sleeping = true;
         lamp.ifPresent(Lighter.Lit::close);
         lamp = Optional.empty();
