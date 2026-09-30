@@ -31,7 +31,7 @@ final class LampTalk {
             steps = steps.add(new Conversation.Step(entry.id(), entry.parent().orElse(""), asked, asked ? entry.text() : ""));
         }
         return new Conversation(conversation.id(), conversation.file(), conversation.name(),
-                conversation.modified().toString(), steps);
+                conversation.modified().toString(), steps, conversation.job().orElse(""));
     }
 
     /// The questions and answers from the start of `conversation` to `leaf`, as the chat shows them.

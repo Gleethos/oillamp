@@ -163,7 +163,8 @@ class KeepingAGeniesScheduleSpec extends Specification {
         reportInfo """
             While a job's run goes on, the timeline shows it at now, with a way to stop it. Once
             it ends, it is among the runs, with how it ended, what the genie said last, and the
-            conversation it had, which the chat can open. The chat itself was left as it was
+            conversation it had, which the chat can open, and which is in the tree of scheduled
+            runs rather than among the user's conversations. The chat itself was left as it was
             while the job ran.
         """
         given: 'a sleeping genie with a job for five minutes from now, and its schedule on show'
@@ -194,6 +195,11 @@ class KeepingAGeniesScheduleSpec extends Specification {
 
         and: 'the chat was left alone'
             genie.transcript().isEmpty()
+
+        and: 'its conversation is among the scheduled runs, not the user\'s conversations'
+            waitUntil { genie.conversations().jobCount() == 1 }
+            genie.conversations().jobRuns()*.id() == [genie.schedule().runs().first().conversation().get()]
+            genie.conversations().chatCount() == 0
 
         when: 'the user opens the run\'s conversation'
             runner.open(genie.schedule().runs().first().conversation().get())

@@ -6,10 +6,28 @@ import sprouts.Tuple;
 
 /// Every conversation with one genie, and where the genie is among them.
 ///
-/// @param all  the conversations, newest first, as read from the genie's home
-/// @param here where the genie is: the conversation pi has open, and the entry it continues from
-/// @param shown whether the tree of them is open under the genie; it starts closed
-public record Conversations(Tuple<Conversation> all, Here here, boolean shown) {
+/// Under the genie they are two trees: the conversations the user had, and those the runs of its
+/// scheduled jobs had.
+///
+/// @param all   the conversations, newest first, as read from the genie's home
+/// @param here  where the genie is: the conversation pi has open, and the entry it continues from
+/// @param chatsFold how the tree of the user's conversations is shown
+/// @param jobsFold  how the tree of the jobs' conversations is shown
+public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, Fold jobsFold) {
+
+    /// Whether a tree is open under the genie, and how tall its area is; the user drags the
+    /// area's lower edge to change that. Trees start closed.
+    ///
+    /// @param height the most the tree's area takes, in the window's units; a shorter tree
+    ///               takes less
+    public record Fold(boolean shown, int height) {
+        public static final int LOWEST = 60;
+        public static final int HIGHEST = 900;
+        public static final Fold CLOSED = new Fold(false, 180);
+
+        public Fold toggled()                 { return new Fold(!shown, height); }
+        public Fold withHeight(int height)    { return new Fold(shown, Math.clamp(height, LOWEST, HIGHEST)); }
+    }
 
     /// A place in a genie's conversations.
     ///
@@ -19,9 +37,9 @@ public record Conversations(Tuple<Conversation> all, Here here, boolean shown) {
         public static final Here UNKNOWN = new Here("", "");
     }
 
-    public static final Conversations NONE = new Conversations(Tuple.of(Conversation.class), Here.UNKNOWN, false);
+    public static final Conversations NONE = new Conversations(Tuple.of(Conversation.class), Here.UNKNOWN);
 
-    public Conversations(Tuple<Conversation> all, Here here) { this(all, here, false); }
+    public Conversations(Tuple<Conversation> all, Here here) { this(all, here, Fold.CLOSED, Fold.CLOSED); }
 
     /// Where pi keeps a genie's conversations, relative to its home. pi names the directory
     /// after the directory it runs in, which for a genie is its home, `/home/agent`.
@@ -30,9 +48,14 @@ public record Conversations(Tuple<Conversation> all, Here here, boolean shown) {
     /// The genie's home inside its sandbox.
     public static final String HOME = "/home/agent/";
 
-    public Conversations withAll(Tuple<Conversation> all) { return new Conversations(all, here, shown); }
-    public Conversations withHere(Here here)              { return new Conversations(all, here, shown); }
-    public Conversations withShown(boolean shown)         { return new Conversations(all, here, shown); }
+    public Conversations withAll(Tuple<Conversation> all) { return new Conversations(all, here, chatsFold, jobsFold); }
+    public Conversations withHere(Here here)              { return new Conversations(all, here, chatsFold, jobsFold); }
+    public Conversations withChatsFold(Fold chatsFold)    { return new Conversations(all, here, chatsFold, jobsFold); }
+    public Conversations withJobsFold(Fold jobsFold)      { return new Conversations(all, here, chatsFold, jobsFold); }
+
+    /// How many conversations the user had, and how many the jobs' runs had.
+    public int chatCount() { return all.retainIf(it -> !it.byJob()).size(); }
+    public int jobCount()  { return all.retainIf(Conversation::byJob).size(); }
 
     public Optional<Conversation> find(String id) {
         for (Conversation conversation : all) if (conversation.id().equals(id)) return Optional.of(conversation);
@@ -45,21 +68,32 @@ public record Conversations(Tuple<Conversation> all, Here here, boolean shown) {
         return Optional.empty();
     }
 
-    /// The tree under the genie: a row for every conversation, with its branches below it.
+    /// The tree of the user's conversations: a row for each, with its branches below it.
     ///
     /// pi writes a new conversation to disk only once something was said in it. Until then, it
     /// is shown as a row of its own at the top, so the user sees where they are.
-    public Tuple<Talk> tree() {
-        Tuple<Talk> rows = all.mapTo(Talk.class, conversation -> conversation.talk(here));
+    public Tuple<Talk> chats() {
+        Tuple<Talk> rows = all.retainIf(it -> !it.byJob()).mapTo(Talk.class, conversation -> conversation.talk(here));
         if (!here.file().isEmpty() && current().isEmpty())
             rows = rows.addAt(0, new Talk.Chat(here.file(), "New conversation", 0, "", true, Tuple.of(Talk.Branch.class)));
         return rows;
     }
 
-    /// The ids leading to the row where the genie is: its conversation, and the branches down to
-    /// the one it is on. Nothing when that is not known.
+    /// The tree of the conversations the runs of the genie's scheduled jobs had.
+    public Tuple<Talk> jobRuns() {
+        return all.retainIf(Conversation::byJob).mapTo(Talk.class, conversation -> conversation.talk(here));
+    }
+
+    /// The ids leading to the row where the genie is, in whichever tree it is: its conversation,
+    /// and the branches down to the one it is on. Nothing when that is not known.
     public Tuple<String> herePath() {
-        for (Talk row : tree())
+        Tuple<String> inChats = pathToHere(chats());
+        return inChats.isEmpty() ? pathToHere(jobRuns()) : inChats;
+    }
+
+    /// The ids leading to the row of `rows` where the genie is, or nothing when it is in none.
+    public static Tuple<String> pathToHere(Tuple<Talk> rows) {
+        for (Talk row : rows)
             if (row instanceof Talk.Chat chat && chat.here())
                 return pathTo(chat.branches(), Tuple.of(String.class, chat.id()));
         return Tuple.of(String.class);
