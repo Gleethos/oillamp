@@ -30,6 +30,8 @@ which models it has.
 | the genie's instructions, and the model pi uses | in its home, `.pi/agent/APPEND_SYSTEM.md`, and `defaultProvider` and `defaultModel` in `.pi/agent/settings.json` | Genies writes them at every wake |
 | the files a genie hands over | `~/outbox` in its home | the genie |
 | the files the user gives a genie | `~/inbox` in its home | Genies puts them there |
+| each genie's jobs | `.oillamp/schedule.json` in its lamp | oillamp; Genies changes it through `Lamp.Starting` |
+| each job's past runs: which job, how it ended, what the genie said last, its conversation | the lamp's history, as `run` snapshots | oillamp |
 
 `~/.local/share` is `$XDG_DATA_HOME` when that is set. The window itself keeps nothing: what it
 shows is one value, `GeniesState`, rebuilt from the files above when Genies starts. All genies
@@ -39,10 +41,11 @@ start asleep.
 
 **Waking a genie** (`GenieRunner.wake`):
 
-1. `Lamp.at(<lamp>).modelService(<service>).modelKey(<key>).start()` starts oillamp's engine as a
+1. `Lamp.at(<lamp>).enableScheduling().modelService(<service>).modelKey(<key>).start()` starts oillamp's engine as a
    process of its own. The key goes into that process's environment, never onto its command line
    or into the lamp. The first time, the engine builds the sandbox image, which takes minutes; its
-   progress becomes the genie's status line.
+   progress becomes the genie's status line. `enableScheduling` turns the lamp's schedule on for
+   this session, whatever its `oillamp.toml` says, so its jobs wake the genie while it is awake.
 2. Once the lamp runs, `mkdir -p ~/outbox ~/inbox` runs in the sandbox, over the lamp's ssh command.
 3. Genies writes the genie's instructions (`~/outbox`, `~/inbox`, its desktop being watched) to
    `~/.pi/agent/APPEND_SYSTEM.md`, and the model from the settings into `~/.pi/agent/settings.json`,
@@ -153,6 +156,36 @@ The chat and the desktop share a responsive grid: side by side in a wide window,
 the chat in a narrow one. The settings form is a grid too, with its labels above the fields when
 the card is narrow.
 
+## The schedule
+
+Each genie has a second page beside its chat, switched to in its header: its schedule. The jobs
+on it wake the genie at their times, but only while it is awake; a job whose time came while it
+slept runs once, as soon as it wakes. The page says which of these holds.
+
+**Reading it.** When the page comes on show, `ScheduleKeeper` asks the lamp for its schedule
+(`Lamp.Starting.schedule()`) and its history (`history()`), awake or asleep: the schedule lives in
+the lamp, not in the sandbox. Each call starts a short-lived engine process, so a reading takes a
+second or two. While the genie is awake, the lamp's events keep the page current: `RunStarted` of a
+job shows it running, and `RunFinished`, `JobAdded`, `JobRemoved` or `ScheduleChanged` read it again.
+
+**The week** is a timeline (`Timeline`, pure), day by day: the last runs of the week, with how each
+ended, what the genie said last, and a link that opens its conversation in the chat; now; and each
+time a job runs over the coming seven days, as oillamp lists them in `LampEvent.Job.upcoming`. A
+job that runs four times or more on one day is one line for that day. Clicking a time or a job's
+tile picks the job: its times stand out and the others step back.
+
+**The jobs** are tiles beside the timeline, or under it in a narrow window: when each runs in words
+(`Recurrence.describe`), its task, when it runs next, and a switch that turns it off without taking
+it off the schedule. Its menu changes or removes it.
+
+**The editor** takes the whole page, with the task beside when it runs, or above it when narrow. A
+job runs once, on a day picked in a calendar or with a quick pick such as "Tomorrow morning", or
+again and again: every hour, every day, weekdays, some days of the week, or a cron expression
+written by hand. A repeating job can end on a day. `JobDraft` says in a sentence what still stands
+in the way and, once the time can be read, when the job will first run. Saving adds the job with
+`Lamp.Starting.once` or `repeat`; changing one adds the new job, then removes the old one, so a job
+oillamp refuses leaves the old one, and the editor says why in oillamp's words.
+
 ## The desktop
 
 The desktop is served by wayvnc inside the sandbox, on a Unix socket that `Lamp.desktop()` names.
@@ -172,11 +205,11 @@ and the user watches with the Desktop button.
 
 | Package | What is in it | Touches the outside world |
 |---|---|---|
-| `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, and `Conversations`, `Conversation` and `Talk` for the tree: records with withers, every change a pure method | no |
+| `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, and `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `Dates` for the schedule: records with withers, every change a pure method | no |
 | `dev.gui.pi` | `PiEvent` (what the chat is told) | no |
 | `dev.gui.desktop` | `RfbConnection`, `Keysyms` | `RfbConnection` only |
-| `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `Handouts` (files), `LampTalk` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePrompt` (pi's instructions and model in the genie's home), `Shelf` (what is kept on disk) | yes |
-| `dev.gui.view` | `GeniesView` (the window, bound to `Var<GeniesState>` through lenses), `DesktopScreen`, the look | Swing only |
+| `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `Handouts` (files), `LampTalk` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePrompt` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `Shelf` (what is kept on disk) | yes |
+| `dev.gui.view` | `GeniesView` (the window, bound to `Var<GeniesState>` through lenses), `SchedulePage`, `SettingsPage`, `DesktopScreen`, the look | Swing only |
 | `dev.gui` | `Genies`: the entry point, and the `Actions` the window calls | ties it together |
 
 The window never changes a genie by itself. It changes `GeniesState` through lenses (a draft, the
@@ -198,6 +231,8 @@ through one place, one at a time.
 | `KeepingGeniesBetweenRunsSpec` | the shelf |
 | `WatchingAGeniesDesktopSpec` | the VNC client, against a stand-in desktop playing wayvnc's part byte by byte |
 | `KeepingAGenieAliveSpec` | a genie's life through the Lamp API, with oillamp's engine in the test's JVM on a simulated machine and a stand-in pi that writes conversations as pi does |
+| `PlanningAGeniesWeekSpec` | the ways a job repeats and their cron expressions, the editor's checks and sentence, and the timeline |
+| `KeepingAGeniesScheduleSpec` | the schedule read and changed through the lamp, asleep and awake, and a job's run followed on the page, against the engine in the test's JVM |
 | `RunningARealGenieSpec` (spike) | the same with a real lamp, real pi, real wayvnc and, with a key, the real model |
 | `UsingGeniesForRealSpec` (spike) | the app's actions as the buttons call them, against real lamps, and with Ollama when it has the spike's model |
 
@@ -210,3 +245,5 @@ through one place, one at a time.
 - Images the user gives a genie arrive as files in `~/inbox`, not as images in the prompt.
 - A question is changed in a dialog, not in place in the chat.
 - Conversations cannot be renamed from Genies; one named in pi is titled by its name.
+- A job's run cannot be followed live in the chat; its conversation opens there once it ended.
+- The timeline looks one week ahead and one week back.
