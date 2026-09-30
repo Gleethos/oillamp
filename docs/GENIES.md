@@ -112,8 +112,10 @@ it ends. A conversation that never forked is a single row. The row the genie is 
 whichever tree it is.
 
 An open tree sits in an area that scrolls when the tree is taller. A grip under the area, a line
-with a handle, makes it taller or shorter when dragged, between 60 and 900 units; a tree shorter
-than that takes only its own height. Each tree keeps its height while Genies runs.
+with a handle, makes it taller or shorter when dragged, from nothing up to 900 units; a tree
+shorter than that takes only its own height. Let go with the area dragged to nothing, and the tree
+closes; it opens again as tall as it was before that drag. Each tree keeps its height while
+Genies runs.
 
 | The user | What happens |
 |---|---|
