@@ -38,7 +38,7 @@ models served in the EU.
 
 `~/.local/share` is `$XDG_DATA_HOME` when that is set. The window itself keeps nothing: what it
 shows is one value, `GeniesState`, rebuilt from the files above when Genies starts. All genies
-start asleep.
+start asleep, unless their lamp was left running: see "Closing Genies".
 
 ## What happens, and in what order
 
@@ -86,9 +86,23 @@ changes only the tree.
 **Stop** cancels the run that answers the chat, with `Lamp.cancel`.
 
 **Sleeping** closes the lamp. The engine stops the container and exits. The
-genie's home stays, with the conversation in it. Closing the window puts every genie to sleep
-first. If Genies is killed instead, each engine notices that its standard input closed and shuts
-down by itself.
+genie's home stays, with the conversation in it. A lamp Genies joined (see below) is ended with
+`Lamp.stop`, which is `oillamp stop`.
+
+**Closing Genies** with genies awake or waking asks: *Put to sleep*, *Keep running* or *Cancel*.
+*Put to sleep* puts every genie to sleep before the window goes. *Keep running* calls
+`Lamp.leaveRunning` on each lamp: the engine keeps the sandbox, its schedule and the run in
+progress going until `oillamp stop`. If Genies is killed instead, without being asked, each engine
+notices that its standard input closed and shuts down by itself.
+
+**Opening Genies** looks for a lamp left running under every genie (`Lamp.Starting.isRunning`) and
+joins it (`Lamp.Starting.join`, which runs `oillamp follow <lamp> --embedded`). The session's
+catch-up comes first and ends with an `AgentStatus`; `GenieRunner` holds those events back until
+then. If the agent is answering a question of the user's, the chat shows that conversation as it
+stood before the question, then the question, and the genie is working: the held-back run events
+replay what it has written so far, and the rest arrives as it is written. Otherwise the chat shows
+the conversation Genies was in. The lamp keeps the model settings it was started with until the
+genie is put to sleep.
 
 **Deleting** a genie puts it to sleep, then `Lamp.at(<lamp>).remove()` has the engine delete the
 lamp. The engine has to do it: part of a lamp belongs to the sandbox's own users, and neither Genies

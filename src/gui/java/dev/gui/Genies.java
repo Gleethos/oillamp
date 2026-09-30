@@ -105,13 +105,29 @@ public final class Genies implements Actions {
         frame.addWindowListener(new WindowAdapter() {
             @Override public void windowClosing(WindowEvent event) { app.quit(frame); }
         });
-        // The tree of conversations under each genie is there before any genie wakes.
-        app.state.get().genies().forEach(genie -> app.runner(genie.id()).lookAtConversations());
+        // The tree of conversations under each genie is there before any genie wakes, and a genie
+        // left running when Genies last closed is awake again.
+        app.state.get().genies().forEach(genie -> {
+            app.runner(genie.id()).lookAtConversations();
+            app.rejoin(genie.id());
+        });
         // The timeline, and anything else said relative to now, moves on with the clock.
         new javax.swing.Timer(30_000, tick -> app.state.update(it -> it.withNow(java.time.Instant.now()))).start();
         frame.pack();
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
+    }
+
+    /// What the user is asked on closing Genies with `awake`, the names of the genies awake. On two
+    /// lines, since a dialog does not wrap its text.
+    static String awakeQuestion(List<String> awake) {
+        String names = awake.size() == 1 ? awake.getFirst()
+                : String.join(", ", awake.subList(0, awake.size() - 1)) + " and " + awake.getLast();
+        return names + (awake.size() == 1 ? " is" : " are") + " awake. Put "
+                + (awake.size() == 1 ? "it" : "them") + " to sleep, or keep "
+                + (awake.size() == 1 ? "it" : "them") + " running in the background?\nKept running, "
+                + (awake.size() == 1 ? "it finishes what it is doing and keeps to its" : "they finish what they are doing and keep to their")
+                + " schedule, and Genies finds " + (awake.size() == 1 ? "it" : "them") + " again when it opens.";
     }
 
     // ─── actions ───────────────────────────────────────────────────────────────────────────
@@ -306,17 +322,37 @@ public final class Genies implements Actions {
         }
     }
 
-    /// Puts every genie to sleep before the window goes, so no sandbox is left running. (If
-    /// Genies is killed instead, the lamps end by themselves: each notices its application is
-    /// gone.)
+    /// Joins the genie's lamp if it was left running, and shows it where it was.
+    private void rejoin(UUID id) {
+        state.get().find(id).ifPresent(genie -> runner(id).rejoin(
+                genie.conversations().current().map(Conversation::file).orElse(""),
+                genie.conversations().current().isPresent() ? genie.conversations().here().leaf() : ""));
+    }
+
+    /// Asks the user what becomes of the genies that are awake, then puts them to sleep or leaves
+    /// them running, before the window goes. Without an answer, nothing closes. (If Genies is
+    /// killed instead, the lamps end by themselves: each notices its application is gone.)
     private void quit(JFrame frame) {
-        frame.setTitle("Genies — putting the genies to sleep…");
+        List<String> awake = new java.util.ArrayList<>();
+        for (Genie genie : state.get().genies())
+            if (genie.phase().isAwake() || genie.phase() == Genie.Phase.WAKING) awake.add(genie.name());
+        boolean leaveRunning = false;
+        if (!awake.isEmpty()) {
+            swingtree.dialogs.ConfirmAnswer answer = swingtree.UI.confirmation(awakeQuestion(awake))
+                    .titled("Genies are awake").yesOption("Put to sleep").noOption("Keep running")
+                    .cancelOption("Cancel").parent(frame).show();
+            if (answer.isCancelOrClose()) return;
+            leaveRunning = answer.isNo();
+        }
+        boolean keep = leaveRunning;
+        frame.setTitle(keep ? "Genies — leaving the genies running…" : "Genies — putting the genies to sleep…");
         keepGenies();
         keepSettings();
         Thread.ofVirtual().name("quit").start(() -> {
             for (GenieRunner runner : runners.values()) {
                 try {
-                    runner.sleepAndWait(180);
+                    if (keep) runner.leaveRunningAndWait(180);
+                    else runner.sleepAndWait(180);
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                 }

@@ -153,6 +153,18 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
                 .withConversations(leaving.conversations().withHere(new Conversations.Here(file, history.leaf())));
     }
 
+    /// The chat shows the conversation in `file` as it stood when the genie began to answer
+    /// `question`, which it is still answering: asked before the app last closed, and left running.
+    /// What the genie has done since comes as its run is heard.
+    ///
+    /// @param file    relative to the genie's home, or empty for a new conversation
+    /// @param history what is on disk of it, up to the question
+    public Genie answering(String file, PiEvent.History history, String question) {
+        Genie shown = shows(file, history);
+        return shown.withTranscript(shown.transcript().you(question.strip()))
+                .withPhase(Phase.WORKING).withActivity("thinking");
+    }
+
     /// The run for the chat ended in the conversation in `file`, standing at `history`'s end.
     /// The chat learns pi's ids for what was said there, unless it shows another conversation;
     /// then the one put aside is let go, since it is on disk now.
