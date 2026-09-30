@@ -15,16 +15,19 @@ through `dev.lamp`. `TheShapeOfTheCodeSpec` fails if it ever imports the engine,
 ```
 
 Out of the box, a genie uses Eden AI's EU endpoint with the key in `EDENAI_API_KEY`. The settings
-page takes another service and a key of the user's own instead, or a model server on this
-computer: Ollama, LM Studio or llama.cpp's server, which needs no key. Look up asks such a server
-which models it has.
+page takes a key of the user's own instead, or another place for the model: a model server
+elsewhere, at an `https://` address with a key if it asks for one, such as Ollama behind a proxy;
+or a model server on this computer, Ollama, LM Studio or llama.cpp's server, which needs no key.
+Wherever it is, the Model field offers the models the service lists, from `Lamp.models`: asked
+when the settings open, when another place is chosen, and on Look up. For Eden AI these are the
+models served in the EU.
 
 ## Where things are
 
 | What | Where | Kept by |
 |---|---|---|
 | the list of genies: each one's id and name | `~/.local/share/genies/genies.json` | Genies |
-| the model settings: which place the model runs, the hosted service with its key source, model and an entered key, and the model server's address and model | `~/.local/share/genies/settings.json`, readable by the user only | Genies |
+| the model settings: which place the model runs; Eden AI's key source, entered key and model; the server elsewhere's address, key and model; the model server on this computer's address and model | `~/.local/share/genies/settings.json`, readable by the user only | Genies |
 | each genie's lamp: its home, its settings, its state | `~/.local/share/genies/lamps/<genie id>/` | oillamp |
 | each genie's conversations, one file each, with every branch | in its home, `.pi/agent/sessions/<folder>/*.jsonl`, inside its lamp | pi, run by the lamp's session |
 | the genie's instructions, and the model pi uses | in its home, `.pi/agent/APPEND_SYSTEM.md`, and `defaultProvider` and `defaultModel` in `.pi/agent/settings.json` | Genies writes them at every wake |
@@ -69,9 +72,9 @@ sent. Its first events can arrive before `send` returns; `GenieRunner` recognise
 message's text.
 
 The model requests themselves leave the sandbox through oillamp's model relay, which adds the key
-on the host. Inside the sandbox there is only a placeholder. For a model server on this computer,
-the lamp is given its address with the path of its API, such as `http://127.0.0.1:11434/v1`, and a
-stand-in key the server ignores; the relay puts the server's path in place of the sandbox's `/v3`,
+on the host. Inside the sandbox there is only a placeholder. For a model server, elsewhere or on
+this computer, the lamp is given its address with the path of its API, such as
+`http://127.0.0.1:11434/v1`, and its key, or a stand-in when it asks for none; the relay puts the server's path in place of the sandbox's `/v3`,
 and pi is offered every model the server lists, where for Eden AI it keeps only those served in
 the EU.
 
@@ -226,8 +229,7 @@ through one place, one at a time.
 | `BranchingAConversationSpec` | how pi's entries become the tree of conversations and branches |
 | `ReadingAGeniesMarkdownSpec` | Markdown as models write it, and the fade of a streaming answer |
 | `ZoomingIntoAGeniesDesktopSpec` | the desktop's zoom steps |
-| `KeepingManyGeniesSpec` | the list of genies, the settings for both places, a narrow window |
-| `AskingAModelServerForItsModelsSpec` | Look up, against a stand-in server answering as Ollama does |
+| `KeepingManyGeniesSpec` | the list of genies, the settings for the three places and their model lists, a narrow window |
 | `KeepingGeniesBetweenRunsSpec` | the shelf |
 | `WatchingAGeniesDesktopSpec` | the VNC client, against a stand-in desktop playing wayvnc's part byte by byte |
 | `KeepingAGenieAliveSpec` | a genie's life through the Lamp API, with oillamp's engine in the test's JVM on a simulated machine and a stand-in pi that writes conversations as pi does |
@@ -239,8 +241,8 @@ through one place, one at a time.
 ## What it does not do yet
 
 - Only pi is used as the harness; opencode would need its own protocol (ACP).
-- For a hosted service, the model list in the settings is a short list of EU models plus free
-  text; only a model server on this computer is asked for its list.
+- A model server elsewhere must be reached over `https://`; plain `http://` on the local network
+  is refused, because the key would cross it readable.
 - A genie's token count starts from zero each time Genies starts.
 - Images the user gives a genie arrive as files in `~/inbox`, not as images in the prompt.
 - A question is changed in a dialog, not in place in the chat.
