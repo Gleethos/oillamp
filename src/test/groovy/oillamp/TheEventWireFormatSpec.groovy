@@ -62,7 +62,7 @@ class TheEventWireFormatSpec extends Specification {
                         Tuple.of(dev.lamp.Lamp.Conversation.ToolCall, new dev.lamp.Lamp.Conversation.ToolCall('c1', 'bash', 'ls')),
                         Optional.of('bash'), true)))
 
-    static final LampEvent.Run RUN = new LampEvent.Run('run-12', Optional.of('job-3'), 'Check the build')
+    static final LampEvent.Run RUN = new LampEvent.Run('run-12', Optional.of('job-3'), 'Check the build', Optional.empty())
 
     static final List<LampEvent> EXAMPLES = [
             new LampEvent.PhaseStarted(LampEvent.Phase.SESSION),
@@ -93,11 +93,11 @@ class TheEventWireFormatSpec extends Specification {
             new LampEvent.JobAdded(JOB),
             new LampEvent.JobRemoved(JOB, 'it expired'),
             new LampEvent.ScheduleChanged('the schedule is paused'),
-            new LampEvent.RunQueued(new LampEvent.Run('run-13', Optional.empty(), 'what now?'), 0),
+            new LampEvent.RunQueued(new LampEvent.Run('run-13', Optional.empty(), 'what now?', Optional.of('01a0ec69-de1c')), 0),
             new LampEvent.RunStarted(RUN),
             new LampEvent.RunFinished(RUN, LampEvent.RunOutcome.FINISHED, 'All green.\n\nNothing to do.',
-                    Optional.of(SNAPSHOT), Duration.ofSeconds(95)),
-            new LampEvent.RunFinished(RUN, LampEvent.RunOutcome.TIMED_OUT, '', Optional.empty(), Duration.ofMinutes(30)),
+                    Optional.of(SNAPSHOT), Duration.ofSeconds(95), Optional.of('01a0ec69-de1c')),
+            new LampEvent.RunFinished(RUN, LampEvent.RunOutcome.TIMED_OUT, '', Optional.empty(), Duration.ofMinutes(30), Optional.empty()),
             new LampEvent.Conversations(Tuple.of(dev.lamp.Lamp.Conversation, CONVERSATION)),
             new LampEvent.ConversationShown(CONVERSATION),
             new LampEvent.Warning(PROBLEM.withFix(Problem.Fix.of('another'))),

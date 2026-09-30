@@ -60,7 +60,10 @@ final class Runs {
     private volatile Optional<Thread> worker = Optional.empty();
 
     /// A run waiting its turn, and whoever waits for its end.
-    private record Pending(LampEvent.Run run, Optional<ScheduledJob> job, CompletableFuture<LampEvent.RunFinished> done) {}
+    ///
+    /// @param where where the question goes, or empty for a new conversation
+    private record Pending(LampEvent.Run run, Optional<ScheduledJob> job, Optional<Harness.Target> where,
+                           CompletableFuture<LampEvent.RunFinished> done) {}
 
     Runs(Machine machine, Context context, LampLayout layout, LampConfig.Schedule config, SessionId session) {
         this.machine = machine;
@@ -79,10 +82,18 @@ final class Runs {
         if (config.enabled()) Thread.ofVirtual().name("oillamp-schedule").start(this::watchTheSchedule);
     }
 
+    /// Wakes the agent with `prompt` as soon as it is free, in a new conversation.
+    CompletableFuture<LampEvent.RunFinished> ask(String prompt) {
+        return ask(prompt, Optional.empty(), Optional.empty());
+    }
+
     /// Wakes the agent with `prompt` as soon as it is free.
     ///
+    /// @param conversation the conversation it continues, or empty for a new one
+    /// @param where        where in that conversation the question goes
     /// @return the run's end, once it has ended
-    CompletableFuture<LampEvent.RunFinished> ask(String prompt) {
+    CompletableFuture<LampEvent.RunFinished> ask(String prompt, Optional<String> conversation,
+                                                 Optional<Harness.Target> where) {
         CompletableFuture<LampEvent.RunFinished> done = new CompletableFuture<>();
         if (stopping) {
             done.completeExceptionally(new IllegalStateException("the session is ending"));
@@ -94,7 +105,8 @@ final class Runs {
             done.completeExceptionally(new IllegalStateException(numbered.problems().first().whatHappened()));
             return done;
         }
-        enqueue(new Pending(new LampEvent.Run(number.run(), Optional.empty(), prompt.strip()), Optional.empty(), done));
+        enqueue(new Pending(new LampEvent.Run(number.run(), Optional.empty(), prompt.strip(), conversation),
+                Optional.empty(), where, done));
         return done;
     }
 
@@ -126,7 +138,8 @@ final class Runs {
         });
         for (Pending left; (left = queue.poll()) != null; )
             left.done().complete(new LampEvent.RunFinished(left.run(), RunOutcome.INTERRUPTED,
-                    "the session ended before the agent got to it", Optional.empty(), Duration.ZERO));
+                    "the session ended before the agent got to it", Optional.empty(), Duration.ZERO,
+                    left.run().conversation()));
         harness.close();
     }
 
@@ -168,8 +181,8 @@ final class Runs {
             }
             Result<Schedule.Numbered> numbered = book.update(current -> Result.ok(current.numberRun()), Schedule.Numbered::schedule);
             if (numbered instanceof Result.Ok<Schedule.Numbered>(Schedule.Numbered number, var _))
-                enqueue(new Pending(new LampEvent.Run(number.run(), Optional.of(due.id()), due.prompt()),
-                        Optional.of(due), new CompletableFuture<>()));
+                enqueue(new Pending(new LampEvent.Run(number.run(), Optional.of(due.id()), due.prompt(), Optional.empty()),
+                        Optional.of(due), Optional.empty(), new CompletableFuture<>()));
         }
     }
 
@@ -242,9 +255,13 @@ final class Runs {
             context.report(before.problems().map(Problems::asWarning));
         }
 
-        String prompt = config.enabled() ? wakePrompt(pending, history, started, zone) : run.prompt();
-        String name = run.id() + " (" + run.job().orElse("asked") + ")";
-        Harness.Answer answer = harness.run(name, prompt, config.maxRun());
+        // A job wakes an agent that knows nothing of why, so its prompt carries the agent's notes
+        // and recent runs. What a person asks goes as they wrote it: it is what a chat shows as
+        // their message, and AGENTS.md already tells the agent to read its notes.
+        String prompt = pending.job().isPresent() ? wakePrompt(pending, history, started, zone) : run.prompt();
+        // A job's conversation is named after its run; a question someone asked is known by itself.
+        Optional<String> name = run.job().map(job -> run.id() + " (" + job + ")");
+        Harness.Answer answer = harness.run(name, prompt, config.maxRun(), pending.where());
         if (answer.outcome() == RunOutcome.FAILED && !answer.text().isBlank() && answer.text().startsWith("pi "))
             context.emit(new LampEvent.Warning(Problems.runFailed(run.id(), answer.text())));
         Instant ended = machine.now();
@@ -269,7 +286,7 @@ final class Runs {
             context.report(saved.problems().map(Problems::asWarning));
         }
         LampEvent.RunFinished finished = new LampEvent.RunFinished(run, answer.outcome(), answer.text().strip(),
-                snapshot, Duration.between(started, ended));
+                snapshot, Duration.between(started, ended), answer.conversation().or(run::conversation));
         context.emit(finished);
         return finished;
     }

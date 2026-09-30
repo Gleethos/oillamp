@@ -244,6 +244,10 @@ final class LampPlanner {
 
         steps = steps.add(new Step.WriteFile(layout.gitConfig(), gitConfig,
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
+        // How the session moves within a conversation, for a question asked after an earlier
+        // entry. Always there, since any lamp can be asked.
+        steps = steps.add(new Step.WriteFile(layout.conversationTools(), AgentGuide.conversationTools(),
+                PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
         // Rewritten every session, like the guide, so that it always matches this oillamp. The
         // agent could change it, but it only asks the host, which decides.
         steps = steps.add(scheduleTools.<Step>map(tools -> new Step.WriteFile(layout.scheduleTools(), tools,

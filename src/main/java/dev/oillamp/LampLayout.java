@@ -124,6 +124,10 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path agentsMd()   { return agentDir().resolve("AGENTS.md"); }
     /// The pi extension that gives the agent its scheduling tools. pi loads every extension in
     /// this directory. Written while `schedule.enabled` is on, removed while it is off.
+    public Path conversationTools() {
+        return agentDir().resolve(".pi").resolve("agent").resolve("extensions").resolve("oillamp-conversations.js");
+    }
+    /// The pi extension that gives the agent its scheduling tools. See [#conversationTools()].
     public Path scheduleTools() {
         return agentDir().resolve(".pi").resolve("agent").resolve("extensions").resolve("oillamp-schedule.js");
     }

@@ -694,7 +694,9 @@ final class Commands {
     ///
     /// The session does the work, because it is the one that holds the agent: this sends the
     /// prompt over the control socket and waits. When the agent is busy, the prompt waits its turn.
-    public ExitStatus ask(Path lampPath, String prompt) {
+    ///
+    /// @param place where in the agent's conversations the question goes
+    public ExitStatus ask(Path lampPath, String prompt, AskPlace place) {
         if (prompt.isBlank()) {
             Tuple<Problem> refused = Tuple.of(Problem.class, Problems.usage(
                     "`oillamp ask` needs something to ask the agent", Invocation.usageOf("ask")));
@@ -707,9 +709,14 @@ final class Commands {
             return exitStatusFor(failure.problems());
         }
         LampLayout layout = ((Result.Ok<LampLayout>) found).value();
+        Result<Control.Request> request = place.request(prompt, layout.root());
+        if (request instanceof Result.Err<Control.Request> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
         context.info("run", "asking the agent; its answer comes once it is done, which can take a while");
         Result<Control.Reply> reply = Control.ask(layout.controlSocket(), layout.root(),
-                Control.Request.of("ask").with("prompt", prompt), "ask", ASK_PATIENCE);
+                ((Result.Ok<Control.Request>) request).value(), "ask", ASK_PATIENCE);
         if (reply instanceof Result.Err<Control.Reply> failure) {
             context.report(failure.problems());
             return exitStatusFor(failure.problems());
@@ -722,10 +729,44 @@ final class Commands {
                 Tuple<LampEvent.Snapshot> all, var _))
             snapshot = all.stream().filter(s -> s.id().equals(saved.get())).findFirst();
         context.emit(new LampEvent.RunFinished(
-                new LampEvent.Run(answer.values().get("run").orElse("run"), Optional.empty(), prompt),
+                new LampEvent.Run(answer.values().get("run").orElse("run"), Optional.empty(), prompt, place.conversation()),
                 outcome, answer.values().get("answer").orElse(""), snapshot,
-                java.time.Duration.ofSeconds(Long.parseLong(answer.values().get("seconds").orElse("0")))));
+                java.time.Duration.ofSeconds(Long.parseLong(answer.values().get("seconds").orElse("0"))),
+                answer.values().get("conversation")));
         return outcome == LampEvent.RunOutcome.FINISHED ? ExitStatus.SUCCESS : ExitStatus.ERROR;
+    }
+
+    /// Where `oillamp ask` puts its question: a new conversation, unless one is given.
+    ///
+    /// @param conversation the conversation to continue, by its id or the start of it
+    /// @param after        an entry in it to continue after, other than one of the user's questions
+    /// @param insteadOf    one of the user's questions in it, to ask this one instead of
+    record AskPlace(Optional<String> conversation, Optional<String> after, Optional<String> insteadOf) {
+
+        static AskPlace fresh() { return new AskPlace(Optional.empty(), Optional.empty(), Optional.empty()); }
+
+        /// The request to the session, with the conversation found and the entry checked, so that
+        /// a mistake is reported here, before anything is saved or started.
+        Result<Control.Request> request(String prompt, Path lamp) {
+            Control.Request request = Control.Request.of("ask").with("prompt", prompt);
+            if (conversation.isEmpty()) return Result.ok(request);
+            Optional<dev.lamp.Lamp.Conversation> found = dev.lamp.Lamp.conversation(lamp, conversation.get());
+            if (found.isEmpty()) return Result.err(Problems.noSuchConversation(conversation.get(), lamp));
+            request = request.with("conversation", found.get().id()).with("file", found.get().file());
+            Optional<String> entry = after.or(() -> insteadOf);
+            if (entry.isEmpty()) return Result.ok(request);
+            Optional<dev.lamp.Lamp.Conversation.Entry> at = found.get().entry(entry.get());
+            boolean question = at.filter(e -> e.kind() == dev.lamp.Lamp.Conversation.Kind.QUESTION).isPresent();
+            if (at.isEmpty())
+                return Result.err(Problems.noSuchConversation(entry.get(), lamp));
+            if (after.isPresent() && question)
+                return Result.err(Problems.usage("--after " + entry.get() + " names a question; to ask something "
+                        + "instead of it, give --instead-of " + entry.get(), Invocation.usageOf("ask")));
+            if (insteadOf.isPresent() && !question)
+                return Result.err(Problems.usage("--instead-of " + entry.get() + " does not name a question; to "
+                        + "continue after it, give --after " + entry.get(), Invocation.usageOf("ask")));
+            return Result.ok(request.with("move_to", entry.get()));
+        }
     }
 
     /// How long `oillamp ask` waits for its answer. The agent may be busy with other runs first,

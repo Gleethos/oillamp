@@ -197,8 +197,9 @@ public sealed interface LampEvent {
     ///
     /// @param id  the run's name, such as `run-12`. A run's snapshot carries it, so
     ///            `oillamp history` shows which snapshot a run made
-    /// @param job the job that woke the agent, or empty when someone asked
-    record Run(String id, java.util.Optional<String> job, String prompt) {}
+    /// @param job          the job that woke the agent, or empty when someone asked
+    /// @param conversation the conversation it continues, or empty for a new one
+    record Run(String id, java.util.Optional<String> job, String prompt, java.util.Optional<String> conversation) {}
 
     /// A run has to wait, because the agent is busy with another one.
     ///
@@ -212,8 +213,11 @@ public sealed interface LampEvent {
     /// @param answer   the agent's last message, which usually says what it did
     /// @param snapshot the snapshot of the lamp made as it ended, or empty when that save failed
     /// @param took     how long the agent worked
+    /// @param conversation the conversation it happened in, which for a new one is known only
+    ///                 now; empty when pi did not get as far as opening one
     record RunFinished(Run run, RunOutcome outcome, String answer,
-                       java.util.Optional<Snapshot> snapshot, Duration took) implements LampEvent {}
+                       java.util.Optional<Snapshot> snapshot, Duration took,
+                       java.util.Optional<String> conversation) implements LampEvent {}
 
     /// How a run ended.
     enum RunOutcome {

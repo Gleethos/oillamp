@@ -44,6 +44,10 @@ final class Invocation {
         Optional<String> cron = Optional.empty();
         Optional<String> at = Optional.empty();
         Optional<String> expires = Optional.empty();
+        // `ask` only.
+        Optional<String> in = Optional.empty();
+        Optional<String> after = Optional.empty();
+        Optional<String> insteadOf = Optional.empty();
         // `at` only: where model requests go, and which variable holds the key.
         Optional<String> modelService = Optional.empty();
         Optional<String> modelKeyEnv = Optional.empty();
@@ -77,6 +81,9 @@ final class Invocation {
                     case "--cron"          -> cron = Optional.of(argument);
                     case "--at"            -> at = Optional.of(argument);
                     case "--expires"       -> expires = Optional.of(argument);
+                    case "--in"            -> in = Optional.of(argument);
+                    case "--after"         -> after = Optional.of(argument);
+                    case "--instead-of"    -> insteadOf = Optional.of(argument);
                     default                -> modelKeyEnv = Optional.of(argument);
                 }
                 pending = Optional.empty();
@@ -92,6 +99,9 @@ final class Invocation {
                     case "--cron"          -> cron = Optional.of(value);
                     case "--at"            -> at = Optional.of(value);
                     case "--expires"       -> expires = Optional.of(value);
+                    case "--in"            -> in = Optional.of(value);
+                    case "--after"         -> after = Optional.of(value);
+                    case "--instead-of"    -> insteadOf = Optional.of(value);
                     default                -> modelKeyEnv = Optional.of(value);
                 }
                 continue;
@@ -112,7 +122,7 @@ final class Invocation {
                 case "--yes", "-y"     -> confirmed = true;
                 case "--prune"         -> prune = true;
                 case "--open", "--model-service", "--model-key-env",
-                     "--cron", "--at", "--expires" -> pending = Optional.of(argument);
+                     "--cron", "--at", "--expires", "--in", "--after", "--instead-of" -> pending = Optional.of(argument);
                 case "--message", "-m" -> pending = Optional.of("--message");
                 default -> {
                     if (argument.startsWith("-")) {
@@ -132,6 +142,14 @@ final class Invocation {
             sink.accept(new LampEvent.Failure(Problems.usage(
                     "--message needs the text to save with, for example --message \"before the upgrade\"",
                     usageOf("save"))));
+            return ExitStatus.USAGE;
+        }
+        if (pending.isPresent() && Set.of("--in", "--after", "--instead-of").contains(pending.get())) {
+            console.banner(version, "");
+            sink.accept(new LampEvent.Failure(Problems.usage(pending.get() + " needs "
+                    + (pending.get().equals("--in") ? "a conversation, as `oillamp conversations` lists them"
+                                                    : "an entry, as `oillamp conversations <dir> <conversation>` shows them"),
+                    usageOf("ask"))));
             return ExitStatus.USAGE;
         }
         if (pending.isPresent() && Set.of("--cron", "--at", "--expires").contains(pending.get())) {
@@ -312,7 +330,13 @@ final class Invocation {
                 if (rest.size() < 2)
                     yield misused(console, sink, version, "ask",
                             "`oillamp ask` needs something to ask the agent, in quotes");
-                yield commands.ask(Path.of(rest.get(0)), rest.get(1));
+                if ((after.isPresent() || insteadOf.isPresent()) && in.isEmpty())
+                    yield misused(console, sink, version, "ask",
+                            "--after and --instead-of name an entry of the conversation that --in names");
+                if (after.isPresent() && insteadOf.isPresent())
+                    yield misused(console, sink, version, "ask",
+                            "a question goes either after an entry or instead of a question, not both");
+                yield commands.ask(Path.of(rest.get(0)), rest.get(1), new Commands.AskPlace(in, after, insteadOf));
             }
             case "restore" -> {
                 if (rest.size() < 2)
@@ -370,7 +394,7 @@ final class Invocation {
             java.util.Map.entry("save",       java.util.Set.of("--message", "--embedded")),
             java.util.Map.entry("history",    java.util.Set.of("--embedded")),
             java.util.Map.entry("schedule",   java.util.Set.of("--cron", "--at", "--expires", "--embedded")),
-            java.util.Map.entry("ask",        java.util.Set.of("--embedded")),
+            java.util.Map.entry("ask",        java.util.Set.of("--in", "--after", "--instead-of", "--embedded")),
             java.util.Map.entry("conversations", java.util.Set.of("--embedded")),
             java.util.Map.entry("restore",    java.util.Set.of("--embedded")),
             java.util.Map.entry("shell",      java.util.Set.of()),
@@ -385,7 +409,8 @@ final class Invocation {
 
     /// The options that take a value.
     private static final java.util.Set<String> VALUE_OPTIONS = java.util.Set.of(
-            "--open", "--model-service", "--model-key-env", "--message", "--cron", "--at", "--expires");
+            "--open", "--model-service", "--model-key-env", "--message", "--cron", "--at", "--expires",
+            "--in", "--after", "--instead-of");
 
     /// The commands that take a lamp directory and cannot do without it.
     private static final java.util.Set<String> NEEDS_A_LAMP = java.util.Set.of(
@@ -498,9 +523,14 @@ final class Invocation {
                       add (--cron "<expression>" | --at <time>) [--expires <time>] "<prompt>"
                                       --cron "0 9 * * 1-5" repeats, as cron would; --at runs once,
                                       at "2026-10-01 09:00" on this machine's clock or "in 2h"
-              ask <dir> "<prompt>"
+              ask <dir> [--in <conversation> [--after <entry> | --instead-of <entry>]] "<prompt>"
                     Wake the agent in a running session with a prompt, and print its answer.
                     If it is busy, the prompt waits its turn. The lamp is saved before and after.
+                      --in            continue that conversation where it stands, instead of
+                                      starting a new one; `oillamp conversations` lists them
+                      --after         continue after that entry, such as an earlier answer
+                      --instead-of    ask this instead of that question, leaving the old one
+                                      and its answers as a branch of their own
               conversations <dir> [<conversation>]
                     List the agent's conversations, or show one, with the ids of its entries.
               recordings <dir> [--open <session>] [--prune]

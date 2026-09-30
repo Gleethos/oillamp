@@ -448,44 +448,149 @@ final class SimulatedMachine implements Machine {
         boolean pi = command.argv().any(argument -> argument.contains("pi --mode rpc"));
         if (!pi || agent.isEmpty())
             return new SimulatedPi.Gone(pi ? "bash: line 1: pi: command not found" : "not simulated: " + command.commandLine());
-        return new SimulatedPi(agent.get());
+        return new SimulatedPi(agent.get(), agentHome(command));
     }
 
-    /// pi in RPC mode, as far as oillamp uses it: it starts a new conversation, takes a prompt,
-    /// hands it to the scenario's [SimulatedAgent], and reports the answer the way pi does.
+    /// The agent's home of the lamp an ssh command reaches, found from the `ssh_config` it names,
+    /// which is in the lamp's state directory.
+    private static Optional<Path> agentHome(Command command) {
+        java.util.List<String> argv = command.argv().toList();
+        int config = argv.indexOf("-F");
+        if (config < 0 || config + 1 >= argv.size()) return Optional.empty();
+        Path state = Path.of(argv.get(config + 1)).getParent();
+        Path lamp = state == null ? null : state.getParent();
+        if (lamp == null) return Optional.empty();
+        try (var entries = java.nio.file.Files.list(lamp)) {
+            return entries.filter(entry -> entry.getFileName().toString().startsWith(LampLayout.AGENT_DIR_PREFIX)).findFirst();
+        } catch (java.io.IOException unreadable) {
+            return Optional.empty();
+        }
+    }
+
+    /// pi in RPC mode, as far as oillamp uses it. It keeps its conversations as pi does, in session
+    /// files in the agent's home, starts and opens them, moves within them with oillamp's
+    /// extension command, hands each prompt to the scenario's [SimulatedAgent], and reports the
+    /// answer the way pi does.
     private static final class SimulatedPi implements Conversation {
 
         private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+        private static final String SESSIONS = ".pi/agent/sessions/--home-agent-workspace--";
 
         private final SimulatedAgent agent;
+        private final Optional<Path> home;
         private final java.util.concurrent.BlockingQueue<Optional<String>> output = new java.util.concurrent.LinkedBlockingQueue<>();
         private volatile Optional<Thread> working = Optional.empty();
         private volatile boolean closed;
+        /// The conversation open now: its file, its id, and the entry it stands at.
+        private Optional<Path> file = Optional.empty();
+        private String sessionId = "";
+        private Optional<String> leaf = Optional.empty();
+        private int entries;
 
-        SimulatedPi(SimulatedAgent agent) { this.agent = agent; }
+        SimulatedPi(SimulatedAgent agent, Optional<Path> home) {
+            this.agent = agent;
+            this.home = home;
+        }
 
-        @Override public void send(String line) throws java.io.IOException {
+        @Override public synchronized void send(String line) throws java.io.IOException {
             if (closed) throw new java.io.IOException("pi has ended");
             com.fasterxml.jackson.databind.JsonNode command = JSON.readTree(line);
             String type = command.path("type").asText();
             String id = command.path("id").asText("");
             switch (type) {
-                case "new_session" -> say(response(id, type, true).set("data", JSON.createObjectNode().put("cancelled", false)));
+                case "new_session" -> {
+                    start();
+                    say(response(id, type, true).set("data", JSON.createObjectNode().put("cancelled", false)));
+                }
+                case "switch_session" -> {
+                    String path = command.path("sessionPath").asText();
+                    Optional<Path> opened = home.filter(h -> path.startsWith("/home/agent/"))
+                            .map(h -> h.resolve(path.substring("/home/agent/".length())))
+                            .filter(java.nio.file.Files::isRegularFile);
+                    if (opened.isEmpty()) {
+                        say(response(id, type, false).put("error", "no such session: " + path));
+                        return;
+                    }
+                    open(opened.get());
+                    say(response(id, type, true).set("data", JSON.createObjectNode().put("cancelled", false)));
+                }
+                case "set_session_name" -> {
+                    write(JSON.createObjectNode().put("type", "session_info").put("name", command.path("name").asText()));
+                    say(response(id, type, true));
+                }
+                case "get_state" -> say(response(id, type, true).set("data",
+                        JSON.createObjectNode().put("sessionId", sessionId).put("sessionFile", file.map(Path::toString).orElse(""))));
+                case "get_commands" -> {
+                    com.fasterxml.jackson.databind.node.ObjectNode data = JSON.createObjectNode();
+                    data.putArray("commands").addObject().put("name", "oillamp-goto").put("source", "extension");
+                    say(response(id, type, true).set("data", data));
+                }
                 case "abort" -> {
                     say(response(id, type, true));
                     working.ifPresent(Thread::interrupt);
                 }
                 case "prompt" -> {
+                    String prompt = command.path("message").asText();
+                    if (prompt.startsWith("/oillamp-goto ")) {
+                        say(response(id, type, true));
+                        moveTo(prompt.substring("/oillamp-goto ".length()).strip());
+                        return;
+                    }
                     if (working.filter(Thread::isAlive).isPresent()) {
                         say(response(id, type, false).put("error", "the agent is busy"));
                         return;
                     }
+                    if (file.isEmpty()) start();
                     say(response(id, type, true));
-                    String prompt = command.path("message").asText();
+                    write(message("user", prompt, "stop", ""));
                     working = Optional.of(Thread.ofVirtual().name("simulated-pi").start(() -> work(prompt)));
                 }
                 default -> say(response(id, type, false).put("error", "not simulated: " + type));
             }
+        }
+
+        /// A new conversation, in a file of its own, as pi names them.
+        private void start() {
+            sessionId = java.util.UUID.randomUUID().toString();
+            leaf = Optional.empty();
+            file = home.map(h -> h.resolve(SESSIONS).resolve(Instant.now().toString().replace(':', '-') + "_" + sessionId + ".jsonl"));
+            append(JSON.createObjectNode().put("type", "session").put("version", 3).put("id", sessionId)
+                    .put("timestamp", Instant.now().toString()).put("cwd", "/home/agent/workspace"));
+        }
+
+        /// Opens a conversation, which stands at its last entry.
+        private void open(Path opened) throws java.io.IOException {
+            file = Optional.of(opened);
+            leaf = Optional.empty();
+            for (String line : java.nio.file.Files.readAllLines(opened)) {
+                com.fasterxml.jackson.databind.JsonNode record = JSON.readTree(line);
+                if (record.path("type").asText().equals("session")) sessionId = record.path("id").asText();
+                else if (record.path("id").isTextual()) leaf = Optional.of(record.path("id").asText());
+            }
+        }
+
+        /// What oillamp's extension does: at a question, stand just before it; anywhere else, stand there.
+        private void moveTo(String entry) throws java.io.IOException {
+            Optional<com.fasterxml.jackson.databind.JsonNode> target = Optional.empty();
+            if (file.isPresent())
+                for (String line : java.nio.file.Files.readAllLines(file.get())) {
+                    com.fasterxml.jackson.databind.JsonNode record = JSON.readTree(line);
+                    if (record.path("id").asText().equals(entry)) target = Optional.of(record);
+                }
+            if (target.isEmpty()) {
+                notify("oillamp: could not move: Entry " + entry + " not found");
+                return;
+            }
+            com.fasterxml.jackson.databind.JsonNode found = target.get();
+            boolean question = found.path("message").path("role").asText().equals("user");
+            leaf = question ? (found.path("parentId").isTextual() ? Optional.of(found.path("parentId").asText()) : Optional.empty())
+                            : Optional.of(entry);
+            notify("oillamp: moved");
+        }
+
+        private void notify(String message) {
+            say(JSON.createObjectNode().put("type", "extension_ui_request").put("id", java.util.UUID.randomUUID().toString())
+                    .put("method", "notify").put("message", message));
         }
 
         private void work(String prompt) {
@@ -502,15 +607,52 @@ final class SimulatedMachine implements Machine {
                 stop = "error";
                 error = String.valueOf(failed.getMessage());
             }
-            com.fasterxml.jackson.databind.node.ObjectNode message = JSON.createObjectNode()
-                    .put("role", "assistant").put("stopReason", stop);
-            message.putArray("content").addObject().put("type", "text").put("text", text);
-            if (!error.isEmpty()) message.put("errorMessage", error);
+            com.fasterxml.jackson.databind.node.ObjectNode message = message("assistant", text, stop, error);
+            synchronized (this) {
+                write(message);
+            }
             com.fasterxml.jackson.databind.node.ObjectNode end = JSON.createObjectNode().put("type", "message_end");
-            end.set("message", message);
+            end.set("message", message.path("message"));
             say(end);
             say(JSON.createObjectNode().put("type", "agent_end"));
             say(JSON.createObjectNode().put("type", "agent_settled"));
+        }
+
+        private static com.fasterxml.jackson.databind.node.ObjectNode message(String role, String text, String stop, String error) {
+            com.fasterxml.jackson.databind.node.ObjectNode message = JSON.createObjectNode().put("role", role);
+            if (role.equals("user")) {
+                message.put("content", text);
+            } else {
+                message.put("stopReason", stop);
+                message.putArray("content").addObject().put("type", "text").put("text", text);
+                if (!error.isEmpty()) message.put("errorMessage", error);
+            }
+            com.fasterxml.jackson.databind.node.ObjectNode entry = JSON.createObjectNode().put("type", "message");
+            entry.set("message", message);
+            return entry;
+        }
+
+        /// Adds an entry to the open conversation, after the one it stands at, and stands at it.
+        private void write(com.fasterxml.jackson.databind.node.ObjectNode entry) {
+            entries++;
+            String id = String.format("%08x", 0x1000_0000 + entries);
+            entry.put("id", id);
+            if (leaf.isPresent()) entry.put("parentId", leaf.get()); else entry.putNull("parentId");
+            entry.put("timestamp", Instant.now().toString());
+            leaf = Optional.of(id);
+            append(entry);
+        }
+
+        private void append(com.fasterxml.jackson.databind.JsonNode record) {
+            file.ifPresent(path -> {
+                try {
+                    java.nio.file.Files.createDirectories(path.getParent());
+                    java.nio.file.Files.writeString(path, record + "\n", java.nio.file.StandardOpenOption.CREATE,
+                            java.nio.file.StandardOpenOption.APPEND);
+                } catch (java.io.IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            });
         }
 
         private static com.fasterxml.jackson.databind.node.ObjectNode response(String id, String command, boolean success) {

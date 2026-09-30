@@ -279,9 +279,15 @@ final class AgentGuide {
 
     /// The pi extension that gives the agent its scheduling tools. They send requests to the
     /// session over a socket; see `src/main/resources/agent/oillamp-schedule.js`.
-    static String scheduleTools() {
-        try (java.io.InputStream in = AgentGuide.class.getResourceAsStream("/agent/oillamp-schedule.js")) {
-            if (in == null) throw new IllegalStateException("the scheduling tools are missing from this build of oillamp");
+    static String scheduleTools() { return resource("oillamp-schedule.js"); }
+
+    /// The pi extension through which the session moves within a conversation, to ask a question
+    /// after an earlier entry. See `src/main/resources/agent/oillamp-conversations.js`.
+    static String conversationTools() { return resource("oillamp-conversations.js"); }
+
+    private static String resource(String name) {
+        try (java.io.InputStream in = AgentGuide.class.getResourceAsStream("/agent/" + name)) {
+            if (in == null) throw new IllegalStateException(name + " is missing from this build of oillamp");
             return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException(e);

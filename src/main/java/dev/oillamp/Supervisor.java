@@ -827,15 +827,24 @@ final class Supervisor {
             // Answered once the run has ended, which is what `oillamp ask` waits for.
             case "ask" -> {
                 if (!state.isLive()) yield Control.Reply.failed("this session is already ending");
+                Optional<Harness.Target> where;
                 try {
-                    LampEvent.RunFinished finished = runs.ask(request.arguments().get("prompt").orElse("")).get();
+                    where = request.arguments().get("file").map(file -> new Harness.Target(file,
+                            request.arguments().get("move_to").filter(entry -> !entry.isBlank())));
+                } catch (IllegalArgumentException wrong) {
+                    yield Control.Reply.failed(Problems.reason(wrong));
+                }
+                try {
+                    LampEvent.RunFinished finished = runs.ask(request.arguments().get("prompt").orElse(""),
+                            request.arguments().get("conversation"), where).get();
                     String answer = finished.answer();
                     Control.Reply reply = Control.Reply.ok()
                             .with("run", finished.run().id())
                             .with("outcome", finished.outcome().name())
                             .with("answer", answer.length() <= ANSWER_SENT ? answer : answer.substring(0, ANSWER_SENT) + "\n[…]")
                             .with("seconds", String.valueOf(finished.took().toSeconds()));
-                    yield finished.snapshot().map(snapshot -> reply.with("snapshot", snapshot.id())).orElse(reply);
+                    Control.Reply withConversation = finished.conversation().map(id -> reply.with("conversation", id)).orElse(reply);
+                    yield finished.snapshot().map(snapshot -> withConversation.with("snapshot", snapshot.id())).orElse(withConversation);
                 } catch (java.util.concurrent.ExecutionException failed) {
                     yield Control.Reply.failed(Problems.reason(failed.getCause() == null ? failed : failed.getCause()));
                 } catch (InterruptedException e) {

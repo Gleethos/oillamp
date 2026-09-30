@@ -255,6 +255,14 @@ public final class Lamp implements AutoCloseable {
         /// Deletes a conversation for good. See [Lamp#forget(Path, String)].
         public void forget(String conversation) throws IOException { Lamp.forget(directory, conversation); }
 
+        /// Asks the agent `question` in the session that is running this lamp, whoever started it,
+        /// and waits for the answer. See [Lamp#ask(Question)].
+        ///
+        /// @throws Failed when no session is running, or the question has no place to go
+        public LampEvent.RunFinished ask(Question question) throws IOException, InterruptedException, Failed {
+            return Lamp.ask(launcher, listeners, directory, question);
+        }
+
         /// Takes a job off the schedule, whoever added it.
         ///
         /// @param job such as `job-3`
@@ -359,6 +367,46 @@ public final class Lamp implements AutoCloseable {
     }
 
     // ─── conversations ─────────────────────────────────────────────────────────────────────
+
+    /// Something to ask the agent, and where in its conversations it goes.
+    ///
+    /// @param conversation the conversation it continues, by its id or a unique start of it; empty
+    ///                     for a new conversation
+    /// @param after        an entry of that conversation to continue after, such as an earlier
+    ///                     answer, which starts a branch there if the conversation went on since
+    /// @param insteadOf    a question of that conversation to ask this instead of. The old question
+    ///                     and what followed stay, as a branch of their own
+    public record Question(String prompt, Optional<String> conversation, Optional<String> after,
+                           Optional<String> insteadOf) {
+
+        public Question {
+            if (prompt.isBlank()) throw new IllegalArgumentException("a question needs something to ask");
+            if ((after.isPresent() || insteadOf.isPresent()) && conversation.isEmpty())
+                throw new IllegalArgumentException("an entry belongs to a conversation; name the conversation too");
+            if (after.isPresent() && insteadOf.isPresent())
+                throw new IllegalArgumentException("a question goes after an entry or instead of a question, not both");
+        }
+
+        /// In a new conversation.
+        public static Question fresh(String prompt) {
+            return new Question(prompt, Optional.empty(), Optional.empty(), Optional.empty());
+        }
+
+        /// In `conversation`, where it stands: after the entry written last.
+        public static Question in(String conversation, String prompt) {
+            return new Question(prompt, Optional.of(conversation), Optional.empty(), Optional.empty());
+        }
+
+        /// In `conversation`, after `entry`.
+        public static Question after(String conversation, String entry, String prompt) {
+            return new Question(prompt, Optional.of(conversation), Optional.of(entry), Optional.empty());
+        }
+
+        /// In `conversation`, instead of the question `entry`.
+        public static Question insteadOf(String conversation, String entry, String prompt) {
+            return new Question(prompt, Optional.of(conversation), Optional.empty(), Optional.of(entry));
+        }
+    }
 
     /// One conversation the agent had, as pi keeps it in the agent's home.
     ///
@@ -610,7 +658,27 @@ public final class Lamp implements AutoCloseable {
     /// @throws Failed      when the session is not running or is ending; the problem says why
     /// @throws IOException when the engine's process could not be started at all
     public LampEvent.RunFinished ask(String prompt) throws IOException, InterruptedException, Failed {
-        Ran ran = runToEnd(launcher, listeners, "ask", directory.toString(), "--", prompt);
+        return ask(Question.fresh(prompt));
+    }
+
+    /// Asks the agent `question`, where it says: in a new conversation, or in one of the agent's
+    /// conversations, where it stands, after one of its entries, or instead of one of its
+    /// questions. Otherwise as [#ask(String)].
+    ///
+    /// @throws Failed when the conversation or the entry is not there, or the session is not
+    ///                running; the problem says which
+    public LampEvent.RunFinished ask(Question question) throws IOException, InterruptedException, Failed {
+        return ask(launcher, listeners, directory, question);
+    }
+
+    private static LampEvent.RunFinished ask(Launcher launcher, List<Consumer<LampEvent>> listeners, Path directory,
+                                             Question question) throws IOException, InterruptedException, Failed {
+        List<String> command = new ArrayList<>(List.of("ask", directory.toString()));
+        question.conversation().ifPresent(id -> command.addAll(List.of("--in", id)));
+        question.after().ifPresent(id -> command.addAll(List.of("--after", id)));
+        question.insteadOf().ifPresent(id -> command.addAll(List.of("--instead-of", id)));
+        command.addAll(List.of("--", question.prompt()));
+        Ran ran = runToEnd(launcher, listeners, command.toArray(String[]::new));
         for (LampEvent event : ran.events())
             if (event instanceof LampEvent.RunFinished finished) return finished;
         ran.orThrow();

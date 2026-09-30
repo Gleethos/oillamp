@@ -195,7 +195,7 @@ class WakingTheAgentSpec extends Specification {
 
         then: 'the agent was woken with the job\'s prompt, as the job\'s first run'
             reported.find { it instanceof LampEvent.RunStarted }.run() == new LampEvent.Run('run-1', Optional.of('job-1'),
-                    'Write the weekly report into ~/workspace/report.md')
+                    'Write the weekly report into ~/workspace/report.md', Optional.empty())
             prompts.size() == 1
             prompts[0].contains('You were woken by job-1, a job the user added')
             prompts[0].contains('## The task\n\nWrite the weekly report')
@@ -220,39 +220,55 @@ class WakingTheAgentSpec extends Specification {
 
     def 'The next run is told what the last one did: its notes, the files it changed and its last words'() {
         reportInfo """
-            Every run starts a new conversation, so on its own the agent would remember nothing.
+            A job wakes the agent in a new conversation, so on its own it would remember nothing.
             Its prompt therefore carries what it needs: the notes it left itself in
             ~/workspace/NOTES.md, which files the recent runs changed, and what the last run said
             at its end. The notes are marked as the agent's own, not as the user's instructions.
         """
-        given:
+        given: 'two jobs, one after the other'
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
+            schedule(lamp, 'add', '--at', 'in 1m', 'Do the first task')
+            schedule(lamp, 'add', '--at', 'in 2m', 'Do the second task')
             anAgent { prompt ->
-                if (prompt.contains('first task')) {
+                if (prompt.contains('Do the first task')) {
                     Files.writeString(home(lamp).resolve('workspace/NOTES.md'), 'Next: add the chart.\n')
                     Files.writeString(home(lamp).resolve('workspace/data.csv'), 'a,b\n')
                     return 'Collected the data.'
                 }
                 'Added the chart.'
             }
+
+        when: 'a session runs once both are due'
+            sandbox.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
             startASession(lamp)
+            waitFor(LampEvent.RunFinished) { it.run().id() == 'run-2' }
+            stop(lamp)
 
-        when:
-            var first = sandbox.oillamp.run('ask', lamp.toString(), 'Do the first task')
-            var second = sandbox.oillamp.run('ask', lamp.toString(), 'Do the second task')
-
-        then: 'both were answered, and printed where they were asked'
-            first.succeeded() && second.succeeded()
-            first.console().contains('Collected the data.')
-            second.console().contains('Added the chart.')
-
-        and: 'the second run was given the notes, the changes and the last words of the first'
+        then: 'the second run was given the notes, the changes and the last words of the first'
+            prompts.size() == 2
+            prompts[1].contains('You were woken by job-2')
             prompts[1].contains('<notes>\nNext: add the chart.\n</notes>')
             prompts[1].contains('run-1')
             prompts[1].contains('~/workspace/data.csv (added)')
             prompts[1].contains('~/workspace/NOTES.md (added)')
             prompts[1].contains('<last-message>\nCollected the data.\n</last-message>')
-            prompts[1].contains('The user is asking you something directly')
+    }
+
+    def 'What a person asks goes to the agent exactly as they wrote it'() {
+        reportInfo """
+            A question someone asks is what a chat shows as their message, so it is never wrapped
+            in notes or recent runs. The agent's guide already tells it to read its notes.
+        """
+        given:
+            var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
+            anAgent { prompt -> 'Fine.' }
+            startASession(lamp)
+
+        when:
+            sandbox.oillamp.run('ask', lamp.toString(), 'How are you?')
+
+        then:
+            prompts == ['How are you?']
     }
 
     def 'Asking a busy agent waits its turn'() {
