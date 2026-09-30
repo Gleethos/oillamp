@@ -199,9 +199,9 @@ public final class GeniesView extends JPanel {
                                      Val<Boolean> present, Val<Tuple<Talk>> rows, Val<Boolean> idle) {
         Val<Boolean> open = fold.viewAs(Boolean.class, Conversations.Fold::shown);
         Val<Tuple<String>> here = rows.viewAs(Tuple.classTyped(String.class), Conversations::pathToHere);
-        // Where a drag of the grip began: the pointer's height on the screen, and the area's.
-        // The area's is what it shows, which for a short tree is less than the fold's height.
-        int[] dragFrom = new int[2];
+        // Where a drag of the grip began: the pointer's height on the screen, the area's, and
+        // the fold's. The area's is what it shows, which for a short tree is less than the fold's.
+        int[] dragFrom = new int[3];
         JScrollPane[] area = new JScrollPane[1];
         return
             box("fill, wrap 1, ins 0, gap 0, hidemode 3", "[grow]")
@@ -251,8 +251,10 @@ public final class GeniesView extends JPanel {
                 .onMousePress(it -> {
                     dragFrom[0] = it.mouseYOnScreen();
                     dragFrom[1] = area[0].getHeight();
+                    dragFrom[2] = fold.get().height();
                 })
-                .onMouseDrag(it -> fold.update(From.VIEW, f -> f.withHeight(dragFrom[1] + it.mouseYOnScreen() - dragFrom[0]))));
+                .onMouseDrag(it -> fold.update(From.VIEW, f -> f.withHeight(dragFrom[1] + it.mouseYOnScreen() - dragFrom[0])))
+                .onMouseRelease(it -> fold.update(From.VIEW, f -> f.released(dragFrom[2]))));
     }
 
     /// The grip under a tree: a thin line across, like a split pane's divider, with a short

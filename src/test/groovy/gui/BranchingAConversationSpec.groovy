@@ -163,8 +163,9 @@ class BranchingAConversationSpec extends Specification {
     def 'Each tree opens on its own, and keeps the height the user dragged it to'() {
         reportInfo """
             A tree opens from the line under the genie that says how many conversations it
-            holds. Its area is as tall as the user drags it, within limits, so that a tree is
-            never dragged out of sight or taller than any window.
+            holds. Its area is as tall as the user drags it, up to a limit no window exceeds,
+            and down to nothing. Let go there, and the tree closes, as a split pane collapses.
+            It opens again as tall as it was before that drag, not as an empty strip.
         """
         given:
             var fold = Conversations.Fold.CLOSED
@@ -173,13 +174,20 @@ class BranchingAConversationSpec extends Specification {
             !fold.shown()
             fold.toggled().shown()
             fold.withHeight(300).height() == 300
-            fold.withHeight(5).height() == Conversations.Fold.LOWEST
+            fold.withHeight(5).height() == 5
+            fold.withHeight(-40).height() == 0
             fold.withHeight(50_000).height() == Conversations.Fold.HIGHEST
 
+        and: 'let go of above nothing, it stays open; let go of at nothing, it closes and keeps its old height'
+            var open = fold.toggled().withHeight(240)
+            open.withHeight(30).released(240) == new Conversations.Fold(true, 30)
+            open.withHeight(0).released(240) == new Conversations.Fold(false, 240)
+            open.withHeight(0).released(240).toggled() == new Conversations.Fold(true, 240)
+
         and: 'reading the conversations again keeps both trees as they were'
-            var open = Conversations.NONE.withChatsFold(fold.toggled().withHeight(300))
-            open.withAll(Tuple.of(Conversation, conversation(question('q1', '', 'Hi')))).chatsFold() == new Conversations.Fold(true, 300)
-            open.jobsFold() == Conversations.Fold.CLOSED
+            var kept = Conversations.NONE.withChatsFold(fold.toggled().withHeight(300))
+            kept.withAll(Tuple.of(Conversation, conversation(question('q1', '', 'Hi')))).chatsFold() == new Conversations.Fold(true, 300)
+            kept.jobsFold() == Conversations.Fold.CLOSED
     }
 
     def 'A conversation is titled by its name, or by its first question on one short line'() {
