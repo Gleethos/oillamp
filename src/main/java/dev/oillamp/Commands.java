@@ -451,7 +451,7 @@ final class Commands {
         Control.Reply answer = ((Result.Ok<Control.Reply>) reply).value();
         StringBuilder out = new StringBuilder();
         for (String key : Tuple.of(String.class, "state", "detail", "lamp", "session", "container",
-                                            "desktop", "renderer", "uptime", "shells", "agent", "viewer"))
+                                            "desktop", "renderer", "uptime", "shells", "agent", "schedule", "viewer"))
             answer.values().get(key).ifPresent(value ->
                     out.append(pad(key, 12)).append(value).append('\n'));
         context.emit(new LampEvent.Answer(out.toString().stripTrailing()));
@@ -619,7 +619,7 @@ final class Commands {
             context.report(failure.problems());
             return exitStatusFor(failure.problems());
         }
-        LampConfig.Schedule limits = ((Result.Ok<LampConfig>) config).value().schedule();
+        LampConfig.Schedule limits = scheduleInForce(layout, ((Result.Ok<LampConfig>) config).value().schedule());
         ScheduleBook book = new ScheduleBook(layout);
         java.time.ZoneId zone = machine.zone();
         java.time.Instant now = machine.now();
@@ -658,6 +658,16 @@ final class Commands {
                 Control.ask(layout.controlSocket(), layout.root(), Control.Request.of("schedule-changed"), "schedule");
         }
         return ExitStatus.SUCCESS;
+    }
+
+    /// `configured`, switched on when a running session has the schedule on, as it does when it
+    /// was started with `--enable-scheduling`.
+    private static LampConfig.Schedule scheduleInForce(LampLayout layout, LampConfig.Schedule configured) {
+        if (configured.enabled() || !Filesystem.exists(layout.controlSocket())) return configured;
+        boolean on = Control.ask(layout.controlSocket(), layout.root(), Control.Request.of("status"), "schedule")
+                .map(reply -> reply.values().get("schedule").map("on"::equals).orElse(false))
+                .orElseGet(problems -> false);
+        return on ? configured.switchedOn() : configured;
     }
 
     private static LampEvent describe(Schedule schedule, LampConfig.Schedule limits, java.time.ZoneId zone) {

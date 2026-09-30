@@ -73,7 +73,7 @@ public final class Lamp implements AutoCloseable {
     /// Starts describing the lamp in `directory`, which oillamp creates if it does not exist.
     public static Starting at(Path directory) {
         return new Starting(directory.toAbsolutePath(), List.of(), Lamp::sameJava,
-                            Optional.empty(), Optional.empty());
+                            Optional.empty(), Optional.empty(), false);
     }
 
     /// Starts the engine as a separate process, with `arguments` after the engine's main class
@@ -94,14 +94,16 @@ public final class Lamp implements AutoCloseable {
         private final Launcher launcher;
         private final Optional<URI> modelService;
         private final Optional<String> modelKey;
+        private final boolean scheduling;
 
         private Starting(Path directory, List<Consumer<LampEvent>> listeners, Launcher launcher,
-                         Optional<URI> modelService, Optional<String> modelKey) {
+                         Optional<URI> modelService, Optional<String> modelKey, boolean scheduling) {
             this.directory = directory;
             this.listeners = listeners;
             this.launcher = launcher;
             this.modelService = modelService;
             this.modelKey = modelKey;
+            this.scheduling = scheduling;
         }
 
         /// Receives every event the engine reports, in order, from the moment it starts.
@@ -111,11 +113,11 @@ public final class Lamp implements AutoCloseable {
         public Starting onEvent(Consumer<LampEvent> listener) {
             List<Consumer<LampEvent>> more = new ArrayList<>(listeners);
             more.add(listener);
-            return new Starting(directory, List.copyOf(more), launcher, modelService, modelKey);
+            return new Starting(directory, List.copyOf(more), launcher, modelService, modelKey, scheduling);
         }
 
         public Starting launchedBy(Launcher launcher) {
-            return new Starting(directory, listeners, launcher, modelService, modelKey);
+            return new Starting(directory, listeners, launcher, modelService, modelKey, scheduling);
         }
 
         /// Sends the sandbox's model requests to `service`, in place of the lamp's `model.service`:
@@ -126,7 +128,7 @@ public final class Lamp implements AutoCloseable {
         /// Only Eden AI's models are filtered to those served in the EU. Any other service's
         /// models are all offered, since its model list names no regions.
         public Starting modelService(URI service) {
-            return new Starting(directory, listeners, launcher, Optional.of(service), modelKey);
+            return new Starting(directory, listeners, launcher, Optional.of(service), modelKey, scheduling);
         }
 
         /// Uses `key` for the sandbox's model requests, in place of the one in the variable the
@@ -135,7 +137,14 @@ public final class Lamp implements AutoCloseable {
         /// @throws IllegalArgumentException when `key` is blank, which would only fail later
         public Starting modelKey(String key) {
             if (key.isBlank()) throw new IllegalArgumentException("a model key cannot be blank");
-            return new Starting(directory, listeners, launcher, modelService, Optional.of(key.strip()));
+            return new Starting(directory, listeners, launcher, modelService, Optional.of(key.strip()), scheduling);
+        }
+
+        /// Lets jobs on the schedule wake the agent in the session [#start] starts, as
+        /// `enabled = true` under `[schedule]` in the lamp's oillamp.toml would. The file is not
+        /// changed.
+        public Starting enableScheduling() {
+            return new Starting(directory, listeners, launcher, modelService, modelKey, true);
         }
 
         /// Starts the engine, and returns at once. The sandbox is running when
@@ -146,6 +155,7 @@ public final class Lamp implements AutoCloseable {
             List<String> arguments = new ArrayList<>(List.of("at", directory.toString(), "--embedded"));
             modelService.ifPresent(service -> arguments.addAll(List.of("--model-service", service.toString())));
             modelKey.ifPresent(key -> arguments.addAll(List.of("--model-key-env", MODEL_KEY_VARIABLE)));
+            if (scheduling) arguments.add("--enable-scheduling");
             Process engine = launcher.launch(List.copyOf(arguments),
                     modelKey.map(key -> Map.of(MODEL_KEY_VARIABLE, key)).orElse(Map.of()));
             Lamp lamp = new Lamp(directory, launcher, engine, listeners);

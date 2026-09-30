@@ -517,14 +517,15 @@ final class Problems {
             .withFix(Fix.run("see the jobs there are", "oillamp schedule " + lamp));
     }
 
-    /// Jobs are on the schedule, but `schedule.enabled` is off, so none of them will run.
+    /// Jobs are on the schedule, but `schedule.enabled` is off and no session started with
+    /// `--enable-scheduling` runs, so none of them will run.
     public static Problem scheduleOff(Path config) {
         return warning(SCHEDULE_OFF, "The schedule is switched off",
                 "`schedule.enabled` is not true in " + config,
                 "jobs stay on the schedule, but none of them runs")
             .withEvidence(new Evidence.File(config, "the lamp's configuration"))
-            .withFix(Fix.of("set `enabled = true` under [schedule] in " + config
-                          + ", and start the session again"));
+            .withFix(Fix.of("start the session with `oillamp at " + config.getParent() + " --enable-scheduling`, or set "
+                          + "`enabled = true` under [schedule] in " + config));
     }
 
     /// The agent could not be woken for a run, or stopped answering in the middle of one.

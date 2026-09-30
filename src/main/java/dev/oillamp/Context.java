@@ -40,49 +40,55 @@ final class Context {
     ///                    session ends when standard input closes
     /// @param model       `--model-service` and `--model-key-env`: where model requests go and
     ///                    which variable holds the key, in place of the lamp's `[model]` settings
+    /// @param enableScheduling `--enable-scheduling`: `schedule.enabled` is true for this session,
+    ///                    whatever oillamp.toml says
     public record Options(boolean verbose, boolean debug, boolean dryRun,
                           boolean autoInstall, boolean init, boolean openViewer, boolean openWindows,
                           boolean embedded,
-                          ModelOverride model) {
+                          ModelOverride model, boolean enableScheduling) {
 
         public static Options defaults() {
-            return new Options(false, false, false, true, false, true, true, false, ModelOverride.NONE);
+            return new Options(false, false, false, true, false, true, true, false, ModelOverride.NONE, false);
         }
 
         public Options withModel(ModelOverride model) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model, enableScheduling);
         }
 
         public Options withDryRun(boolean dryRun) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model, enableScheduling);
         }
 
         public Options withAutoInstall(boolean autoInstall) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model, enableScheduling);
         }
 
         public Options withInit(boolean init) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model, enableScheduling);
         }
 
         public Options withVerbose(boolean verbose) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model, enableScheduling);
         }
 
         public Options withDebug(boolean debug) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model, enableScheduling);
         }
 
         public Options withViewer(boolean openViewer) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model, enableScheduling);
         }
 
         public Options withWindows(boolean openWindows) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model, enableScheduling);
         }
 
         public Options withEmbedded(boolean embedded) {
-            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model);
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model, enableScheduling);
+        }
+
+        public Options withScheduling(boolean enableScheduling) {
+            return new Options(verbose, debug, dryRun, autoInstall, init, openViewer, openWindows, embedded, model, enableScheduling);
         }
     }
 

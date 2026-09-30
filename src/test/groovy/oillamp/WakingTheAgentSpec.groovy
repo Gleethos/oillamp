@@ -168,6 +168,39 @@ class WakingTheAgentSpec extends Specification {
             jobs(lamp).size() == 1
     }
 
+    def 'A session started with --enable-scheduling runs the jobs, and leaves oillamp.toml as it is'() {
+        reportInfo """
+            Turning the schedule on for one session should not mean editing a file. With
+            --enable-scheduling, the session runs the jobs as if `enabled = true` were set, and
+            `oillamp schedule` says so while it runs. The lamp's own setting is untouched, so the
+            next session without the flag runs no jobs again.
+        """
+        given: 'a lamp whose schedule is off, with a job for five minutes from now'
+            var lamp = aLampThatHasRun('')
+            var toml = Files.readString(lamp.resolve('oillamp.toml'))
+            schedule(lamp, 'add', '--at', 'in 5m', 'Tidy up')
+            anAgent { prompt -> 'Tidied up.' }
+
+        when: 'a session starts ten minutes later with the flag'
+            sandbox.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
+            startASession(lamp, '--enable-scheduling')
+            var finished = waitFor(LampEvent.RunFinished)
+            var during = schedule(lamp)
+            stop(lamp)
+            var after = schedule(lamp)
+
+        then: 'the job ran'
+            finished.run().job() == Optional.of('job-1')
+            finished.outcome() == RunOutcome.FINISHED
+
+        and: 'the schedule was on while the session ran, and is off again after it'
+            during.events().find { it instanceof LampEvent.Schedule }.enabled()
+            !after.events().find { it instanceof LampEvent.Schedule }.enabled()
+
+        and: 'the lamp\'s configuration was not changed'
+            Files.readString(lamp.resolve('oillamp.toml')) == toml
+    }
+
     // ─── runs ──────────────────────────────────────────────────────────────────────────────
 
     def 'A job whose time has come wakes the agent, and the run is saved as a snapshot of its own'() {
@@ -575,10 +608,10 @@ class WakingTheAgentSpec extends Specification {
         listed.events().find { it instanceof LampEvent.History }.snapshots().collect()
     }
 
-    private void startASession(Path lamp) {
+    private void startASession(Path lamp, String... options) {
         sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(90)) }
         var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
-        session = Thread.start { oillamp.run('at', lamp.toString()) }
+        session = Thread.start { oillamp.run(*(['at', lamp.toString()] + options.toList())) }
         waitFor(LampEvent.Summary) { it.title() == 'your session is up' }
     }
 

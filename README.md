@@ -167,14 +167,21 @@ agent cannot see or change these snapshots.
 
 ### 7. Let the agent work on a schedule ⏰
 
-While a session runs, oillamp can wake the agent at set times with a task. Turn it on in the lamp's
-`oillamp.toml` (it is off by default, because every run costs model tokens), start the session,
-and add jobs:
+While a session runs, oillamp can wake the agent at set times with a task. It is off by default,
+because every run costs model tokens. Turn it on for one session:
+
+```sh
+oillamp at ~/lamps/first --enable-scheduling
+```
+
+or for every session, in the lamp's `oillamp.toml`:
 
 ```toml
 [schedule]
 enabled = true
 ```
+
+Then add jobs:
 
 ```sh
 oillamp schedule ~/lamps/first add --cron "0 9 * * 1-5" "Check the nightly build and fix what broke"

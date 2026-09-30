@@ -342,8 +342,8 @@ final class ConsoleRenderer {
     private static String describe(LampEvent.Schedule schedule) {
         java.time.ZoneId zone = java.time.ZoneId.of(schedule.zone());
         StringBuilder out = new StringBuilder();
-        out.append(!schedule.enabled() ? "the schedule is off: set `enabled = true` under [schedule] in "
-                                         + "oillamp.toml for these jobs to run"
+        out.append(!schedule.enabled() ? "the schedule is off: start the session with --enable-scheduling, or set "
+                                         + "`enabled = true` under [schedule] in oillamp.toml, for these jobs to run"
                  : schedule.paused() ? "the schedule is paused: no job runs until `oillamp schedule <dir> resume`"
                  : "jobs run while a session runs; times are on this machine's clock (" + zone + ")");
         if (schedule.jobs().isEmpty())

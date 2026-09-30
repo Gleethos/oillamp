@@ -198,7 +198,7 @@ final class Templates {
                     -*)
                         local options='--verbose --debug --no-color'
                         case "$command" in
-                            at)            options="$options --init --dry-run --no-install --no-viewer --no-windows" ;;
+                            at)            options="$options --init --dry-run --no-install --no-viewer --no-windows --enable-scheduling" ;;
                             view)          options="$options --view-only" ;;
                             remove)        options="$options --yes --dry-run" ;;
                             save)          options="$options --message" ;;

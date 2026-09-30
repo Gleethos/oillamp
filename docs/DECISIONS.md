@@ -275,7 +275,8 @@ the mark warns about. *(added on 2026-09-29)*
 A running session owns one harness: pi in RPC mode, which the supervisor starts over ssh and alone
 prompts. Jobs on the lamp's schedule, and `oillamp ask`, wake it; runs happen one at a time, and
 the rest wait. Jobs run only while a session runs. Nothing wakes a lamp that is not running, so
-only a person starts one. The schedule is off unless `schedule.enabled` is on.
+only a person starts one. The schedule is off unless `schedule.enabled` is on, or the session was
+started with `--enable-scheduling`.
 
 *Why:* one owner is the only way to know whether the agent is busy, and the only way two runs
 never write the same files at once. Tying the schedule to a running session keeps the system

@@ -38,6 +38,12 @@ record LampConfig(
                               changed, git, agentTools, image, host, timeouts, schedule);
     }
 
+    /// The same configuration with other `[schedule]` settings.
+    public LampConfig withSchedule(Schedule changed) {
+        return new LampConfig(display, viewer, terminal, recording, limits, network, forwards, llm,
+                              model, git, agentTools, image, host, timeouts, changed);
+    }
+
     /// The version of the config schema this build writes and understands.
     public static final int SCHEMA_VERSION = 1;
 
@@ -168,6 +174,10 @@ record LampConfig(
             if (maxAgentRunsPerDay < 0)      throw new IllegalArgumentException("schedule.max_agent_runs_per_day cannot be negative");
             if (maxRunMinutes < 1)           throw new IllegalArgumentException("schedule.max_run_minutes");
             if (notesMaxKb < 1)              throw new IllegalArgumentException("schedule.notes_max_kb");
+        }
+        public Schedule switchedOn() {
+            return new Schedule(true, maxAgentJobs, minAgentIntervalMinutes, maxAgentDays,
+                                maxAgentRunsPerDay, maxRunMinutes, notesMaxKb);
         }
         public java.time.Duration minAgentInterval() { return java.time.Duration.ofMinutes(minAgentIntervalMinutes); }
         public java.time.Duration maxAgentLife()     { return java.time.Duration.ofDays(maxAgentDays); }

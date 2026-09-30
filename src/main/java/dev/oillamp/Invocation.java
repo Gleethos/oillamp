@@ -120,6 +120,7 @@ final class Invocation {
                 case "--no-viewer"     -> options = options.withViewer(false);
                 case "--no-windows"    -> options = options.withWindows(false);
                 case "--embedded"      -> options = options.withEmbedded(true);
+                case "--enable-scheduling" -> options = options.withScheduling(true);
                 case "--view-only"     -> viewOnly = true;
                 case "--yes", "-y"     -> confirmed = true;
                 case "--prune"         -> prune = true;
@@ -390,7 +391,8 @@ final class Invocation {
     /// options that promise that.
     private static final java.util.Map<String, java.util.Set<String>> OPTIONS_OF = java.util.Map.ofEntries(
             java.util.Map.entry("at",         java.util.Set.of("--init", "--dry-run", "--no-install", "--no-viewer", "--no-windows",
-                                                        "--embedded", "--model-service", "--model-key-env")),
+                                                        "--embedded", "--model-service", "--model-key-env",
+                                                        "--enable-scheduling")),
             java.util.Map.entry("view",       java.util.Set.of("--view-only")),
             java.util.Map.entry("remove",     java.util.Set.of("--yes", "--dry-run", "--embedded")),
             java.util.Map.entry("recordings", java.util.Set.of("--open", "--prune", "--dry-run")),
@@ -482,6 +484,7 @@ final class Invocation {
 
               at <dir> [--init] [--dry-run] [--no-install] [--no-viewer] [--no-windows]
                        [--embedded] [--model-service <url>] [--model-key-env <name>]
+                       [--enable-scheduling]
                     Set up (if needed) and run a session. Opens a shell window and a viewer
                     onto the sandbox's desktop, and stays in the foreground until the session
                     ends: Ctrl-C here, closing this terminal, or `oillamp stop <dir>`.
@@ -497,6 +500,9 @@ final class Invocation {
                       --model-service <url>, --model-key-env <name>
                                       use this model service, and the key in this variable,
                                       instead of the lamp's [model] settings, for this session
+                      --enable-scheduling
+                                      let jobs on the schedule wake the agent in this session,
+                                      as `enabled = true` under [schedule] would
               view <dir> [--view-only]
                     Open another viewer onto a running session's desktop. Needs a display.
                     --view-only lets you watch without typing.
@@ -525,7 +531,8 @@ final class Invocation {
                     session must be stopped. The lamp is saved first, so this can be undone.
               schedule <dir> [add | remove <job> | enable <job> | disable <job> | pause | resume]
                     List the jobs that wake the agent while a session runs, or change them.
-                    Needs `enabled = true` under [schedule] in oillamp.toml before any job runs.
+                    Jobs run only in a session started with --enable-scheduling, or with
+                    `enabled = true` under [schedule] in oillamp.toml.
                       add (--cron "<expression>" | --at <time>) [--expires <time>] "<prompt>"
                                       --cron "0 9 * * 1-5" repeats, as cron would; --at runs once,
                                       at "2026-10-01 09:00" on this machine's clock or "in 2h"

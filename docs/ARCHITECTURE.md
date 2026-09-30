@@ -65,7 +65,7 @@ These words have one meaning each, in the code and in the documents.
 | **harness** | The agent program a session holds and prompts: pi, in RPC mode, started over ssh by the supervisor. One per session. |
 | **run** | One time the harness is woken with a prompt, by a job or by `oillamp ask`. Named `run-<n>`, counted per lamp. |
 | **job** | An entry on a lamp's schedule: a prompt, and a cron expression or a single time. Named `job-<n>`. Added by the user or by the agent. |
-| **schedule** | `<lamp>/.oillamp/schedule.json`: a lamp's jobs. Jobs only run while a session runs, and only with `schedule.enabled` on. |
+| **schedule** | `<lamp>/.oillamp/schedule.json`: a lamp's jobs. Jobs only run while a session runs, and only with `schedule.enabled` on or the session started with `--enable-scheduling`. |
 
 ---
 
@@ -866,7 +866,8 @@ left out, and lines that are not entries are passed over. `oillamp conversations
 `Lamp.forget` deletes one.
 
 **The schedule** is read by the `oillamp-schedule` thread every 30 s, and at once after
-`oillamp schedule` or the agent changed it. That thread only runs with `schedule.enabled` on. It
+`oillamp schedule` or the agent changed it. That thread only runs with `schedule.enabled` on, which
+`--enable-scheduling` does for one session. It
 removes jobs that expired or will never run again, and queues each job that is due and not
 already queued. A repeating job is due when its cron expression names a moment after its
 `last_run` (or its creation) that has passed. So a job missed while no session ran runs once when
@@ -1410,7 +1411,7 @@ checked but have no effect yet; they are listed under "Known gaps" in STATUS.md.
 | `timeouts.container_ready_seconds` | 60 | wait for `ready.json`; twice as long straight after an image build | yes |
 | `timeouts.terminal_connect_seconds` | 60 | wait for the terminal to connect | yes |
 | `timeouts.stop_seconds` | 15 | `podman stop --time` | yes |
-| `schedule.enabled` | false | jobs wake the agent while a session runs; the agent gets its scheduling tools | yes |
+| `schedule.enabled` | false | jobs wake the agent while a session runs; the agent gets its scheduling tools. `oillamp at <dir> --enable-scheduling` turns it on for one session | yes |
 | `schedule.max_agent_jobs` | 10 | how many jobs the agent may have at once (0–100) | yes |
 | `schedule.min_agent_interval_minutes` | 15 | the shortest time between two runs of one of the agent's jobs | yes |
 | `schedule.max_agent_days` | 14 | how far ahead the agent may schedule, and when its jobs end at the latest (1–366) | yes |

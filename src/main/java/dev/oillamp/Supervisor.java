@@ -809,6 +809,7 @@ final class Supervisor {
                     .with("shells", String.valueOf(state.extraShells()))
                     .with("agent", runs.describe())
                     .with("agent_status", runs.status().toJson())
+                    .with("schedule", prepared.config().schedule().enabled() ? "on" : "off")
                     .with("viewer", prepared.layout().vncSocket().toString());
             case "stop" -> {
                 post(new SessionEvent.StopRequested("oillamp stop"));
