@@ -201,6 +201,34 @@ class ChoosingTheModelForALampSpec extends Specification {
             Files.readString(sandbox.lampPath().resolve('.oillamp/session/runtime.env')).contains("OILLAMP_MODEL_EU_ONLY='0'")
     }
 
+    def 'The models an application lists are asked for where the sandbox asks, with the same key'() {
+        reportInfo """
+            An application's settings list the models from Lamp.models, asked on the host
+            before any lamp runs. That list is only right if it is the one the agent gets: the
+            relay's answer to the sandbox's GET /v3/models. So both ask the same path of the
+            service, with the same key, for a service with a path of its own and one without.
+        """
+        given:
+            URI given = URI.create("http://127.0.0.1:${service.address.port}${path}")
+            lamp = Lamp.at(sandbox.lampPath()).modelService(given).modelKey(APP_KEY)
+                       .launchedBy(sandbox.launcher).start()
+
+        expect:
+            lamp.awaitRunning(Duration.ofSeconds(30))
+
+        when:
+            ask('GET /v3/models HTTP/1.1\r\nHost: 127.0.0.1:3129\r\n\r\n')
+            Lamp.models(given, APP_KEY)
+
+        then:
+            paths.size() == 2
+            paths[0] == paths[1]
+            received == ["Bearer ${APP_KEY}".toString()] * 2
+
+        where:
+            path << ['/v1', '']
+    }
+
     def 'A service the key must not be sent to is refused, and the application is told why'() {
         reportInfo """
             The key travels with every request, so a service reached over plain http, anywhere

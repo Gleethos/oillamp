@@ -1046,6 +1046,9 @@ Both settings can be replaced for one session without editing the file:
 argument, because any user of the machine can read a process's arguments. An application holding
 a `Lamp` uses `Lamp.at(dir).modelService(url).modelKey(key)`: the lamp puts the key in the engine's
 environment as `OILLAMP_MODEL_KEY` and passes `--model-key-env OILLAMP_MODEL_KEY`.
+`Lamp.models(url, key)` lists the models such a lamp's agent is offered, without an engine: it
+asks the service on the host where the relay would, `<path>/models` or `/v3/models` for a service
+without a path, with the key as a bearer token, and for Eden AI keeps the models served in the EU.
 
 ### Forwards
 

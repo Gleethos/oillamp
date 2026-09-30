@@ -654,6 +654,29 @@ public final class Lamp implements AutoCloseable {
         }
     }
 
+    /// The models the agent of a lamp given `service` and `key` with [Starting#modelService] and
+    /// [Starting#modelKey] is offered, in the service's order. Asked on this machine, without the
+    /// engine, so an application can offer them in its settings before any lamp runs.
+    ///
+    /// The service is asked where the engine's relay asks it: under its own path, such as
+    /// `http://127.0.0.1:11434/v1/models` for Ollama, or under `/v3` without one, as for Eden AI.
+    /// The key goes with the request as `Authorization: Bearer`, and nowhere else: no proxy, no
+    /// redirect. For Eden AI only the models served in the EU are listed, as in the sandbox.
+    ///
+    /// @throws IllegalArgumentException when the engine would refuse `service`, such as plain
+    ///                                  `http` anywhere but on this machine
+    /// @throws IOException              when the service cannot be asked, or refuses; the message
+    ///                                  says why, in words an application can show
+    public static List<String> models(URI service, String key) throws IOException, InterruptedException {
+        return ModelList.of(service, Optional.of(key));
+    }
+
+    /// The models a service offers without a key, such as a model server on this machine or
+    /// Eden AI, whose list is public. See [#models(URI, String)].
+    public static List<String> models(URI service) throws IOException, InterruptedException {
+        return ModelList.of(service, Optional.empty());
+    }
+
     /// The lamp directory.
     public Path directory() { return directory; }
 
