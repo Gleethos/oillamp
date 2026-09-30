@@ -460,10 +460,12 @@ public final class GeniesView extends JPanel {
                         .withTooltip("Return sends; Shift and Return starts a new line")
                         .onKeyPress(it -> {
                             java.awt.event.KeyEvent key = it.getEvent();
-                            if (key.getKeyCode() == java.awt.event.KeyEvent.VK_ENTER && !key.isShiftDown()) {
-                                key.consume();
-                                actions.send();
-                            }
+                            if (key.getKeyCode() != java.awt.event.KeyEvent.VK_ENTER) return;
+                            key.consume();
+                            // Swing makes a new line only of a plain Return, so Shift and Return
+                            // would do nothing at all; the line is put in here.
+                            if (key.isShiftDown()) it.getComponent().replaceSelection("\n");
+                            else actions.send();
                         })))
                 .add(button("Send  ➤").group(Skin.FLAME_BUTTON).isEnabledIf(canSend)
                      // With nothing to send, it steps back rather than glowing half-lit.
