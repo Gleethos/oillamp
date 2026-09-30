@@ -3,8 +3,10 @@ package dev.gui;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,7 +19,6 @@ import javax.swing.SwingUtilities;
 import dev.gui.genie.GenieRunner;
 import dev.gui.genie.LampLighter;
 import dev.gui.genie.Lighter;
-import dev.gui.genie.ModelCatalog;
 import dev.gui.genie.Shelf;
 import dev.gui.model.Conversation;
 import dev.gui.model.Conversations;
@@ -56,6 +57,10 @@ public final class Genies implements Actions {
     private final Val<Tuple<String>> names;
     /// The page on show. Kept as a field for the same reason: leaving the settings keeps them.
     private final Val<GeniesState.Page> page;
+    /// The place the settings on show name, or nothing while they are not on show. Kept as a
+    /// field for the same reason: opening the settings, or choosing another place, asks that
+    /// place for its models.
+    private final Val<String> placeShown;
     /// The genie whose schedule is on show, or [GeniesState#NONE]. Kept as a field for the same
     /// reason: a schedule is read from its lamp when it comes on show.
     private final Val<UUID> scheduleShown;
@@ -71,6 +76,10 @@ public final class Genies implements Actions {
         this.page = state.viewAs(GeniesState.Page.class, GeniesState::page);
         Viewable.cast(page).onChange(From.ALL, it -> {
             if (it.currentValue().orElseNull() != GeniesState.Page.SETTINGS) keepSettings();
+        });
+        this.placeShown = state.viewAsString(it -> it.page() == GeniesState.Page.SETTINGS ? it.settings().place().name() : "");
+        Viewable.cast(placeShown).onChange(From.ALL, it -> {
+            if (!it.currentValue().orElse("").isEmpty()) lookUpModels();
         });
         this.scheduleShown = state.viewAs(UUID.class, it -> it.page() == GeniesState.Page.SCHEDULE ? it.selected() : GeniesState.NONE);
         Viewable.cast(scheduleShown).onChange(From.ALL, it -> {
@@ -248,17 +257,22 @@ public final class Genies implements Actions {
         state.update(From.VIEW, it -> it.withPage(GeniesState.Page.CHAT));
     }
 
-    /// Asks the model server on this computer for its models, off Swing's event thread.
+    /// Asks the service the settings name for its models, off Swing's event thread, the way the
+    /// genies' lamps will ask it, with the same key.
     @Override public void lookUpModels() {
-        String address = state.get().settings().local().address();
-        state.update(From.VIEW, it -> it.withLookUp(new GeniesState.ModelLookUp(it.lookUp().models(), "Asking the model server…")));
+        Settings settings = state.get().settings();
+        Settings.Place place = settings.place();
+        String service = settings.service();
+        Optional<String> key = settings.listingKeyFrom(state.get().environmentKey());
+        state.update(From.VIEW, GeniesState::askingForModels);
         Thread.ofVirtual().name("look up models").start(() -> {
             try {
-                Tuple<String> found = ModelCatalog.ofServerAt(address);
-                SwingUtilities.invokeLater(() -> state.update(it -> it.modelsFound(found)));
+                List<String> found = key.isPresent() ? Lamp.models(URI.create(service), key.get())
+                                                     : Lamp.models(URI.create(service));
+                SwingUtilities.invokeLater(() -> state.update(it -> it.modelsFound(place, service, Tuple.of(String.class, found))));
             } catch (IOException | IllegalArgumentException failed) {
                 String why = Optional.ofNullable(failed.getMessage()).orElse(failed.toString());
-                SwingUtilities.invokeLater(() -> state.update(it -> it.modelsNotFound(why)));
+                SwingUtilities.invokeLater(() -> state.update(it -> it.modelsNotFound(place, service, why)));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             }

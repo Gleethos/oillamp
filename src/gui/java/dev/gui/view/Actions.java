@@ -64,7 +64,7 @@ public interface Actions {
     /// job's run had.
     void openConversation(UUID genie, String conversation);
 
-    /// Asks the model server on this computer, named in the settings, which models it has.
+    /// Asks the model service the settings name which models it offers.
     void lookUpModels();
 
     /// The settings page closes. Leaving it, however, keeps the settings.

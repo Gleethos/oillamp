@@ -42,25 +42,30 @@ final class SettingsPage {
     private static final FlowCell FIELD = AUTO_SPAN(it -> it
             .verySmall(12).small(12).medium(12).large(12).veryLarge(8).oversize(9));
 
-    private static final Tuple<String> MODELS = Tuple.of(String.class,
-            "mistral/mistral-small-latest", "mistral/mistral-medium-latest", "mistral/mistral-large-latest");
+    private static final String KEY_STAYS_HERE = "The key stays on this computer. Genies never see it: oillamp adds it to "
+            + "their requests as they leave the sandbox. An entered key is kept in a file only you can read.";
 
     static UIForAnySwing<?, ?> of(Var<GeniesState> state, Actions actions, Val<Boolean> visible) {
         Var<Settings> settings = state.zoomTo(GeniesState::settings, GeniesState::withSettings);
-        // Lenses all the way down: settings → the hosted service → its key, and so on. Each field
+        // Lenses all the way down: settings → Eden AI → its key, and so on. Each field
         // edits one value of the one GeniesState, and nothing else.
         Var<Settings.Place> place = settings.zoomTo(Settings::place, Settings::withPlace);
-        Var<Settings.Hosted> hosted = settings.zoomTo(Settings::hosted, Settings::withHosted);
+        Var<Settings.EdenAi> edenAi = settings.zoomTo(Settings::edenAi, Settings::withEdenAi);
+        Var<Settings.Elsewhere> elsewhere = settings.zoomTo(Settings::elsewhere, Settings::withElsewhere);
         Var<Settings.OnThisMachine> local = settings.zoomTo(Settings::local, Settings::withLocal);
-        Var<String> service = hosted.zoomTo(Settings.Hosted::service, Settings.Hosted::withService);
-        Var<Settings.KeySource> source = hosted.zoomTo(Settings.Hosted::keySource, Settings.Hosted::withKeySource);
-        Var<String> key = hosted.zoomTo(Settings.Hosted::key, Settings.Hosted::withKey);
-        Var<String> hostedModel = hosted.zoomTo(Settings.Hosted::model, Settings.Hosted::withModel);
-        Var<String> address = local.zoomTo(Settings.OnThisMachine::address, Settings.OnThisMachine::withAddress);
-        Var<String> localModel = local.zoomTo(Settings.OnThisMachine::model, Settings.OnThisMachine::withModel);
-        Val<Tuple<String>> offered = state.viewAs(Tuple.classTyped(String.class), it -> it.lookUp().models());
-        Val<String> lookUpNote = state.viewAsString(it -> it.lookUp().note());
-        Val<Boolean> isHosted = place.viewAs(Boolean.class, it -> it == Settings.Place.HOSTED);
+        Var<Settings.KeySource> source = edenAi.zoomTo(Settings.EdenAi::keySource, Settings.EdenAi::withKeySource);
+        Var<String> edenKey = edenAi.zoomTo(Settings.EdenAi::key, Settings.EdenAi::withKey);
+        Var<String> remoteAddress = elsewhere.zoomTo(Settings.Elsewhere::address, Settings.Elsewhere::withAddress);
+        Var<String> remoteKey = elsewhere.zoomTo(Settings.Elsewhere::key, Settings.Elsewhere::withKey);
+        Var<String> localAddress = local.zoomTo(Settings.OnThisMachine::address, Settings.OnThisMachine::withAddress);
+        // The model of whichever place is chosen, so one field serves all three.
+        Var<String> model = settings.zoomTo(Settings::model, Settings::withModel);
+        // Only what the service now named offered; after the place or address changed, nothing.
+        Val<Tuple<String>> offered = state.viewAs(Tuple.classTyped(String.class),
+                it -> it.lookUp().isFor(it.settings()) ? it.lookUp().models() : Tuple.of(String.class));
+        Val<String> lookUpNote = state.viewAsString(it -> it.lookUp().isFor(it.settings()) ? it.lookUp().note() : "");
+        Val<Boolean> isEdenAi = place.viewAs(Boolean.class, it -> it == Settings.Place.EDEN_AI);
+        Val<Boolean> isElsewhere = place.viewAs(Boolean.class, it -> it == Settings.Place.ELSEWHERE);
         Val<Boolean> isLocal = place.viewAs(Boolean.class, it -> it == Settings.Place.THIS_MACHINE);
         Val<String> problem = state.viewAsString(it -> it.settingsProblem().orElse(""));
         Val<Boolean> hasProblem = state.viewAs(Boolean.class, it -> it.settingsProblem().isPresent());
@@ -83,50 +88,56 @@ final class SettingsPage {
                     .add(LABEL, label("The model runs"))
                     .add(FIELD,
                         box("fill, wrap 1, ins 0, gap 6")
-                        .add("wmin 0", radioButton("at a hosted service", Settings.Place.HOSTED, place))
-                        .add("growx, wmin 0, gapleft 24", Parts.note("Eden AI in the EU, by default.", Val.of(true)))
+                        .add("wmin 0", radioButton("at Eden AI", Settings.Place.EDEN_AI, place))
+                        .add("growx, wmin 0, gapleft 24", Parts.note("In the EU, with your Eden AI key.", Val.of(true)))
+                        .add("wmin 0", radioButton("on a server elsewhere", Settings.Place.ELSEWHERE, place))
+                        .add("growx, wmin 0, gapleft 24", Parts.note("A model server of your own on another machine, "
+                                + "such as Ollama behind a proxy that asks for a key.", Val.of(true)))
                         .add("wmin 0", radioButton("on this computer", Settings.Place.THIS_MACHINE, place))
                         .add("growx, wmin 0, gapleft 24", Parts.note("A model server such as Ollama, LM Studio or llama.cpp.", Val.of(true))))
 
-                    // ── a hosted service ──
-                    .add(LABEL, label("Service").isVisibleIf(isHosted))
+                    // ── Eden AI ──
+                    .add(LABEL, label("Key").isVisibleIf(isEdenAi))
                     .add(FIELD,
-                        box("fill, wrap 1, ins 0, gap 4").isVisibleIf(isHosted)
-                        .add("growx, wmin 0", textField(service).group(Skin.INPUT))
-                        .add("growx, wmin 0", Parts.note("An OpenAI-style API under /v3, like Eden AI's, or under the path you "
-                                + "give. The default keeps requests in the EU.", Val.of(true))))
-                    .add(LABEL, label("Key").isVisibleIf(isHosted))
-                    .add(FIELD,
-                        box("fill, wrap 1, ins 0, gap 6").isVisibleIf(isHosted)
+                        box("fill, wrap 1, ins 0, gap 6").isVisibleIf(isEdenAi)
                         .add("wmin 0", radioButton("Use " + Settings.KEY_VARIABLE, Settings.KeySource.ENVIRONMENT, source))
                         .add("growx, wmin 0, gapleft 24", Parts.note(found ? "Found where Genies was started."
                                 : "Not set where Genies was started.", Val.of(true)))
                         .add("wmin 0", radioButton("Use this key:", Settings.KeySource.ENTERED, source))
-                        .add("growx, wmin 0", passwordField(key).group(Skin.INPUT)
+                        .add("growx, wmin 0", passwordField(edenKey).group(Skin.INPUT)
                              .isEnabledIf(source.viewAs(Boolean.class, it -> it == Settings.KeySource.ENTERED)))
-                        .add("growx, wmin 0", Parts.note("The key stays on this computer. Genies never see it: oillamp adds it to "
-                                + "their requests as they leave the sandbox. An entered key is kept in a file only you can read.", Val.of(true))))
-                    .add(LABEL, label("Model").isVisibleIf(isHosted))
+                        .add("growx, wmin 0", Parts.note(KEY_STAYS_HERE, Val.of(true))))
+
+                    // ── a model server elsewhere ──
+                    .add(LABEL, label("Address").isVisibleIf(isElsewhere))
                     .add(FIELD,
-                        box("fill, ins 0").isVisibleIf(isHosted)
-                        .add("growx, wmin 0", comboBox(hostedModel, MODELS).isEditableIf(true)))
+                        box("fill, wrap 1, ins 0, gap 4").isVisibleIf(isElsewhere)
+                        .add("growx, wmin 0", textField(remoteAddress).group(Skin.INPUT))
+                        .add("growx, wmin 0", Parts.note("Where the server's OpenAI-style API is, such as "
+                                + "https://ollama.example.com/v1. It must be https://, because the key goes with every request.", Val.of(true))))
+                    .add(LABEL, label("Key").isVisibleIf(isElsewhere))
+                    .add(FIELD,
+                        box("fill, wrap 1, ins 0, gap 4").isVisibleIf(isElsewhere)
+                        .add("growx, wmin 0", passwordField(remoteKey).group(Skin.INPUT))
+                        .add("growx, wmin 0", Parts.note("Leave it empty if the server asks for none. " + KEY_STAYS_HERE, Val.of(true))))
 
                     // ── a model server on this computer ──
                     .add(LABEL, label("Address").isVisibleIf(isLocal))
                     .add(FIELD,
                         box("fill, wrap 1, ins 0, gap 4").isVisibleIf(isLocal)
-                        .add("growx, wmin 0", textField(address).group(Skin.INPUT))
+                        .add("growx, wmin 0", textField(localAddress).group(Skin.INPUT))
                         .add("growx, wmin 0", Parts.note("Where the server's OpenAI-style API is: http://127.0.0.1:11434/v1 for Ollama, "
-                                + "http://127.0.0.1:1234/v1 for LM Studio, http://127.0.0.1:8080/v1 for llama.cpp. No key is needed. "
-                                + "Genies reach it only through oillamp, and are offered every model it has.", Val.of(true))))
-                    .add(LABEL, label("Model").isVisibleIf(isLocal))
+                                + "http://127.0.0.1:1234/v1 for LM Studio, http://127.0.0.1:8080/v1 for llama.cpp. No key is needed.", Val.of(true))))
+
+                    // ── the model, wherever it runs ──
+                    .add(LABEL, label("Model"))
                     .add(FIELD,
-                        box("fill, wrap 1, ins 0, gap 4, hidemode 3").isVisibleIf(isLocal)
+                        box("fill, wrap 1, ins 0, gap 4, hidemode 3")
                         .add("growx, wmin 0",
                             box("fill, ins 0, gap 8", "[grow][]")
-                            .add("growx, wmin 0", comboBox(localModel, offered).isEditableIf(true))
+                            .add("growx, wmin 0", comboBox(model, offered).isEditableIf(true))
                             .add(button("Look up").group(Skin.QUIET_BUTTON)
-                                 .withTooltip("Ask the model server which models it has")
+                                 .withTooltip("Ask the service which models it offers")
                                  .onClick(it -> actions.lookUpModels())))
                         .add("growx, wmin 0", Parts.wrapped(lookUpNote, Palette.SUBTEXT,
                              lookUpNote.viewAs(Boolean.class, it -> !it.isEmpty()))))
