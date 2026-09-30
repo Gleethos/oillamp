@@ -115,8 +115,8 @@ class KeepingManyGeniesSpec extends Specification {
         """
         expect:
             state.settings().service() == 'https://api.eu.edenai.run'
-            state.settings().place() == Settings.Place.HOSTED
-            state.settings().hosted().keySource() == Settings.KeySource.ENVIRONMENT
+            state.settings().place() == Settings.Place.EDEN_AI
+            state.settings().edenAi().keySource() == Settings.KeySource.ENVIRONMENT
             state.settings().keyFrom(Optional.of('sk-env')) == Optional.of('sk-env')
             state.settingsProblem().isEmpty()
 
@@ -125,51 +125,79 @@ class KeepingManyGeniesSpec extends Specification {
                     .settingsProblem().get().contains('EDENAI_API_KEY is not set')
     }
 
-    def 'The user can enter a key of their own, and another service'() {
+    def 'The user can enter an Eden AI key of their own'() {
         reportInfo """
-            A user without the variable, or with a second account, enters a key in the settings;
-            a company may run its own model gateway. The entered key takes the place of the one
-            in the environment. It never reaches a genie: the lamp's engine adds it on the host.
+            A user without the variable, or with a second account, enters a key in the settings.
+            The entered key takes the place of the one in the environment. It never reaches a
+            genie: the lamp's engine adds it on the host.
         """
         when:
-            var own = state.settings().withHosted(state.settings().hosted()
-                    .withKeySource(Settings.KeySource.ENTERED).withKey(' sk-mine ').withService('https://llm.example.com:8443'))
+            var own = state.settings().withEdenAi(state.settings().edenAi()
+                    .withKeySource(Settings.KeySource.ENTERED).withKey(' sk-mine '))
 
         then:
             own.keyFrom(Optional.of('sk-env')) == Optional.of('sk-mine')
             own.problem(Optional.of('sk-env')).isEmpty()
 
         and: 'an entered key that is empty is a problem, even with one in the environment'
-            own.withHosted(own.hosted().withKey('')).problem(Optional.of('sk-env')).get().contains('Enter a key')
+            own.withEdenAi(own.edenAi().withKey('')).problem(Optional.of('sk-env')).get().contains('Enter a key')
     }
 
-    def 'A service the key must not be sent to is refused in the settings already'() {
+    def 'A model server elsewhere is reached at its address, with its key if it asks for one'() {
         reportInfo """
-            The same rules as oillamp's own: the key travels to the service with every request,
-            so it must be https, unless the service runs on this machine. The settings say so
+            A user may run Ollama on another machine, behind a proxy that checks a key. The
+            settings take its address, with the path of its OpenAI-style API, and the key. A
+            server that asks for no key is sent a stand-in, since the lamp needs one to send; the
+            model list is then asked for without any key.
+        """
+        given:
+            var remote = Settings.defaults().withPlace(Settings.Place.ELSEWHERE)
+                    .withElsewhere(new Settings.Elsewhere('https://ollama.example.com/v1', ' sk-server ', 'qwen2.5:7b'))
+
+        expect:
+            remote.service() == 'https://ollama.example.com/v1'
+            remote.model() == 'qwen2.5:7b'
+            remote.keyFrom(Optional.empty()) == Optional.of('sk-server')
+            remote.listingKeyFrom(Optional.empty()) == Optional.of('sk-server')
+            remote.problem(Optional.empty()).isEmpty()
+
+        and: 'without a key, a stand-in goes with its requests, and nothing with the question for its models'
+            var open = remote.withElsewhere(remote.elsewhere().withKey(''))
+            open.keyFrom(Optional.empty()).isPresent()
+            open.listingKeyFrom(Optional.empty()).isEmpty()
+            open.problem(Optional.empty()).isEmpty()
+
+        and: 'without an address or a model, it is not ready'
+            Settings.defaults().withPlace(Settings.Place.ELSEWHERE).problem(Optional.empty()).get().contains('Enter the server\'s address')
+            remote.withModel('').problem(Optional.empty()).get().contains('Name the model')
+    }
+
+    def 'A server the key must not be sent to is refused in the settings already'() {
+        reportInfo """
+            The same rules as oillamp's own: the key travels to the server with every request,
+            so it must be https, unless the server runs on this machine. The settings say so
             while the user types, not when a genie fails to wake.
         """
         expect:
-            hostedAt(service).problem(Optional.of('k')).isPresent() == refused
+            elsewhereAt(address).problem(Optional.empty()).isPresent() == refused
 
         where:
-            service                          || refused
-            'https://api.eu.edenai.run'      || false
-            'http://127.0.0.1:8080'          || false
-            'http://api.eu.edenai.run'       || true
-            'https://api.eu.edenai.run/v3'   || false
-            'https://api.eu.edenai.run?k=1'  || true
-            'not an address'                 || true
+            address                              || refused
+            'https://ollama.example.com/v1'      || false
+            'https://ollama.example.com:8443/v1' || false
+            'http://127.0.0.1:8080/v1'           || false
+            'http://192.168.1.20:11434/v1'       || true
+            'https://ollama.example.com/v1?k=1'  || true
+            'not an address'                     || true
     }
 
     def 'A model server on this computer needs no key, and must be on this computer'() {
         reportInfo """
-            Instead of a hosted service, the genies can use a model server running on this
-            computer: Ollama, LM Studio or llama.cpp's server. It asks for no key, so none is
-            needed, not even the one in the environment; the lamp is given a stand-in the server
-            ignores. Its address is where its OpenAI-style API is, such as
-            http://127.0.0.1:11434/v1 for Ollama, and it has to be on this computer. The model is
-            named as the server lists it.
+            The genies can also use a model server running on this computer: Ollama, LM Studio
+            or llama.cpp's server. It asks for no key, so none is needed, not even the one in the
+            environment; the lamp is given a stand-in the server ignores. Its address is where
+            its OpenAI-style API is, such as http://127.0.0.1:11434/v1 for Ollama, and it has to
+            be on this computer. The model is named as the server lists it.
         """
         given:
             var local = Settings.defaults().withPlace(Settings.Place.THIS_MACHINE)
@@ -177,6 +205,7 @@ class KeepingManyGeniesSpec extends Specification {
         expect: 'with a model named, it is ready, without any key'
             local.withModel('qwen2.5:7b').problem(Optional.empty()).isEmpty()
             local.keyFrom(Optional.empty()).isPresent()
+            local.listingKeyFrom(Optional.of('sk-env')).isEmpty()
             local.withModel('qwen2.5:7b').service() == 'http://127.0.0.1:11434/v1'
 
         and: 'without a model, or somewhere else, it is not'
@@ -185,56 +214,98 @@ class KeepingManyGeniesSpec extends Specification {
                  .problem(Optional.empty()).get().contains('on this computer')
     }
 
-    def 'Switching between a hosted service and this computer loses neither\'s settings'() {
+    def 'Switching between the places loses none of their settings'() {
         reportInfo """
-            A user may try a local model and go back to the hosted one. Each place keeps its own
-            address and model, and the one the genies use is the one chosen.
+            A user may try a local model, or one on a server elsewhere, and go back to Eden AI.
+            Each place keeps its own address and model, and the one the genies use is the one
+            chosen.
         """
         given:
-            var both = Settings.defaults().withModel('mistral/mistral-medium-latest')
+            var all = Settings.defaults().withModel('mistral/mistral-medium-latest')
+                    .withPlace(Settings.Place.ELSEWHERE).withElsewhere(new Settings.Elsewhere('https://ollama.example.com/v1', '', 'llama3.3:70b'))
                     .withPlace(Settings.Place.THIS_MACHINE).withModel('qwen2.5:7b')
 
         expect:
-            both.model() == 'qwen2.5:7b'
-            both.withPlace(Settings.Place.HOSTED).model() == 'mistral/mistral-medium-latest'
-            both.withPlace(Settings.Place.HOSTED).service() == 'https://api.eu.edenai.run'
+            all.model() == 'qwen2.5:7b'
+            all.withPlace(Settings.Place.EDEN_AI).model() == 'mistral/mistral-medium-latest'
+            all.withPlace(Settings.Place.EDEN_AI).service() == 'https://api.eu.edenai.run'
+            all.withPlace(Settings.Place.ELSEWHERE).model() == 'llama3.3:70b'
+            all.withPlace(Settings.Place.ELSEWHERE).service() == 'https://ollama.example.com/v1'
     }
 
-    def 'Looking up a model server\'s models offers them, and picks the first if none was chosen'() {
+    def 'Looking up a service\'s models offers them, and picks the first if none was chosen'() {
         reportInfo """
-            Nobody remembers the exact names a model server gives its models. Look up asks it,
-            and the settings offer what it has. If no model was chosen yet, the first one is, so
-            a user who just installed Ollama and pulled one model has nothing else to do. The
-            note under the list says what was found, or why nothing was.
+            Nobody remembers the exact names a service gives its models, and a list written into
+            Genies would soon be out of date. So the settings ask the service they name, and
+            offer what it has, in alphabetical order. If no model was chosen yet, the first one
+            is, so a user who just installed Ollama and pulled one model has nothing else to do.
+            The note under the list says what was found, or why nothing was.
         """
+        given:
+            var local = state.withSettings(state.settings().withPlace(Settings.Place.THIS_MACHINE))
+            var address = 'http://127.0.0.1:11434/v1'
+
         when:
-            var found = state.modelsFound(Tuple.of(String, 'qwen2.5:7b', 'llama3.2:3b'))
+            var found = local.modelsFound(Settings.Place.THIS_MACHINE, address, Tuple.of(String, 'qwen2.5:7b', 'llama3.2:3b'))
 
         then:
-            found.lookUp().models().toList() == ['qwen2.5:7b', 'llama3.2:3b']
-            found.settings().local().model() == 'qwen2.5:7b'
+            found.lookUp().models().toList() == ['llama3.2:3b', 'qwen2.5:7b']
+            found.settings().local().model() == 'llama3.2:3b'
             found.lookUp().note() == 'The model server offers 2 models.'
 
         and: 'a model already chosen stays chosen'
-            state.withSettings(state.settings().withLocal(state.settings().local().withModel('mine')))
-                 .modelsFound(Tuple.of(String, 'qwen2.5:7b')).settings().local().model() == 'mine'
+            local.withSettings(local.settings().withModel('mine'))
+                 .modelsFound(Settings.Place.THIS_MACHINE, address, Tuple.of(String, 'qwen2.5:7b')).settings().local().model() == 'mine'
+
+        and: 'Eden AI\'s list says it is the EU\'s'
+            state.modelsFound(Settings.Place.EDEN_AI, 'https://api.eu.edenai.run', Tuple.of(String, 'a', 'b'))
+                 .lookUp().note() == 'Eden AI offers 2 models in the EU.'
 
         and: 'an empty server, or none, says what to do'
-            state.modelsFound(Tuple.of(String)).lookUp().note().contains('ollama pull')
-            state.modelsNotFound('Nothing answers at http://127.0.0.1:11434/v1.').lookUp().note().startsWith('Nothing answers')
+            local.modelsFound(Settings.Place.THIS_MACHINE, address, Tuple.of(String)).lookUp().note().contains('ollama pull')
+            local.modelsNotFound(Settings.Place.THIS_MACHINE, address, 'Nothing answers at http://127.0.0.1:11434/v1.')
+                 .lookUp().note().startsWith('Nothing answers')
     }
 
-    def 'Settings never show the key when printed'() {
+    def 'Models found for another place, or another address, are not offered'() {
+        reportInfo """
+            Asking takes a moment, and the user may choose another place, or change the address,
+            meanwhile. The answer that then arrives is for a service the settings no longer
+            name: its models are not offered, and it does not choose a model for the place on
+            show.
+        """
+        given:
+            var local = state.withSettings(state.settings().withPlace(Settings.Place.THIS_MACHINE))
+
+        when: 'Eden AI answers after the user switched to this computer'
+            var late = local.modelsFound(Settings.Place.EDEN_AI, 'https://api.eu.edenai.run', Tuple.of(String, 'mistral/x'))
+
+        then:
+            !late.lookUp().isFor(late.settings())
+            late.settings().local().model() == ''
+
+        when: 'the address changes after the answer'
+            var answered = local.modelsFound(Settings.Place.THIS_MACHINE, 'http://127.0.0.1:11434/v1', Tuple.of(String, 'qwen2.5:7b'))
+            var moved = answered.withSettings(answered.settings().withLocal(answered.settings().local().withAddress('http://127.0.0.1:1234/v1')))
+
+        then:
+            answered.lookUp().isFor(answered.settings())
+            !moved.lookUp().isFor(moved.settings())
+    }
+
+    def 'Settings never show a key when printed'() {
         reportInfo """
             Settings end up in logs and error messages. Printing them says whether a key was
             entered, never what it is.
         """
         expect:
-            !Settings.defaults().withHosted(Settings.defaults().hosted().withKeySource(Settings.KeySource.ENTERED)
-                     .withKey('sk-secret-123')).toString().contains('sk-secret-123')
+            !Settings.defaults().withEdenAi(Settings.defaults().edenAi().withKeySource(Settings.KeySource.ENTERED)
+                     .withKey('sk-secret-123'))
+                     .withElsewhere(new Settings.Elsewhere('https://ollama.example.com/v1', 'sk-server-456', 'm'))
+                     .toString().matches(/.*(sk-secret-123|sk-server-456).*/)
     }
 
-    private static Settings hostedAt(String service) {
-        Settings.defaults().withHosted(Settings.defaults().hosted().withService(service))
+    private static Settings elsewhereAt(String address) {
+        Settings.defaults().withPlace(Settings.Place.ELSEWHERE).withElsewhere(new Settings.Elsewhere(address, 'k', 'm'))
     }
 }

@@ -70,33 +70,57 @@ public final class Shelf {
 
     /// The settings as last kept, or the defaults.
     ///
-    /// The hosted service's settings are the file's top-level fields, as they were before a model
-    /// server on this computer could be chosen, so an older file still reads.
+    /// A file from before a server elsewhere could be chosen still reads. Its "hosted service" is
+    /// the top-level `service`, `keySource`, `key` and `model`: Eden AI's settings when the
+    /// service is Eden AI, and otherwise those of a server elsewhere, which is what it was.
     public Settings settings() {
         JsonNode file = read("settings.json");
         Settings defaults = Settings.defaults();
-        Settings.KeySource source = file.path("keySource").asText().equals("ENTERED")
-                ? Settings.KeySource.ENTERED : Settings.KeySource.ENVIRONMENT;
-        Settings.Place place = file.path("place").asText().equals("THIS_MACHINE")
-                ? Settings.Place.THIS_MACHINE : Settings.Place.HOSTED;
         JsonNode local = file.path("local");
-        return new Settings(place,
-                new Settings.Hosted(file.path("service").asText(defaults.hosted().service()), source,
-                                    file.path("key").asText(""), file.path("model").asText(defaults.hosted().model())),
-                new Settings.OnThisMachine(local.path("address").asText(defaults.local().address()),
-                                           local.path("model").asText(defaults.local().model())));
+        Settings.OnThisMachine onThisMachine = new Settings.OnThisMachine(
+                local.path("address").asText(defaults.local().address()), local.path("model").asText(defaults.local().model()));
+        if (file.has("edenAi")) {
+            JsonNode eden = file.path("edenAi");
+            JsonNode elsewhere = file.path("elsewhere");
+            return new Settings(placeIn(file.path("place").asText(), defaults.place()),
+                    new Settings.EdenAi(keySourceIn(eden), eden.path("key").asText(""),
+                                        eden.path("model").asText(defaults.edenAi().model())),
+                    new Settings.Elsewhere(elsewhere.path("address").asText(""), elsewhere.path("key").asText(""),
+                                           elsewhere.path("model").asText("")),
+                    onThisMachine);
+        }
+        String service = file.path("service").asText(Settings.EDEN_AI_SERVICE);
+        String model = file.path("model").asText(defaults.edenAi().model());
+        boolean edenAi = Settings.isEdenAi(service);
+        boolean chosenHere = file.path("place").asText().equals("THIS_MACHINE");
+        return new Settings(chosenHere ? Settings.Place.THIS_MACHINE : edenAi ? Settings.Place.EDEN_AI : Settings.Place.ELSEWHERE,
+                edenAi ? new Settings.EdenAi(keySourceIn(file), file.path("key").asText(""), model) : defaults.edenAi(),
+                edenAi ? defaults.elsewhere() : new Settings.Elsewhere(service, file.path("key").asText(""), model),
+                onThisMachine);
     }
 
-    /// Keeps the settings, in a file only this user can read. An entered key is kept only
-    /// while the settings say to use it.
+    private static Settings.Place placeIn(String text, Settings.Place otherwise) {
+        for (Settings.Place place : Settings.Place.values()) if (place.name().equals(text)) return place;
+        return otherwise;
+    }
+
+    private static Settings.KeySource keySourceIn(JsonNode settings) {
+        return settings.path("keySource").asText().equals("ENTERED") ? Settings.KeySource.ENTERED : Settings.KeySource.ENVIRONMENT;
+    }
+
+    /// Keeps the settings, in a file only this user can read. An entered Eden AI key is kept only
+    /// while the settings say to use it; a server elsewhere's key is kept while it is entered.
     public void keep(Settings settings) throws IOException {
-        Settings.Hosted hosted = settings.hosted();
-        ObjectNode file = JSON.createObjectNode()
-                .put("place", settings.place().name())
-                .put("service", hosted.service().strip())
-                .put("keySource", hosted.keySource().name())
-                .put("model", hosted.model().strip());
-        if (hosted.keySource() == Settings.KeySource.ENTERED) file.put("key", hosted.key().strip());
+        Settings.EdenAi eden = settings.edenAi();
+        ObjectNode file = JSON.createObjectNode().put("place", settings.place().name());
+        ObjectNode edenAi = file.putObject("edenAi")
+                .put("keySource", eden.keySource().name())
+                .put("model", eden.model().strip());
+        if (eden.keySource() == Settings.KeySource.ENTERED) edenAi.put("key", eden.key().strip());
+        file.putObject("elsewhere")
+                .put("address", settings.elsewhere().address().strip())
+                .put("key", settings.elsewhere().key().strip())
+                .put("model", settings.elsewhere().model().strip());
         file.putObject("local")
                 .put("address", settings.local().address().strip())
                 .put("model", settings.local().model().strip());

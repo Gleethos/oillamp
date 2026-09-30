@@ -84,12 +84,13 @@ class KeepingGeniesBetweenRunsSpec extends Specification {
         reportInfo """
             An entered model key is kept, so the user does not type it every time, in a file only
             they can read, like ~/.ssh keys. When the settings say to use the key from the
-            environment, an earlier entered key is not kept at all.
+            environment, an earlier entered Eden AI key is not kept at all.
         """
         given:
             var shelf = new Shelf(tmp)
-            var entered = Settings.defaults().withHosted(new Settings.Hosted('https://llm.example.com',
-                    Settings.KeySource.ENTERED, 'sk-entered', 'mistral/mistral-medium-latest'))
+            var entered = Settings.defaults()
+                    .withEdenAi(new Settings.EdenAi(Settings.KeySource.ENTERED, 'sk-entered', 'mistral/mistral-medium-latest'))
+                    .withElsewhere(new Settings.Elsewhere('https://ollama.example.com/v1', 'sk-server', 'llama3.3:70b'))
 
         when:
             shelf.keep(entered)
@@ -99,38 +100,59 @@ class KeepingGeniesBetweenRunsSpec extends Specification {
             PosixFilePermissions.toString(Files.getPosixFilePermissions(tmp.resolve('settings.json'))) == 'rw-------'
 
         when:
-            shelf.keep(entered.withHosted(entered.hosted().withKeySource(Settings.KeySource.ENVIRONMENT)))
+            shelf.keep(entered.withEdenAi(entered.edenAi().withKeySource(Settings.KeySource.ENVIRONMENT)))
 
         then:
             !Files.readString(tmp.resolve('settings.json')).contains('sk-entered')
     }
 
-    def 'A model server on this computer is remembered along with the hosted service'() {
+    def 'Every place is remembered, and which one the genies use'() {
         reportInfo """
-            Both places keep their settings, and which one the genies use. A settings file from
-            before a model server could be chosen still reads: its settings are the hosted
-            service's.
+            Eden AI, a server elsewhere and one on this computer each keep their settings, and
+            the place chosen is kept with them.
         """
         given:
             var shelf = new Shelf(tmp)
             var chosen = Settings.defaults().withPlace(Settings.Place.THIS_MACHINE)
                                 .withLocal(new Settings.OnThisMachine('http://127.0.0.1:1234/v1', 'qwen2.5:7b'))
+                                .withElsewhere(new Settings.Elsewhere('https://ollama.example.com/v1', '', 'llama3.3:70b'))
 
         when:
             shelf.keep(chosen)
 
         then:
             new Shelf(tmp).settings() == chosen
+    }
 
-        when: 'an older file, with only the hosted service in it'
+    def 'An older settings file still reads, its other service as a server elsewhere'() {
+        reportInfo """
+            Before a server elsewhere could be chosen, the settings had one "hosted service",
+            Eden AI unless the user named another, with a key and a model. Eden AI's become Eden
+            AI's settings. Another service's become those of a server elsewhere, which is what it
+            was, with its entered key; the genies go on using it.
+        """
+        when: 'a file naming Eden AI'
             Files.writeString(tmp.resolve('settings.json'),
-                    '{"service":"https://llm.example.com","keySource":"ENVIRONMENT","model":"m"}')
+                    '{"place":"HOSTED","service":"https://api.eu.edenai.run","keySource":"ENTERED","key":"sk-e","model":"m",' +
+                    '"local":{"address":"http://127.0.0.1:1234/v1","model":"q"}}')
 
         then:
             with(new Shelf(tmp).settings()) {
-                place() == Settings.Place.HOSTED
-                hosted().service() == 'https://llm.example.com'
-                hosted().model() == 'm'
+                place() == Settings.Place.EDEN_AI
+                edenAi() == new Settings.EdenAi(Settings.KeySource.ENTERED, 'sk-e', 'm')
+                elsewhere() == Settings.defaults().elsewhere()
+                local() == new Settings.OnThisMachine('http://127.0.0.1:1234/v1', 'q')
+            }
+
+        when: 'a file naming another service'
+            Files.writeString(tmp.resolve('settings.json'),
+                    '{"service":"https://llm.example.com/v1","keySource":"ENTERED","key":"sk-own","model":"m"}')
+
+        then:
+            with(new Shelf(tmp).settings()) {
+                place() == Settings.Place.ELSEWHERE
+                elsewhere() == new Settings.Elsewhere('https://llm.example.com/v1', 'sk-own', 'm')
+                edenAi() == Settings.defaults().edenAi()
                 local() == Settings.defaults().local()
             }
     }

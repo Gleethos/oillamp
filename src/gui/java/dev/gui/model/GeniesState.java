@@ -19,7 +19,7 @@ import sprouts.Tuple;
 ///                 the settings can say whether it is there, and never shown
 /// @param sidebarShown whether the list of genies is shown; hidden to make room in a narrow window
 /// @param narrow   whether the window is too narrow for the list and a conversation side by side
-/// @param lookUp   the models a server on this computer offered when last asked, for the settings
+/// @param lookUp   the models the service in the settings offered when last asked
 /// @param zoom     how large a genie's desktop is shown
 /// @param area     the room the conversation, and the desktop beside it, have in the window
 /// @param now      the time the window shows things relative to, such as the schedule's timeline;
@@ -31,12 +31,20 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     /// A width and a height, in the window's own units.
     public record Area(int width, int height) {}
 
-    /// What asking a model server on this computer for its models found.
+    /// What asking a model service for its models found.
     ///
-    /// @param models the models it offers, by the names genies use for them
-    /// @param note   what happened, in a few words, such as how many were found or why none were
-    public record ModelLookUp(Tuple<String> models, String note) {
-        public static final ModelLookUp NOT_YET = new ModelLookUp(Tuple.of(String.class), "");
+    /// @param place   the place in the settings it was asked for
+    /// @param service the address it was asked at
+    /// @param models  the models it offers, by the names genies use for them, in alphabetical order
+    /// @param note    what happened, in a few words, such as how many were found or why none were
+    public record ModelLookUp(Settings.Place place, String service, Tuple<String> models, String note) {
+        public static final ModelLookUp NOT_YET = new ModelLookUp(Settings.Place.EDEN_AI, "", Tuple.of(String.class), "");
+
+        /// Whether this is the answer for the service the settings name now. After the place or
+        /// the address changed, it is not, and the settings do not offer its models.
+        public boolean isFor(Settings settings) {
+            return place == settings.place() && service.equals(settings.service());
+        }
     }
 
     /// The selected genie's chat, its schedule, or the settings every genie shares.
@@ -166,20 +174,31 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
         return java.time.LocalDateTime.ofInstant(now, genie().schedule().zone());
     }
 
-    /// The models a server on this computer offered. The first becomes the genies' model if none
-    /// was chosen yet.
-    public GeniesState modelsFound(Tuple<String> models) {
-        Settings chosen = settings.local().model().isBlank() && !models.isEmpty()
-                ? settings.withLocal(settings.local().withModel(models.first())) : settings;
-        String note = models.isEmpty() ? "The model server offers no models yet; pull one first, such as `ollama pull qwen2.5:7b`."
-                    : models.size() == 1 ? "The model server offers one model."
-                    : "The model server offers " + models.size() + " models.";
-        return withSettings(chosen).withLookUp(new ModelLookUp(models, note));
+    /// The settings are asking the service they name for its models.
+    public GeniesState askingForModels() {
+        Tuple<String> known = lookUp.isFor(settings) ? lookUp.models() : Tuple.of(String.class);
+        return withLookUp(new ModelLookUp(settings.place(), settings.service(), known, "Asking for the models…"));
     }
 
-    /// Asking a server on this computer for its models failed, for the reason given.
-    public GeniesState modelsNotFound(String why) {
-        return withLookUp(new ModelLookUp(Tuple.of(String.class), why));
+    /// The models the service at `service`, for `place`, offered. If that is still the service
+    /// the settings name, and no model was chosen there yet, the first one is.
+    public GeniesState modelsFound(Settings.Place place, String service, Tuple<String> found) {
+        Tuple<String> models = found.sort(String.CASE_INSENSITIVE_ORDER);
+        String note = models.isEmpty()
+                        ? (place == Settings.Place.EDEN_AI ? "Eden AI offers no models in the EU just now."
+                           : "The model server offers no models yet; pull one first, such as `ollama pull qwen2.5:7b`.")
+                    : place == Settings.Place.EDEN_AI ? "Eden AI offers " + models.size() + " models in the EU."
+                    : models.size() == 1 ? "The model server offers one model."
+                    : "The model server offers " + models.size() + " models.";
+        ModelLookUp answer = new ModelLookUp(place, service, models, note);
+        Settings chosen = answer.isFor(settings) && settings.model().isBlank() && !models.isEmpty()
+                ? settings.withModel(models.first()) : settings;
+        return withSettings(chosen).withLookUp(answer);
+    }
+
+    /// Asking the service at `service`, for `place`, for its models failed, for the reason given.
+    public GeniesState modelsNotFound(Settings.Place place, String service, String why) {
+        return withLookUp(new ModelLookUp(place, service, Tuple.of(String.class), why));
     }
 
     /// Why genies cannot reach their model with the current settings, or nothing.
