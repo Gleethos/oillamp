@@ -68,7 +68,8 @@ class KeepingGeniesBetweenRunsSpec extends Specification {
             var genie = Genie.named('Genie 1')
             var state = Var.of(GeniesState.of(Tuple.of(Genie, genie), Settings.defaults(), Optional.of('sk-env'))
                     .withPage(GeniesState.Page.SETTINGS))
-            new Genies(state, new Shelf(tmp), { directory, settings, key, progress, events -> throw new IOException('no lamps here') } as Lighter)
+            // Held until the end: the app watches the page through views it keeps, which go when it goes.
+            var app = new Genies(state, new Shelf(tmp), { directory, settings, key, progress, events -> throw new IOException('no lamps here') } as Lighter)
 
         when: 'the user changes the model, then clicks the genie instead of Done'
             state.update(From.VIEW, { it.withSettings(it.settings().withModel('mistral/mistral-large-latest')) })
@@ -76,6 +77,7 @@ class KeepingGeniesBetweenRunsSpec extends Specification {
 
         then:
             new Shelf(tmp).settings().model() == 'mistral/mistral-large-latest'
+            app != null
     }
 
     def 'The settings are kept where only this user can read them, the key only when it is used'() {
