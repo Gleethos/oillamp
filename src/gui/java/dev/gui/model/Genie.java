@@ -19,9 +19,10 @@ import sprouts.Tuple;
 /// @param handouts  the files in its outbox, which the user can save
 /// @param desktopShown whether its desktop is shown next to the chat
 /// @param conversations every conversation with it, and which one the chat shows
+/// @param schedule  the jobs that wake it, as its schedule page shows them
 public record Genie(UUID id, String name, Phase phase, String activity, Transcript transcript,
                     String draft, int tokens, Tuple<Handout> handouts, boolean desktopShown,
-                    Conversations conversations)
+                    Conversations conversations, Schedule schedule)
         implements HasId<UUID> {
 
     public enum Phase {
@@ -45,18 +46,19 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
 
     public static Genie asleep(UUID id, String name) {
         return new Genie(id, name, Phase.ASLEEP, "asleep", Transcript.empty(), "", 0,
-                         Tuple.of(Handout.class), false, Conversations.NONE);
+                         Tuple.of(Handout.class), false, Conversations.NONE, Schedule.unread(java.time.ZoneId.systemDefault()));
     }
 
-    public Genie withName(String name)             { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
-    public Genie withPhase(Phase phase)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
-    public Genie withActivity(String activity)     { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
-    public Genie withTranscript(Transcript transcript) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
-    public Genie withDraft(String draft)           { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
-    public Genie withTokens(int tokens)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
-    public Genie withHandouts(Tuple<Handout> handouts) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
-    public Genie withDesktopShown(boolean shown)   { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, shown, conversations); }
-    public Genie withConversations(Conversations conversations) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations); }
+    public Genie withName(String name)             { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
+    public Genie withPhase(Phase phase)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
+    public Genie withActivity(String activity)     { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
+    public Genie withTranscript(Transcript transcript) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
+    public Genie withDraft(String draft)           { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
+    public Genie withTokens(int tokens)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
+    public Genie withHandouts(Tuple<Handout> handouts) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
+    public Genie withDesktopShown(boolean shown)   { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, shown, conversations, schedule); }
+    public Genie withConversations(Conversations conversations) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
+    public Genie withSchedule(Schedule schedule)   { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
 
     // ─── its lamp ──────────────────────────────────────────────────────────────────────────
 
