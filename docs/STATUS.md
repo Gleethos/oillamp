@@ -359,10 +359,8 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 - Saving or restoring a home with hundreds of thousands of files, such as several `node_modules`.
 - The Genies app has no buttons for the history yet; `dev.lamp.Lamp` offers `save`, `history` and
   `restore`.
-- Genies still starts its own pi, and does not use the session's. A lamp that Genies holds and
-  that has jobs on its schedule runs two pis in one home. The Lamp API now has what Genies needs
-  (`conversations`, `send` with a `Question`, `RunProgress`, `cancel`, `agentStatus`); Genies does
-  not use it yet.
+- Genies now goes through the Lamp API only; that is tested against the engine on a simulated
+  machine, with a stand-in pi. Not yet tried in the real app with a real lamp.
 - The scheduling tools are pi's only. Another harness in the sandbox, such as opencode, has none.
 - A run uses whatever model pi is configured with in the sandbox. A lamp whose pi has no default
   model, or one the model service refuses, fails every run, and says so; oillamp has no setting
