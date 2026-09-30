@@ -426,19 +426,20 @@ oillamp single file.
 *Given up:* the repository now holds a second program with its own dependencies.
 *(added on 2026-09-28)*
 
-### A genie's harness is pi in RPC mode, and the conversation stays in the sandbox
+### A genie's agent is the lamp's pi, reached only through the Lamp API
 
-Genies runs `pi --mode rpc --continue` in each genie's sandbox, over the lamp's ssh command, and
-speaks pi's JSON-lines protocol on its standard input and output. The conversation is kept by pi, in
-the genie's home, and read back with `get_messages` when the genie wakes.
+Genies does not run pi. It asks the lamp's session, which holds the one pi of the lamp, with
+`Lamp.send`, follows the answer on the lamp's run events, stops it with `Lamp.cancel`, and reads
+the conversations with `Lamp.conversations`. It gives pi the genie's instructions and model through
+pi's own files in the genie's home. The conversations are kept by pi, in the genie's home.
 
-*Why:* RPC mode streams an answer as it is written, reports every tool the agent uses, and keeps
-one process per genie, so a conversation is not restarted per message. Keeping the conversation in
-the sandbox gives it one owner, so it cannot disagree with what the agent remembers, and deleting
-the genie deletes it.
+*Why:* a lamp has one agent, so a scheduled job and the chat can never run two pis in one home, and
+every message is saved in the lamp's history like any run. Reading conversations from the lamp's
+files shows them while the genie sleeps. Keeping them in the sandbox gives them one owner, and
+deleting the genie deletes them.
 
-*Given up:* only pi is supported. opencode speaks ACP instead, and would need its own protocol
-class. *(added on 2026-09-28)*
+*Given up:* each message starts a short-lived engine process, about a second before the run
+begins. Only pi is supported. *(changed on 2026-09-30; before, Genies ran its own pi over ssh)*
 
 ### Files pass between a genie and its user through `~/outbox` and `~/inbox`, over ssh
 

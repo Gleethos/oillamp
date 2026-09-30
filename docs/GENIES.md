@@ -26,8 +26,8 @@ which models it has.
 | the list of genies: each one's id and name | `~/.local/share/genies/genies.json` | Genies |
 | the model settings: which place the model runs, the hosted service with its key source, model and an entered key, and the model server's address and model | `~/.local/share/genies/settings.json`, readable by the user only | Genies |
 | each genie's lamp: its home, its settings, its state | `~/.local/share/genies/lamps/<genie id>/` | oillamp |
-| each genie's conversations, one file each, with every branch | in its home, `.pi/agent/sessions/--home-agent--/*.jsonl`, inside its lamp | pi, the harness |
-| Genies' extension to pi, for moving within a conversation | `/usr/local/share/oillamp/genies/pi-genies.js` in the sandbox image | oillamp's image |
+| each genie's conversations, one file each, with every branch | in its home, `.pi/agent/sessions/<folder>/*.jsonl`, inside its lamp | pi, run by the lamp's session |
+| the genie's instructions, and the model pi uses | in its home, `.pi/agent/APPEND_SYSTEM.md`, and `defaultProvider` and `defaultModel` in `.pi/agent/settings.json` | Genies writes them at every wake |
 | the files a genie hands over | `~/outbox` in its home | the genie |
 | the files the user gives a genie | `~/inbox` in its home | Genies puts them there |
 
@@ -44,22 +44,26 @@ start asleep.
    or into the lamp. The first time, the engine builds the sandbox image, which takes minutes; its
    progress becomes the genie's status line.
 2. Once the lamp runs, `mkdir -p ~/outbox ~/inbox` runs in the sandbox, over the lamp's ssh command.
-3. pi starts in the sandbox, over the same ssh command:
-   `pi --extension <Genies' extension> --mode rpc --provider edenai --model <model> --continue --append-system-prompt <about Genies>`.
-   `--continue` picks up the genie's last conversation; a genie woken into another one gets
-   `--session <its file>` instead. The extra instructions tell the genie about `~/outbox`,
-   `~/inbox` and its desktop being watched. A small shell adds `--extension` only when the file is
-   there, because pi refuses to start with an extension it cannot find, and a sandbox image built
-   before Genies had one must still give a working genie.
-4. Genies asks pi for the conversation so far (`get_entries`) and shows the way from its first
-   entry to the one pi continues from. It asks pi which commands it has (`get_commands`), to know
-   whether the extension is there, and which conversation it has open (`get_state`).
+3. Genies writes the genie's instructions (`~/outbox`, `~/inbox`, its desktop being watched) to
+   `~/.pi/agent/APPEND_SYSTEM.md`, and the model from the settings into `~/.pi/agent/settings.json`,
+   keeping that file's other keys. pi reads both when the lamp's session starts it, at the first
+   message.
+4. The chat shows the conversation Genies was in, or else the genie's most recent one, read with
+   `Lamp.conversations`.
 
-**A message** goes to pi's standard input as one line of JSON, `{"type":"prompt","message":…}`. pi
-answers with a stream of JSON lines: pieces of the answer, tools started and finished, the complete
-answer with its token count, and finally `agent_settled`. `PiProtocol` reads them into `PiEvent`
-values; `Transcript` folds each one into the conversation, and the chat follows. A message sent
-while the genie still works is queued as a follow-up.
+Genies does not start pi. The lamp's session holds the genie's one pi, as it does for any lamp,
+and every message, scheduled job and `oillamp ask` goes through it, one run at a time.
+
+**A message** goes to the session with `Lamp.send` and a `Lamp.Question` that says where it goes:
+a new conversation, after the entry the chat shows, or instead of a question. `send` returns the
+run's id at once. The run's events come on the lamp's event stream: `RunProgress` with each piece
+of the answer and of the model's thinking, each tool started and finished, each complete message,
+and `RunFinished`. `GenieRunner` turns those of its own runs into `PiEvent` values, and `Transcript`
+folds each into the chat. A message sent while the agent works on another run waits its turn.
+
+`send` starts a short-lived engine process, so a run starts about a second after the message is
+sent. Its first events can arrive before `send` returns; `GenieRunner` recognises them by the
+message's text.
 
 The model requests themselves leave the sandbox through oillamp's model relay, which adds the key
 on the host. Inside the sandbox there is only a placeholder. For a model server on this computer,
@@ -68,11 +72,14 @@ stand-in key the server ignores; the relay puts the server's path in place of th
 and pi is offered every model the server lists, where for Eden AI it keeps only those served in
 the EU.
 
-**After each answer**, Genies lists `~/outbox`. A file that was not there before is announced in
-the chat, with a Save button. It also asks pi for the conversation again, to learn pi's ids for the
-questions just asked, and reads the genie's conversations again, since the tree has grown.
+**After each run of its own**, Genies lists `~/outbox`. A file that was not there before is announced
+in the chat, with a Save button. It reads the conversation again, to learn the entries' ids and
+where the conversation now stands, and the tree. A run it did not start, such as a scheduled job's,
+changes only the tree.
 
-**Sleeping** closes pi's input, then the lamp. The engine stops the container and exits. The
+**Stop** cancels the run that answers the chat, with `Lamp.cancel`.
+
+**Sleeping** closes the lamp. The engine stops the container and exits. The
 genie's home stays, with the conversation in it. Closing the window puts every genie to sleep
 first. If Genies is killed instead, each engine notices that its standard input closed and shuts
 down by itself.
@@ -97,36 +104,22 @@ selected.
 
 | The user | What happens |
 |---|---|
-| clicks a row | the genie goes to that row's last entry, and the chat shows the way there. A sleeping genie wakes into it |
+| clicks a row | the chat shows the way to that row's last entry, and the next message goes after it. A sleeping genie stays asleep |
 | presses Edit under a question of theirs | a dialog holds the question; the changed one is asked instead, and what followed the old one stays as a branch |
-| presses New | pi starts a new conversation; the others stay |
+| presses New | the chat empties, and the next message starts a new conversation; the others stay |
 | presses Delete… | after asking, the conversation the genie is in is deleted for good, with all its branches, and the genie starts a new one |
 
-pi's RPC mode can list a conversation's entries but has no command to move among them; only a
-command of an extension may. So the sandbox image carries a small extension of Genies', and Genies
-sends its two commands as prompts: `/genies-goto <entry>` continues after an entry, and
-`/genies-edit <question> <text>` moves to just before an old question and asks the new text there,
-in one step. The extension answers with a notification, `genies: moved` or `genies: could not
-move: <why>`, which is how Genies knows when to ask for the conversation again. Genies checks with
-`get_commands` that the extension is there before sending either: without it, pi would pass the
-command on to the model as an ordinary question. A genie without it says in the chat that it
-needs waking again, which rebuilds its sandbox with the extension.
+Moving within a conversation happens in the session, when the next message is asked: its
+`Lamp.Question` names the conversation, and the entry to continue after or the question to ask
+instead of. The session opens the conversation in pi and moves there first. Going to a row only
+changes what the chat shows and where the next message goes.
 
-pi works on commands side by side rather than one after the other, so going somewhere is a chain
-of questions, each sent when the last was answered: open the conversation (`switch_session`), move
-(`/genies-goto`), then ask where pi is (`get_state`) and what was said on the way (`get_entries`).
+**Where the tree comes from.** `Lamp.conversations(<lamp>)` reads pi's files from the genie's
+home in its lamp, on this computer, so the tree is there while the genie sleeps. It follows no
+link, leaves out files over 64 MB, and skips lines that are not entries. `Lamp.forget` deletes one.
 
-**Where the tree comes from.** Genies reads the conversation files straight from the genie's home in
-its lamp, on this computer, so the tree is there while the genie sleeps. This is the one thing
-Genies reads from the lamp directly instead of through the sandbox. The genie writes those files,
-so they are read as its work: no link is followed, not even a directory on the way, a file over
-64 MB is left out, and a line that is not JSON is skipped. Deleting a conversation deletes its
-file the same way. `Lamp.agentHome(<lamp>)` says where the home is.
-
-pi only notes which entry it continues from while it runs; after a restart it continues from the
-entry it wrote last. So Genies remembers where the user went, and wakes a genie that slept there.
-It remembers that only while it runs: after Genies starts again, a genie wakes in the conversation
-pi wrote to last, at its end.
+Genies remembers where the user went only while it runs: after Genies starts again, a genie wakes
+in its most recent conversation, at its end.
 
 ## Files, both ways
 
@@ -180,9 +173,9 @@ and the user watches with the Desktop button.
 | Package | What is in it | Touches the outside world |
 |---|---|---|
 | `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, and `Conversations`, `Conversation` and `Talk` for the tree: records with withers, every change a pure method | no |
-| `dev.gui.pi` | `PiProtocol` (lines ⇄ `PiEvent`), `PiSession` (pi's process) | `PiSession` only |
+| `dev.gui.pi` | `PiEvent` (what the chat is told) | no |
 | `dev.gui.desktop` | `RfbConnection`, `Keysyms` | `RfbConnection` only |
-| `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `Handouts` (files), `SessionFiles` (pi's conversations in the genie's home), `Shelf` (what is kept on disk) | yes |
+| `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `Handouts` (files), `LampTalk` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePrompt` (pi's instructions and model in the genie's home), `Shelf` (what is kept on disk) | yes |
 | `dev.gui.view` | `GeniesView` (the window, bound to `Var<GeniesState>` through lenses), `DesktopScreen`, the look | Swing only |
 | `dev.gui` | `Genies`: the entry point, and the `Actions` the window calls | ties it together |
 
@@ -196,17 +189,15 @@ through one place, one at a time.
 
 | Spec | What it pins |
 |---|---|
-| `SpeakingPisProtocolSpec` | pi's JSON lines, both ways |
 | `FollowingAConversationSpec` | how events become the chat, and asking a question differently |
 | `BranchingAConversationSpec` | how pi's entries become the tree of conversations and branches |
-| `ReadingAGeniesConversationsSpec` | reading and deleting pi's conversation files, without following links |
 | `ReadingAGeniesMarkdownSpec` | Markdown as models write it, and the fade of a streaming answer |
 | `ZoomingIntoAGeniesDesktopSpec` | the desktop's zoom steps |
 | `KeepingManyGeniesSpec` | the list of genies, the settings for both places, a narrow window |
 | `AskingAModelServerForItsModelsSpec` | Look up, against a stand-in server answering as Ollama does |
 | `KeepingGeniesBetweenRunsSpec` | the shelf |
 | `WatchingAGeniesDesktopSpec` | the VNC client, against a stand-in desktop playing wayvnc's part byte by byte |
-| `KeepingAGenieAliveSpec` | a genie's life through real processes and pipes, with a stand-in lamp and a shell script as pi, going between conversations too |
+| `KeepingAGenieAliveSpec` | a genie's life through the Lamp API, with oillamp's engine in the test's JVM on a simulated machine and a stand-in pi that writes conversations as pi does |
 | `RunningARealGenieSpec` (spike) | the same with a real lamp, real pi, real wayvnc and, with a key, the real model |
 | `UsingGeniesForRealSpec` (spike) | the app's actions as the buttons call them, against real lamps, and with Ollama when it has the spike's model |
 
