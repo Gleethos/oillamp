@@ -125,13 +125,8 @@ public final class Genies implements Actions {
         if (genie.isEmpty()) return;
         state.update(From.VIEW, it -> it.select(id));
         switch (genie.get().phase()) {
-            case READY -> runner(id).goTo(conversation, leaf);
-            case ASLEEP, BROKEN -> {
-                // Wakes into that conversation, and moves within it once awake.
-                state.update(From.VIEW, it -> it.update(id, sleeping -> sleeping.withConversations(
-                        sleeping.conversations().withHere(new Conversations.Here(conversation, leaf)))));
-                wake(id);
-            }
+            // Conversations are read from the lamp, so a sleeping genie's can be read too.
+            case READY, ASLEEP, BROKEN -> runner(id).goTo(conversation, leaf);
             case WAKING, WORKING -> { }   // The tree does not move while the genie is busy.
         }
     }
@@ -140,8 +135,6 @@ public final class Genies implements Actions {
         Optional<Genie> genie = state.get().find(id);
         if (genie.isEmpty()) return;
         state.update(From.VIEW, it -> it.select(id));
-        if (genie.get().phase() == Genie.Phase.ASLEEP || genie.get().phase() == Genie.Phase.BROKEN) wake(id);
-        // Waking and this take turns on the runner's thread, so this waits until the genie is awake.
         if (genie.get().phase() != Genie.Phase.WORKING) runner(id).startAfresh();
     }
 
@@ -159,13 +152,8 @@ public final class Genies implements Actions {
     @Override public void askInstead(String question, String text) {
         Genie genie = state.get().genie();
         if (text.isBlank() || genie.phase() != Genie.Phase.READY) return;
-        GenieRunner runner = runner(genie.id());
-        if (!runner.canMove()) {
-            state.update(From.VIEW, it -> it.update(genie.id(), g -> g.withTranscript(g.transcript().problem(GenieRunner.CANNOT_MOVE))));
-            return;
-        }
         state.update(From.VIEW, it -> it.update(genie.id(), g -> g.askInstead(question, text)));
-        runner.askInstead(question, text.strip());
+        runner(genie.id()).askInstead(question, text.strip());
     }
 
     @Override public void sleep(UUID id) {

@@ -1,32 +1,51 @@
 package dev.gui.genie;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
 
-import dev.gui.pi.PiProtocol;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
-/// How a genie's harness is started, and what it is told about living in Genies.
+/// What the genie's pi is told about living in Genies, and which model it uses.
+///
+/// The lamp's session runs pi itself, so Genies cannot give it command-line options. It writes
+/// pi's own files in the genie's home instead, before the first run: `APPEND_SYSTEM.md`, which pi
+/// adds to its system prompt, and `defaultProvider` and `defaultModel` in `settings.json`, keeping
+/// everything else in that file.
 final class GeniePrompt {
 
     private GeniePrompt() {}
 
-    /// pi in RPC mode, on the Eden AI provider that the sandbox points at oillamp's model relay,
-    /// with Genies' extension for moving within a conversation.
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    /// pi's directory in the genie's home.
+    static final String PI_DIRECTORY = ".pi/agent";
+
+    /// Writes the genie's instructions and model into pi's directory in `home`. pi reads both when
+    /// it starts, which is at the lamp's first run.
     ///
-    /// pi refuses to start with an extension that is not there, which it is not in a sandbox
-    /// image built before Genies had one. Such a genie must still wake, so a shell adds the
-    /// extension only when it finds it; [PiProtocol#askWhatItCanDo()] then tells which it is.
-    ///
-    /// @param conversation the session file to open, as the sandbox names it, or nothing to
-    ///                     continue the last conversation
-    static String[] harness(String name, String model, String conversation) {
-        List<String> command = new ArrayList<>(List.of(
-            "sh", "-c", "if [ -r \"$0\" ]; then exec pi --extension \"$0\" \"$@\"; else exec pi \"$@\"; fi",
-            PiProtocol.EXTENSION,
-            "--mode", "rpc", "--provider", "edenai", "--model", model));
-        command.addAll(conversation.isEmpty() ? List.of("--continue") : List.of("--session", conversation));
-        command.addAll(List.of("--append-system-prompt", about(name)));
-        return command.toArray(String[]::new);
+    /// @throws IOException when pi's directory is a link, or a file could not be written
+    static void prepare(Path home, String name, String model) throws IOException {
+        Path pi = home;
+        for (Path part : Path.of(PI_DIRECTORY)) {
+            pi = pi.resolve(part);
+            if (Files.isSymbolicLink(pi)) throw new IOException("the genie's " + PI_DIRECTORY + " is a link");
+        }
+        Files.createDirectories(pi);
+        Files.writeString(pi.resolve("APPEND_SYSTEM.md"), about(name), StandardCharsets.UTF_8);
+        Path settingsFile = pi.resolve("settings.json");
+        ObjectNode settings = JSON.createObjectNode();
+        if (Files.isRegularFile(settingsFile, LinkOption.NOFOLLOW_LINKS)) {
+            JsonNode read = JSON.readTree(Files.readString(settingsFile, StandardCharsets.UTF_8));
+            if (read != null && read.isObject()) settings = (ObjectNode) read;
+        }
+        settings.put("defaultProvider", "edenai").put("defaultModel", model);
+        Files.writeString(settingsFile, JSON.writerWithDefaultPrettyPrinter().writeValueAsString(settings) + "\n",
+                StandardCharsets.UTF_8);
     }
 
     /// Added to pi's own instructions. The sandbox's AGENTS.md, which pi reads too, explains the

@@ -64,10 +64,6 @@ public record Transcript(Tuple<Entry> entries) {
             case PiEvent.Refused refused -> problem("The genie could not take that: " + refused.reason());
             case PiEvent.History history -> asksTheSame(history) ? learnIds(history) : from(history);
             case PiEvent.Opened ignored -> this;
-            case PiEvent.Switched ignored -> this;
-            case PiEvent.CanMove ignored -> this;
-            case PiEvent.Moved moved -> moved.failed().isEmpty() ? this
-                    : problem("The genie could not go there: " + moved.failed());
         };
     }
 
