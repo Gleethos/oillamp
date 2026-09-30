@@ -245,6 +245,16 @@ public final class Lamp implements AutoCloseable {
             return Lamp.addJob(launcher, listeners, directory, "--at", at, prompt);
         }
 
+        /// Every conversation the agent had in this lamp, the most recent first. See
+        /// [Lamp#conversations(Path)].
+        public List<Conversation> conversations() { return Lamp.conversations(directory); }
+
+        /// The conversation named by `id` or a unique beginning of it.
+        public Optional<Conversation> conversation(String id) { return Lamp.conversation(directory, id); }
+
+        /// Deletes a conversation for good. See [Lamp#forget(Path, String)].
+        public void forget(String conversation) throws IOException { Lamp.forget(directory, conversation); }
+
         /// Takes a job off the schedule, whoever added it.
         ///
         /// @param job such as `job-3`
@@ -348,6 +358,180 @@ public final class Lamp implements AutoCloseable {
         throw new Failed(ran.status(), internal("the engine reported no job"));
     }
 
+    // ─── conversations ─────────────────────────────────────────────────────────────────────
+
+    /// One conversation the agent had, as pi keeps it in the agent's home.
+    ///
+    /// A conversation is a tree of entries: every entry names the one before it. Most of the time
+    /// that makes a line, a question, its answer and the next question. Asking something else
+    /// instead of an earlier question starts a second line from the same entry, and both are kept.
+    /// The conversation stands at its [leaf][#leaf()]: the entry written last. Asking in it
+    /// continues from there, unless the question says where else it goes.
+    ///
+    /// @param id       pi's id for it, such as `01a0ec69-de1c-7234-914c-b970a862c13e`. Any unique
+    ///                 beginning of it of at least four characters names it too
+    /// @param name     the name it was given, such as `run-12 (job-3)`, or empty
+    /// @param file     where pi keeps it, relative to the agent's home
+    /// @param started  when it began
+    /// @param modified when its last entry was written
+    /// @param entries  every entry, in the order pi wrote them
+    public record Conversation(String id, String name, String file, java.time.Instant started,
+                               java.time.Instant modified, sprouts.Tuple<Entry> entries) {
+
+        /// One entry.
+        ///
+        /// @param parent   the entry it follows; empty for the first
+        /// @param kind     what it is
+        /// @param text     what was said: the question, the answer, the tool's output, the summary
+        /// @param thinking what the model thought before answering, for an answer that shows it
+        /// @param calls    the tools an answer called
+        /// @param tool     for a tool's output, the tool
+        /// @param failed   an answer that failed, or a tool that reported an error
+        public record Entry(String id, Optional<String> parent, java.time.Instant at, Kind kind, String text,
+                            String thinking, sprouts.Tuple<ToolCall> calls, Optional<String> tool, boolean failed) {}
+
+        public enum Kind {
+            /// Asked by the user, or by oillamp for a run.
+            QUESTION,
+            /// The agent's answer, which may call tools.
+            ANSWER,
+            /// What a tool the agent called put out.
+            TOOL_OUTPUT,
+            /// A summary pi wrote of entries that no longer fit, or of a line that was left.
+            SUMMARY,
+            /// Anything else pi keeps, such as its instructions or a change of model.
+            OTHER
+        }
+
+        /// A tool an answer called.
+        ///
+        /// @param summary one line: the command for `bash`, the file for the file tools
+        public record ToolCall(String id, String name, String summary) {}
+
+        /// How the conversation is shown: its name, or its first question.
+        public String title() {
+            if (!name.isBlank()) return oneLine(name);
+            for (Entry entry : entries)
+                if (entry.kind() == Kind.QUESTION && !entry.text().isBlank()) return oneLine(entry.text());
+            return "New conversation";
+        }
+
+        /// The entry it stands at: the last one written. Empty for a conversation with none.
+        public Optional<String> leaf() {
+            return entries.isEmpty() ? Optional.empty() : Optional.of(entries.last().id());
+        }
+
+        public Optional<Entry> entry(String id) {
+            return entries.stream().filter(entry -> entry.id().equals(id)).findFirst();
+        }
+
+        /// The line the conversation stands on: every entry from the first to the leaf.
+        public sprouts.Tuple<Entry> line() {
+            return leaf().map(this::lineTo).orElse(sprouts.Tuple.of(Entry.class));
+        }
+
+        /// Every entry from the first up to and including `id`. Empty when there is no such entry.
+        public sprouts.Tuple<Entry> lineTo(String id) {
+            java.util.Map<String, Entry> byId = new java.util.HashMap<>();
+            for (Entry entry : entries) byId.put(entry.id(), entry);
+            java.util.List<Entry> line = new java.util.ArrayList<>();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (Entry at = byId.get(id); at != null && seen.add(at.id()); at = at.parent().map(byId::get).orElse(null))
+                line.add(at);
+            return sprouts.Tuple.of(Entry.class, line.reversed());
+        }
+
+        /// The entries that follow `id` directly: one, or several where the conversation forks.
+        public sprouts.Tuple<Entry> children(String id) {
+            return entries.retainIf(entry -> entry.parent().filter(id::equals).isPresent());
+        }
+
+        /// The first eighteen characters of [#id()], which is how oillamp shows a conversation.
+        /// pi's ids begin with the time, so a shorter beginning is not always unique.
+        public String shortId() { return id.substring(0, Math.min(18, id.length())); }
+
+        private static String oneLine(String text) {
+            String line = text.strip().replaceAll("\\s+", " ");
+            return line.length() <= 60 ? line : line.substring(0, 59) + "…";
+        }
+    }
+
+    /// Where pi keeps conversations, relative to the agent's home.
+    static final String SESSIONS = ".pi/agent/sessions";
+
+    /// Session files larger than this are left out. A long conversation with much tool output is
+    /// a few megabytes.
+    static final long LARGEST_CONVERSATION = 64L * 1024 * 1024;
+
+    /// Every conversation the agent had in the lamp at `directory`, the most recent first. Works
+    /// whether or not the lamp is running, and reads the files directly, so it is quick enough
+    /// to call whenever something may have changed.
+    ///
+    /// The agent writes these files, so they are read as the agent's work: no link is followed,
+    /// not even a directory on the way, and a file that is not a conversation is left out.
+    public static List<Conversation> conversations(Path directory) {
+        Optional<Path> sessions = agentHome(directory).flatMap(home -> directoryWithoutLinks(home, SESSIONS));
+        if (sessions.isEmpty()) return List.of();
+        List<Conversation> found = new ArrayList<>();
+        for (Path folder : listed(sessions.get())) {
+            if (!java.nio.file.Files.isDirectory(folder, java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue;
+            for (Path file : listed(folder)) {
+                String name = file.getFileName().toString();
+                if (!name.endsWith(".jsonl") || !java.nio.file.Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                    continue;
+                try {
+                    if (java.nio.file.Files.size(file) > LARGEST_CONVERSATION) continue;
+                    List<String> lines = java.nio.file.Files.readAllLines(file, StandardCharsets.UTF_8);
+                    PiSessionFile.parse(SESSIONS + "/" + folder.getFileName() + "/" + name, lines).ifPresent(found::add);
+                } catch (IOException | java.io.UncheckedIOException unreadable) {
+                    // Being written, or gone since it was listed: left out until the next look.
+                }
+            }
+        }
+        found.sort(java.util.Comparator.comparing(Conversation::modified).reversed());
+        return List.copyOf(found);
+    }
+
+    /// The conversation named `id`, or by a unique beginning of it of at least four characters.
+    public static Optional<Conversation> conversation(Path directory, String id) {
+        String wanted = id.strip();
+        if (wanted.length() < 4) return Optional.empty();
+        List<Conversation> matching = conversations(directory).stream().filter(c -> c.id().startsWith(wanted)).toList();
+        return matching.size() == 1 ? Optional.of(matching.getFirst()) : Optional.empty();
+    }
+
+    /// Deletes the conversation named `id` from the lamp at `directory`, for good.
+    ///
+    /// Deleting the conversation the agent is working in makes that run fail; the next one starts
+    /// afresh.
+    ///
+    /// @throws IOException when there is no such conversation, or it could not be deleted
+    public static void forget(Path directory, String id) throws IOException {
+        Conversation doomed = conversation(directory, id)
+                .orElseThrow(() -> new IOException("the lamp has no conversation called '" + id + "'"));
+        Path home = agentHome(directory).orElseThrow(() -> new IOException("the lamp has no agent home"));
+        Path file = home.resolve(doomed.file());
+        // Found by listing without following links, so it is a plain file where it should be.
+        java.nio.file.Files.delete(file);
+    }
+
+    private static Optional<Path> directoryWithoutLinks(Path from, String relative) {
+        Path at = from;
+        for (Path part : Path.of(relative)) {
+            at = at.resolve(part);
+            if (!java.nio.file.Files.isDirectory(at, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
+        }
+        return Optional.of(at);
+    }
+
+    private static List<Path> listed(Path directory) {
+        try (var entries = java.nio.file.Files.list(directory)) {
+            return entries.toList();
+        } catch (IOException unreadable) {
+            return List.of();
+        }
+    }
+
     /// The prefix of the agent directory's name in a lamp. Written out, because this package must
     /// not depend on the engine, whose layout says the same.
     static final String AGENT_DIR_PREFIX = "agent-lamp-";
@@ -398,6 +582,15 @@ public final class Lamp implements AutoCloseable {
     public LampEvent.Job once(String at, String prompt) throws IOException, InterruptedException, Failed {
         return addJob(launcher, listeners, directory, "--at", at, prompt);
     }
+
+    /// Every conversation the agent had in this lamp, the most recent first.
+    public List<Conversation> conversations() { return conversations(directory); }
+
+    /// The conversation named by `id` or a unique beginning of it.
+    public Optional<Conversation> conversation(String id) { return conversation(directory, id); }
+
+    /// Deletes a conversation for good. See [Lamp#forget(Path, String)].
+    public void forget(String conversation) throws IOException { forget(directory, conversation); }
 
     /// Takes a job off the schedule, as [Starting#unschedule] does.
     public void unschedule(String job) throws IOException, InterruptedException, Failed {

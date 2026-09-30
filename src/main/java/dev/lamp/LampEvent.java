@@ -227,6 +227,15 @@ public sealed interface LampEvent {
         INTERRUPTED
     }
 
+    // ─── conversations ─────────────────────────────────────────────────────────────────────
+
+    /// The conversations the agent had in a lamp, the most recent first. What
+    /// `oillamp conversations <dir>` answers.
+    record Conversations(sprouts.Tuple<Lamp.Conversation> conversations) implements LampEvent {}
+
+    /// One conversation, in full. What `oillamp conversations <dir> <conversation>` answers.
+    record ConversationShown(Lamp.Conversation conversation) implements LampEvent {}
+
     /// Something went wrong but oillamp carried on.
     record Warning(Problem problem)                     implements LampEvent {}
     /// Something went wrong and oillamp stopped.

@@ -306,6 +306,8 @@ final class Invocation {
                 yield commands.schedule(Path.of(rest.get(0)),
                         new Commands.ScheduleAction(action, argument, cron, at, expires));
             }
+            case "conversations" -> commands.conversations(Path.of(rest.get(0)),
+                    rest.size() > 1 ? Optional.of(rest.get(1)) : Optional.empty());
             case "ask" -> {
                 if (rest.size() < 2)
                     yield misused(console, sink, version, "ask",
@@ -369,6 +371,7 @@ final class Invocation {
             java.util.Map.entry("history",    java.util.Set.of("--embedded")),
             java.util.Map.entry("schedule",   java.util.Set.of("--cron", "--at", "--expires", "--embedded")),
             java.util.Map.entry("ask",        java.util.Set.of("--embedded")),
+            java.util.Map.entry("conversations", java.util.Set.of("--embedded")),
             java.util.Map.entry("restore",    java.util.Set.of("--embedded")),
             java.util.Map.entry("shell",      java.util.Set.of()),
             java.util.Map.entry("stop",       java.util.Set.of()),
@@ -387,7 +390,7 @@ final class Invocation {
     /// The commands that take a lamp directory and cannot do without it.
     private static final java.util.Set<String> NEEDS_A_LAMP = java.util.Set.of(
             "at", "view", "shell", "stop", "status", "recordings", "config", "remove",
-            "save", "history", "restore", "schedule", "ask");
+            "save", "history", "restore", "schedule", "ask", "conversations");
 
     /// The commands that work on one lamp. `remove` takes several, since a pattern such as
     /// `test*` is the natural way to clean up after experiments.
@@ -395,9 +398,11 @@ final class Invocation {
             "at", "view", "shell", "stop", "status", "recordings", "doctor", "save", "history");
 
     /// How many arguments may follow the other commands.
-    private static final java.util.Map<String, Integer> MOST_ARGUMENTS = java.util.Map.of(
-            "config", 2, "completion", 1, "restore", 2, "schedule", 3, "ask", 2,
-            "list", 0, "version", 0, "help", 0, "about", 0, "guide", 0);
+    private static final java.util.Map<String, Integer> MOST_ARGUMENTS = java.util.Map.ofEntries(
+            java.util.Map.entry("config", 2), java.util.Map.entry("completion", 1), java.util.Map.entry("restore", 2),
+            java.util.Map.entry("schedule", 3), java.util.Map.entry("ask", 2), java.util.Map.entry("conversations", 2),
+            java.util.Map.entry("list", 0), java.util.Map.entry("version", 0), java.util.Map.entry("help", 0),
+            java.util.Map.entry("about", 0), java.util.Map.entry("guide", 0));
 
     private static ExitStatus misused(ConsoleRenderer console, Consumer<LampEvent> sink,
                                       String version, String command, String what) {
@@ -496,6 +501,8 @@ final class Invocation {
               ask <dir> "<prompt>"
                     Wake the agent in a running session with a prompt, and print its answer.
                     If it is busy, the prompt waits its turn. The lamp is saved before and after.
+              conversations <dir> [<conversation>]
+                    List the agent's conversations, or show one, with the ids of its entries.
               recordings <dir> [--open <session>] [--prune]
                     List this lamp's screen recordings. --open plays one, --prune
                     applies the configured retention now instead of at the next start.

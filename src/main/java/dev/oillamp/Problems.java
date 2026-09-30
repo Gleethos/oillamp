@@ -59,6 +59,7 @@ final class Problems {
     public static final Code NO_SUCH_JOB           = new Code("OIL-SCHEDULE-003");
     public static final Code SCHEDULE_OFF          = new Code("OIL-SCHEDULE-004");
     public static final Code RUN_FAILED            = new Code("OIL-SCHEDULE-005");
+    public static final Code NO_SUCH_CONVERSATION  = new Code("OIL-CONVERSATION-001");
     public static final Code LOCK_BUSY             = new Code("OIL-LOCK-001");
     public static final Code LOCK_RECOVERED        = new Code("OIL-LOCK-002");
     public static final Code CONFIG_UNPARSEABLE    = new Code("OIL-CONFIG-001");
@@ -532,6 +533,17 @@ final class Problems {
                 reason,
                 "the run ended without the agent finishing it; the next run starts the agent again")
             .withFix(Fix.of("check that pi works in the sandbox: run `pi` in the lamp's shell"));
+    }
+
+    // ─── conversations ─────────────────────────────────────────────────────────────────────
+
+    /// A conversation, or an entry in one, that is not there, or a name that fits several.
+    public static Problem noSuchConversation(String which, Path lamp) {
+        return error(NO_SUCH_CONVERSATION, "There is no such conversation",
+                "the agent in " + lamp + " has no conversation, or no entry, that '" + which + "' names on its own",
+                "nothing was asked or changed")
+            .withFix(Fix.run("see the conversations, and name one by at least the start of its id",
+                    "oillamp conversations " + lamp));
     }
 
     // ─── configuration ─────────────────────────────────────────────────────────────────────

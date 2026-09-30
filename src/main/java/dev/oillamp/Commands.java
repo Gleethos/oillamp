@@ -665,6 +665,31 @@ final class Commands {
         return new LampEvent.Schedule(limits.enabled(), schedule.paused(), zone.getId(), jobs);
     }
 
+    /// `oillamp conversations <dir> [<conversation>]`: the agent's conversations, or one in full.
+    ///
+    /// Read from pi's files in the agent's home, so it works whether or not a session runs.
+    public ExitStatus conversations(Path lampPath, Optional<String> which) {
+        Result<LampLayout> found = layoutOf(lampPath);
+        if (found instanceof Result.Err<LampLayout> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        Path root = ((Result.Ok<LampLayout>) found).value().root();
+        if (which.isEmpty()) {
+            context.emit(new LampEvent.Conversations(Tuple.of(dev.lamp.Lamp.Conversation.class,
+                    dev.lamp.Lamp.conversations(root))));
+            return ExitStatus.SUCCESS;
+        }
+        Optional<dev.lamp.Lamp.Conversation> conversation = dev.lamp.Lamp.conversation(root, which.get());
+        if (conversation.isEmpty()) {
+            Tuple<Problem> missing = Tuple.of(Problem.class, Problems.noSuchConversation(which.get(), root));
+            context.report(missing);
+            return exitStatusFor(missing);
+        }
+        context.emit(new LampEvent.ConversationShown(conversation.get()));
+        return ExitStatus.SUCCESS;
+    }
+
     /// `oillamp ask <dir> <prompt>`: wake the agent with a prompt, and wait for its answer.
     ///
     /// The session does the work, because it is the one that holds the agent: this sends the

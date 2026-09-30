@@ -50,6 +50,18 @@ class TheEventWireFormatSpec extends Specification {
             LampEvent.JobAuthor.AGENT, Instant.parse('2026-09-29T18:14:03Z'),
             Optional.of(Instant.parse('2026-10-13T18:14:03Z')), true)
 
+    static final dev.lamp.Lamp.Conversation CONVERSATION = new dev.lamp.Lamp.Conversation(
+            '01a0ec69-de1c-7234-914c-b970a862c13e', 'run-12 (job-3)', '.pi/agent/sessions/--home-agent--/x.jsonl',
+            Instant.parse('2026-09-29T18:14:03Z'), Instant.parse('2026-09-29T18:15:00Z'),
+            Tuple.of(dev.lamp.Lamp.Conversation.Entry,
+                new dev.lamp.Lamp.Conversation.Entry('q1', Optional.empty(), Instant.parse('2026-09-29T18:14:03Z'),
+                        dev.lamp.Lamp.Conversation.Kind.QUESTION, 'What "now"?\nTell me.', '',
+                        Tuple.of(dev.lamp.Lamp.Conversation.ToolCall), Optional.empty(), false),
+                new dev.lamp.Lamp.Conversation.Entry('a1', Optional.of('q1'), Instant.parse('2026-09-29T18:15:00Z'),
+                        dev.lamp.Lamp.Conversation.Kind.ANSWER, '', 'thinking…',
+                        Tuple.of(dev.lamp.Lamp.Conversation.ToolCall, new dev.lamp.Lamp.Conversation.ToolCall('c1', 'bash', 'ls')),
+                        Optional.of('bash'), true)))
+
     static final LampEvent.Run RUN = new LampEvent.Run('run-12', Optional.of('job-3'), 'Check the build')
 
     static final List<LampEvent> EXAMPLES = [
@@ -86,6 +98,8 @@ class TheEventWireFormatSpec extends Specification {
             new LampEvent.RunFinished(RUN, LampEvent.RunOutcome.FINISHED, 'All green.\n\nNothing to do.',
                     Optional.of(SNAPSHOT), Duration.ofSeconds(95)),
             new LampEvent.RunFinished(RUN, LampEvent.RunOutcome.TIMED_OUT, '', Optional.empty(), Duration.ofMinutes(30)),
+            new LampEvent.Conversations(Tuple.of(dev.lamp.Lamp.Conversation, CONVERSATION)),
+            new LampEvent.ConversationShown(CONVERSATION),
             new LampEvent.Warning(PROBLEM.withFix(Problem.Fix.of('another'))),
             new LampEvent.Failure(new Problem(new Problem.Code('OIL-LOCK-001'), Problem.Severity.ERROR,
                     'busy', '', '', Tuple.of(Problem.Evidence), Tuple.of(Problem.Fix), Optional.empty())),
