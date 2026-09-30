@@ -76,9 +76,35 @@ record ScheduledJob(String id, When when, String prompt, JobAuthor author, Insta
         };
     }
 
+    /// How far ahead [#upcoming] looks, and how many times it lists at most.
+    static final java.time.Duration UPCOMING = java.time.Duration.ofDays(7);
+    static final int MOST_UPCOMING = 200;
+
+    /// When it runs after `now` and within [#UPCOMING] of it, before it expires, earliest first,
+    /// and at most [#MOST_UPCOMING] times. Empty for a job switched off.
+    sprouts.Tuple<Instant> upcoming(ZoneId zone, Instant now) {
+        sprouts.Tuple<Instant> times = sprouts.Tuple.of(Instant.class);
+        if (!enabled) return times;
+        Instant end = now.plus(UPCOMING);
+        if (expires.isPresent() && expires.get().isBefore(end)) end = expires.get();
+        switch (when) {
+            case When.Once once -> {
+                if (lastRun.isEmpty() && once.at().isAfter(now) && !once.at().isAfter(end)) times = times.add(once.at());
+            }
+            case When.Repeating repeating -> {
+                Instant from = lastRun.orElse(created).isAfter(now) ? lastRun.orElse(created) : now;
+                for (Optional<Instant> next = repeating.cron().nextAfter(from, zone);
+                     next.isPresent() && !next.get().isAfter(end) && times.size() < MOST_UPCOMING;
+                     next = repeating.cron().nextAfter(next.get(), zone))
+                    times = times.add(next.get());
+            }
+        }
+        return times;
+    }
+
     /// How it is shown to the user, to an application, and to the agent.
-    LampEvent.Job describe(ZoneId zone) {
+    LampEvent.Job describe(ZoneId zone, Instant now) {
         return new LampEvent.Job(id, describeWhen(zone), enabled ? next(zone) : Optional.empty(), prompt,
-                author, created, expires, enabled);
+                author, created, expires, enabled, upcoming(zone, now));
     }
 }

@@ -92,6 +92,37 @@ class WakingTheAgentSpec extends Specification {
             !Files.exists(home(lamp).resolve('schedule.json'))
     }
 
+    def 'The schedule lists when each job runs over the coming week, so it can be drawn as a timeline'() {
+        reportInfo """
+            An application that shows the schedule on a timeline needs every time a job runs, not
+            just the next one, and cannot work them out itself without reading cron. So each job
+            comes with its times over the next seven days, up to when it expires. A job switched
+            off has none.
+        """
+        given: 'Tuesday, 16:15 in Berlin'
+            var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
+
+        when:
+            schedule(lamp, 'add', '--cron', '0 9 * * 1-5', 'Weekday check')
+            schedule(lamp, 'add', '--cron', '0 9 * * *', '--expires', 'in 3d', 'Daily, for three days')
+            schedule(lamp, 'add', '--at', 'in 2h', 'Once')
+            schedule(lamp, 'add', '--cron', '@hourly', 'Switched off')
+            schedule(lamp, 'disable', 'job-4')
+            var listed = jobs(lamp)
+
+        then: 'nine on each weekday of the week ahead, which ends next Tuesday at 16:15'
+            listed[0].upcoming().collect() == ['2026-09-23', '2026-09-24', '2026-09-25', '2026-09-28', '2026-09-29']
+                    .collect { Instant.parse(it + 'T07:00:00Z') }
+
+        and: 'the daily job only until it expires on Friday afternoon'
+            listed[1].upcoming().size() == 3
+            listed[1].upcoming().last() == Instant.parse('2026-09-25T07:00:00Z')
+
+        and: 'the job that runs once, once; the one switched off, never'
+            listed[2].upcoming().collect() == [NOW.plus(Duration.ofHours(2))]
+            listed[3].upcoming().isEmpty()
+    }
+
     def 'A time oillamp cannot read, or one that has passed, is refused, and says why'() {
         reportInfo """
             A schedule that silently never runs is worse than an error: the person finds out days
@@ -245,6 +276,14 @@ class WakingTheAgentSpec extends Specification {
             snapshot.run() == Optional.of('run-1')
             snapshot.message().contains('I wrote the weekly report')
             history(lamp).first().id() == snapshot.id()
+
+        and: 'the history says which job it was, how it ended, and where its conversation is'
+            with (history(lamp).first()) {
+                job() == Optional.of('job-1')
+                outcome() == Optional.of(RunOutcome.FINISHED)
+                conversation().isPresent()
+                conversation() == finished.conversation()
+            }
 
         and: 'the job ran once, as it was meant to, and is gone'
             reported.any { it instanceof LampEvent.JobRemoved && it.job().id() == 'job-1' }
@@ -559,6 +598,16 @@ class WakingTheAgentSpec extends Specification {
             var once = lamps.once('in 1h', '- starts with a dash')
             var listed = lamps.schedule()
             lamps.unschedule(job.id())
+            var ending = lamps.repeat('0 8 * * *', 'For two days', NOW.plus(Duration.ofDays(2)))
+            var atAnInstant = lamps.once(NOW.plus(Duration.ofMinutes(90)), 'At an instant')
+            lamps.disable(ending.id())
+            var switchedOff = lamps.schedule().jobs().find { it.id() == ending.id() }
+            lamps.enable(ending.id())
+            lamps.pause()
+            var paused = lamps.schedule().paused()
+            lamps.resume()
+            lamps.unschedule(ending.id())
+            lamps.unschedule(atAnInstant.id())
             var running = lamps.onEvent { reported << it }.start()
             assert running.awaitRunning(Duration.ofSeconds(30))
             var answer = running.ask('Say hello')
@@ -569,6 +618,11 @@ class WakingTheAgentSpec extends Specification {
             once.prompt() == '- starts with a dash'
             listed.jobs()*.id() == ['job-1', 'job-2']
             lamps.schedule().jobs()*.id() == ['job-2']
+            ending.expires() == Optional.of(NOW.plus(Duration.ofDays(2)))
+            atAnInstant.next() == Optional.of(NOW.plus(Duration.ofMinutes(90)))
+            !switchedOff.enabled()
+            paused
+            !lamps.schedule().paused()
             answer.outcome() == RunOutcome.FINISHED
             answer.answer() == 'Hello from the sandbox.'
             answer.snapshot().isPresent()

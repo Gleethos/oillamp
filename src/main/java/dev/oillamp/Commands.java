@@ -625,14 +625,14 @@ final class Commands {
         java.time.Instant now = machine.now();
         String action = request.action();
         Result<LampEvent> done = switch (action) {
-            case "list" -> book.read().map(schedule -> describe(schedule, limits, zone));
+            case "list" -> book.read().map(schedule -> describe(schedule, limits, zone, now));
             case "add" -> book.update(schedule -> schedule.add(new Schedule.Request(request.cron(), request.at(),
                             request.argument().orElse(""), request.expires()),
                             LampEvent.JobAuthor.USER, now, zone, limits), Schedule.Changed::schedule)
-                    .map(added -> new LampEvent.JobAdded(added.job().describe(zone)));
+                    .map(added -> new LampEvent.JobAdded(added.job().describe(zone, now)));
             case "remove" -> book.update(schedule -> schedule.remove(request.argument().orElse(""),
                             LampEvent.JobAuthor.USER, layout.root()), Schedule.Changed::schedule)
-                    .map(removed -> new LampEvent.JobRemoved(removed.job().describe(zone), "removed by you"));
+                    .map(removed -> new LampEvent.JobRemoved(removed.job().describe(zone, now), "removed by you"));
             case "enable", "disable" -> book.update(schedule -> schedule.enable(request.argument().orElse(""),
                             action.equals("enable"), now, layout.root()), Schedule.Changed::schedule)
                     .map(changed -> new LampEvent.ScheduleChanged(changed.job().id() + " is switched "
@@ -670,9 +670,10 @@ final class Commands {
         return on ? configured.switchedOn() : configured;
     }
 
-    private static LampEvent describe(Schedule schedule, LampConfig.Schedule limits, java.time.ZoneId zone) {
+    private static LampEvent describe(Schedule schedule, LampConfig.Schedule limits, java.time.ZoneId zone,
+                                      java.time.Instant now) {
         Tuple<LampEvent.Job> jobs = Tuple.of(LampEvent.Job.class);
-        for (ScheduledJob job : schedule.jobs()) jobs = jobs.add(job.describe(zone));
+        for (ScheduledJob job : schedule.jobs()) jobs = jobs.add(job.describe(zone, now));
         return new LampEvent.Schedule(limits.enabled(), schedule.paused(), zone.getId(), jobs);
     }
 

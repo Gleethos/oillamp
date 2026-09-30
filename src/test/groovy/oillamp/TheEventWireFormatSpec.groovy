@@ -43,12 +43,14 @@ class TheEventWireFormatSpec extends Specification {
     static final LampEvent.Snapshot SNAPSHOT = new LampEvent.Snapshot(
             '3f2a9c1d00000000000000000000000000000000', Instant.parse('2026-09-29T18:14:03Z'),
             LampEvent.SaveKind.BEFORE_RESTORE, 'before the upgrade\nand the "migration"',
-            Optional.of('20260929-181200'), Optional.of('run-12'))
+            Optional.of('20260929-181200'), Optional.of('run-12'), Optional.of('job-3'),
+            Optional.of(LampEvent.RunOutcome.TIMED_OUT), Optional.of('0199a3f0-7c1e-7d2b-9a41-5c3e2f1d0b9a'))
 
     static final LampEvent.Job JOB = new LampEvent.Job('job-3', '0 9 * * 1-5',
             Optional.of(Instant.parse('2026-09-30T07:00:00Z')), 'Check the build\nand say "why"',
             LampEvent.JobAuthor.AGENT, Instant.parse('2026-09-29T18:14:03Z'),
-            Optional.of(Instant.parse('2026-10-13T18:14:03Z')), true)
+            Optional.of(Instant.parse('2026-10-13T18:14:03Z')), true,
+            Tuple.of(Instant, Instant.parse('2026-09-30T07:00:00Z'), Instant.parse('2026-10-01T07:00:00Z')))
 
     static final dev.lamp.Lamp.Conversation CONVERSATION = new dev.lamp.Lamp.Conversation(
             '01a0ec69-de1c-7234-914c-b970a862c13e', 'run-12 (job-3)', '.pi/agent/sessions/--home-agent--/x.jsonl',
@@ -83,13 +85,14 @@ class TheEventWireFormatSpec extends Specification {
             new LampEvent.Saved(SNAPSHOT, 1234),
             new LampEvent.History(Tuple.of(LampEvent.Snapshot, SNAPSHOT,
                     new LampEvent.Snapshot('0123456789abcdef0123456789abcdef01234567', Instant.EPOCH,
-                                           LampEvent.SaveKind.IDLE, '', Optional.empty(), Optional.empty()))),
+                                           LampEvent.SaveKind.IDLE, '', Optional.empty(), Optional.empty(),
+                                           Optional.empty(), Optional.empty(), Optional.empty()))),
             new LampEvent.Restored(SNAPSHOT, new LampEvent.Snapshot('fedcba9876543210fedcba9876543210fedcba98',
                     Instant.parse('2026-09-29T19:00:00Z'), LampEvent.SaveKind.RESTORE, 'back to 3f2a9c1d',
-                    Optional.empty(), Optional.empty())),
+                    Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty())),
             new LampEvent.Schedule(true, false, 'Europe/Berlin', Tuple.of(LampEvent.Job, JOB,
                     new LampEvent.Job('job-4', 'once at 2026-10-01 09:00', Optional.empty(), 'x',
-                                      LampEvent.JobAuthor.USER, Instant.EPOCH, Optional.empty(), false))),
+                                      LampEvent.JobAuthor.USER, Instant.EPOCH, Optional.empty(), false, Tuple.of(Instant)))),
             new LampEvent.JobAdded(JOB),
             new LampEvent.JobRemoved(JOB, 'it expired'),
             new LampEvent.ScheduleChanged('the schedule is paused'),

@@ -105,8 +105,14 @@ public sealed interface LampEvent {
     /// @param message what the person who saved it wrote, or empty
     /// @param session the session running at the time, such as `20260928-120000`, or empty
     /// @param run     for a snapshot made as a run began or ended, the run, such as `run-12`
+    /// @param job     for a snapshot made as a job's run ended, the job, such as `job-3`
+    /// @param outcome for a snapshot made as a run ended, how it ended
+    /// @param conversation for a snapshot made as a run ended, the id of the conversation the run
+    ///                had; empty when the agent did not get as far as opening one
     record Snapshot(String id, java.time.Instant at, SaveKind kind, String message,
-                    java.util.Optional<String> session, java.util.Optional<String> run) {
+                    java.util.Optional<String> session, java.util.Optional<String> run,
+                    java.util.Optional<String> job, java.util.Optional<RunOutcome> outcome,
+                    java.util.Optional<String> conversation) {
 
         /// The first eight characters of [#id()], which is how oillamp shows a snapshot.
         public String shortId() { return id.substring(0, Math.min(8, id.length())); }
@@ -168,9 +174,14 @@ public sealed interface LampEvent {
     /// @param created when it was added
     /// @param expires when it is taken off the schedule; empty for a job that stays until removed
     /// @param enabled false for a job the user switched off, which keeps its place but does not run
+    /// @param upcoming when it runs after the moment the schedule was read and within seven days
+    ///                of it, before it expires, earliest first; at most 200 times. Empty when it is
+    ///                switched off. A `next` at or before that moment is not among them: the job
+    ///                came due, and runs as soon as a session can run it
     record Job(String id, String when, java.util.Optional<java.time.Instant> next, String prompt,
                JobAuthor author, java.time.Instant created,
-               java.util.Optional<java.time.Instant> expires, boolean enabled) {}
+               java.util.Optional<java.time.Instant> expires, boolean enabled,
+               sprouts.Tuple<java.time.Instant> upcoming) {}
 
     /// Who added a job. The user's jobs are theirs alone: the agent may read them but not change
     /// or remove them.

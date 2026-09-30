@@ -311,8 +311,10 @@ Oillamp-Session: 20260929-181200
 
 A run's snapshots carry more trailers: `Oillamp-Run` (`run-12`), and on the `run` snapshot
 `Oillamp-Job`, `Oillamp-Author` (`user` or `agent`: who added the job), `Oillamp-Outcome`
-(`finished`, `failed`, `timed out`, `interrupted`) and `Oillamp-Base` (the snapshot the lamp was in
-as the run began, so that what the run changed can be listed). Trailers are read only from a
+(`finished`, `failed`, `timed out`, `interrupted`, `cancelled`), `Oillamp-Conversation` (the id of
+the pi conversation the run had, when it got that far) and `Oillamp-Base` (the snapshot the lamp was
+in as the run began, so that what the run changed can be listed). `LampEvent.Snapshot` carries the
+job, outcome and conversation, so an application can list past runs from `history`. Trailers are read only from a
 message's last paragraph, and only when every line in it is one: the agent's own words are in the
 message, and a line in them that looks like a trailer must not count.
 

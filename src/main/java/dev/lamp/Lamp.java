@@ -7,6 +7,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -246,6 +247,11 @@ public final class Lamp implements AutoCloseable {
             return Lamp.addJob(launcher, listeners, directory, "--cron", cron, prompt);
         }
 
+        /// The same, taken off the schedule at `until`.
+        public LampEvent.Job repeat(String cron, String prompt, Instant until) throws IOException, InterruptedException, Failed {
+            return Lamp.addJob(launcher, listeners, directory, "--cron", cron, prompt, "--expires", until.toString());
+        }
+
         /// Adds a job that wakes the agent once.
         ///
         /// @param at when: `2026-10-01 09:00` on this machine's clock, `2026-10-01T07:00Z`, or
@@ -253,6 +259,37 @@ public final class Lamp implements AutoCloseable {
         /// @throws Failed when the time cannot be read or has passed; the problem says why
         public LampEvent.Job once(String at, String prompt) throws IOException, InterruptedException, Failed {
             return Lamp.addJob(launcher, listeners, directory, "--at", at, prompt);
+        }
+
+        /// Adds a job that wakes the agent once, at `at`.
+        ///
+        /// @throws Failed when `at` has passed
+        public LampEvent.Job once(Instant at, String prompt) throws IOException, InterruptedException, Failed {
+            return once(at.toString(), prompt);
+        }
+
+        /// Switches a job back on. A repeating job then runs at its next time from now, not once
+        /// for each time it was off.
+        ///
+        /// @throws Failed when there is no such job
+        public void enable(String job) throws IOException, InterruptedException, Failed {
+            runToEnd(launcher, listeners, "schedule", directory.toString(), "enable", job).orThrow();
+        }
+
+        /// Switches a job off. It stays on the schedule, and does not run until it is switched on.
+        ///
+        /// @throws Failed when there is no such job
+        public void disable(String job) throws IOException, InterruptedException, Failed {
+            runToEnd(launcher, listeners, "schedule", directory.toString(), "disable", job).orThrow();
+        }
+
+        /// Pauses the whole schedule: no job runs until [#resume].
+        public void pause() throws IOException, InterruptedException, Failed {
+            runToEnd(launcher, listeners, "schedule", directory.toString(), "pause").orThrow();
+        }
+
+        public void resume() throws IOException, InterruptedException, Failed {
+            runToEnd(launcher, listeners, "schedule", directory.toString(), "resume").orThrow();
         }
 
         /// Every conversation the agent had in this lamp, the most recent first. See
@@ -367,9 +404,12 @@ public final class Lamp implements AutoCloseable {
     }
 
     private static LampEvent.Job addJob(Launcher launcher, List<Consumer<LampEvent>> listeners, Path directory,
-                                        String option, String when, String prompt)
+                                        String option, String when, String prompt, String... more)
             throws IOException, InterruptedException, Failed {
-        Ran ran = runToEnd(launcher, listeners, "schedule", directory.toString(), "add", option, when, "--", prompt);
+        List<String> command = new ArrayList<>(List.of("schedule", directory.toString(), "add", option, when));
+        command.addAll(List.of(more));
+        command.addAll(List.of("--", prompt));
+        Ran ran = runToEnd(launcher, listeners, command.toArray(String[]::new));
         ran.orThrow();
         for (LampEvent event : ran.events())
             if (event instanceof LampEvent.JobAdded added) return added.job();

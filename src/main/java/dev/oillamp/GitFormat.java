@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.Optional;
 
+import dev.lamp.LampEvent.RunOutcome;
 import dev.lamp.LampEvent.SaveKind;
 import dev.lamp.LampEvent.Snapshot;
 
@@ -162,6 +163,8 @@ final class GitFormat {
     static final String RUN_TRAILER = "Oillamp-Run";
     static final String JOB_TRAILER = "Oillamp-Job";
     static final String OUTCOME_TRAILER = "Oillamp-Outcome";
+    /// On a run's last snapshot: the id of the pi conversation the run had.
+    static final String CONVERSATION_TRAILER = "Oillamp-Conversation";
     /// On a run's snapshots: who added the job that woke the agent, `user` or `agent`. The agent's
     /// runs per day are counted from these.
     static final String AUTHOR_TRAILER = "Oillamp-Author";
@@ -233,8 +236,18 @@ final class GitFormat {
         Split split = split(message);
         return new Commit(id, treeId, parent,
                 new Snapshot(id, at.orElse(Instant.EPOCH), kindIn(split.trailers()), writtenIn(split.text()),
-                        split.trailers().get(SESSION_TRAILER), split.trailers().get(RUN_TRAILER)),
+                        split.trailers().get(SESSION_TRAILER), split.trailers().get(RUN_TRAILER),
+                        split.trailers().get(JOB_TRAILER), split.trailers().get(OUTCOME_TRAILER).flatMap(GitFormat::outcome),
+                        split.trailers().get(CONVERSATION_TRAILER)),
                 split.trailers());
+    }
+
+    /// The outcome an `Oillamp-Outcome` trailer names, as [Runs] writes it: `timed out` for
+    /// [RunOutcome#TIMED_OUT]. Empty for anything else.
+    private static Optional<RunOutcome> outcome(String written) {
+        for (RunOutcome outcome : RunOutcome.values())
+            if (outcome.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ').equals(written.strip())) return Optional.of(outcome);
+        return Optional.empty();
     }
 
     private static Instant timeOf(String committerLine) {

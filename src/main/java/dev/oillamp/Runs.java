@@ -188,7 +188,7 @@ final class Runs {
         }
         for (ScheduledJob finished : schedule.finished(now, zone))
             if (book.update(current -> Result.ok(current.without(finished.id())), s -> s).isOk())
-                context.emit(new LampEvent.JobRemoved(finished.describe(zone), finished.expiredAt(now)
+                context.emit(new LampEvent.JobRemoved(finished.describe(zone, now), finished.expiredAt(now)
                         ? "it expired" : "it ran, and will not run again"));
         for (ScheduledJob due : schedule.due(now, zone)) {
             if (stopping || isQueued(due.id())) continue;
@@ -295,6 +295,8 @@ final class Runs {
                 .put(GitFormat.OUTCOME_TRAILER, outcome);
         if (pending.job().isPresent()) after = after.put(GitFormat.JOB_TRAILER, pending.job().get().id());
         if (base.isPresent()) after = after.put(GitFormat.BASE_TRAILER, base.get());
+        Optional<String> conversation = answer.conversation().or(run::conversation);
+        if (conversation.isPresent()) after = after.put(GitFormat.CONVERSATION_TRAILER, conversation.get());
         String message = run.id() + " (" + run.job().map(job -> "job " + job).orElse("asked") + ") " + outcome
                 + (said.isEmpty() ? "" : "\n\n" + said);
         Result<History.Saving> saved = history.save(SaveKind.RUN, message, Optional.of(session), after, true, ended);
@@ -307,7 +309,7 @@ final class Runs {
             context.report(saved.problems().map(Problems::asWarning));
         }
         LampEvent.RunFinished finished = new LampEvent.RunFinished(run, answer.outcome(), answer.text().strip(),
-                snapshot, Duration.between(started, ended), answer.conversation().or(run::conversation));
+                snapshot, Duration.between(started, ended), conversation);
         context.emit(finished);
         return finished;
     }
@@ -316,7 +318,7 @@ final class Runs {
     private void startedJob(ScheduledJob job, Instant now, ZoneId zone) {
         boolean once = job.when() instanceof ScheduledJob.When.Once;
         book.update(schedule -> Result.ok(once ? schedule.without(job.id()) : schedule.ran(job.id(), now)), s -> s);
-        if (once) context.emit(new LampEvent.JobRemoved(job.describe(zone), "it runs once, and this is that run"));
+        if (once) context.emit(new LampEvent.JobRemoved(job.describe(zone, now), "it runs once, and this is that run"));
     }
 
     private String wakePrompt(Pending pending, History history, Instant now, ZoneId zone) {
@@ -371,7 +373,7 @@ final class Runs {
                         Schedule.Changed::schedule);
                 if (!(added instanceof Result.Ok<Schedule.Changed>(Schedule.Changed change, var _)))
                     yield Control.Reply.failed(added.problems().first().whatHappened());
-                context.emit(new LampEvent.JobAdded(change.job().describe(zone)));
+                context.emit(new LampEvent.JobAdded(change.job().describe(zone, now)));
                 look.release();
                 yield Control.Reply.ok().with("text", "Added " + change.job().id() + ": " + describe(change.job(), zone)
                         + (config.enabled() ? "" : " The schedule is switched off by the user, so it will not run until they switch it on."));
@@ -381,7 +383,7 @@ final class Runs {
                         request.arguments().get("id").orElse(""), JobAuthor.AGENT, layout.root()), Schedule.Changed::schedule);
                 if (!(removed instanceof Result.Ok<Schedule.Changed>(Schedule.Changed change, var _)))
                     yield Control.Reply.failed(removed.problems().first().whatHappened());
-                context.emit(new LampEvent.JobRemoved(change.job().describe(zone), "removed by the agent"));
+                context.emit(new LampEvent.JobRemoved(change.job().describe(zone, now), "removed by the agent"));
                 yield Control.Reply.ok().with("text", "Removed " + change.job().id() + ".");
             }
             case "history" -> Control.Reply.ok().with("text", history(request.arguments().get("run").orElse("").strip(), zone));
