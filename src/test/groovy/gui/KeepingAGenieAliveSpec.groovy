@@ -1,5 +1,6 @@
 package gui
 
+import dev.gui.Genies
 import dev.gui.genie.GenieRunner
 import dev.gui.genie.LampLighter
 import dev.gui.genie.Lighter
@@ -446,6 +447,100 @@ class KeepingAGenieAliveSpec extends Specification {
             !runner.isAwake()
     }
 
+    def 'A genie left running when the app closed is awake again when it opens, where it was'() {
+        reportInfo """
+            Closing Genies, the user may keep a genie running, so that it keeps to its schedule.
+            When Genies opens again, it finds the genie's lamp still lit and joins it. The genie
+            is awake at once, without waking it again, and shows the conversation it was in. It
+            answers as before, and putting it to sleep ends its lamp, as for one Genies lit.
+        """
+        given: 'a genie that was asked something, and left running as the app closed'
+            awake()
+            say('hello there')
+            waitUntil { genie.phase() == Genie.Phase.READY && said().contains('You said: hello there') }
+            var file = genie.conversations().here().file()
+            runner.leaveRunningAndWait(30)
+
+        when: 'the app opens again'
+            genie = Genie.named('Jafar')
+            runner = new GenieRunner(lamp, lighter(), { UnaryOperator<Genie> change ->
+                synchronized (this) { genie = change.apply(genie) }
+            } as Consumer)
+            runner.rejoin(file, '')
+
+        then: 'the genie is awake, in the conversation it was in'
+            waitUntil { genie.phase() == Genie.Phase.READY && said() == ['hello there', 'You said: hello there'] }
+            runner.isAwake()
+
+        when: 'the user asks something more'
+            say('and now?')
+
+        then: 'it answers'
+            waitUntil { genie.phase() == Genie.Phase.READY && said().last() == 'You said: and now?' }
+
+        when: 'it is put to sleep'
+            runner.sleepAndWait(30)
+
+        then: 'its lamp is out'
+            !new LampLighter(host.launcher).isLit(lamp)
+    }
+
+    def 'A genie left running while it answers is found answering, and the answer comes in'() {
+        reportInfo """
+            The user may close Genies while the genie works on their question. Kept running, the
+            genie goes on with it. When Genies opens again, the chat shows that conversation with
+            the question, and the genie working on it, as if Genies had never closed. The answer
+            arrives there, once.
+        """
+        given: 'a genie working on a question, left running as the app closed'
+            awake()
+            say('take your time')
+            waitUntil { prompts.contains('take your time') }
+            runner.leaveRunningAndWait(30)
+
+        when: 'the app opens again'
+            genie = Genie.named('Jafar')
+            runner = new GenieRunner(lamp, lighter(), { UnaryOperator<Genie> change ->
+                synchronized (this) { genie = change.apply(genie) }
+            } as Consumer)
+            runner.rejoin('', '')
+
+        then: 'the genie is working on the question'
+            waitUntil { genie.phase() == Genie.Phase.WORKING && said() == ['take your time'] }
+
+        when: 'it is done'
+            release.countDown()
+
+        then: 'the answer is in the chat, and the genie waits for the user'
+            waitUntil { genie.phase() == Genie.Phase.READY && said() == ['take your time', 'You said: take your time'] }
+    }
+
+    def 'A genie whose lamp is out stays asleep when the app opens'() {
+        reportInfo """
+            Genies looks for a lamp left running under every genie it keeps. Most are out, and
+            those genies stay as they were: asleep, with nothing lit.
+        """
+        when:
+            runner.rejoin('', '')
+            Thread.sleep(500)
+
+        then:
+            genie.phase() == Genie.Phase.ASLEEP
+            !runner.isAwake()
+    }
+
+    def 'Closing Genies with genies awake asks what becomes of them, by name'() {
+        reportInfo """
+            Closing Genies used to put every genie to sleep. Now, when any is awake, Genies asks
+            first: put them to sleep, keep them running in the background, or not close after
+            all. The question names the genies, and says what keeping them running means.
+        """
+        expect:
+            Genies.awakeQuestion(['Jafar']) == 'Jafar is awake. Put it to sleep, or keep it running in the background?\n' +
+                    'Kept running, it finishes what it is doing and keeps to its schedule, and Genies finds it again when it opens.'
+            Genies.awakeQuestion(['Jafar', 'Iago', 'Abu']).startsWith('Jafar, Iago and Abu are awake. Put them to sleep')
+    }
+
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
 
     private void awake() {
@@ -476,7 +571,17 @@ class KeepingAGenieAliveSpec extends Specification {
     private Lighter lighter() {
         var real = new LampLighter(host.launcher)
         var light = { Path directory, Settings settings, String key, Consumer<String> progress, Consumer<LampEvent> events ->
-            var lit = real.light(directory, settings, key, progress, events)
+            here(real.light(directory, settings, key, progress, events))
+        }
+        var join = { Path directory, Consumer<LampEvent> events ->
+            real.join(directory, events).map { here(it) }
+        }
+        return [light: light, join: join, isLit: { Path directory -> real.isLit(directory) },
+                unlit: { Path directory -> real.unlit(directory) }] as Lighter
+    }
+
+    /** `lit`, except that its commands run here, in the genie's home. */
+    private Lighter.Lit here(Lighter.Lit lit) {
             new Lighter.Lit() {
                 Process exec(String... command) {
                     var builder = new ProcessBuilder(command as List<String>)
@@ -488,9 +593,8 @@ class KeepingAGenieAliveSpec extends Specification {
                 LampEvent.Run send(Lamp.Question question) { lit.send(question) }
                 void cancel(String run) { lit.cancel(run) }
                 void close() { closed << 'closed'; lit.close() }
+                void leaveRunning() { lit.leaveRunning() }
             }
-        }
-        return [light: light, unlit: { Path directory -> real.unlit(directory) }] as Lighter
     }
 
     private void waitUntil(Closure<Boolean> condition) {

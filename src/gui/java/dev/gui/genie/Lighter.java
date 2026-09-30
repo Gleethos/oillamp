@@ -2,6 +2,7 @@ package dev.gui.genie;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 import dev.gui.model.Settings;
@@ -30,6 +31,20 @@ public interface Lighter {
         return Lamp.at(directory);
     }
 
+    /// Whether the lamp in `directory` is lit already: left running when the app last closed.
+    default boolean isLit(Path directory) {
+        return unlit(directory).isRunning();
+    }
+
+    /// Joins the lamp in `directory`, lit already, and returns once its sandbox is reached.
+    ///
+    /// @param events receives every event of the lamp's session, as for [#light]: first what the
+    ///               session is doing now, ending with a [LampEvent.AgentStatus], then the news
+    /// @return empty when no lamp is lit there, or it cannot be reached
+    default Optional<Lit> join(Path directory, Consumer<LampEvent> events) throws IOException, InterruptedException {
+        return Optional.empty();
+    }
+
     /// A lamp whose sandbox runs.
     interface Lit extends AutoCloseable {
 
@@ -47,5 +62,10 @@ public interface Lighter {
 
         /// Ends the sandbox, and returns once it is gone.
         @Override void close();
+
+        /// Lets the sandbox run on after the app has closed, until the genie is put to sleep.
+        /// [Lighter#join] finds it again. A lamp that cannot be left running is put out instead,
+        /// so no sandbox is left running by mistake.
+        default void leaveRunning() { close(); }
     }
 }

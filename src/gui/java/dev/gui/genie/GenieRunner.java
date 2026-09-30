@@ -63,6 +63,15 @@ public final class GenieRunner {
     /// empty for a new one. The chat follows them only while it shows that conversation.
     private volatile String runIn = "";
     private final ScheduleKeeper schedule;
+    /// The events of a lamp being joined, held back until the catch-up ends with the agent's
+    /// status, so that the chat is set up before the run in progress is replayed into it. Empty
+    /// otherwise.
+    private volatile Optional<List<LampEvent>> catchingUp = Optional.empty();
+    /// Where the chat goes on joining, when the genie is not answering a question of the user's.
+    private volatile Conversations.Here rejoinAt = Conversations.Here.UNKNOWN;
+    /// Whether the lamp was left running as the app closes. What it reports after that is for
+    /// the app that joins it next.
+    private volatile boolean leftRunning;
 
     public GenieRunner(Path directory, Lighter lighter, Consumer<UnaryOperator<Genie>> changes) {
         this.directory = directory;
@@ -239,6 +248,102 @@ public final class GenieRunner {
         return aQuestion ? Lamp.Question.insteadOf(id, here.leaf(), text) : Lamp.Question.after(id, here.leaf(), text);
     }
 
+    // ─── a lamp left running ───────────────────────────────────────────────────────────────
+
+    /// Joins the genie's lamp, if it was left running when the app last closed. The chat shows
+    /// the answer the genie is writing, if it answers one of the user's questions; otherwise the
+    /// conversation given.
+    ///
+    /// @param conversation the conversation's file relative to the genie's home, or empty for
+    ///                     its most recent one
+    /// @param leaf         the entry to continue after, or empty for where the conversation stands
+    public void rejoin(String conversation, String leaf) {
+        work.execute(() -> {
+            if (lamp.isPresent() || !lighter.isLit(directory)) return;
+            sleeping = false;
+            rejoinAt = new Conversations.Here(conversation, leaf);
+            catchingUp = Optional.of(new java.util.ArrayList<>());
+            changes.accept(genie -> genie.waking().withActivity("joining its lamp, which was left running"));
+            try {
+                Optional<Lighter.Lit> lit = lighter.join(directory, this::heard);
+                if (lit.isEmpty()) {
+                    catchingUp = Optional.empty();
+                    changes.accept(Genie::asleep);
+                    return;
+                }
+                lamp = lit;
+                var files = Handouts.list(lit.get());
+                changes.accept(genie -> genie.withHandouts(files).awake());
+                lookAtConversations();
+            } catch (IOException | RuntimeException failed) {
+                catchingUp = Optional.empty();
+                putOut();
+                changes.accept(genie -> genie.broken(reason(failed)));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
+    }
+
+    /// The catch-up of a lamp being joined has ended. A question of the user's that the genie
+    /// answers becomes this chat's run again, and the chat shows it; then what was held back is
+    /// heard, in order.
+    private void caughtUp(LampEvent.AgentStatus status, List<LampEvent> held) {
+        Optional<LampEvent.Run> answering = status.current().filter(run -> run.job().isEmpty());
+        if (answering.isPresent()) {
+            mine.add(answering.get().id());
+            showAnswering(answering.get());
+        } else {
+            show(existing(rejoinAt.file()), rejoinAt.leaf());
+        }
+        held.forEach(this::heard);
+    }
+
+    /// `file` if the genie still has that conversation, otherwise its most recent one.
+    private String existing(String file) {
+        List<Lamp.Conversation> all = Lamp.conversations(directory);
+        if (all.stream().anyMatch(conversation -> conversation.file().equals(file))) return file;
+        return all.isEmpty() ? "" : all.getFirst().file();
+    }
+
+    /// Shows the conversation `run` answers in, as it stood before its question.
+    private void showAnswering(LampEvent.Run run) {
+        Optional<Lamp.Conversation> conversation = run.conversation().flatMap(id -> Lamp.conversation(directory, id));
+        String file = conversation.map(Lamp.Conversation::file).orElse("");
+        String before = conversation.map(it -> before(it, run.prompt())).orElse("");
+        where = conversation.isPresent() ? new Conversations.Here(file, before) : Conversations.Here.UNKNOWN;
+        runIn = where.file();
+        PiEvent.History history = conversation.map(it -> LampTalk.history(it, before))
+                .orElseGet(() -> new PiEvent.History(Tuple.of(PiEvent.History.Line.class), ""));
+        changes.accept(genie -> genie.answering(file, history, run.prompt()));
+    }
+
+    /// The entry the question `prompt` follows in `conversation`: the one before it, once pi has
+    /// written the question down, otherwise where the conversation stands. What pi wrote after
+    /// the question is the run's, which is heard again.
+    private static String before(Lamp.Conversation conversation, String prompt) {
+        Tuple<Lamp.Conversation.Entry> line = conversation.line();
+        for (int i = line.size() - 1; i >= 0; i--) {
+            Lamp.Conversation.Entry entry = line.get(i);
+            if (entry.kind() == Lamp.Conversation.Kind.MESSAGE_TO_AGENT && entry.text().strip().equals(prompt.strip()))
+                return entry.parent().orElse("");
+        }
+        return conversation.leaf().orElse("");
+    }
+
+    /// Leaves the lamp running as the app closes, and waits until it is told.
+    public void leaveRunningAndWait(long seconds) throws InterruptedException {
+        if (work.isShutdown()) return;
+        work.execute(() -> {
+            sleeping = true;
+            leftRunning = true;
+            lamp.ifPresent(Lighter.Lit::leaveRunning);
+            lamp = Optional.empty();
+        });
+        work.shutdown();
+        work.awaitTermination(seconds, TimeUnit.SECONDS);
+    }
+
     /// Hands a question to the lamp's session, on a thread of its own: it starts a short-lived
     /// engine process, which takes a moment.
     private void send(Lamp.Question question) {
@@ -266,6 +371,17 @@ public final class GenieRunner {
 
     /// Every event of the lamp's session, on the thread that reads them.
     private void heard(LampEvent event) {
+        if (leftRunning) return;
+        Optional<List<LampEvent>> held = catchingUp;
+        if (held.isPresent()) {
+            if (event instanceof LampEvent.AgentStatus status) {
+                catchingUp = Optional.empty();
+                caughtUp(status, held.get());
+            } else {
+                held.get().add(event);
+            }
+            return;
+        }
         schedule.heard(event, java.time.Instant.now());
         switch (event) {
             case LampEvent.RunStarted started -> {
@@ -328,8 +444,10 @@ public final class GenieRunner {
         });
     }
 
-    /// Sleeps and waits until the lamp is out, as when the app closes.
+    /// Sleeps and waits until the lamp is out, as when the app closes. Once is enough: after
+    /// that, and after [#leaveRunningAndWait], it does nothing.
     public void sleepAndWait(long seconds) throws InterruptedException {
+        if (work.isShutdown()) return;
         sleep();
         work.shutdown();
         work.awaitTermination(seconds, TimeUnit.SECONDS);
