@@ -362,6 +362,8 @@ suggests. Each is a decision for the team: implement it, or remove the option.
   `restore`.
 - Genies now goes through the Lamp API only; that is tested against the engine on a simulated
   machine, with a stand-in pi. Not yet tried in the real app with a real lamp.
+- Genies' schedule page was checked by drawing it offscreen at several window widths, and its
+  reading and changing against the engine on a simulated machine; not yet used in the real app.
 - The scheduling tools are pi's only. Another harness in the sandbox, such as opencode, has none.
 - A run uses whatever model pi is configured with in the sandbox. A lamp whose pi has no default
   model, or one the model service refuses, fails every run, and says so; oillamp has no setting
