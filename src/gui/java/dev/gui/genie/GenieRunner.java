@@ -59,6 +59,9 @@ public final class GenieRunner {
     private volatile Optional<String> sending = Optional.empty();
     /// The run of `mine` in progress, which the stop button stops.
     private volatile Optional<String> working = Optional.empty();
+    /// The conversation the runs of `mine` are in, as [#where] named it when they were asked:
+    /// empty for a new one. The chat follows them only while it shows that conversation.
+    private volatile String runIn = "";
     private final ScheduleKeeper schedule;
 
     public GenieRunner(Path directory, Lighter lighter, Consumer<UnaryOperator<Genie>> changes) {
@@ -145,7 +148,7 @@ public final class GenieRunner {
     // ─── its conversations ─────────────────────────────────────────────────────────────────
 
     /// Shows a conversation, from its start to the entry `leaf`. The next message continues from
-    /// there. Works while the genie sleeps.
+    /// there. Works while the genie sleeps, and while it answers in another conversation.
     ///
     /// @param conversation its file relative to the genie's home
     /// @param leaf         the entry to continue after, or empty for where the conversation stands
@@ -208,16 +211,13 @@ public final class GenieRunner {
         Optional<Lamp.Conversation> conversation = conversationIn(file);
         if (conversation.isEmpty()) {
             where = Conversations.Here.UNKNOWN;
-            changes.accept(genie -> {
-                Genie emptied = genie.hear(new PiEvent.History(Tuple.of(PiEvent.History.Line.class), ""));
-                return emptied.withConversations(emptied.conversations().withHere(Conversations.Here.UNKNOWN));
-            });
+            changes.accept(genie -> genie.shows("", new PiEvent.History(Tuple.of(PiEvent.History.Line.class), "")));
             return;
         }
         String at = conversation.get().entry(leaf).isPresent() ? leaf : conversation.get().leaf().orElse("");
         where = new Conversations.Here(file, at);
         PiEvent.History history = LampTalk.history(conversation.get(), at);
-        changes.accept(genie -> genie.hear(new PiEvent.Opened(Conversations.HOME + file)).hear(history));
+        changes.accept(genie -> genie.shows(file, history));
     }
 
     /// The conversation kept in `file`, relative to the genie's home.
@@ -248,6 +248,7 @@ public final class GenieRunner {
             return;
         }
         sending = Optional.of(question.prompt());
+        runIn = where.file();
         Thread.ofVirtual().name("send").start(() -> {
             try {
                 mine.add(lit.get().send(question).id());
@@ -301,9 +302,12 @@ public final class GenieRunner {
         if (conversation.isPresent()) {
             String file = conversation.get().file();
             String leaf = conversation.get().leaf().orElse("");
-            where = new Conversations.Here(file, leaf);
+            // The user may be reading another conversation; they stay there.
+            if (where.file().equals(runIn)) where = new Conversations.Here(file, leaf);
             PiEvent.History history = LampTalk.history(conversation.get(), leaf);
-            changes.accept(genie -> genie.hear(new PiEvent.Opened(Conversations.HOME + file)).learn(history));
+            changes.accept(genie -> genie.finishedIn(file, history));
+        } else {
+            changes.accept(genie -> genie.withConversations(genie.conversations().withAside(Optional.empty())));
         }
         checkOutbox();
         lookAtConversations();

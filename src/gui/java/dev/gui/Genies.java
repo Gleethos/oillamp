@@ -144,9 +144,10 @@ public final class Genies implements Actions {
         if (genie.isEmpty()) return;
         state.update(From.VIEW, it -> it.select(id));
         switch (genie.get().phase()) {
-            // Conversations are read from the lamp, so a sleeping genie's can be read too.
-            case READY, ASLEEP, BROKEN -> runner(id).goTo(conversation, leaf);
-            case WAKING, WORKING -> { }   // The tree does not move while the genie is busy.
+            // Conversations are read from the lamp, so a sleeping genie's can be read too, and a
+            // working genie's answer is kept aside while the user reads another.
+            case READY, WORKING, ASLEEP, BROKEN -> runner(id).goTo(conversation, leaf);
+            case WAKING -> { }   // The tree does not move while the genie wakes.
         }
     }
 
@@ -243,13 +244,12 @@ public final class Genies implements Actions {
         Optional.ofNullable(runners.get(id)).ifPresent(runner -> runner.stop(run));
     }
 
-    /// While the genie works or wakes, the chat stays where it is, as the tree does.
+    /// While the genie wakes, the chat stays where it is, as the tree does.
     @Override public void openConversation(UUID id, String conversation) {
         Optional<Genie> genie = state.get().find(id);
         if (genie.isEmpty()) return;
         state.update(From.VIEW, it -> it.select(id).withPage(GeniesState.Page.CHAT));
-        if (genie.get().phase() != Genie.Phase.WORKING && genie.get().phase() != Genie.Phase.WAKING)
-            runner(id).open(conversation);
+        if (genie.get().phase() != Genie.Phase.WAKING) runner(id).open(conversation);
     }
 
     /// Leaving the page keeps the settings.

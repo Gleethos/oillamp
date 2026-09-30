@@ -166,6 +166,8 @@ public final class GeniesView extends JPanel {
         Var<Conversations> conversations = shown.zoomTo(Genie::conversations, Genie::withConversations);
         Var<Conversations.Fold> chats = conversations.zoomTo(Conversations::chatsFold, Conversations::withChatsFold);
         Var<Conversations.Fold> jobs = conversations.zoomTo(Conversations::jobsFold, Conversations::withJobsFold);
+        // The trees can be gone through while the genie answers; a new conversation waits for the answer.
+        Val<Boolean> browsable = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WAKING);
         Val<Boolean> idle = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING && it.phase() != Genie.Phase.WAKING);
         Val<Boolean> canForget = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING
                 && it.phase() != Genie.Phase.WAKING && it.conversations().current().isPresent());
@@ -175,7 +177,7 @@ public final class GeniesView extends JPanel {
             .add("growx, wmin 0",
                 tree(id, chats, conversations.viewAsString(it -> howMany(it.chatCount(), "conversation", "no conversations yet")),
                      "Show or hide your conversations with this genie", Val.of(true),
-                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::chats), idle))
+                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::chats), browsable))
             .add("growx, wmin 0",
                 box("ins 0, gap 4, hidemode 3")
                 .isVisibleIf(chatsOpen)
@@ -189,14 +191,14 @@ public final class GeniesView extends JPanel {
                 tree(id, jobs, conversations.viewAsString(it -> howMany(it.jobCount(), "scheduled run", "")),
                      "Show or hide the conversations the runs of this genie's scheduled jobs had",
                      conversations.viewAs(Boolean.class, it -> it.jobCount() > 0),
-                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::jobRuns), idle));
+                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::jobRuns), browsable));
     }
 
     /// One tree of conversations: the line that opens it, then the tree in an area of the fold's
     /// height, which scrolls when the tree is taller, and a grip under it that the user drags to
     /// make the area taller or shorter.
     private UIForAnySwing<?, ?> tree(UUID id, Var<Conversations.Fold> fold, Val<String> count, String tip,
-                                     Val<Boolean> present, Val<Tuple<Talk>> rows, Val<Boolean> idle) {
+                                     Val<Boolean> present, Val<Tuple<Talk>> rows, Val<Boolean> browsable) {
         Val<Boolean> open = fold.viewAs(Boolean.class, Conversations.Fold::shown);
         Val<Tuple<String>> here = rows.viewAs(Tuple.classTyped(String.class), Conversations::pathToHere);
         // Where a drag of the grip began: the pointer's height on the screen, the area's, and
@@ -236,7 +238,7 @@ public final class GeniesView extends JPanel {
                                 .text(Talk.Branch::title)
                                 .toolTip(branch -> branch.title() + " — " + questions(branch.turns(), branch.forks())))
                             .leafWhenEmpty(true))
-                        .isEnabledIf(idle)
+                        .isEnabledIf(browsable)
                         .withSelection(here)
                         .onSelection(it -> goTo(id, it.leadPath(), it.lead()))
                         .withStyle(it -> it.backgroundColor(TRANSPARENT).componentFont(f -> f.family(FONT).size(12).color(TEXT))))))
@@ -287,8 +289,7 @@ public final class GeniesView extends JPanel {
     private void goTo(UUID id, Tuple<String> path, Optional<Talk> row) {
         state.get().find(id).ifPresent(genie -> {
             if (path.isEmpty() || row.isEmpty() || path.equals(genie.conversations().herePath())) return;
-            genie.conversations().find(path.first()).ifPresent(conversation ->
-                actions.goTo(id, conversation.file(), row.get().leaf()));
+            genie.conversations().fileOf(path.first()).ifPresent(file -> actions.goTo(id, file, row.get().leaf()));
         });
     }
 
@@ -456,6 +457,7 @@ public final class GeniesView extends JPanel {
         Val<Boolean> empty = entries.viewAs(Boolean.class, Tuple::isEmpty);
         // Working, with nothing streaming in: the genie thinks, and a bar says so.
         Val<Boolean> waiting = genie.viewAs(Boolean.class, it -> it.phase() == Genie.Phase.WORKING
+                && it.conversations().aside().isEmpty()
                 && (it.transcript().isEmpty() || !it.transcript().entries().last().isWriting()));
         return
             box("fill, wrap 1, ins 0, gap 0, hidemode 3", "[grow]", "[grow][]")
@@ -508,8 +510,13 @@ public final class GeniesView extends JPanel {
         Val<Boolean> awake = phase.viewAs(Boolean.class, Genie.Phase::isAwake);
         Val<Boolean> canWake = phase.viewAs(Boolean.class, it -> it == Genie.Phase.ASLEEP || it == Genie.Phase.BROKEN);
         Val<Boolean> canSend = genie.viewAs(Boolean.class, Genie::canSend);
+        Val<Boolean> answeringElsewhere = genie.viewAs(Boolean.class, it -> it.conversations().aside().isPresent());
         return
             box("fill, wrap 1, ins 6 18 16 18, gap 0, hidemode 3", "[grow]")
+            .add("growx, wmin 0, gapbottom 6",
+                label(genie.viewAsString(it -> it.name() + " is answering in another conversation. Go back to it to follow the answer; "
+                                             + "you can write here once it is done."))
+                .group(Skin.SUBTITLE).isVisibleIf(answeringElsewhere))
             .add("growx, wmin 0",
                 panel("fill, ins 0, gap 8", "[][grow][]", "[bottom]").group(Skin.COMPOSER).isVisibleIf(awake)
                 .add(button("＋").group(Skin.ICON_BUTTON).withTooltip("Give the genie a file; it lands in ~/inbox")
