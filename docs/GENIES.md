@@ -101,17 +101,25 @@ names the entry before it. Asking a question differently adds a new question aft
 the old one followed, so the conversation forks there, and pi keeps both sides. Each conversation
 is a file of pi's; a genie can have any number of them.
 
-Under each genie's card is a line saying how many conversations it has. Clicking it opens the tree
-of them, which starts closed. It is SwingTree's `UI.trees(..)`, bound to the conversations as
-one value: a row per conversation, and below it a row per branch. A branch is a run of questions in
-which nothing was asked differently, titled by its first question; below it are the alternatives
-where it ends. A conversation that never forked is a single row. The row the genie is on is
-selected.
+Under each genie's card are two trees, each opened by a line saying how many it holds, and each
+starting closed: the conversations the user had, and the scheduled runs, one conversation per run
+of a job. `Lamp.Conversation.job()` says which conversations a job's run had; oillamp names those
+after the run and the job, such as `run-12 (job-3)`. The line for scheduled runs shows only once
+there is one. Each tree is SwingTree's `UI.trees(..)`, bound to its conversations as one value: a
+row per conversation, and below it a row per branch. A branch is a run of questions in which
+nothing was asked differently, titled by its first question; below it are the alternatives where
+it ends. A conversation that never forked is a single row. The row the genie is on is selected, in
+whichever tree it is.
+
+An open tree sits in an area that scrolls when the tree is taller. A grip under the area, a line
+with a handle, makes it taller or shorter when dragged, between 60 and 900 units; a tree shorter
+than that takes only its own height. Each tree keeps its height while Genies runs.
 
 | The user | What happens |
 |---|---|
 | clicks a row | the chat shows the way to that row's last entry, and the next message goes after it. A sleeping genie stays asleep |
 | presses Edit under a question of theirs | a dialog holds the question; the changed one is asked instead, and what followed the old one stays as a branch |
+| presses Shift and Return while writing | a new line in the message; Return alone sends it |
 | presses New | the chat empties, and the next message starts a new conversation; the others stay |
 | presses Delete… | after asking, the conversation the genie is in is deleted for good, with all its branches, and the genie starts a new one |
 
