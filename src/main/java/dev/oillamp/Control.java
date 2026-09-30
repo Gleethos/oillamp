@@ -41,6 +41,10 @@ import sprouts.Tuple;
 /// 4. [Server] writes the reply as one line, `{"ok":true,"state":"shutting-down"}`, and the
 ///    connection closes.
 ///
+/// One request, `follow`, is answered with more than one line: after the reply, the session writes
+/// each of its events as a line of JSON, the same lines an embedded session writes to its standard
+/// output, until the session ends or the follower hangs up.
+///
 /// The protocol is one JSON object per line and one request per connection, simple enough for a
 /// future front end to use as well. It is only spoken between processes of the same oillamp
 /// version, so it has no versioning. You can speak it from a shell:
@@ -91,22 +95,26 @@ final class Control {
     ///
     /// @param values named facts, for `status` and for whatever a front end wants to show
     /// @param argv   a command the asking process should run itself; used by `shell`
-    record Reply(boolean succeeded, Association<String, String> values, Tuple<String> argv) {
+    /// @param stream what is written after the reply, on the same connection; used by `follow`
+    record Reply(boolean succeeded, Association<String, String> values, Tuple<String> argv,
+                 Optional<Stream> stream) {
 
         public static Reply ok() {
             return new Reply(true, Association.between(String.class, String.class),
-                             Tuple.of(String.class));
+                             Tuple.of(String.class), Optional.empty());
         }
 
         public static Reply failed(String why) { return Reply.ok().with("error", why).asFailure(); }
 
         public Reply with(String key, String value) {
-            return new Reply(succeeded, values.put(key, value), argv);
+            return new Reply(succeeded, values.put(key, value), argv, stream);
         }
 
-        public Reply withArgv(Tuple<String> argv) { return new Reply(succeeded, values, argv); }
+        public Reply withArgv(Tuple<String> argv) { return new Reply(succeeded, values, argv, stream); }
 
-        private Reply asFailure() { return new Reply(false, values, argv); }
+        public Reply withStream(Stream stream) { return new Reply(succeeded, values, argv, Optional.of(stream)); }
+
+        private Reply asFailure() { return new Reply(false, values, argv, stream); }
 
         public String error() { return values.get("error").orElse("the session did not say why"); }
 
@@ -134,11 +142,23 @@ final class Control {
                 if (array != null && array.isArray())
                     for (JsonNode element : array) argv = argv.add(element.asText());
                 JsonNode ok = node.get("ok");
-                return new Reply(ok != null && ok.asBoolean(), values, argv);
+                return new Reply(ok != null && ok.asBoolean(), values, argv, Optional.empty());
             } catch (JacksonException e) {
                 return Reply.failed("the session answered with something that is not JSON");
             }
         }
+    }
+
+    /// Lines written after a reply, one at a time, until there are no more.
+    interface Stream {
+        /// Writes every line to `out`, and returns when there are no more. Stops at the first
+        /// line `out` cannot take, because the other end has hung up.
+        void writeTo(Line out) throws IOException, InterruptedException;
+    }
+
+    /// Where a [Stream] writes. Takes a line without its line break.
+    interface Line {
+        void write(String line) throws IOException;
     }
 
     /// Answers control requests. Called on a control-socket thread, never on the event loop.
@@ -188,8 +208,11 @@ final class Control {
                         .map(handler::handle)
                         .orElseGet(() -> Reply.failed("that is not a control request"));
                 write(client, reply.render() + "\n");
+                if (reply.stream().isPresent()) reply.stream().get().writeTo(event -> write(client, event + "\n"));
             } catch (IOException e) {
                 // A malformed, abandoned or silent connection must not end the session.
+            } catch (InterruptedException e) {
+                // The session is going away; so does the connection.
             }
         }
 
@@ -230,6 +253,53 @@ final class Control {
                               : Result.err(Problems.sessionRefused(lamp, command, reply.error()));
         } catch (IOException e) {
             return Result.err(Problems.supervisorUnreachable(socket, Problems.reason(e)));
+        }
+    }
+
+    /// Asks a running session for a request answered with a stream, such as `follow`, and passes
+    /// each line after the reply to `eachLine`, until the session ends the stream or `until`
+    /// reaches its end.
+    ///
+    /// @param until for an embedded `follow`, the standard input the application holds; empty to
+    ///              follow for as long as the session runs
+    /// @return the reply, once the stream has ended; failing as [#ask] does
+    static Result<Reply> follow(Path socket, Path lamp, Request request, String command,
+                                java.util.function.Consumer<String> eachLine,
+                                Optional<java.io.InputStream> until) {
+        if (!Files.exists(socket)) return Result.err(Problems.noSessionRunning(lamp, command));
+        try (SocketChannel channel = SocketChannel.open(UnixDomainSocketAddress.of(socket))) {
+            until.ifPresent(input -> Thread.ofVirtual().name("oillamp-follow-until").start(() -> {
+                try (input) {
+                    byte[] ignored = new byte[4096];
+                    while (input.read(ignored) >= 0) { /* keep reading until it closes */ }
+                } catch (IOException closed) {
+                    // Gone, which ends following all the same.
+                }
+                closeQuietly(channel);
+            }));
+            write(channel, request.render() + "\n");
+            var lines = new java.io.BufferedReader(new java.io.InputStreamReader(
+                    java.nio.channels.Channels.newInputStream(channel), StandardCharsets.UTF_8));
+            String first = within(ANSWER_TIME, channel, lines::readLine);
+            Reply reply = Reply.parse(first == null ? "" : first);
+            if (!reply.succeeded()) return Result.err(Problems.sessionRefused(lamp, command, reply.error()));
+            try {
+                String line;
+                while ((line = lines.readLine()) != null) eachLine.accept(line);
+            } catch (IOException ended) {
+                // Stopped from this end, or the session went away: either way the stream is over.
+            }
+            return Result.ok(reply);
+        } catch (IOException e) {
+            return Result.err(Problems.supervisorUnreachable(socket, Problems.reason(e)));
+        }
+    }
+
+    private static void closeQuietly(SocketChannel channel) {
+        try {
+            channel.close();
+        } catch (IOException alreadyClosed) {
+            // Then the reading has ended already.
         }
     }
 

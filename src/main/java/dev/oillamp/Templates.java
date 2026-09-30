@@ -171,7 +171,7 @@ final class Templates {
             # For this shell only:      eval "$(oillamp completion bash)"
             # For every future shell:   echo 'eval "$(oillamp completion bash)"' >> ~/.bashrc
             _oillamp() {
-                local commands='at view shell stop status list remove save history restore schedule ask cancel conversations recordings doctor config completion guide about version help'
+                local commands='at view shell stop status follow list remove save history restore schedule ask cancel conversations recordings doctor config completion guide about version help'
                 local current="${COMP_WORDS[COMP_CWORD]}"
                 local before=""
                 [ "$COMP_CWORD" -ge 2 ] && before="${COMP_WORDS[COMP_CWORD-2]}"

@@ -282,12 +282,13 @@ final class Invocation {
                     }
                 };
             }
-            // These four talk to a running session through its control socket. None of them
+            // These five talk to a running session through its control socket. None of them
             // sets anything up.
             case "view"   -> commands.view(Path.of(rest.get(0)), viewOnly);
             case "shell"  -> commands.shell(Path.of(rest.get(0)));
             case "stop"   -> commands.stop(Path.of(rest.get(0)));
             case "status" -> commands.status(Path.of(rest.get(0)));
+            case "follow" -> commands.follow(Path.of(rest.get(0)));
             case "list" -> commands.list();
 
             // Not one of the four above: it talks to no session, and refuses if one answers.
@@ -408,6 +409,7 @@ final class Invocation {
             java.util.Map.entry("shell",      java.util.Set.of()),
             java.util.Map.entry("stop",       java.util.Set.of()),
             java.util.Map.entry("status",     java.util.Set.of("--embedded")),
+            java.util.Map.entry("follow",     java.util.Set.of("--embedded")),
             java.util.Map.entry("list",       java.util.Set.of()),
             java.util.Map.entry("completion", java.util.Set.of()),
             java.util.Map.entry("version",    java.util.Set.of()),
@@ -422,13 +424,13 @@ final class Invocation {
 
     /// The commands that take a lamp directory and cannot do without it.
     private static final java.util.Set<String> NEEDS_A_LAMP = java.util.Set.of(
-            "at", "view", "shell", "stop", "status", "recordings", "config", "remove",
+            "at", "view", "shell", "stop", "status", "follow", "recordings", "config", "remove",
             "save", "history", "restore", "schedule", "ask", "conversations", "cancel");
 
     /// The commands that work on one lamp. `remove` takes several, since a pattern such as
     /// `test*` is the natural way to clean up after experiments.
     private static final java.util.Set<String> ONE_LAMP_ONLY = java.util.Set.of(
-            "at", "view", "shell", "stop", "status", "recordings", "doctor", "save", "history");
+            "at", "view", "shell", "stop", "status", "follow", "recordings", "doctor", "save", "history");
 
     /// How many arguments may follow the other commands.
     private static final java.util.Map<String, Integer> MOST_ARGUMENTS = java.util.Map.ofEntries(
@@ -513,6 +515,10 @@ final class Invocation {
                     Ask a running session to shut down, or clean up after one that crashed.
               status <dir>
                     What a running session is doing.
+              follow <dir> [--embedded]
+                    Report what a running session reports, as it happens, until it ends:
+                    first what it is doing now, then everything after. Ctrl-C stops
+                    following, not the session.
               list
                     Every oillamp sandbox running on this host.
               remove <dir>... --yes

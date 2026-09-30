@@ -105,6 +105,13 @@ final class Context {
         }
     }
 
+    /// The same, with every event also passed to `more`.
+    public Context alsoTelling(Consumer<LampEvent> more) {
+        Context both = new Context(sink.andThen(more), options, version);
+        both.installLog = installLog;
+        return both;
+    }
+
     public Options options() { return options; }
 
     public String version() { return version; }

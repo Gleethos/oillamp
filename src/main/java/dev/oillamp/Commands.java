@@ -771,6 +771,31 @@ final class Commands {
               + "; what the agent did until now is saved as the run ends")));
     }
 
+    /// `oillamp follow <dir>`: report everything a running session reports, as it happens,
+    /// until it ends.
+    ///
+    /// It starts with what a latecomer needs: how to reach the sandbox, the session's state, the
+    /// run in progress from its start, and the runs waiting. Following ends nothing: Ctrl-C here
+    /// leaves the session running. Embedded, following ends when standard input closes, as the
+    /// session itself would for the application that started it.
+    public ExitStatus follow(Path lampPath) {
+        Result<LampLayout> found = layoutOf(lampPath);
+        if (found instanceof Result.Err<LampLayout> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        LampLayout layout = ((Result.Ok<LampLayout>) found).value();
+        Result<Control.Reply> followed = Control.follow(layout.controlSocket(), layout.root(),
+                Control.Request.of("follow"), "follow",
+                line -> LampEvent.fromJson(line).ifPresent(context::emit),
+                context.options().embedded() ? Optional.of(machine.standardInput()) : Optional.empty());
+        if (followed instanceof Result.Err<Control.Reply> failure) {
+            context.report(failure.problems());
+            return exitStatusFor(failure.problems());
+        }
+        return ExitStatus.SUCCESS;
+    }
+
     /// Where `oillamp ask` puts its question: a new conversation, unless one is given.
     ///
     /// @param conversation the conversation to continue, by its id or the start of it

@@ -42,6 +42,7 @@ The fast test suite passes. The spikes pass on the development machine.
 | `oillamp shell <dir>` | Works. An extra shell in the current terminal. |
 | `oillamp stop <dir>` | Works. Also cleans up after a supervisor that was killed. |
 | `oillamp status <dir>` | Works. |
+| `oillamp follow <dir> [--embedded]` | Works in the simulated scenarios: catches up on the run in progress and the runs waiting, then reports every event until the session ends. Embedded, it stops when standard input closes, and the session goes on. |
 | `oillamp list` | Works. |
 | `oillamp remove <dir> [--yes]` | Works. Without `--yes`, lists what would be deleted and exits 2. |
 | `oillamp recordings <dir> [--open <session>] [--prune]` | Works. |

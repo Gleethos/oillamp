@@ -81,6 +81,8 @@ final class Supervisor {
     private volatile Optional<Control.Server> scheduleDesk = Optional.empty();
     /// Every time the agent is woken, by a job or by `oillamp ask`.
     private final Runs runs;
+    /// Everyone following the session with `oillamp follow`. Every event passes through it.
+    private final Followers followers = new Followers();
     private volatile Optional<Machine.Window> terminal = Optional.empty();
     /// Whether the application that started this embedded session left it running, so that the
     /// end of oillamp's standard input no longer ends it.
@@ -100,7 +102,7 @@ final class Supervisor {
     Supervisor(Machine machine, Context context, HostFacts host,
                LampPhase.Prepared prepared, SandboxPhase.Running sandbox) {
         this.machine = machine;
-        this.context = context;
+        this.context = context.alsoTelling(followers);
         this.host = host;
         this.prepared = prepared;
         this.sandbox = sandbox;
@@ -112,7 +114,7 @@ final class Supervisor {
                 !context.options().embedded() && context.options().openWindows()));
         this.sessionStarted = machine.now();
         this.state = new SessionState.Starting(sessionStarted);
-        this.runs = new Runs(machine, context, prepared.layout(), prepared.config().schedule(), prepared.session());
+        this.runs = new Runs(machine, this.context, prepared.layout(), prepared.config().schedule(), prepared.session());
     }
 
     /// Runs the session to its end and reports how it ended.
@@ -130,6 +132,7 @@ final class Supervisor {
             context.report(problems);
             context.report(shutDown(new SessionState.ShutdownReason.StartupFailed(
                     problems.first())));
+            followers.end();
             return ExitStatus.SESSION_FAILED;
         }
         context.report(((Result.Ok<Tuple<Problem>>) opened).value());
@@ -141,6 +144,7 @@ final class Supervisor {
         post(new SessionEvent.ContainerReady(ReadyInfo.parse(sandbox.readyJson())));
 
         ExitStatus status = loop();
+        followers.end();
         try {
             Runtime.getRuntime().removeShutdownHook(hook);
         } catch (IllegalStateException alreadyShuttingDown) {
@@ -887,6 +891,13 @@ final class Supervisor {
                         ? Control.Reply.ok().with("run", run)
                         : Control.Reply.failed(cancelled.problems().first().whatHappened());
             }
+            // Answered with every event from now on, after what a newcomer needs to catch up.
+            case "follow" -> Control.Reply.ok().withStream(out -> {
+                try (Followers.Feed feed = followers.follow()) {
+                    for (Optional<LampEvent> event = feed.next(); event.isPresent(); event = feed.next())
+                        out.write(event.get().toJson());
+                }
+            });
             case "schedule-changed" -> {
                 runs.scheduleChanged();
                 yield Control.Reply.ok();

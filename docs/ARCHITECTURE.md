@@ -52,7 +52,7 @@ These words have one meaning each, in the code and in the documents.
 | **primary shell** | The SSH connection from the terminal window oillamp opens. When it connects, the session is up. |
 | **extra shell** | A shell opened with `oillamp shell <dir>`. |
 | **relay** | A Unix socket on the host that forwards each connection into a socket inside the sandbox. Used for SSH. |
-| **control socket** | A Unix socket the supervisor listens on, so that `oillamp stop`, `status`, `view` and `shell` can talk to a running session. |
+| **control socket** | A Unix socket the supervisor listens on, so that `oillamp stop`, `status`, `view`, `shell` and `follow` can talk to a running session. |
 | **egress proxy** | The HTTP proxy inside oillamp that is the sandbox's only way out. "Egress" means outbound. |
 | **forward** | A fixed tunnel from a port inside the sandbox to one address you configured. Not subject to the proxy's rules. |
 | **runtime directory** | `$XDG_RUNTIME_DIR/oillamp/<agent id>/`, usually `/run/user/<uid>/oillamp/<agent id>/`. Short socket paths, in memory. |
@@ -512,7 +512,7 @@ image builds, or a start that fails, removes the container this run started. The
 replaces it once the session is up.
 
 The other commands reuse these parts. `doctor` runs the host phase as a dry run with installing
-forbidden. `view`, `shell`, `stop` and `status` send one request to the control socket. `remove`
+forbidden. `view`, `shell`, `stop`, `status` and `follow` send one request to the control socket. `remove`
 and `recordings --prune` build a plan and run it with `StepRunner`. `list` asks podman for
 containers labelled `oillamp.agent-id`. `save`, `history` and `restore` use `History` directly
 and talk to no session; `save` and `restore` try the lamp's lock only to find out whether a
@@ -786,6 +786,7 @@ the container, and the next start cleans up the rest.
 | `{"op":"ask","prompt":…}` | answered once the run has ended: `{"ok":true,"run":"run-3","outcome":"FINISHED","answer":…,"seconds":…,"snapshot":…,"conversation":…}`; `oillamp ask` waits up to a day for it. With `"conversation"` and `"file"` it continues that conversation, and with `"move_to"` it goes after that entry first. With `"no_wait":"true"` it is answered at once with the run's id |
 | `{"op":"cancel","run":…}` | `{"ok":true,"run":…}`: the run is being stopped, or was taken off the queue; without `run`, the one in progress |
 | `{"op":"schedule-changed"}` | `{"ok":true}`, and the session looks at the schedule now rather than at its next half minute |
+| `{"op":"follow"}` | `{"ok":true}`, then every event of the session as a line of JSON, until the session ends and closes the connection. The first lines catch up: `SessionOpened`, the last `SessionStateChanged`, the run in progress from its `RunStarted` (with its text pieces joined), and a `RunQueued` for each run waiting. `oillamp follow` prints them |
 
 `status` also answers `"agent"`: `idle`, or which run the agent is working on and how many wait;
 and `"agent_status"`, the same as an `AgentStatus` event in JSON.
