@@ -56,6 +56,9 @@ public final class Genies implements Actions {
     private final Val<Tuple<String>> names;
     /// The page on show. Kept as a field for the same reason: leaving the settings keeps them.
     private final Val<GeniesState.Page> page;
+    /// The genie whose schedule is on show, or [GeniesState#NONE]. Kept as a field for the same
+    /// reason: a schedule is read from its lamp when it comes on show.
+    private final Val<UUID> scheduleShown;
 
     Genies(Var<GeniesState> state, Shelf shelf, Lighter lighter) {
         this.state = state;
@@ -68,6 +71,11 @@ public final class Genies implements Actions {
         this.page = state.viewAs(GeniesState.Page.class, GeniesState::page);
         Viewable.cast(page).onChange(From.ALL, it -> {
             if (it.currentValue().orElseNull() != GeniesState.Page.SETTINGS) keepSettings();
+        });
+        this.scheduleShown = state.viewAs(UUID.class, it -> it.page() == GeniesState.Page.SCHEDULE ? it.selected() : GeniesState.NONE);
+        Viewable.cast(scheduleShown).onChange(From.ALL, it -> {
+            UUID shown = it.currentValue().orElse(GeniesState.NONE);
+            if (!shown.equals(GeniesState.NONE)) runner(shown).schedule().read();
         });
     }
 
@@ -90,6 +98,8 @@ public final class Genies implements Actions {
         });
         // The tree of conversations under each genie is there before any genie wakes.
         app.state.get().genies().forEach(genie -> app.runner(genie.id()).lookAtConversations());
+        // The timeline, and anything else said relative to now, moves on with the clock.
+        new javax.swing.Timer(30_000, tick -> app.state.update(it -> it.withNow(java.time.Instant.now()))).start();
         frame.pack();
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
@@ -204,6 +214,34 @@ public final class Genies implements Actions {
     @Override public void give(UUID id, Path file) { runner(id).give(file); }
 
     @Override public void save(UUID id, String name, Path target) { runner(id).save(name, target); }
+
+    // ─── the schedule ──────────────────────────────────────────────────────────────────────
+
+    @Override public void saveJob(UUID id) {
+        state.get().find(id).ifPresent(genie -> genie.schedule().draft().ifPresent(draft -> {
+            java.time.ZoneId zone = genie.schedule().zone();
+            runner(id).schedule().save(draft, java.time.LocalDateTime.now(zone), zone);
+        }));
+    }
+
+    @Override public void removeJob(UUID id, String job) { runner(id).schedule().remove(job); }
+
+    @Override public void switchJob(UUID id, String job, boolean on) { runner(id).schedule().switchJob(job, on); }
+
+    @Override public void pauseSchedule(UUID id, boolean paused) { runner(id).schedule().pause(paused); }
+
+    @Override public void stopRun(UUID id, String run) {
+        Optional.ofNullable(runners.get(id)).ifPresent(runner -> runner.stop(run));
+    }
+
+    /// While the genie works or wakes, the chat stays where it is, as the tree does.
+    @Override public void openConversation(UUID id, String conversation) {
+        Optional<Genie> genie = state.get().find(id);
+        if (genie.isEmpty()) return;
+        state.update(From.VIEW, it -> it.select(id).withPage(GeniesState.Page.CHAT));
+        if (genie.get().phase() != Genie.Phase.WORKING && genie.get().phase() != Genie.Phase.WAKING)
+            runner(id).open(conversation);
+    }
 
     /// Leaving the page keeps the settings.
     @Override public void settingsDone() {
