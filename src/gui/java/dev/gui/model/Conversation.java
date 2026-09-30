@@ -28,8 +28,12 @@ import sprouts.Tuple;
 /// @param name     the name the conversation was given, or nothing
 /// @param modified when its last entry was written, as pi writes times, so that it sorts
 /// @param steps    its entries, in the order pi wrote them
-public record Conversation(String id, String file, String name, String modified, Tuple<Step> steps)
+/// @param job      the job whose run had it, such as `job-3`, or nothing for one the user began
+public record Conversation(String id, String file, String name, String modified, Tuple<Step> steps, String job)
         implements HasId<String> {
+
+    /// Whether a job's run had it, rather than the user.
+    public boolean byJob() { return !job.isEmpty(); }
 
     /// One entry of a conversation.
     ///

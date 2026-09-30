@@ -105,7 +105,7 @@ class BranchingAConversationSpec extends Specification {
                                                   new Conversations.Here(conversation.file(), 'a2b'))
 
         when:
-            var chat = conversations.tree().first() as Talk.Chat
+            var chat = conversations.chats().first() as Talk.Chat
 
         then:
             chat.here()
@@ -130,9 +130,56 @@ class BranchingAConversationSpec extends Specification {
                                                   new Conversations.Here('.pi/agent/sessions/--home-agent--/new.jsonl', ''))
 
         expect:
-            conversations.tree()*.title() == ['New conversation', 'Hi']
-            conversations.tree().first().here()
+            conversations.chats()*.title() == ['New conversation', 'Hi']
+            conversations.chats().first().here()
             conversations.herePath().size() == 1
+    }
+
+    def 'The user\'s conversations and those of scheduled jobs are two trees'() {
+        reportInfo """
+            A genie with a schedule has a conversation for every run of a job, and those soon
+            outnumber the user's own. So they are a tree of their own under the genie, and the
+            user's conversations stay easy to find. oillamp says which job's run had a
+            conversation. Wherever the genie is, only that tree selects a row.
+        """
+        given:
+            var mine = conversation(question('q1', '', 'Plan a trip'))
+            var jobs = new Conversation('s2', '.pi/agent/sessions/--home-agent--/s2.jsonl', 'run-3 (job-1)',
+                    '2026-09-29T11:00:00.000Z', Tuple.of(Conversation.Step, question('j1', '', 'Tidy up')), 'job-1')
+            var conversations = new Conversations(Tuple.of(Conversation, jobs, mine), new Conversations.Here(jobs.file(), ''))
+
+        expect:
+            conversations.chats()*.id() == ['s1']
+            conversations.jobRuns()*.id() == ['s2']
+            conversations.chatCount() == 1
+            conversations.jobCount() == 1
+
+        and: 'the genie is in the job\'s conversation, so that tree selects it and the other nothing'
+            Conversations.pathToHere(conversations.jobRuns()).toList() == ['s2']
+            Conversations.pathToHere(conversations.chats()).isEmpty()
+            conversations.herePath().toList() == ['s2']
+    }
+
+    def 'Each tree opens on its own, and keeps the height the user dragged it to'() {
+        reportInfo """
+            A tree opens from the line under the genie that says how many conversations it
+            holds. Its area is as tall as the user drags it, within limits, so that a tree is
+            never dragged out of sight or taller than any window.
+        """
+        given:
+            var fold = Conversations.Fold.CLOSED
+
+        expect:
+            !fold.shown()
+            fold.toggled().shown()
+            fold.withHeight(300).height() == 300
+            fold.withHeight(5).height() == Conversations.Fold.LOWEST
+            fold.withHeight(50_000).height() == Conversations.Fold.HIGHEST
+
+        and: 'reading the conversations again keeps both trees as they were'
+            var open = Conversations.NONE.withChatsFold(fold.toggled().withHeight(300))
+            open.withAll(Tuple.of(Conversation, conversation(question('q1', '', 'Hi')))).chatsFold() == new Conversations.Fold(true, 300)
+            open.jobsFold() == Conversations.Fold.CLOSED
     }
 
     def 'A conversation is titled by its name, or by its first question on one short line'() {
@@ -143,15 +190,15 @@ class BranchingAConversationSpec extends Specification {
         expect:
             conversation(question('q1', '', 'Line one\n  line two ' + 'x' * 80)).title() ==~ /Line one line two x+…/
             conversation(question('q1', '', 'Line one\n  line two ' + 'x' * 80)).title().length() == 60
-            new Conversation('s1', 'f', 'Trip planning', '', Tuple.of(Conversation.Step)).title() == 'Trip planning'
-            new Conversation('s1', 'f', '', '', Tuple.of(Conversation.Step)).title() == 'New conversation'
+            new Conversation('s1', 'f', 'Trip planning', '', Tuple.of(Conversation.Step), '').title() == 'Trip planning'
+            new Conversation('s1', 'f', '', '', Tuple.of(Conversation.Step), '').title() == 'New conversation'
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
 
     private static Conversation conversation(Conversation.Step... steps) {
         new Conversation('s1', '.pi/agent/sessions/--home-agent--/s1.jsonl', '', '2026-09-29T10:00:00.000Z',
-                         Tuple.of(Conversation.Step, steps))
+                         Tuple.of(Conversation.Step, steps), '')
     }
 
     private static Conversation.Step question(String id, String parent, String text) {

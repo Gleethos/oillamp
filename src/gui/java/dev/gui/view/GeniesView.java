@@ -157,51 +157,113 @@ public final class GeniesView extends JPanel {
 
     // ─── a genie's conversations ───────────────────────────────────────────────────────────
 
-    /// The genie's conversations, under its card: a line saying how many, which opens the tree
-    /// of them. A conversation is a row, and below it are its branches, one for each question
-    /// asked differently. Clicking a row goes there; the row the genie is on is selected.
+    /// The genie's conversations, under its card, as two trees: the user's own, and those the
+    /// runs of its scheduled jobs had. Each opens from a line saying how many. A conversation is
+    /// a row, and below it are its branches, one for each question asked differently. Clicking a
+    /// row goes there; the row the genie is on is selected.
     private UIForAnySwing<?, ?> conversationsOf(Var<Genie> shown) {
         UUID id = shown.get().id();
-        Val<Boolean> open = shown.viewAs(Boolean.class, it -> it.conversations().shown());
-        Val<Tuple<Talk>> talks = shown.viewAs(Tuple.classTyped(Talk.class), it -> it.conversations().tree());
-        Val<Tuple<String>> here = shown.viewAs(Tuple.classTyped(String.class), it -> it.conversations().herePath());
+        Var<Conversations> conversations = shown.zoomTo(Genie::conversations, Genie::withConversations);
+        Var<Conversations.Fold> chats = conversations.zoomTo(Conversations::chatsFold, Conversations::withChatsFold);
+        Var<Conversations.Fold> jobs = conversations.zoomTo(Conversations::jobsFold, Conversations::withJobsFold);
         Val<Boolean> idle = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING && it.phase() != Genie.Phase.WAKING);
         Val<Boolean> canForget = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING
                 && it.phase() != Genie.Phase.WAKING && it.conversations().current().isPresent());
+        Val<Boolean> chatsOpen = chats.viewAs(Boolean.class, Conversations.Fold::shown);
         return
             box("fill, wrap 1, ins 0, gap 2, hidemode 3", "[grow]")
             .add("growx, wmin 0",
-                label(shown.viewAsString(it -> (it.conversations().shown() ? "▾  " : "▸  ") + howMany(it.conversations().all().size())))
-                .group(Skin.META).withCursor(UI.Cursor.HAND)
-                .withTooltip("Show or hide this genie's conversations")
-                .onMouseClick(it -> shown.update(From.VIEW, genie -> genie.withConversations(
-                        genie.conversations().withShown(!genie.conversations().shown())))))
-            .add("growx, wmin 0",
-                UI.trees(talks, conf -> conf
-                    .nodesOf(Talk.Chat.class, it -> it
-                        .children(Talk.Chat::branches)
-                        .text(Talk.Chat::title)
-                        .toolTip(chat -> chat.title() + " — " + (chat.turns() == 0 ? "its first question was asked differently"
-                                                                                  : questions(chat.turns(), chat.branches()))))
-                    .nodesOf(Talk.Branch.class, it -> it
-                        .children(Talk.Branch::forks)
-                        .text(Talk.Branch::title)
-                        .toolTip(branch -> branch.title() + " — " + questions(branch.turns(), branch.forks())))
-                    .leafWhenEmpty(true))
-                .isVisibleIf(open)
-                .isEnabledIf(idle)
-                .withSelection(here)
-                .onSelection(it -> goTo(id, it.leadPath(), it.lead()))
-                .withStyle(it -> it.backgroundColor(TRANSPARENT).componentFont(f -> f.family(FONT).size(12).color(TEXT))))
+                tree(id, chats, conversations.viewAsString(it -> howMany(it.chatCount(), "conversation", "no conversations yet")),
+                     "Show or hide your conversations with this genie", Val.of(true),
+                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::chats), idle))
             .add("growx, wmin 0",
                 box("ins 0, gap 4, hidemode 3")
-                .isVisibleIf(open)
+                .isVisibleIf(chatsOpen)
                 .add(button("＋  New").group(Skin.QUIET_BUTTON).isEnabledIf(idle)
                      .withTooltip("Start a new conversation with this genie; the others are kept")
                      .onClick(it -> actions.startAfresh(id)))
                 .add(button("Delete…").group(Skin.QUIET_BUTTON).isEnabledIf(canForget)
                      .withTooltip("Delete the conversation this genie is in, with all its branches")
-                     .onClick(it -> confirmForget(id))));
+                     .onClick(it -> confirmForget(id))))
+            .add("growx, wmin 0, gaptop 4",
+                tree(id, jobs, conversations.viewAsString(it -> howMany(it.jobCount(), "scheduled run", "")),
+                     "Show or hide the conversations the runs of this genie's scheduled jobs had",
+                     conversations.viewAs(Boolean.class, it -> it.jobCount() > 0),
+                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::jobRuns), idle));
+    }
+
+    /// One tree of conversations: the line that opens it, then the tree in an area of the fold's
+    /// height, which scrolls when the tree is taller, and a grip under it that the user drags to
+    /// make the area taller or shorter.
+    private UIForAnySwing<?, ?> tree(UUID id, Var<Conversations.Fold> fold, Val<String> count, String tip,
+                                     Val<Boolean> present, Val<Tuple<Talk>> rows, Val<Boolean> idle) {
+        Val<Boolean> open = fold.viewAs(Boolean.class, Conversations.Fold::shown);
+        Val<Tuple<String>> here = rows.viewAs(Tuple.classTyped(String.class), Conversations::pathToHere);
+        // Where a drag of the grip began: the pointer's height on the screen, and the area's.
+        // The area's is what it shows, which for a short tree is less than the fold's height.
+        int[] dragFrom = new int[2];
+        JScrollPane[] area = new JScrollPane[1];
+        return
+            box("fill, wrap 1, ins 0, gap 0, hidemode 3", "[grow]")
+            .isVisibleIf(present)
+            .add("growx, wmin 0",
+                label(Viewable.of(String.class, open, count, (on, words) -> (on ? "▾  " : "▸  ") + words))
+                .group(Skin.META).withCursor(UI.Cursor.HAND)
+                .withTooltip(tip)
+                .onMouseClick(it -> fold.update(From.VIEW, Conversations.Fold::toggled)))
+            .add("growx, wmin 0, hmin 0",
+                scrollPane(conf -> conf.fitWidth(true)).withEmptyBorder(0).withMinSize(0, 0)
+                .peek(it -> area[0] = it)
+                .isVisibleIf(open)
+                .withHorizontalScrollBarPolicy(UI.Active.NEVER)
+                .withVerticalScrollIncrement(16)
+                // At most the fold's height; a tree of a few rows takes only what it needs.
+                .withMaxHeight(fold.viewAs(Integer.class, Conversations.Fold::height))
+                .withStyle(it -> it.backgroundColor(TRANSPARENT))
+                .add(
+                    // In a panel of its own: on its own, a tree asks its scroll pane for room for
+                    // twenty rows, however many it has.
+                    panel("fill, ins 0").withStyle(it -> it.backgroundColor(TRANSPARENT))
+                    .add("grow, wmin 0",
+                        UI.trees(rows, conf -> conf
+                            .nodesOf(Talk.Chat.class, it -> it
+                                .children(Talk.Chat::branches)
+                                .text(Talk.Chat::title)
+                                .toolTip(chat -> chat.title() + " — " + (chat.turns() == 0 ? "its first question was asked differently"
+                                                                                          : questions(chat.turns(), chat.branches()))))
+                            .nodesOf(Talk.Branch.class, it -> it
+                                .children(Talk.Branch::forks)
+                                .text(Talk.Branch::title)
+                                .toolTip(branch -> branch.title() + " — " + questions(branch.turns(), branch.forks())))
+                            .leafWhenEmpty(true))
+                        .isEnabledIf(idle)
+                        .withSelection(here)
+                        .onSelection(it -> goTo(id, it.leadPath(), it.lead()))
+                        .withStyle(it -> it.backgroundColor(TRANSPARENT).componentFont(f -> f.family(FONT).size(12).color(TEXT))))))
+            .add("growx, wmin 0, h 9!",
+                panel().withCursor(UI.Cursor.RESIZE_BOTTOM)
+                .isVisibleIf(open)
+                .withTooltip("Drag to make this list taller or shorter")
+                .withStyle(it -> {
+                    int width = it.componentWidth(), height = it.componentHeight();
+                    return it.backgroundColor(TRANSPARENT).painter(UI.Layer.CONTENT, g -> grip(g, width, height));
+                })
+                .onMousePress(it -> {
+                    dragFrom[0] = it.mouseYOnScreen();
+                    dragFrom[1] = area[0].getHeight();
+                })
+                .onMouseDrag(it -> fold.update(From.VIEW, f -> f.withHeight(dragFrom[1] + it.mouseYOnScreen() - dragFrom[0]))));
+    }
+
+    /// The grip under a tree: a thin line across, like a split pane's divider, with a short
+    /// raised handle in its middle.
+    private static void grip(java.awt.Graphics2D g, int width, int height) {
+        int middle = height / 2;
+        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setColor(BORDER);
+        g.fillRect(0, middle, width, 1);
+        g.setColor(SUBTEXT);
+        g.fillRoundRect(width / 2 - 14, middle - 1, 28, 3, 3, 3);
     }
 
     private static String questions(int turns, Tuple<Talk.Branch> forks) {
@@ -209,11 +271,12 @@ public final class GeniesView extends JPanel {
              + (forks.isEmpty() ? "" : ", then asked differently " + (forks.size() == 2 ? "once" : forks.size() - 1 + " times"));
     }
 
-    private static String howMany(int conversations) {
-        return switch (conversations) {
-            case 0 -> "no conversations yet";
-            case 1 -> "1 conversation";
-            default -> conversations + " conversations";
+    /// "no conversations yet", "1 conversation", "3 conversations", and so on.
+    private static String howMany(int count, String one, String none) {
+        return switch (count) {
+            case 0 -> none;
+            case 1 -> "1 " + one;
+            default -> count + " " + one + "s";
         };
     }
 
