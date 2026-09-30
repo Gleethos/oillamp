@@ -69,8 +69,9 @@ public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, 
     public Conversations withJobsFold(Fold jobsFold)      { return new Conversations(all, here, chatsFold, jobsFold, aside); }
     public Conversations withAside(Optional<Aside> aside) { return new Conversations(all, here, chatsFold, jobsFold, aside); }
 
-    /// How many conversations the user had, and how many the jobs' runs had.
-    public int chatCount() { return all.retainIf(it -> !it.byJob()).size(); }
+    /// How many conversations the user had, a new one not yet on disk among them, and how many
+    /// the jobs' runs had.
+    public int chatCount() { return chats().size(); }
     public int jobCount()  { return all.retainIf(Conversation::byJob).size(); }
 
     public Optional<Conversation> find(String id) {

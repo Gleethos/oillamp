@@ -514,9 +514,8 @@ public final class GeniesView extends JPanel {
         return
             box("fill, wrap 1, ins 6 18 16 18, gap 0, hidemode 3", "[grow]")
             .add("growx, wmin 0, gapbottom 6",
-                label(genie.viewAsString(it -> it.name() + " is answering in another conversation. Go back to it to follow the answer; "
-                                             + "you can write here once it is done."))
-                .group(Skin.SUBTITLE).isVisibleIf(answeringElsewhere))
+                Parts.wrapped(genie.viewAsString(it -> it.name() + " is answering in another conversation. Write here once it is done."),
+                              SUBTEXT, answeringElsewhere))
             .add("growx, wmin 0",
                 panel("fill, ins 0, gap 8", "[][grow][]", "[bottom]").group(Skin.COMPOSER).isVisibleIf(awake)
                 .add(button("＋").group(Skin.ICON_BUTTON).withTooltip("Give the genie a file; it lands in ~/inbox")
