@@ -441,6 +441,17 @@ deleting the genie deletes them.
 *Given up:* each message starts a short-lived engine process, about a second before the run
 begins. Only pi is supported. *(changed on 2026-09-30; before, Genies ran its own pi over ssh)*
 
+### Genies lights every lamp with its schedule on
+
+Genies starts each lamp with `enableScheduling()`, so the jobs on a genie's schedule wake it while
+it is awake. Its schedule page reads and changes the jobs through `Lamp.Starting`, awake or asleep.
+
+*Why:* in Genies the schedule is a page of its own, and a user who adds a job there means it to run.
+Asking them to also edit the lamp's `oillamp.toml` would be a step with no choice in it.
+
+*Given up:* a genie's jobs cost model tokens whenever it is awake; a user who wants them held
+pauses the schedule on its page. *(added on 2026-09-30)*
+
 ### Files pass between a genie and its user through `~/outbox` and `~/inbox`, over ssh
 
 A genie hands over a file by putting it in `~/outbox`; the user saves it where they choose in a
