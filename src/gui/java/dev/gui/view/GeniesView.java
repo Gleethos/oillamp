@@ -1,32 +1,18 @@
 package dev.gui.view;
 
-import java.io.File;
-import java.nio.file.Path;
-import java.util.Optional;
-import java.util.UUID;
-
-import javax.swing.JFileChooser;
-import javax.swing.JPanel;
-import javax.swing.JScrollPane;
-
-import dev.gui.model.DesktopZoom;
-import dev.gui.model.Entry;
-import dev.gui.model.Genie;
-import dev.gui.model.GeniesState;
-import dev.gui.model.Handout;
-import dev.gui.model.Talk;
-import dev.gui.model.Transcript;
-
-import sprouts.From;
-import sprouts.Tuple;
-import sprouts.Val;
-import sprouts.Var;
-import sprouts.Viewable;
+import dev.gui.model.*;
+import sprouts.*;
 import swingtree.UI;
 import swingtree.UIForAnySwing;
 import swingtree.UIForPanel;
 import swingtree.api.Layout;
 import swingtree.layout.FlowCell;
+
+import javax.swing.*;
+import java.io.File;
+import java.nio.file.Path;
+import java.util.Optional;
+import java.util.UUID;
 
 import static dev.gui.view.Palette.*;
 import static swingtree.UI.*;
@@ -587,21 +573,25 @@ public final class GeniesView extends JPanel {
     /// What can be done with a genie beyond its everyday buttons: behind "⋯" in the header,
     /// and a right-click on its card. Deleting it is last, away from the rest.
     private javax.swing.JPopupMenu genieMenu(UUID id) {
-        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
-        state.get().find(id).ifPresent(shown -> {
-            Genie.Phase now = shown.phase();
-            boolean idle = now != Genie.Phase.WORKING && now != Genie.Phase.WAKING;
-            menu.add(Parts.item("Rename…", true, () -> rename(id)));
-            menu.add(Parts.item("New conversation", idle, () -> actions.startAfresh(id)));
-            menu.addSeparator();
-            if (now.isAwake()) menu.add(Parts.item("Sleep", true, () -> actions.sleep(id)));
-            else menu.add(Parts.item(now == Genie.Phase.BROKEN ? "Try waking again" : "Wake", now != Genie.Phase.WAKING, () -> actions.wake(id)));
-            menu.addSeparator();
-            javax.swing.JMenuItem delete = Parts.item("Delete " + shown.name() + "…", true, () -> confirmDelete(id));
-            delete.setForeground(TROUBLE);
-            menu.add(delete);
-        });
-        return menu;
+        return UI.popupMenu().applyIfPresent(state.get().find(id).map( shown -> ui -> {
+                Genie.Phase now = shown.phase();
+                boolean idle = now != Genie.Phase.WORKING && now != Genie.Phase.WAKING;
+                ui.add(Parts.item("Rename…", true, () -> rename(id)))
+                .add(Parts.item("New conversation", idle, () -> actions.startAfresh(id)))
+                .peek(JPopupMenu::addSeparator)
+                .applyIf(now.isAwake(), ui1 -> ui1
+                    .add(Parts.item("Sleep", true, () -> actions.sleep(id)))
+                )
+                .applyIf(!now.isAwake(), ui1 -> ui1
+                    .add(Parts.item(now == Genie.Phase.BROKEN ? "Try waking again" : "Wake", now != Genie.Phase.WAKING, () -> actions.wake(id)))
+                )
+                .peek(JPopupMenu::addSeparator)
+                .add(
+                    UI.of(Parts.item("Delete " + shown.name() + "…", true, () -> confirmDelete(id)))
+                    .withForeground(TROUBLE)
+                );
+            }))
+            .get(JPopupMenu.class);
     }
 
     private void rename(UUID id) {
