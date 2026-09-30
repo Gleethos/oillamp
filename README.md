@@ -232,6 +232,8 @@ oillamp history <dir>            # list the lamp's snapshots
 oillamp restore <dir> <snapshot> # go back to a snapshot (stop the session first)
 oillamp schedule <dir> [add ...] # list or change the jobs that wake the agent
 oillamp ask <dir> "<prompt>"     # wake the agent in a running session, print its answer
+oillamp cancel <dir> [<run>]     # stop the agent's run
+oillamp conversations <dir> [<id>] # list the agent's conversations, or show one
 oillamp recordings <dir>         # list screen recordings (if recording is on)
 oillamp config <dir> check       # validate the lamp's oillamp.toml
 oillamp guide                    # a first session, step by step, in your terminal

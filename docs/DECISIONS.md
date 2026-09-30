@@ -320,6 +320,20 @@ which the agent cannot see.
 *Given up:* the tools are pi's only; another harness in the sandbox gets none, although it could
 speak the socket's protocol itself. *(added on 2026-09-29)*
 
+### Applications read conversations from pi's files, and ask through the session
+
+`Lamp.conversations` parses pi's session files in the lamp directly. Asking, continuing a
+conversation, moving within it, following a run and stopping it all go through the session's one
+pi (`Lamp.send`, `Lamp.ask`, `Lamp.cancel`).
+
+*Why:* reading files needs no running session and no process start, so an application can list
+conversations of a lamp that is not running, and read them again after every change. Everything
+that makes the agent act goes through the session, so that one pi does one run at a time, and
+every run is saved before and after.
+
+*Given up:* the reader depends on pi's session file format (version 3). A change to it in a new pi
+needs a change in `PiSessionFile`. *(added on 2026-09-30)*
+
 ---
 
 ## Host setup

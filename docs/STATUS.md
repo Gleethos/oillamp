@@ -49,7 +49,9 @@ The fast test suite passes. The spikes pass on the development machine.
 | `oillamp history <dir>` | Works. |
 | `oillamp restore <dir> <snapshot>` | Works in the scenarios and on a lamp made by hand. Refused while a session runs. |
 | `oillamp schedule <dir> [add \| remove \| enable \| disable \| pause \| resume]` | Works in the scenarios and in a real session (see "Runs and the schedule"). |
-| `oillamp ask <dir> "<prompt>"` | Works in the scenarios and in a real session with pi. |
+| `oillamp ask <dir> "<prompt>"` | Works in the scenarios and in a real session with pi. `--in`, `--after`, `--instead-of` and `--no-wait` work in the scenarios, against a stand-in pi that writes session files as pi does; not yet tried with the real pi. |
+| `oillamp cancel <dir> [<run>]` | Works in the scenarios. |
+| `oillamp conversations <dir> [<conversation>]` | Works in the scenarios, on session files written in pi's format. |
 | `oillamp config <dir> check \| show-effective \| path` | Works. Reads the global file and the lamp's, as `at` does. |
 | `oillamp completion bash` | Works. |
 | `oillamp version`, `oillamp help`, `oillamp guide`, `oillamp about` | Work. |
@@ -332,8 +334,9 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 - The Genies app has no buttons for the history yet; `dev.lamp.Lamp` offers `save`, `history` and
   `restore`.
 - Genies still starts its own pi, and does not use the session's. A lamp that Genies holds and
-  that has jobs on its schedule runs two pis in one home. Genies should become a client of the
-  session's harness, through `Lamp.ask`.
+  that has jobs on its schedule runs two pis in one home. The Lamp API now has what Genies needs
+  (`conversations`, `send` with a `Question`, `RunProgress`, `cancel`, `agentStatus`); Genies does
+  not use it yet.
 - The scheduling tools are pi's only. Another harness in the sandbox, such as opencode, has none.
 - A run uses whatever model pi is configured with in the sandbox. A lamp whose pi has no default
   model, or one the model service refuses, fails every run, and says so; oillamp has no setting

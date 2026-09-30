@@ -780,10 +780,12 @@ the container, and the next start cleans up the rest.
 | `{"op":"stop"}` | `{"ok":true,"state":"shutting-down"}`, and the session begins to shut down |
 | `{"op":"view","view_only":"true"}` | `{"ok":true}`, and another viewer opens |
 | `{"op":"shell"}` | `{"ok":true,"argv":["ssh","-F",…]}`; the *asking* process runs that ssh in its own terminal |
-| `{"op":"ask","prompt":…}` | answered once the run has ended: `{"ok":true,"run":"run-3","outcome":"FINISHED","answer":…,"seconds":…,"snapshot":…}`; `oillamp ask` waits up to a day for it |
+| `{"op":"ask","prompt":…}` | answered once the run has ended: `{"ok":true,"run":"run-3","outcome":"FINISHED","answer":…,"seconds":…,"snapshot":…,"conversation":…}`; `oillamp ask` waits up to a day for it. With `"conversation"` and `"file"` it continues that conversation, and with `"move_to"` it goes after that entry first. With `"no_wait":"true"` it is answered at once with the run's id |
+| `{"op":"cancel","run":…}` | `{"ok":true,"run":…}`: the run is being stopped, or was taken off the queue; without `run`, the one in progress |
 | `{"op":"schedule-changed"}` | `{"ok":true}`, and the session looks at the schedule now rather than at its next half minute |
 
-`status` also answers `"agent"`: `idle`, or which run the agent is working on and how many wait.
+`status` also answers `"agent"`: `idle`, or which run the agent is working on and how many wait;
+and `"agent_status"`, the same as an `AgentStatus` event in JSON.
 
 A missing socket means no session is running (`OIL-SESSION-001`). A socket that refuses
 connections, or accepts but answers nothing within 5 s, is `OIL-SESSION-002`. In the first case
@@ -806,13 +808,29 @@ the supervisor is dead and `oillamp stop` cleans up; in the second it is alive b
 **The harness.** `Harness` runs `ssh … lamp-<id> 'cd ~/workspace; exec pi --mode rpc'` through the
 sandbox's SSH socket directly, not through a relay, so it is not counted as one of your shells. pi
 speaks one JSON object per line (its documentation is in the sandbox, under
-`/usr/lib/node_modules/@earendil-works/pi-coding-agent/docs/rpc.md`). Each run sends `new_session`,
-`set_session_name` (`run-12 (job-3)`), then `prompt`, and reads events until `agent_settled`, which
-means pi will not continue by itself (`agent_end` can be followed by retries). The last assistant
-message is the answer; its `stopReason` says whether it failed. pi uses the model it is configured
-with in the sandbox. An extension's question (`extension_ui_request` for `confirm`, `select`,
-`input`, `editor`) is answered with "cancelled", since no one is there to answer during a run.
-When the time is up, or the session is ending, it sends `abort` and waits 30 s for pi to settle;
+`/usr/lib/node_modules/@earendil-works/pi-coding-agent/docs/rpc.md`). Each run first opens its
+conversation:
+
+- a new one: `new_session`, and for a job's run `set_session_name` (`run-12 (job-3)`);
+- an existing one: `switch_session`, then, to continue after an entry or instead of a question,
+  `/oillamp-goto <entry>`. That is a command of oillamp's own pi extension,
+  `~/.pi/agent/extensions/oillamp-conversations.js`, which `LampPlanner` writes every session,
+  because pi's RPC mode can open a conversation but not move within one. It calls pi's
+  `navigateTree`: moving to a question sets the leaf to the question's parent, so the next prompt
+  is asked instead of it; moving to any other entry sets the leaf to that entry. The extension
+  sends the notification `oillamp: moved`, or `oillamp: could not move: <why>`. Before sending the
+  command, the harness checks with `get_commands` that pi has it; without the extension, pi would
+  send `/oillamp-goto …` to the model as a prompt.
+
+Then `get_state` says the conversation's id (reported as `RunProgress` `Opened`), `prompt` sends
+the question, and the harness reads events until `agent_settled`, which means pi will not continue
+by itself (`agent_end` can be followed by retries). Along the way it reports `RunProgress` events:
+each `text_delta` and `thinking_delta`, each tool as it starts and ends, each complete message, and
+each retry. The last assistant message is the answer; its `stopReason` says whether it failed. pi
+uses the model it is configured with in the sandbox. An extension's question
+(`extension_ui_request` for `confirm`, `select`, `input`, `editor`) is answered with "cancelled", since no one is there to answer during a run.
+When the time is up, someone cancels the run, or the session is ending, it sends `abort` and waits
+30 s for pi to settle;
 then it ends pi, and the next run starts a new one. If pi dies, the run fails with pi's last error
 lines (`OIL-SCHEDULE-005`), and the next run starts it again.
 
@@ -820,14 +838,32 @@ lines (`OIL-SCHEDULE-005`), and the next run starts it again.
 
 1. A job's `last_run` is set to now (a `once` job is removed instead), so it is not due again.
 2. `before-run` save, if anything changed.
-3. The prompt. With `schedule.enabled` on, `WakePrompt` writes it: why the agent was woken (and,
+3. The prompt. For a job's run, `WakePrompt` writes it: why the agent was woken (and,
    for its own job, that it wrote the task itself), the task, `NOTES.md` (cut at
    `schedule.notes_max_kb`), the last three runs with the files each changed (diffing the `run`
    snapshot's tree against its `Oillamp-Base`), the last run's final message, and a reminder to
-   rewrite the notes. With the schedule off, `oillamp ask` sends the prompt as it is.
+   rewrite the notes. A question someone asked is sent as they wrote it, because it is what a
+   chat shows as their message.
 4. `Harness.run`, for at most `schedule.max_run_minutes`.
 5. `run` save, always, with the answer (cut at 16 KB) and the trailers above.
-6. `RunFinished` is reported, and handed to `oillamp ask` if it asked.
+6. `RunFinished` is reported, with the conversation it happened in, and handed to `oillamp ask`
+   if it asked and waits.
+
+`oillamp ask --no-wait` (and `Lamp.send`) returns once the run is queued, with its id. The run's
+events go to the process that holds the session: `oillamp at`'s terminal, or the listeners of the
+`Lamp` that started it. `oillamp cancel [<run>]` (and `Lamp.cancel`) stops
+the run in progress, which then ends as `CANCELLED` and is saved like any run, or takes a waiting
+run off the queue before the agent sees it. `oillamp status` includes an `AgentStatus` event: the
+run in progress and the runs waiting.
+
+**Conversations** are pi's session files in `~/.pi/agent/sessions/<folder>/`, one per
+conversation: a header with its id, then one entry per line, each naming the one before it. So a
+conversation is a tree, and it stands at the entry written last. `Lamp.conversations` reads them
+straight from the lamp, whether or not it runs, into `Lamp.Conversation` values (entries with a
+kind: question, answer, tool output, summary or other), with `PiSessionFile` doing the parsing.
+The agent writes these files, so no link is followed on the way to them, files over 64 MB are
+left out, and lines that are not entries are passed over. `oillamp conversations` shows them, and
+`Lamp.forget` deletes one.
 
 **The schedule** is read by the `oillamp-schedule` thread every 30 s, and at once after
 `oillamp schedule` or the agent changed it. That thread only runs with `schedule.enabled` on. It
@@ -1274,7 +1310,7 @@ removed.
 | Host phase | `HostPhase`, `HostProbe`, `HostPlanner`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
 | Lamp phase | `LampPhase`, `LampPlanner`, `LampClassifier`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
 | History | `History` (reads the agent directory, writes and reads the repository), `GitFormat` (git's object format and the commit messages, pure) |
-| Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `Moments` (times as people write them), `WakePrompt` (a run's prompt, pure) |
+| Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `Moments` (times as people write them), `WakePrompt` (a run's prompt, pure); in `dev.lamp`, `PiSessionFile` (pi's session files as `Lamp.Conversation`, pure) |
 | Configuration | `ConfigLoader`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `Templates`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
@@ -1439,6 +1475,7 @@ as `oillamp at` does (`LampPhase.configurationFiles`).
 | `OIL-SCHEDULE-002` | The schedule file could not be read or written. |
 | `OIL-SCHEDULE-003` | No job has that name. |
 | `OIL-SCHEDULE-004` | Warning: the schedule is changed, but `schedule.enabled` is off, so no job runs. |
+| `OIL-CONVERSATION-001` | No conversation, or no entry in one, has that name. |
 | `OIL-SCHEDULE-005` | Warning: the agent could not be woken for a run, or pi stopped in the middle of one. |
 | `OIL-LOCK-001` | Lamp already running. |
 | `OIL-LOCK-002` | Warning: cleaned up after a previous session that crashed. |
