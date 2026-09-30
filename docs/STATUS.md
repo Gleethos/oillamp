@@ -36,7 +36,7 @@ The fast test suite passes. The spikes pass on the development machine.
 | `oillamp at <dir> --no-install` | Works. Reports missing packages instead of installing them. |
 | `oillamp at <dir> --no-viewer` | Works. |
 | `oillamp at <dir> --no-windows` | Works in the simulated scenarios. No window opens and no display is needed; the session ends as usual. Not yet tried under a real tmux. |
-| `oillamp at <dir> --embedded` | Works in the simulated scenarios, also driven through `dev.lamp.Lamp`. No window opens; the session ends when standard input closes. Not yet tried with a real application. |
+| `oillamp at <dir> --embedded` | Works in the simulated scenarios, also driven through `dev.lamp.Lamp`. No window opens; the session ends when standard input closes, unless the application wrote `leave-running` first. Not yet tried with a real application. |
 | `oillamp doctor [<dir>]` | Works. Checks the host (and the lamp's configuration if given) and changes nothing. Exits 0 or 3. |
 | `oillamp view <dir> [--view-only]` | Works. |
 | `oillamp shell <dir>` | Works. An extra shell in the current terminal. |

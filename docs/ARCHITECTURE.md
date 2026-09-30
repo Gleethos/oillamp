@@ -702,7 +702,8 @@ Its standard output carries every event as one line of JSON (`LampEvent.toJson()
 else: no banner, no colour, no activity line.
 The supervisor reads its standard input until it closes, then posts `StopRequested`: the
 application closes it when it is done, and the operating system closes it when the application
-dies.
+dies. If a line `leave-running` comes first, the supervisor stops reading and posts nothing: the
+session then runs on its own, `status` says "running on its own", and it ends with `oillamp stop`.
 
 **A session without windows** (`oillamp at <dir> --no-windows`) is for a person who wants to attach
 on their own terms, for example one who starts oillamp under tmux so that it outlives their

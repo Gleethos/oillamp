@@ -390,7 +390,14 @@ events arrive as JSON lines on the engine's standard output, requests go to the 
 commands in the sandbox run over the existing SSH relay. `dev.lamp` never imports `dev.oillamp`.
 
 An embedded session opens no windows and waits for no terminal. It ends when the application closes
-the engine's standard input, which the operating system also does when the application dies.
+the engine's standard input, which the operating system also does when the application dies. An
+application that writes `leave-running` on that input first (`Lamp.leaveRunning()`) leaves the
+session running on its own, until `oillamp stop`; the engine runs under `setsid`, so the closing
+of the terminal the application was started from does not end it either.
+
+*Why leaving running is asked for, not assumed:* an application that crashes says nothing, so its
+sandbox still ends with it. Only a deliberate choice, such as a user closing Genies with a genie
+that should keep its schedule, leaves a sandbox running.
 
 *Why:* the supervisor is the sandbox's proxy, relays and shutdown sequence. Inside the
 application's own process, a crash of the application would cut the agent's network mid-task and

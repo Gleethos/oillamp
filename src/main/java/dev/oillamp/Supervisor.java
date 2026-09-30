@@ -82,6 +82,9 @@ final class Supervisor {
     /// Every time the agent is woken, by a job or by `oillamp ask`.
     private final Runs runs;
     private volatile Optional<Machine.Window> terminal = Optional.empty();
+    /// Whether the application that started this embedded session left it running, so that the
+    /// end of oillamp's standard input no longer ends it.
+    private volatile boolean leftRunning;
     /// What the last health check found, so that only a _change_ is reported.
     private boolean desktopAnswering = true;
     private boolean shellAnswering = true;
@@ -198,7 +201,9 @@ final class Supervisor {
         return switch (state) {
             case SessionState.Starting ignored -> "the sandbox is coming up";
             case SessionState.AwaitingTerminal ignored -> "waiting for your terminal window";
-            case SessionState.Running running -> context.options().embedded()
+            case SessionState.Running running -> leftRunning
+                    ? "running on its own; the application that started it left it running"
+                    : context.options().embedded()
                     ? "running, for the application that started it"
                     : !context.options().openWindows()
                     ? "running, with no windows opened"
@@ -509,23 +514,40 @@ final class Supervisor {
 
     // ─── the producers ─────────────────────────────────────────────────────────────────────
 
-    /// Ends an embedded session when the application that started it goes away.
+    /// Ends an embedded session when the application that started it goes away, unless it left
+    /// the session running first.
     ///
     /// The application holds oillamp's standard input open for as long as it wants the session.
     /// When it closes it, or dies, and the operating system closes it on its behalf, reading
-    /// reaches the end, and the session shuts down as it would for `oillamp stop`. Anything the
-    /// application writes is ignored.
+    /// reaches the end, and the session shuts down as it would for `oillamp stop`.
+    ///
+    /// An application that writes the line [#LEAVE_RUNNING] before it closes leaves the session
+    /// running: from then on it ends only as a session started from a terminal with
+    /// `--no-windows` does, with `oillamp stop`. Anything else the application writes is ignored.
+    /// The line arrives before the end of the input, so an application may write it and exit at
+    /// once.
     private void watchTheApplication() {
         Thread.ofVirtual().name("oillamp-application-watch").start(() -> {
-            try (java.io.InputStream input = machine.standardInput()) {
-                byte[] ignored = new byte[4096];
-                while (input.read(ignored) >= 0) { /* keep reading until it closes */ }
+            try (var input = new java.io.BufferedReader(new java.io.InputStreamReader(
+                    machine.standardInput(), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = input.readLine()) != null) {
+                    if (!line.strip().equals(LEAVE_RUNNING)) continue;
+                    leftRunning = true;
+                    context.info("session", "the application left the session running; it ends with `oillamp stop "
+                            + prepared.layout().root() + "`");
+                    announceState();
+                    return;
+                }
             } catch (java.io.IOException closed) {
                 // A broken pipe means the same as a closed one: the application is gone.
             }
             post(new SessionEvent.StopRequested("the application that started it"));
         });
     }
+
+    /// What an application writes on oillamp's standard input to leave its session running.
+    static final String LEAVE_RUNNING = "leave-running";
 
     /// Checks every two seconds that the container is still running and that its sockets answer,
     /// and prints a health line every 30 seconds.

@@ -51,6 +51,10 @@ public final class Lamp implements AutoCloseable {
     /// The engine's main class. Named as text, because this package must not depend on the engine.
     static final String ENGINE = "dev.oillamp.OilLamp";
 
+    /// What [#leaveRunning()] writes on the engine's standard input. Named as text for the same
+    /// reason as [#ENGINE].
+    static final String LEAVE_RUNNING = "leave-running";
+
     /// The variable in the engine's environment that holds a key given with [Starting#modelKey].
     static final String MODEL_KEY_VARIABLE = "OILLAMP_MODEL_KEY";
 
@@ -63,6 +67,8 @@ public final class Lamp implements AutoCloseable {
     /// How to run a command in the sandbox, once the engine has said so. Present means running.
     private volatile Optional<LampEvent.SessionOpened> opened = Optional.empty();
     private volatile Optional<ExitStatus> exit = Optional.empty();
+    /// Whether the session ends when this lamp is closed. False once it was left running.
+    private volatile boolean holding = true;
 
     private Lamp(Path directory, Launcher launcher, Process engine, List<Consumer<LampEvent>> listeners) {
         this.directory = directory;
@@ -881,6 +887,8 @@ public final class Lamp implements AutoCloseable {
     /// Closing the engine's standard input is the signal. The engine then stops the container,
     /// which takes up to `timeouts.stop_seconds`, and exits.
     ///
+    /// After [#leaveRunning()], this ends nothing and returns at once.
+    ///
     /// Interrupting the waiting thread stops the wait, not the shutdown.
     @Override public void close() {
         try {
@@ -888,10 +896,28 @@ public final class Lamp implements AutoCloseable {
         } catch (IOException alreadyGone) {
             // The pipe could not be closed because the engine is no longer reading it.
         }
+        if (!holding) return;
         try {
             ended.await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /// Lets the session go on after this application is gone, until `oillamp stop <dir>` ends it.
+    ///
+    /// For an application that closes while the agent should keep working: on its schedule, say.
+    /// The engine is told on its standard input, which is closed after. Its events keep coming
+    /// to the listeners until this application exits.
+    ///
+    /// Without this, the session ends when the application does, however it ends, so a crash
+    /// never leaves a sandbox running.
+    public void leaveRunning() {
+        holding = false;
+        try (var input = engine.getOutputStream()) {
+            input.write((LEAVE_RUNNING + "\n").getBytes(StandardCharsets.UTF_8));
+        } catch (IOException alreadyGone) {
+            // The engine has ended, so there is nothing left to leave running.
         }
     }
 
@@ -928,8 +954,12 @@ public final class Lamp implements AutoCloseable {
     /// Starts the engine with this process's own Java runtime and classpath, so that the
     /// application and the engine are always the same version of oillamp. The engine's error
     /// output goes where the application's does.
+    ///
+    /// The engine runs in a session of its own (`setsid`), so a session left running is not hung
+    /// up when the terminal the application was started from closes. One still held ends anyway,
+    /// with the application.
     private static Process sameJava(List<String> arguments, Map<String, String> environment) throws IOException {
-        List<String> command = new ArrayList<>(List.of(
+        List<String> command = new ArrayList<>(List.of("setsid",
                 Path.of(System.getProperty("java.home"), "bin", "java").toString(),
                 "-cp", System.getProperty("java.class.path"),
                 ENGINE));

@@ -60,6 +60,43 @@ class HoldingALampSpec extends Specification {
             !Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
     }
 
+    def 'An application can leave its lamp running when it closes, until oillamp stop ends it'() {
+        reportInfo """
+            An agent with a schedule should keep working after the application that started it
+            is closed. The application says so with leaveRunning(), which tells the engine on its
+            standard input before closing it. The end of the input, which otherwise ends the
+            session, then ends nothing: the sandbox runs on its own, and `oillamp status` says so.
+            It ends as any session does, with `oillamp stop`.
+
+            Only an application that says so leaves its lamp running. One that closes, or
+            crashes, without a word still takes its sandbox with it.
+        """
+        given:
+            var lamp = Lamp.at(sandbox.lampPath()).onEvent { received << it }
+                           .launchedBy(sandbox.launcher).start()
+            lamp.awaitRunning(Duration.ofSeconds(30))
+
+        when: 'the application leaves it running, and closes it'
+            lamp.leaveRunning()
+            lamp.close()
+            Thread.sleep(1500)
+
+        then: 'the session goes on, on its own'
+            lamp.exitStatus().isEmpty()
+            Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
+            sandbox.oillamp.run('status', sandbox.lampPath().toString()).console()
+                   .contains('running on its own')
+
+        when: 'someone stops it'
+            var stopped = sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            sandbox.engines.first().waitFor()
+
+        then: 'it ends cleanly, and leaves nothing behind'
+            stopped.succeeded()
+            lamp.exitStatus() == Optional.of(ExitStatus.SUCCESS)
+            !Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
+    }
+
     def 'A command for the sandbox goes over ssh, with each argument arriving exactly as given'() {
         reportInfo """
             ssh joins its arguments with spaces and hands them to a shell in the sandbox, which
