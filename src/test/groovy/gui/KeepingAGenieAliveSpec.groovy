@@ -215,6 +215,121 @@ class KeepingAGenieAliveSpec extends Specification {
             genie.conversations().all().size() == 2
     }
 
+    def 'While the genie answers, the user can read another conversation and come back to the answer'() {
+        reportInfo """
+            An answer can take long. Meanwhile the user may read their other conversations: the
+            chat shows the one they pick, and the one the genie answers in is put aside, still
+            growing. Nothing can be sent from elsewhere, as it would only wait for that answer.
+            Going back shows the question and the answer as far as it got, and follows it on.
+        """
+        given: 'a conversation of the chat, and one asked from a terminal'
+            awake()
+            say('hello')
+            waitUntil { genie.phase() == Genie.Phase.READY }
+            assert host.oillamp.run('ask', lamp.toString(), 'from a terminal').succeeded()
+            var mine = Lamp.conversations(lamp).find { it.title() == 'hello' }
+            var other = Lamp.conversations(lamp).find { it.title() == 'from a terminal' }
+
+        when: 'the genie takes its time over the next question, and the user goes to the other'
+            say('take your time')
+            waitUntil { prompts.contains('take your time') }
+            runner.goTo(other.file(), '')
+
+        then: 'the chat shows the other, the genie still works, and nothing can be sent from here'
+            waitUntil { said() == ['from a terminal', 'You said: from a terminal'] }
+            genie.phase() == Genie.Phase.WORKING
+            !genie.withDraft('one more thing').canSend()
+
+        when: 'the user goes back'
+            runner.goTo(mine.file(), '')
+
+        then: 'the question is there, and the answer arrives in it'
+            waitUntil { said() == ['hello', 'You said: hello', 'take your time'] }
+            genie.conversations().aside().isEmpty()
+
+        when:
+            release.countDown()
+
+        then:
+            waitUntil { genie.phase() == Genie.Phase.READY && said().size() == 4 }
+            said().last() == 'You said: take your time'
+            genie.withDraft('one more thing').canSend()
+    }
+
+    def 'An answer that ends while the user reads elsewhere leaves them where they are'() {
+        reportInfo """
+            The genie finishes while the user reads another conversation. The chat does not
+            jump back: it stays where the user is, and the genie is ready. The answer is in its
+            conversation when the user goes there.
+        """
+        given:
+            awake()
+            say('hello')
+            waitUntil { genie.phase() == Genie.Phase.READY }
+            assert host.oillamp.run('ask', lamp.toString(), 'from a terminal').succeeded()
+            var mine = Lamp.conversations(lamp).find { it.title() == 'hello' }
+            var other = Lamp.conversations(lamp).find { it.title() == 'from a terminal' }
+            say('take your time')
+            waitUntil { prompts.contains('take your time') }
+            runner.goTo(other.file(), '')
+            waitUntil { said() == ['from a terminal', 'You said: from a terminal'] }
+
+        when:
+            release.countDown()
+
+        then: 'the chat stays on the other conversation'
+            waitUntil { genie.phase() == Genie.Phase.READY && genie.conversations().aside().isEmpty() }
+            said() == ['from a terminal', 'You said: from a terminal']
+            genie.conversations().here().file() == other.file()
+
+        when: 'the user goes back'
+            runner.goTo(mine.file(), '')
+
+        then: 'the answer is there'
+            waitUntil { said() == ['hello', 'You said: hello', 'take your time', 'You said: take your time'] }
+    }
+
+    def 'A new conversation the genie answers in has a row to come back to'() {
+        reportInfo """
+            pi writes a new conversation to disk only once there is an answer in it, so while
+            the genie answers the first question of one, the user's tree has no row for it. When
+            the user goes elsewhere meanwhile, the tree shows a "New conversation" row at the
+            top, which leads back to it.
+        """
+        given:
+            awake()
+            say('hello')
+            waitUntil { genie.phase() == Genie.Phase.READY }
+            var first = Lamp.conversations(lamp).first()
+            runner.startAfresh()
+            waitUntil { genie.transcript().isEmpty() }
+
+        when: 'the user asks in the new conversation, and goes back to the first one meanwhile'
+            say('take your time')
+            waitUntil { prompts.contains('take your time') }
+            runner.goTo(first.file(), '')
+            waitUntil { said() == ['hello', 'You said: hello'] }
+
+        then: 'the new one has a row of its own at the top'
+            var rows = genie.conversations().chats()
+            rows.first().id() == Conversations.ASIDE
+            rows.first().title() == 'New conversation'
+            genie.conversations().fileOf(Conversations.ASIDE) == Optional.of('')
+
+        when: 'the user goes there'
+            runner.goTo(genie.conversations().fileOf(Conversations.ASIDE).orElseThrow(), '')
+
+        then:
+            waitUntil { said() == ['take your time'] }
+
+        when:
+            release.countDown()
+
+        then: 'the answer arrives, and the chat is in the conversation pi saved it in'
+            waitUntil { genie.phase() == Genie.Phase.READY && said() == ['take your time', 'You said: take your time'] }
+            waitUntil { genie.conversations().current().map { it.title() } == Optional.of('take your time') }
+    }
+
     def 'Stopping the genie stops the run it works on, and it is ready again'() {
         reportInfo """
             The stop button cancels the run that answers the chat. The genie is then ready for

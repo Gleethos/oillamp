@@ -1,5 +1,6 @@
 package dev.gui.model;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import dev.gui.pi.PiEvent;
@@ -77,19 +78,23 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
         return phase == Phase.WAKING ? withPhase(Phase.READY).withActivity("ready") : this;
     }
 
+    /// What was put aside is on disk by now, and is read from there when the chat goes back.
     public Genie asleep() {
-        return withPhase(Phase.ASLEEP).withActivity("asleep")
+        return withPhase(Phase.ASLEEP).withActivity("asleep").withConversations(conversations.withAside(Optional.empty()))
                 .withTranscript(transcript.settled()).withDesktopShown(false);
     }
 
     public Genie broken(String why) {
         return withPhase(Phase.BROKEN).withActivity(why).withDesktopShown(false)
+                .withConversations(conversations.withAside(Optional.empty()))
                 .withTranscript(transcript.settled().problem(why));
     }
 
     // ─── the conversation ──────────────────────────────────────────────────────────────────
 
-    public boolean canSend() { return phase.isAwake() && !draft.isBlank(); }
+    /// While the genie answers in another conversation than the chat shows, nothing is sent:
+    /// the question would wait for that answer, and then go somewhere the user no longer looks.
+    public boolean canSend() { return phase.isAwake() && !draft.isBlank() && conversations.aside().isEmpty(); }
 
     /// The draft becomes the user's next message, and the genie is working on it. Whoever calls
     /// this sends the draft, as it was before, to the genie's harness.
@@ -114,7 +119,49 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
                 .withPhase(Phase.WORKING).withActivity("thinking");
     }
 
+    /// What the genie's run for the chat did. While the chat shows another conversation, it goes
+    /// to the one put aside, and the chat stays as it is.
     public Genie hear(PiEvent event) {
+        Optional<Conversations.Aside> aside = conversations.aside();
+        if (aside.isEmpty()) return heard(event);
+        Genie there = withTranscript(aside.get().transcript())
+                .withConversations(conversations.withHere(aside.get().here())).heard(event);
+        return there.withTranscript(transcript).withConversations(there.conversations().withHere(conversations.here())
+                .withAside(Optional.of(new Conversations.Aside(there.conversations().here(), there.transcript()))));
+    }
+
+    /// The chat shows the conversation in `file`, from its start to where `history` ends.
+    ///
+    /// While the genie answers, the user may look elsewhere: the conversation it answers in is
+    /// put aside, and taken back, answer so far and all, when the chat goes there again.
+    ///
+    /// @param file    relative to the genie's home, or empty for a new conversation; while one is
+    ///                put aside, empty is the new one the genie answers in, as pi writes a new
+    ///                conversation to disk only once there is an answer in it
+    /// @param history what is on disk of it
+    public Genie shows(String file, PiEvent.History history) {
+        Optional<Conversations.Aside> aside = conversations.aside();
+        if (aside.isPresent() && aside.get().here().file().equals(file))
+            return withTranscript(aside.get().transcript())
+                    .withConversations(conversations.withHere(aside.get().here()).withAside(Optional.empty()));
+        // Another branch of the conversation it answers in: the chat stays on the answer.
+        if (phase == Phase.WORKING && aside.isEmpty() && file.equals(conversations.here().file())) return this;
+        Genie leaving = phase == Phase.WORKING && aside.isEmpty()
+                ? withConversations(conversations.withAside(Optional.of(new Conversations.Aside(conversations.here(), transcript))))
+                : this;
+        return leaving.heard(new PiEvent.Opened(Conversations.HOME + file)).heard(history)
+                .withConversations(leaving.conversations().withHere(new Conversations.Here(file, history.leaf())));
+    }
+
+    /// The run for the chat ended in the conversation in `file`, standing at `history`'s end.
+    /// The chat learns pi's ids for what was said there, unless it shows another conversation;
+    /// then the one put aside is let go, since it is on disk now.
+    public Genie finishedIn(String file, PiEvent.History history) {
+        if (conversations.aside().isPresent()) return withConversations(conversations.withAside(Optional.empty()));
+        return heard(new PiEvent.Opened(Conversations.HOME + file)).learn(history);
+    }
+
+    private Genie heard(PiEvent event) {
         Genie heard = withTranscript(transcript.hear(event));
         return switch (event) {
             case PiEvent.Answered answered -> heard.withTokens(tokens + answered.tokens());

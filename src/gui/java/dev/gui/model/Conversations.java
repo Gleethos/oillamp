@@ -13,7 +13,15 @@ import sprouts.Tuple;
 /// @param here  where the genie is: the conversation pi has open, and the entry it continues from
 /// @param chatsFold how the tree of the user's conversations is shown
 /// @param jobsFold  how the tree of the jobs' conversations is shown
-public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, Fold jobsFold) {
+/// @param aside     the conversation the genie is answering in, while the chat shows another
+public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, Fold jobsFold, Optional<Aside> aside) {
+
+    /// The conversation the genie is answering the user in, put aside while the chat shows
+    /// another one, and still growing with the answer. The chat takes it back when it goes there.
+    ///
+    /// @param here       where in it the genie is; its file is empty until pi has named it
+    /// @param transcript what the chat would show there now
+    public record Aside(Here here, Transcript transcript) {}
 
     /// Whether a tree is open under the genie, and how tall its area is; the user drags the
     /// area's lower edge to change that, all the way up to nothing. Trees start closed.
@@ -46,7 +54,7 @@ public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, 
 
     public static final Conversations NONE = new Conversations(Tuple.of(Conversation.class), Here.UNKNOWN);
 
-    public Conversations(Tuple<Conversation> all, Here here) { this(all, here, Fold.CLOSED, Fold.CLOSED); }
+    public Conversations(Tuple<Conversation> all, Here here) { this(all, here, Fold.CLOSED, Fold.CLOSED, Optional.empty()); }
 
     /// Where pi keeps a genie's conversations, relative to its home. pi names the directory
     /// after the directory it runs in, which for a genie is its home, `/home/agent`.
@@ -55,10 +63,11 @@ public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, 
     /// The genie's home inside its sandbox.
     public static final String HOME = "/home/agent/";
 
-    public Conversations withAll(Tuple<Conversation> all) { return new Conversations(all, here, chatsFold, jobsFold); }
-    public Conversations withHere(Here here)              { return new Conversations(all, here, chatsFold, jobsFold); }
-    public Conversations withChatsFold(Fold chatsFold)    { return new Conversations(all, here, chatsFold, jobsFold); }
-    public Conversations withJobsFold(Fold jobsFold)      { return new Conversations(all, here, chatsFold, jobsFold); }
+    public Conversations withAll(Tuple<Conversation> all) { return new Conversations(all, here, chatsFold, jobsFold, aside); }
+    public Conversations withHere(Here here)              { return new Conversations(all, here, chatsFold, jobsFold, aside); }
+    public Conversations withChatsFold(Fold chatsFold)    { return new Conversations(all, here, chatsFold, jobsFold, aside); }
+    public Conversations withJobsFold(Fold jobsFold)      { return new Conversations(all, here, chatsFold, jobsFold, aside); }
+    public Conversations withAside(Optional<Aside> aside) { return new Conversations(all, here, chatsFold, jobsFold, aside); }
 
     /// How many conversations the user had, and how many the jobs' runs had.
     public int chatCount() { return all.retainIf(it -> !it.byJob()).size(); }
@@ -78,12 +87,29 @@ public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, 
     /// The tree of the user's conversations: a row for each, with its branches below it.
     ///
     /// pi writes a new conversation to disk only once something was said in it. Until then, it
-    /// is shown as a row of its own at the top, so the user sees where they are.
+    /// is shown as a row of its own at the top, so the user sees where they are, or, while the
+    /// genie answers in it and the chat shows another, can go back to it.
     public Tuple<Talk> chats() {
         Tuple<Talk> rows = all.retainIf(it -> !it.byJob()).mapTo(Talk.class, conversation -> conversation.talk(here));
         if (!here.file().isEmpty() && current().isEmpty())
             rows = rows.addAt(0, new Talk.Chat(here.file(), "New conversation", 0, "", true, Tuple.of(Talk.Branch.class)));
+        if (aside.isPresent() && fileOf(ASIDE).isPresent())
+            rows = rows.addAt(0, new Talk.Chat(ASIDE, "New conversation", 0, "", false, Tuple.of(Talk.Branch.class)));
         return rows;
+    }
+
+    /// The id of the row of a new conversation the genie answers in while the chat shows another.
+    public static final String ASIDE = "new conversation, answering";
+
+    /// The file of the conversation a row of the trees stands for, relative to the genie's home;
+    /// empty for a new one.
+    ///
+    /// @param row the row's id: pi's id for the conversation, or [#ASIDE]
+    public Optional<String> fileOf(String row) {
+        Optional<String> file = find(row).map(Conversation::file);
+        if (file.isPresent() || !row.equals(ASIDE)) return file;
+        return aside.map(it -> it.here().file())
+                    .filter(asideFile -> all.retainIf(it -> it.file().equals(asideFile)).isEmpty());
     }
 
     /// The tree of the conversations the runs of the genie's scheduled jobs had.
