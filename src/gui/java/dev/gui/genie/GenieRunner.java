@@ -2,12 +2,12 @@ package dev.gui.genie;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.BlockingQueue;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
@@ -17,17 +17,20 @@ import dev.gui.model.Conversations;
 import dev.gui.model.Genie;
 import dev.gui.model.Settings;
 import dev.gui.pi.PiEvent;
-import dev.gui.pi.PiProtocol;
-import dev.gui.pi.PiSession;
 import dev.lamp.Lamp;
+import dev.lamp.LampEvent;
 
 import sprouts.Tuple;
 
-/// Keeps one genie alive: lights its lamp, runs its harness in the sandbox, and passes files.
+/// Keeps one genie alive: lights its lamp, asks its agent through the lamp's session, and passes
+/// files.
+///
+/// The genie's agent is the pi that the lamp's session holds. Everything goes through the Lamp
+/// API: a message is sent with [Lamp#send], the answer comes back as the session's run events,
+/// and the conversations are read from the lamp with [Lamp#conversations], awake or asleep.
 ///
 /// It decides nothing about what the window shows. Everything that happens becomes a change to
-/// the genie, `UnaryOperator<Genie>`, handed to `changes`; the app applies it to its state. So
-/// the runner can be followed in a scenario by applying the changes to a plain [Genie].
+/// the genie, `UnaryOperator<Genie>`, handed to `changes`; the app applies it to its state.
 ///
 /// Waking and sleeping take long, so they run one after the other on a thread of the runner's
 /// own; the calls return at once.
@@ -37,27 +40,25 @@ public final class GenieRunner {
     private final Lighter lighter;
     private final Consumer<UnaryOperator<Genie>> changes;
     private final ExecutorService work = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("genie").factory());
-    private volatile Optional<Lighter.Lit> lamp = Optional.empty();
-    private volatile Optional<PiSession> harness = Optional.empty();
-    private volatile boolean harnessDied;
-    /// pi's answers to what the runner asked it, while it waits for one. pi works on commands
-    /// side by side, so a move is a chain of questions, each asked once the last was answered.
-    private final BlockingQueue<PiEvent> answers = new LinkedBlockingQueue<>();
-    private volatile boolean asking;
-    /// Whether pi runs with Genies' extension, and so can move within a conversation.
-    private volatile boolean canMove;
-    /// The conversation pi has open, relative to the genie's home, as it last said.
-    private volatile String opened = "";
-    /// Reads the genie's conversations from its home, one reading after the other, so that an
-    /// older reading never arrives after a newer one.
+    /// Reads the genie's conversations, one reading after the other, so that an older reading
+    /// never arrives after a newer one.
     private final ExecutorService looks = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("conversations").factory());
+    private volatile Optional<Lighter.Lit> lamp = Optional.empty();
+    private volatile boolean sleeping;
 
-    /// How long pi has to answer a question about its conversations.
-    private static final Duration ANSWER_LIMIT = Duration.ofSeconds(30);
-
-    /// Said in the chat when the genie's sandbox has no extension to move with.
-    public static final String CANNOT_MOVE = "This genie's sandbox is older than Genies, and cannot go to another branch "
-            + "yet. Put the genie to sleep and wake it: its sandbox is then rebuilt, which takes a few minutes.";
+    /// Where the next message goes: the conversation's file, relative to the genie's home, and
+    /// the entry it continues after. Both empty for a new conversation.
+    private volatile Conversations.Here where = Conversations.Here.UNKNOWN;
+    /// The runs that answer this chat's messages. Other runs, such as a scheduled job's, change
+    /// only the tree of conversations.
+    private final Set<String> mine = ConcurrentHashMap.newKeySet();
+    /// The runs of `mine` that reported an answer, even a failed one.
+    private final Set<String> answered = ConcurrentHashMap.newKeySet();
+    /// The message being handed over, until [Lamp#send] returns. The run's first events can come
+    /// before that, and are recognised by it.
+    private volatile Optional<String> sending = Optional.empty();
+    /// The run of `mine` in progress, which the stop button stops.
+    private volatile Optional<String> working = Optional.empty();
 
     public GenieRunner(Path directory, Lighter lighter, Consumer<UnaryOperator<Genie>> changes) {
         this.directory = directory;
@@ -68,55 +69,40 @@ public final class GenieRunner {
     /// The genie's lamp directory.
     public Path directory() { return directory; }
 
-    /// Lights the lamp and starts the genie's harness in it. The genie is awake once that is
-    /// done, and has its conversation back.
+    /// Lights the lamp, and shows the genie's most recent conversation.
     ///
     /// @param key the model key, from the settings or the environment; the lamp's engine keeps it
     public void wake(String name, Settings settings, String key) {
         wake(name, settings, key, "", "");
     }
 
-    /// Wakes the genie in one of its conversations, where it left it.
+    /// Wakes the genie in one of its conversations.
     ///
-    /// @param conversation the conversation's session file relative to the genie's home, or
-    ///                     nothing to continue the one pi wrote to last
-    /// @param leaf         the entry to continue after, or nothing to continue at its end
+    /// @param conversation the conversation's file relative to the genie's home, or empty for
+    ///                     its most recent one
+    /// @param leaf         the entry to continue after, or empty for where the conversation stands
     public void wake(String name, Settings settings, String key, String conversation, String leaf) {
         work.execute(() -> {
             if (lamp.isPresent()) return;
-            harnessDied = false;
+            sleeping = false;
             changes.accept(Genie::waking);
             try {
                 Lighter.Lit lit = lighter.light(directory, settings, key,
-                        what -> changes.accept(genie -> genie.lampSays(what)));
+                        what -> changes.accept(genie -> genie.lampSays(what)), this::heard);
                 lamp = Optional.of(lit);
                 changes.accept(genie -> genie.lampSays("waking the genie"));
                 Handouts.makeDirectories(lit);
-                String opening = conversation.isEmpty() ? "" : Conversations.HOME + conversation;
-                PiSession session = PiSession.over(lit.exec(GeniePrompt.harness(name, settings.model(), opening)),
-                        this::heard, why -> why.ifPresent(this::harnessStopped));
-                harness = Optional.of(session);
-                // The genie is awake only once pi has sent the conversation back. pi takes a
-                // few seconds to start: a message the user sent before would be followed by the
-                // older history, which replaces the chat.
-                Optional<PiEvent> history = ask(PiProtocol.askForHistory(), PiEvent.History.class, Duration.ofMinutes(2));
-                if (harnessDied) return;   // it said why, and its lamp is being put out
-                if (history.isEmpty()) throw new IOException("The genie's harness did not answer within two minutes");
-                canMove = ask(PiProtocol.askWhatItCanDo(), PiEvent.CanMove.class, ANSWER_LIMIT)
-                        .map(answer -> answer instanceof PiEvent.CanMove can && can.yes()).orElse(false);
-                ask(PiProtocol.askWhere(), PiEvent.Opened.class, ANSWER_LIMIT);
-                if (!leaf.isEmpty() && history.get() instanceof PiEvent.History at && !at.leaf().equals(leaf) && canMove) {
-                    moveWithin(leaf);
-                    ask(PiProtocol.askForHistory(), PiEvent.History.class, ANSWER_LIMIT);
-                }
-                Tuple<dev.gui.model.Handout> files = Handouts.list(lit);
+                GeniePrompt.prepare(home().orElseThrow(() -> new IOException("the genie's lamp has no home")),
+                        name, settings.model());
+                List<Lamp.Conversation> all = Lamp.conversations(directory);
+                String file = !conversation.isEmpty() ? conversation : all.isEmpty() ? "" : all.getFirst().file();
+                show(file, leaf);
+                var files = Handouts.list(lit);
                 changes.accept(genie -> genie.withHandouts(files).awake());
                 lookAtConversations();
             } catch (IOException | RuntimeException failed) {
                 putOut();
-                // A harness that died while the genie woke has said why already, and the
-                // failures after it are only its consequences.
-                if (!harnessDied) changes.accept(genie -> genie.broken(reason(failed)));
+                changes.accept(genie -> genie.broken(reason(failed)));
             } catch (InterruptedException interrupted) {
                 putOut();
                 changes.accept(Genie::asleep);
@@ -125,142 +111,194 @@ public final class GenieRunner {
         });
     }
 
-    /// Sends the user's message. While the genie still works on the last one, it waits.
+    /// Sends the user's message, to where the chat is. While the genie still works on another
+    /// run, it waits its turn.
     public void say(String text, boolean busy) {
-        harness.ifPresentOrElse(session -> session.send(PiProtocol.prompt(text, busy)),
-                () -> changes.accept(genie -> genie.withTranscript(genie.transcript().problem("The genie is asleep; wake it first."))));
+        send(question(text));
     }
 
-    /// Stops what the genie is doing. Its conversation stays.
+    /// Stops the run that answers this chat. What the genie did until then stays, and is saved.
     public void stop() {
-        harness.ifPresent(session -> session.send(PiProtocol.abort()));
+        Optional<Lighter.Lit> lit = lamp;
+        Optional<String> run = working;
+        if (lit.isEmpty() || run.isEmpty()) return;
+        Thread.ofVirtual().name("stop").start(() -> {
+            try {
+                lit.get().cancel(run.get());
+            } catch (IOException | Lamp.Failed failed) {
+                said("The genie could not be stopped: " + reason(failed));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
     }
 
     // ─── its conversations ─────────────────────────────────────────────────────────────────
 
-    /// Whether the genie can go to another branch of a conversation, or ask a question
-    /// differently: it runs with Genies' extension to pi.
-    public boolean canMove() { return canMove; }
-
-    /// Goes to a conversation, and within it to the entry `leaf`, and the chat shows it.
+    /// Shows a conversation, from its start to the entry `leaf`. The next message continues from
+    /// there. Works while the genie sleeps.
     ///
-    /// @param conversation its session file relative to the genie's home
-    /// @param leaf         the entry to continue after, or nothing for where pi left it
+    /// @param conversation its file relative to the genie's home
+    /// @param leaf         the entry to continue after, or empty for where the conversation stands
     public void goTo(String conversation, String leaf) {
-        work.execute(() -> {
-            if (!isAwake()) return;   // it did not wake, and has said why
-            try {
-                if (!conversation.equals(opened)
-                        && !(ask(PiProtocol.open(Conversations.HOME + conversation), PiEvent.Switched.class, ANSWER_LIMIT)
-                             .orElse(null) instanceof PiEvent.Switched)) {
-                    said("The genie did not open that conversation.");
-                    return;
-                }
-                if (!leaf.isEmpty()) {
-                    if (canMove) moveWithin(leaf);
-                    else said(CANNOT_MOVE);
-                }
-                showWherePiIs();
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-            }
-        });
+        work.execute(() -> show(conversation, leaf));
     }
 
-    /// Starts a new conversation. The others stay, for the user to go back to.
+    /// Starts a new conversation: the chat empties, and the next message begins it. The others stay.
     public void startAfresh() {
-        work.execute(() -> {
-            if (!isAwake()) return;   // it did not wake, and has said why
-            try {
-                if (ask(PiProtocol.startAfresh(), PiEvent.Switched.class, ANSWER_LIMIT).orElse(null) instanceof PiEvent.Switched)
-                    showWherePiIs();
-                else said("The genie did not start a new conversation.");
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-            }
-        });
+        work.execute(() -> show("", ""));
     }
 
     /// Asks `text` instead of the user's question `id`. The question and what followed it stay
     /// in the conversation, as a branch of their own.
     public void askInstead(String id, String text) {
-        harness.ifPresentOrElse(session -> session.send(PiProtocol.askInstead(id, text)),
-                () -> said("The genie is asleep; wake it first."));
+        Optional<Lamp.Conversation> conversation = conversationIn(where.file());
+        if (conversation.isEmpty()) {
+            said("The conversation of that question is not there any more.");
+            return;
+        }
+        send(Lamp.Question.insteadOf(conversation.get().id(), id, text));
     }
 
-    /// Deletes a conversation for good. Deleting the one the genie is in starts a new one first.
+    /// Deletes a conversation for good. Deleting the one the chat shows starts a new one.
     ///
-    /// @param conversation its session file relative to the genie's home
+    /// @param conversation its file relative to the genie's home
     public void forget(String conversation) {
         work.execute(() -> {
             try {
-                if (isAwake() && conversation.equals(opened)) {
-                    if (!(ask(PiProtocol.startAfresh(), PiEvent.Switched.class, ANSWER_LIMIT).orElse(null) instanceof PiEvent.Switched)) {
-                        said("The genie is still in that conversation, so it was kept.");
-                        return;
-                    }
-                    showWherePiIs();
-                }
-                SessionFiles.delete(home().orElseThrow(() -> new IOException("the genie has no home yet")), conversation);
+                Optional<Lamp.Conversation> doomed = conversationIn(conversation);
+                if (doomed.isEmpty()) throw new IOException("it is not there any more");
+                if (where.file().equals(conversation)) show("", "");
+                Lamp.forget(directory, doomed.get().id());
             } catch (IOException failed) {
                 said("The conversation could not be deleted: " + reason(failed));
-            } catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
             }
             lookAtConversations();
         });
     }
 
-    /// Reads the genie's conversations from its home again, awake or asleep.
+    /// Reads the genie's conversations from its lamp again, awake or asleep.
     public void lookAtConversations() {
         looks.execute(() -> {
-            Tuple<Conversation> all = home().map(SessionFiles::read).orElseGet(() -> Tuple.of(Conversation.class));
-            changes.accept(genie -> genie.withConversations(genie.conversations().withAll(all)));
+            Tuple<Conversation> all = Tuple.of(Conversation.class);
+            for (Lamp.Conversation conversation : Lamp.conversations(directory)) all = all.add(LampTalk.conversation(conversation));
+            Tuple<Conversation> read = all;
+            changes.accept(genie -> genie.withConversations(genie.conversations().withAll(read)));
         });
     }
 
-    /// The genie's home in its lamp, once the lamp was first lit.
-    private Optional<Path> home() { return Lamp.agentHome(directory); }
-
-    /// Moves pi to the entry `leaf` of the conversation it has open. Only with the extension.
-    private void moveWithin(String leaf) throws InterruptedException {
-        if (ask(PiProtocol.goTo(leaf), PiEvent.Moved.class, ANSWER_LIMIT).isEmpty())
-            said("The genie did not go there in time.");
-    }
-
-    /// Asks pi where it is now and what was said on the way there, for the chat and the tree.
-    private void showWherePiIs() throws InterruptedException {
-        ask(PiProtocol.askWhere(), PiEvent.Opened.class, ANSWER_LIMIT);
-        ask(PiProtocol.askForHistory(), PiEvent.History.class, ANSWER_LIMIT);
-        lookAtConversations();
-    }
-
-    /// Sends `command` and waits for pi's answer, of the kind `answer`, or for it to refuse.
-    /// Nothing, if it did not answer within `limit` or its harness is gone.
-    private Optional<PiEvent> ask(String command, Class<? extends PiEvent> answer, Duration limit) throws InterruptedException {
-        Optional<PiSession> session = harness;
-        if (session.isEmpty() || harnessDied) return Optional.empty();
-        answers.clear();
-        asking = true;
-        try {
-            session.get().send(command);
-            long deadline = System.nanoTime() + limit.toNanos();
-            while (!harnessDied) {
-                PiEvent heard = answers.poll(Math.max(0, deadline - System.nanoTime()), TimeUnit.NANOSECONDS);
-                if (heard == null) return Optional.empty();
-                if (answer.isInstance(heard) || heard instanceof PiEvent.Refused) return Optional.of(heard);
-            }
-            return Optional.empty();
-        } finally {
-            asking = false;
+    /// Makes the chat show `file` up to `leaf`, and the next message go there. Empty `file` for a
+    /// new conversation.
+    private void show(String file, String leaf) {
+        Optional<Lamp.Conversation> conversation = conversationIn(file);
+        if (conversation.isEmpty()) {
+            where = Conversations.Here.UNKNOWN;
+            changes.accept(genie -> {
+                Genie emptied = genie.hear(new PiEvent.History(Tuple.of(PiEvent.History.Line.class), ""));
+                return emptied.withConversations(emptied.conversations().withHere(Conversations.Here.UNKNOWN));
+            });
+            return;
         }
+        String at = conversation.get().entry(leaf).isPresent() ? leaf : conversation.get().leaf().orElse("");
+        where = new Conversations.Here(file, at);
+        PiEvent.History history = LampTalk.history(conversation.get(), at);
+        changes.accept(genie -> genie.hear(new PiEvent.Opened(Conversations.HOME + file)).hear(history));
+    }
+
+    /// The conversation kept in `file`, relative to the genie's home.
+    private Optional<Lamp.Conversation> conversationIn(String file) {
+        if (file.isEmpty()) return Optional.empty();
+        return Lamp.conversations(directory).stream().filter(c -> c.file().equals(file)).findFirst();
+    }
+
+    /// The next message's place: after the entry the chat shows, in the conversation it shows.
+    private Lamp.Question question(String text) {
+        Conversations.Here here = where;
+        Optional<Lamp.Conversation> conversation = conversationIn(here.file());
+        if (conversation.isEmpty()) return Lamp.Question.fresh(text);
+        String id = conversation.get().id();
+        if (here.leaf().isEmpty() || conversation.get().leaf().filter(here.leaf()::equals).isPresent())
+            return Lamp.Question.in(id, text);
+        boolean aQuestion = conversation.get().entry(here.leaf())
+                .filter(entry -> entry.kind() == Lamp.Conversation.Kind.MESSAGE_TO_AGENT).isPresent();
+        return aQuestion ? Lamp.Question.insteadOf(id, here.leaf(), text) : Lamp.Question.after(id, here.leaf(), text);
+    }
+
+    /// Hands a question to the lamp's session, on a thread of its own: it starts a short-lived
+    /// engine process, which takes a moment.
+    private void send(Lamp.Question question) {
+        Optional<Lighter.Lit> lit = lamp;
+        if (lit.isEmpty()) {
+            said("The genie is asleep; wake it first.");
+            return;
+        }
+        sending = Optional.of(question.prompt());
+        Thread.ofVirtual().name("send").start(() -> {
+            try {
+                mine.add(lit.get().send(question).id());
+            } catch (IOException | Lamp.Failed failed) {
+                changes.accept(genie -> genie.hear(new PiEvent.Refused("prompt", reason(failed))));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } finally {
+                sending = Optional.empty();
+            }
+        });
+    }
+
+    // ─── what the lamp reports ─────────────────────────────────────────────────────────────
+
+    /// Every event of the lamp's session, on the thread that reads them.
+    private void heard(LampEvent event) {
+        switch (event) {
+            case LampEvent.RunStarted started -> {
+                LampEvent.Run run = started.run();
+                if (run.job().isEmpty() && sending.filter(run.prompt()::equals).isPresent()) mine.add(run.id());
+                if (mine.contains(run.id())) working = Optional.of(run.id());
+            }
+            case LampEvent.RunProgress progress when mine.contains(progress.run()) -> {
+                if (progress.progress() instanceof LampEvent.Progress.Answered) answered.add(progress.run());
+                LampTalk.heard(progress.progress()).ifPresent(heard -> changes.accept(genie -> genie.hear(heard)));
+            }
+            case LampEvent.RunFinished finished when mine.contains(finished.run().id()) -> finished(finished);
+            // Another run, such as a scheduled job's, may have added to the conversations.
+            case LampEvent.RunFinished ignored -> lookAtConversations();
+            case LampEvent.SessionStateChanged changed when changed.status().state().equals("stopped") && !sleeping -> {
+                lamp = Optional.empty();
+                changes.accept(genie -> genie.broken("The genie's sandbox stopped: " + changed.status().detail()));
+            }
+            default -> { }
+        }
+    }
+
+    /// A run of this chat ended: the chat learns where the conversation now stands, and pi's ids
+    /// for what was said, and the genie is ready.
+    private void finished(LampEvent.RunFinished finished) {
+        String run = finished.run().id();
+        working = Optional.empty();
+        mine.remove(run);
+        if (!answered.remove(run) && finished.outcome() != LampEvent.RunOutcome.FINISHED && !finished.answer().isBlank())
+            said(finished.answer());
+        changes.accept(genie -> genie.hear(new PiEvent.Settled()));
+        Optional<Lamp.Conversation> conversation = finished.conversation().flatMap(id -> Lamp.conversation(directory, id));
+        if (conversation.isPresent()) {
+            String file = conversation.get().file();
+            String leaf = conversation.get().leaf().orElse("");
+            where = new Conversations.Here(file, leaf);
+            PiEvent.History history = LampTalk.history(conversation.get(), leaf);
+            changes.accept(genie -> genie.hear(new PiEvent.Opened(Conversations.HOME + file)).learn(history));
+        }
+        checkOutbox();
+        lookAtConversations();
     }
 
     private void said(String problem) {
         changes.accept(genie -> genie.withTranscript(genie.transcript().problem(problem)));
     }
 
-    /// Ends the harness and the lamp. The genie's home, and with it the conversation, stays.
+    // ─── sleeping ──────────────────────────────────────────────────────────────────────────
+
+    /// Puts the lamp out. The genie's home, and with it the conversations, stays.
     public void sleep() {
         work.execute(() -> {
             putOut();
@@ -276,10 +314,18 @@ public final class GenieRunner {
         work.awaitTermination(seconds, TimeUnit.SECONDS);
     }
 
-    public boolean isAwake() { return lamp.isPresent() && harness.isPresent(); }
+    public boolean isAwake() { return lamp.isPresent(); }
 
     /// The desktop's VNC socket, while the lamp is lit.
     public Optional<Path> desktop() { return lamp.map(Lighter.Lit::desktop); }
+
+    private void putOut() {
+        sleeping = true;
+        lamp.ifPresent(Lighter.Lit::close);
+        lamp = Optional.empty();
+    }
+
+    // ─── files ─────────────────────────────────────────────────────────────────────────────
 
     /// Looks into the outbox, and announces what is new.
     public void checkOutbox() {
@@ -312,7 +358,7 @@ public final class GenieRunner {
     private void transfer(String done, Transfer transfer) {
         Optional<Lighter.Lit> lit = lamp;
         if (lit.isEmpty()) {
-            changes.accept(genie -> genie.withTranscript(genie.transcript().problem("The genie is asleep; wake it first.")));
+            said("The genie is asleep; wake it first.");
             return;
         }
         Thread.ofVirtual().name("transfer").start(() -> {
@@ -320,42 +366,13 @@ public final class GenieRunner {
                 transfer.run(lit.get());
                 if (!done.isEmpty()) changes.accept(genie -> genie.withTranscript(genie.transcript().notice(done)));
             } catch (IOException | InterruptedException failed) {
-                changes.accept(genie -> genie.withTranscript(genie.transcript().problem(reason(failed))));
+                said(reason(failed));
             }
         });
     }
 
-    private void heard(PiEvent event) {
-        // The conversation pi sends unasked, after an answer, is only learnt from: the chat
-        // shows more of that answer than pi sends.
-        if (event instanceof PiEvent.History history && !asking) changes.accept(genie -> genie.learn(history));
-        else changes.accept(genie -> genie.hear(event));
-        if (event instanceof PiEvent.Opened open) opened = Conversations.inHome(open.file());
-        if (asking) answers.offer(event);
-        if (event instanceof PiEvent.Settled) {
-            checkOutbox();
-            // pi's ids for the questions just asked, and the tree, which has grown.
-            harness.ifPresent(session -> session.send(PiProtocol.askForHistory()));
-            lookAtConversations();
-        }
-    }
-
-    /// The harness ended without being asked to: its sandbox went away, or it failed. The
-    /// lamp is put out too, so that waking the genie again starts from a clean state.
-    private void harnessStopped(String why) {
-        harnessDied = true;
-        answers.offer(new PiEvent.Refused("harness", why));
-        harness = Optional.empty();
-        changes.accept(genie -> genie.broken(why));
-        work.execute(this::putOut);
-    }
-
-    private void putOut() {
-        harness.ifPresent(PiSession::close);
-        harness = Optional.empty();
-        lamp.ifPresent(Lighter.Lit::close);
-        lamp = Optional.empty();
-    }
+    /// The genie's home in its lamp, once the lamp was first lit.
+    private Optional<Path> home() { return Lamp.agentHome(directory); }
 
     private static String reason(Exception failed) {
         return Optional.ofNullable(failed.getMessage()).filter(message -> !message.isBlank()).orElse(failed.toString());

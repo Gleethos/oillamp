@@ -18,21 +18,36 @@ import dev.lamp.LampEvent;
 /// the host. The sandbox gets only its fixed relay address and a placeholder.
 public final class LampLighter implements Lighter {
 
+    private final Optional<Lamp.Launcher> launcher;
+
+    /// Starts each lamp's engine in a process of its own, from this application's classpath.
+    public LampLighter() { this(Optional.empty()); }
+
+    /// Starts each lamp's engine with `launcher`, as the scenarios do, to run it in their own JVM.
+    public LampLighter(Lamp.Launcher launcher) { this(Optional.of(launcher)); }
+
+    private LampLighter(Optional<Lamp.Launcher> launcher) {
+        this.launcher = launcher;
+    }
+
     /// The first start of any lamp builds the sandbox image, which takes several minutes, and
     /// longer on a slow network.
     static final Duration WAKING_TIME = Duration.ofMinutes(45);
 
     @Override
-    public Lit light(Path directory, Settings settings, String key, Consumer<String> progress)
-            throws IOException, InterruptedException {
+    public Lit light(Path directory, Settings settings, String key, Consumer<String> progress,
+                     Consumer<LampEvent> events) throws IOException, InterruptedException {
         AtomicReference<String> problem = new AtomicReference<>("");
-        Lamp lamp = Lamp.at(directory)
+        Lamp.Starting starting = Lamp.at(directory);
+        if (launcher.isPresent()) starting = starting.launchedBy(launcher.get());
+        Lamp lamp = starting
                 .modelService(URI.create(settings.service().strip()))
                 .modelKey(key)
                 .onEvent(event -> {
                     if (event instanceof LampEvent.Failure failure)
                         problem.set(failure.problem().title() + ": " + failure.problem().whatHappened());
                     describe(event).ifPresent(progress);
+                    events.accept(event);
                 })
                 .start();
         if (!lamp.awaitRunning(WAKING_TIME)) {
@@ -45,6 +60,10 @@ public final class LampLighter implements Lighter {
         return new Lit() {
             @Override public Process exec(String... command) throws IOException { return lamp.exec(command); }
             @Override public Path desktop() { return lamp.desktop(); }
+            @Override public LampEvent.Run send(Lamp.Question question)
+                    throws IOException, InterruptedException, Lamp.Failed { return lamp.send(question); }
+            @Override public void cancel(String run)
+                    throws IOException, InterruptedException, Lamp.Failed { lamp.cancel(run); }
             @Override public void close() { lamp.close(); }
         };
     }

@@ -124,8 +124,6 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
                     new Conversations.Here(conversations.here().file(), history.leaf())));
             case PiEvent.Opened opened     -> heard.withConversations(conversations.withHere(
                     new Conversations.Here(Conversations.inHome(opened.file()), conversations.here().leaf())));
-            case PiEvent.Moved moved       -> moved.failed().isEmpty() || phase != Phase.WORKING ? heard
-                    : heard.withPhase(Phase.READY).withActivity("ready");
             // A question pi could not take is not being worked on, and nothing else will say so.
             case PiEvent.Refused refused when phase == Phase.WORKING
                     && (refused.command().equals("prompt") || refused.command().equals("send_user_message"))
