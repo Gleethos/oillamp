@@ -120,6 +120,7 @@ Genies runs.
 | The user | What happens |
 |---|---|
 | clicks a row | the chat shows the way to that row's last entry, and the next message goes after it. A sleeping genie stays asleep |
+| clicks a row while the genie answers | the chat shows that row; nothing can be sent from there until the answer is done. The conversation being answered keeps growing out of sight, and going back to it shows the answer so far. An answer that ends meanwhile leaves the chat where the user is |
 | presses Edit under a question of theirs | a dialog holds the question; the changed one is asked instead, and what followed the old one stays as a branch |
 | presses Shift and Return while writing | a new line in the message; Return alone sends it |
 | presses New | the chat empties, and the next message starts a new conversation; the others stay |
@@ -129,6 +130,12 @@ Moving within a conversation happens in the session, when the next message is as
 `Lamp.Question` names the conversation, and the entry to continue after or the question to ask
 instead of. The session opens the conversation in pi and moves there first. Going to a row only
 changes what the chat shows and where the next message goes.
+
+While the genie answers and the chat shows another conversation, `Conversations.aside` holds the
+one being answered: where in it the genie is, and its transcript, to which the run's events go.
+Going back to it takes the transcript back. pi writes a new conversation to disk only once there
+is an answer in it, so until then the aside has no file, and the user's tree shows it as a "New
+conversation" row at the top.
 
 **Where the tree comes from.** `Lamp.conversations(<lamp>)` reads pi's files from the genie's
 home in its lamp, on this computer, so the tree is there while the genie sleeps. It follows no
