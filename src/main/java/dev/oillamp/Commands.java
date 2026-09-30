@@ -791,7 +791,7 @@ final class Commands {
             Optional<String> entry = after.or(() -> insteadOf);
             if (entry.isEmpty()) return Result.ok(request);
             Optional<dev.lamp.Lamp.Conversation.Entry> at = found.get().entry(entry.get());
-            boolean question = at.filter(e -> e.kind() == dev.lamp.Lamp.Conversation.Kind.QUESTION).isPresent();
+            boolean question = at.filter(e -> e.kind() == dev.lamp.Lamp.Conversation.Kind.MESSAGE_TO_AGENT).isPresent();
             if (at.isEmpty())
                 return Result.err(Problems.noSuchConversation(entry.get(), lamp));
             if (after.isPresent() && question)

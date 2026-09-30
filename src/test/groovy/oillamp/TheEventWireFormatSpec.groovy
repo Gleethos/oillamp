@@ -57,10 +57,10 @@ class TheEventWireFormatSpec extends Specification {
             Instant.parse('2026-09-29T18:14:03Z'), Instant.parse('2026-09-29T18:15:00Z'),
             Tuple.of(dev.lamp.Lamp.Conversation.Entry,
                 new dev.lamp.Lamp.Conversation.Entry('q1', Optional.empty(), Instant.parse('2026-09-29T18:14:03Z'),
-                        dev.lamp.Lamp.Conversation.Kind.QUESTION, 'What "now"?\nTell me.', '',
+                        dev.lamp.Lamp.Conversation.Kind.MESSAGE_TO_AGENT, 'What "now"?\nTell me.', '',
                         Tuple.of(dev.lamp.Lamp.Conversation.ToolCall), Optional.empty(), false),
                 new dev.lamp.Lamp.Conversation.Entry('a1', Optional.of('q1'), Instant.parse('2026-09-29T18:15:00Z'),
-                        dev.lamp.Lamp.Conversation.Kind.ANSWER, '', 'thinking…',
+                        dev.lamp.Lamp.Conversation.Kind.MESSAGE_FROM_AGENT, '', 'thinking…',
                         Tuple.of(dev.lamp.Lamp.Conversation.ToolCall, new dev.lamp.Lamp.Conversation.ToolCall('c1', 'bash', 'ls')),
                         Optional.of('bash'), true)))
 

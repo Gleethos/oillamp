@@ -284,7 +284,7 @@ final class ConsoleRenderer {
         StringBuilder out = new StringBuilder(String.format("%-20s %-19s %-9s %s", "CONVERSATION", "LAST (UTC)", "QUESTIONS", "TITLE"));
         for (dev.lamp.Lamp.Conversation conversation : conversations) {
             long questions = conversation.entries().stream()
-                    .filter(entry -> entry.kind() == dev.lamp.Lamp.Conversation.Kind.QUESTION).count();
+                    .filter(entry -> entry.kind() == dev.lamp.Lamp.Conversation.Kind.MESSAGE_TO_AGENT).count();
             out.append('\n').append(String.format("%-20s %-19s %-9d %s", conversation.shortId(),
                     when(conversation.modified()), questions, shortened(conversation.title(), 60)));
         }
@@ -300,9 +300,9 @@ final class ConsoleRenderer {
         for (dev.lamp.Lamp.Conversation.Entry entry : conversation.line()) {
             String text = NOT_PRINTABLE.matcher(entry.text().strip()).replaceAll(" ");
             switch (entry.kind()) {
-                case QUESTION -> out.append('\n').append(entry.id()).append("  you:   ")
+                case MESSAGE_TO_AGENT -> out.append('\n').append(entry.id()).append("  you:   ")
                                    .append(text.replace("\n", "\n" + " ".repeat(18))).append('\n');
-                case ANSWER -> {
+                case MESSAGE_FROM_AGENT -> {
                     if (!text.isEmpty())
                         out.append(entry.id()).append("  agent: ").append(entry.failed() ? "(failed) " : "")
                            .append(text.replace("\n", "\n" + " ".repeat(18))).append('\n');
@@ -314,7 +314,7 @@ final class ConsoleRenderer {
                 case TOOL_OUTPUT, OTHER -> { }
             }
             int others = conversation.children(entry.parent().orElse("")).size();
-            if (entry.parent().isPresent() && others > 1 && entry.kind() == dev.lamp.Lamp.Conversation.Kind.QUESTION)
+            if (entry.parent().isPresent() && others > 1 && entry.kind() == dev.lamp.Lamp.Conversation.Kind.MESSAGE_TO_AGENT)
                 out.append(" ".repeat(18)).append("(").append(others - 1).append(others == 2 ? " other question was" : " other questions were")
                    .append(" asked here instead)\n");
         }

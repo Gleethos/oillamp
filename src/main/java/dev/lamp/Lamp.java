@@ -492,9 +492,9 @@ public final class Lamp implements AutoCloseable {
 
         public enum Kind {
             /// A message to the agent: a person's question, or a job's prompt.
-            QUESTION,
+            MESSAGE_TO_AGENT,
             /// A message from the agent.
-            ANSWER,
+            MESSAGE_FROM_AGENT,
             /// The output of one tool call.
             TOOL_OUTPUT,
             /// pi's summary of entries it took out of the model's context.
@@ -513,7 +513,7 @@ public final class Lamp implements AutoCloseable {
         public String title() {
             if (!name.isBlank()) return oneLine(name);
             for (Entry entry : entries)
-                if (entry.kind() == Kind.QUESTION && !entry.text().isBlank()) return oneLine(entry.text());
+                if (entry.kind() == Kind.MESSAGE_TO_AGENT && !entry.text().isBlank()) return oneLine(entry.text());
             return "New conversation";
         }
 

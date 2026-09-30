@@ -2,7 +2,6 @@ package oillamp
 
 import dev.lamp.Lamp
 import dev.lamp.Lamp.Conversation.Kind
-import dev.lamp.LampEvent
 import groovy.json.JsonOutput
 import spock.lang.Specification
 import spock.lang.Subject
@@ -67,7 +66,7 @@ class ReadingTheAgentsConversationsSpec extends Specification {
 
         and: 'each is the whole line of entries, question and answer'
             var first = found[1]
-            first.line()*.kind() == [Kind.OTHER, Kind.QUESTION, Kind.ANSWER]
+            first.line()*.kind() == [Kind.OTHER, Kind.MESSAGE_TO_AGENT, Kind.MESSAGE_FROM_AGENT]
             first.line()*.text().takeRight(2) == ['How big is the repository?', 'About 12,000 lines.']
             first.started() == Instant.parse('2026-09-28T10:00:00Z')
 

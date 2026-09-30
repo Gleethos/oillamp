@@ -73,14 +73,14 @@ final class PiSessionFile {
         Tuple<Lamp.Conversation.ToolCall> none = Tuple.of(Lamp.Conversation.ToolCall.class);
         return switch (type) {
             case "message" -> switch (message.path("role").asText()) {
-                case "user" -> new Lamp.Conversation.Entry(id, parent, at, Lamp.Conversation.Kind.QUESTION,
+                case "user" -> new Lamp.Conversation.Entry(id, parent, at, Lamp.Conversation.Kind.MESSAGE_TO_AGENT,
                         text(message.path("content")), "", none, Optional.empty(), false);
                 case "assistant" -> {
                     String stop = message.path("stopReason").asText();
                     boolean failed = stop.equals("error") || stop.equals("aborted");
                     String said = text(message.path("content"));
                     String error = message.path("errorMessage").asText("");
-                    yield new Lamp.Conversation.Entry(id, parent, at, Lamp.Conversation.Kind.ANSWER,
+                    yield new Lamp.Conversation.Entry(id, parent, at, Lamp.Conversation.Kind.MESSAGE_FROM_AGENT,
                             failed && !error.isBlank() ? (said.isBlank() ? error : said + "\n\n" + error) : said,
                             thinking(message.path("content")), calls(message.path("content")), Optional.empty(), failed);
                 }

@@ -218,7 +218,7 @@ class AskingInAConversationSpec extends Specification {
     }
 
     private Lamp.Conversation.Entry question(String conversation, String text) {
-        Lamp.conversation(lamp, conversation).orElseThrow().entries().find { it.kind() == Kind.QUESTION && it.text() == text }
+        Lamp.conversation(lamp, conversation).orElseThrow().entries().find { it.kind() == Kind.MESSAGE_TO_AGENT && it.text() == text }
     }
 
     private Lamp.Conversation.Entry answerTo(String conversation, String text) {
@@ -227,7 +227,7 @@ class AskingInAConversationSpec extends Specification {
     }
 
     private static List<String> questionsAndAnswers(Iterable<Lamp.Conversation.Entry> line) {
-        line.findAll { it.kind() in [Kind.QUESTION, Kind.ANSWER] }*.text()
+        line.findAll { it.kind() in [Kind.MESSAGE_TO_AGENT, Kind.MESSAGE_FROM_AGENT] }*.text()
     }
 
     private List<LampEvent.Snapshot> history() {
