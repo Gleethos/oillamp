@@ -360,7 +360,11 @@ final class SchedulePage {
             .add("growx, wmin 0",
                 box("fill, ins 0, gap 8, hidemode 3", "[grow][]")
                 .add("growx, wmin 0", words(moment.detail(), 12, 1f, faded ? dim(detail) : detail))
-                .add("top", tag("added by " + state.get().genie().name()).isVisibleIf(moment.byGenie())))
+                .add("top",
+                    tag(state.viewAsString( it -> "added by " + it.genie().name()))
+                    .isVisibleIf(moment.byGenie())
+                )
+            )
             .add("left, hidemode 3",
                 box("ins 0, gap 6, hidemode 3")
                 .isVisibleIf(moment.conversation().isPresent() || working)
@@ -740,14 +744,16 @@ final class SchedulePage {
             .onMouseClick(it -> flip.run());
     }
 
-    /// A few words in a small rounded tag, such as when a job runs next.
-    private static UIForLabel<JLabel> tag(String text) {
-        return tag(Val.of(text));
-    }
-
     private static UIForLabel<JLabel> tag(Val<String> text) {
-        return label(text).withStyle(it -> it.backgroundColor(RAISED).borderRadius(8).padding(2, 8, 2, 8)
-                .componentFont(f -> f.family(FONT).size(11).color(SUBTEXT)));
+        return label(text)
+                .withStyle(it -> it
+                        .backgroundColor(RAISED)
+                        .borderRadius(8)
+                        .padding(2, 8, 2, 8)
+                        .componentFont(f -> f
+                            .family(FONT).size(11).color(SUBTEXT)
+                        )
+                );
     }
 
     /// A button that reads as a link, in brass.
