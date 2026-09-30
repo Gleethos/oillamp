@@ -7,7 +7,7 @@
 /// - [dev.lamp.LampEvent]: everything oillamp reports, as values
 /// - [dev.lamp.Problem]: what went wrong, with evidence and fixes
 /// - [dev.lamp.ExitStatus]: how an oillamp process ended
-/// - [dev.lamp.Lamp]: a lamp an application started, until it closes it
+/// - [dev.lamp.Lamp]: a lamp an application started or joined, until it closes it
 ///
 /// The engine uses these types, and an application that embeds oillamp receives them. So they are
 /// here rather than in the engine, and this package never imports `dev.oillamp`: an application

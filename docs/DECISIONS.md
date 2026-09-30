@@ -395,6 +395,10 @@ application that writes `leave-running` on that input first (`Lamp.leaveRunning(
 session running on its own, until `oillamp stop`; the engine runs under `setsid`, so the closing
 of the terminal the application was started from does not end it either.
 
+An application that opens again finds such a session with `Lamp.at(dir).isRunning()` and joins it
+with `join()`, which runs `oillamp follow <dir> --embedded`: the same events arrive, starting with
+what the session is doing now, so the application uses the lamp as if it had started it.
+
 *Why leaving running is asked for, not assumed:* an application that crashes says nothing, so its
 sandbox still ends with it. Only a deliberate choice, such as a user closing Genies with a genie
 that should keep its schedule, leaves a sandbox running.

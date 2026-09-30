@@ -1234,7 +1234,7 @@ application that embeds oillamp needs.
 | `LampEvent` | `dev.lamp` | The stream of things oillamp reports. An application renders these itself. |
 | `Problem` | `dev.lamp` | Structured errors, so a caller can inspect them rather than parse text. |
 | `ExitStatus` | `dev.lamp` | The process exit codes, by name. |
-| `Lamp` | `dev.lamp` | An application's handle on a lamp: starts the engine as `oillamp at <dir> --embedded` in a separate process, reads its events, and ends the session on `close()`. |
+| `Lamp` | `dev.lamp` | An application's handle on a lamp: starts the engine as `oillamp at <dir> --embedded` in a separate process, reads its events, and ends the session on `close()`, unless it was left running (`leaveRunning()`). `Lamp.at(dir).join()` returns the same handle on a session that is already running, through `oillamp follow <dir> --embedded`; closing that one ends nothing, and `stop()` ends the session for either. |
 
 `LampEvent`, `Problem` and `ExitStatus` are in `dev.lamp` because both the engine and an
 application embedding it use them.

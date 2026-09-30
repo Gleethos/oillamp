@@ -97,6 +97,58 @@ class HoldingALampSpec extends Specification {
             !Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
     }
 
+    def 'An application that left its lamp running joins it again, and can stop it'() {
+        reportInfo """
+            Closed and opened again, an application finds the session it left running with
+            isRunning(), and joins it. The lamp it gets is used as one it started: it hears what
+            the session reports, runs commands in the sandbox, and asks the agent. Closing it
+            only stops following. stop() ends the session, and returns once it has.
+        """
+        given: 'a lamp left running by an application that has closed'
+            var first = Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start()
+            first.awaitRunning(Duration.ofSeconds(30))
+            first.leaveRunning()
+            first.close()
+
+        when: 'the application opens again, and joins it'
+            var starting = Lamp.at(sandbox.lampPath()).onEvent { received << it }.launchedBy(sandbox.launcher)
+            var running = starting.isRunning()
+            var joined = starting.join()
+
+        then: 'it is running, and usable as before'
+            running
+            joined.awaitRunning(Duration.ofSeconds(10))
+            !joined.holds()
+            joined.commandLine('true').first() == 'ssh'
+            sandbox.engines.last().arguments == ['follow', sandbox.lampPath().toString(), '--embedded']
+
+        when: 'it stops the session'
+            joined.stop()
+
+        then: 'the session has ended, and nothing of it is left'
+            joined.exitStatus() == Optional.of(ExitStatus.SUCCESS)
+            !starting.isRunning()
+            received.any { it instanceof LampEvent.Summary }
+    }
+
+    def 'Joining a lamp that is not running says so'() {
+        reportInfo """
+            An application may try to join every lamp it knows. One that is not running is not
+            an error to crash on: the lamp never comes up, and the events say why.
+        """
+        given: 'a lamp whose session has ended'
+            assert sandbox.oillamp.run('at', sandbox.lampPath().toString()).succeeded()
+
+        when:
+            var starting = Lamp.at(sandbox.lampPath()).onEvent { received << it }.launchedBy(sandbox.launcher)
+            var joined = starting.join()
+
+        then:
+            !starting.isRunning()
+            !joined.awaitRunning(Duration.ofSeconds(10))
+            received.any { it instanceof LampEvent.Failure && it.problem().code().value() == 'OIL-SESSION-001' }
+    }
+
     def 'A command for the sandbox goes over ssh, with each argument arriving exactly as given'() {
         reportInfo """
             ssh joins its arguments with spaces and hands them to a shell in the sandbox, which

@@ -67,14 +67,17 @@ public final class Lamp implements AutoCloseable {
     /// How to run a command in the sandbox, once the engine has said so. Present means running.
     private volatile Optional<LampEvent.SessionOpened> opened = Optional.empty();
     private volatile Optional<ExitStatus> exit = Optional.empty();
-    /// Whether the session ends when this lamp is closed. False once it was left running.
-    private volatile boolean holding = true;
+    /// Whether the session ends when this lamp is closed: true for a lamp this application
+    /// started, until it is left running; false for one it joined.
+    private volatile boolean holding;
 
-    private Lamp(Path directory, Launcher launcher, Process engine, List<Consumer<LampEvent>> listeners) {
+    private Lamp(Path directory, Launcher launcher, Process engine, List<Consumer<LampEvent>> listeners,
+                 boolean holding) {
         this.directory = directory;
         this.launcher = launcher;
         this.engine = engine;
         this.listeners = listeners;
+        this.holding = holding;
     }
 
     /// Starts describing the lamp in `directory`, which oillamp creates if it does not exist.
@@ -165,9 +168,40 @@ public final class Lamp implements AutoCloseable {
             if (scheduling) arguments.add("--enable-scheduling");
             Process engine = launcher.launch(List.copyOf(arguments),
                     modelKey.map(key -> Map.of(MODEL_KEY_VARIABLE, key)).orElse(Map.of()));
-            Lamp lamp = new Lamp(directory, launcher, engine, listeners);
+            Lamp lamp = new Lamp(directory, launcher, engine, listeners, true);
             Thread.ofVirtual().name("lamp-events-" + directory.getFileName()).start(lamp::readEvents);
             return lamp;
+        }
+
+        /// Joins the session already running this lamp, whoever started it: this application
+        /// before it was closed and [left it running][Lamp#leaveRunning()], another application,
+        /// or a person at a terminal. Returns at once.
+        ///
+        /// The lamp returned is used as one this application started. Its listeners first hear
+        /// what the session is doing now: [LampEvent.SessionOpened], after which
+        /// [Lamp#awaitRunning] is true; the session's state; the run in progress, from its
+        /// [LampEvent.RunStarted], with what the agent wrote so far; and a [LampEvent.RunQueued]
+        /// for each run waiting. Then they hear every event as it happens. The model settings are
+        /// those the session was started with.
+        ///
+        /// Closing it only stops following; the session goes on. [Lamp#stop()] ends it.
+        ///
+        /// Where no session runs, [Lamp#awaitRunning] is false, and a [LampEvent.Failure]
+        /// with problem `OIL-SESSION-001` says so.
+        ///
+        /// @throws IOException when the engine's process could not be started at all
+        public Lamp join() throws IOException {
+            Process follower = launcher.launch(List.of("follow", directory.toString(), "--embedded"), Map.of());
+            Lamp lamp = new Lamp(directory, launcher, follower, listeners, false);
+            Thread.ofVirtual().name("lamp-events-" + directory.getFileName()).start(lamp::readEvents);
+            return lamp;
+        }
+
+        /// Whether a session is running this lamp, so that [#join] finds it. Looks only at the
+        /// record a session keeps while it runs; a session whose engine was killed leaves that
+        /// record behind, and [#join] then says it cannot reach it.
+        public boolean isRunning() {
+            return java.nio.file.Files.exists(directory.resolve(".oillamp").resolve("session.json"));
         }
 
         /// Deletes this lamp for good: the agent's home with everything the agent made in it,
@@ -879,7 +913,8 @@ public final class Lamp implements AutoCloseable {
                 .orElseThrow(() -> new IllegalStateException("the lamp at " + directory + " is not running"));
     }
 
-    /// How the engine ended, once it has.
+    /// How the engine ended, once it has. For a joined lamp, how following ended:
+    /// [ExitStatus#SUCCESS] when the session ended, or when this lamp was closed.
     public Optional<ExitStatus> exitStatus() { return exit; }
 
     /// Ends the session and waits until the engine has shut the sandbox down.
@@ -904,14 +939,16 @@ public final class Lamp implements AutoCloseable {
         }
     }
 
-    /// Lets the session go on after this application is gone, until `oillamp stop <dir>` ends it.
+    /// Lets the session go on after this application is gone, until [#stop()] or
+    /// `oillamp stop <dir>` ends it. [Starting#join] finds it again.
     ///
     /// For an application that closes while the agent should keep working: on its schedule, say.
     /// The engine is told on its standard input, which is closed after. Its events keep coming
     /// to the listeners until this application exits.
     ///
     /// Without this, the session ends when the application does, however it ends, so a crash
-    /// never leaves a sandbox running.
+    /// never leaves a sandbox running. On a lamp this application joined, it is the same as
+    /// [#close()].
     public void leaveRunning() {
         holding = false;
         try (var input = engine.getOutputStream()) {
@@ -920,6 +957,19 @@ public final class Lamp implements AutoCloseable {
             // The engine has ended, so there is nothing left to leave running.
         }
     }
+
+    /// Ends the session, whoever started it, and waits until it has ended: the sandbox is
+    /// shut down and the lamp saved.
+    ///
+    /// @throws Failed when no session is running
+    public void stop() throws IOException, InterruptedException, Failed {
+        runToEnd(launcher, listeners, "stop", directory.toString()).orThrow();
+        ended.await();
+    }
+
+    /// Whether the session ends when this lamp is closed: true for a lamp this application
+    /// started, until it was left running.
+    public boolean holds() { return holding; }
 
     private void readEvents() {
         try (BufferedReader output = new BufferedReader(

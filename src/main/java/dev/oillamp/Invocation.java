@@ -407,7 +407,7 @@ final class Invocation {
             java.util.Map.entry("conversations", java.util.Set.of("--embedded")),
             java.util.Map.entry("restore",    java.util.Set.of("--embedded")),
             java.util.Map.entry("shell",      java.util.Set.of()),
-            java.util.Map.entry("stop",       java.util.Set.of()),
+            java.util.Map.entry("stop",       java.util.Set.of("--embedded")),
             java.util.Map.entry("status",     java.util.Set.of("--embedded")),
             java.util.Map.entry("follow",     java.util.Set.of("--embedded")),
             java.util.Map.entry("list",       java.util.Set.of()),
