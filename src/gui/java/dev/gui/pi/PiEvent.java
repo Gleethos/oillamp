@@ -2,12 +2,8 @@ package dev.gui.pi;
 
 import sprouts.Tuple;
 
-/// Something pi reported while a genie works, as a value.
-///
-/// pi, the agent harness in the sandbox, runs in its RPC mode: it reads commands as JSON lines on
-/// its standard input and writes what happens as JSON lines on its standard output. [PiProtocol]
-/// reads those lines into these values. Only what the chat shows is kept; everything else pi says
-/// is read as nothing.
+/// What the chat is told while a genie works. `GenieRunner` makes these from the lamp's run
+/// events and conversations.
 public sealed interface PiEvent {
 
     /// The genie's answer grew by `text`, while it is still being written.
@@ -45,8 +41,8 @@ public sealed interface PiEvent {
     /// pi refused a command, such as a prompt it could not accept.
     record Refused(String command, String reason) implements PiEvent {}
 
-    /// The conversation so far, as pi keeps it, in answer to [PiProtocol#askForHistory()]: what was
-    /// said on the way to where pi is now, leaving out the branches it is not on.
+    /// The questions and answers from the start of a conversation to the entry the chat shows,
+    /// leaving out the branches it is not on.
     ///
     /// @param leaf pi's id for the entry the next question will follow, or nothing in a
     ///             conversation with nothing in it yet
@@ -59,20 +55,8 @@ public sealed interface PiEvent {
         public record Line(boolean fromUser, String text, String id) {}
     }
 
-    /// Which conversation pi has open, in answer to [PiProtocol#askWhere()].
+    /// The chat shows this conversation.
     ///
     /// @param file its session file, as the sandbox names it
     record Opened(String file) implements PiEvent {}
-
-    /// pi opened another conversation, or a new one, as asked.
-    record Switched() implements PiEvent {}
-
-    /// Whether pi can move within a conversation: whether it runs with Genies' extension, in
-    /// answer to [PiProtocol#askWhatItCanDo()].
-    record CanMove(boolean yes) implements PiEvent {}
-
-    /// pi moved within the conversation, as asked by [PiProtocol#goTo] or [PiProtocol#askInstead].
-    ///
-    /// @param failed why it could not, or nothing
-    record Moved(String failed) implements PiEvent {}
 }

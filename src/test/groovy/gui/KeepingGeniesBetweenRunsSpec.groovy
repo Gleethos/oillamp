@@ -68,7 +68,7 @@ class KeepingGeniesBetweenRunsSpec extends Specification {
             var genie = Genie.named('Genie 1')
             var state = Var.of(GeniesState.of(Tuple.of(Genie, genie), Settings.defaults(), Optional.of('sk-env'))
                     .withPage(GeniesState.Page.SETTINGS))
-            new Genies(state, new Shelf(tmp), { directory, settings, key, progress -> throw new IOException('no lamps here') } as Lighter)
+            new Genies(state, new Shelf(tmp), { directory, settings, key, progress, events -> throw new IOException('no lamps here') } as Lighter)
 
         when: 'the user changes the model, then clicks the genie instead of Done'
             state.update(From.VIEW, { it.withSettings(it.settings().withModel('mistral/mistral-large-latest')) })

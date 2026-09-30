@@ -56,12 +56,13 @@ class RunningARealGenieSpec extends Specification {
         RealLamps.remove(lamp)
     }
 
-    def 'A genie wakes in a real lamp, and its harness answers in RPC mode'() {
+    def 'A genie wakes in a real lamp, ready to be asked'() {
         reportInfo """
             The runner lights the lamp through dev.lamp, with the model service and key from the
-            settings, makes ~/outbox and ~/inbox, starts pi over the lamp's ssh command and asks
-            it for the conversation so far. On a first start the sandbox image is built, which
-            takes minutes; the genie's status says so while it happens.
+            settings, makes ~/outbox and ~/inbox, and writes the genie's instructions and model
+            into pi's files in its home. The lamp's session starts pi at the first message. On a
+            first start the sandbox image is built, which takes minutes; the genie's status says
+            so while it happens.
         """
         when:
             runner.wake('Spike', Settings.defaults().withModel(MODEL), KEY ?: 'sk-no-real-key')
@@ -121,13 +122,12 @@ class RunningARealGenieSpec extends Specification {
             Files.deleteIfExists(gift)
     }
 
-    def 'The genie goes between the branches of a conversation, through Genies\' extension to pi'() {
+    def 'The genie goes between the branches of a conversation, read from its home'() {
         reportInfo '''
-            pi keeps a conversation as a tree, but its RPC mode cannot move within one; the
-            sandbox image carries a small extension of Genies' that can. Here a conversation that
-            forked at its second question is put into the genie's home, as pi would have written
-            it, and the genie is sent to one branch and then the other. The chat shows the way to
-            each, and the tree read from the home marks where the genie is. No model is needed.
+            pi keeps a conversation as a tree, in a file in the genie's home. Here a conversation
+            that forked at its second question is put there, as pi 0.87 would have written it, and
+            the chat is sent to one branch and then the other. The chat shows the way to each, and
+            the tree marks where it is. No model is needed.
         '''
         given: 'a conversation whose second question was asked twice'
             var home = Lamp.agentHome(lamp).get()
@@ -144,11 +144,10 @@ class RunningARealGenieSpec extends Specification {
             RealLamps.eventually(Duration.ofSeconds(20)) { genie.conversations().find('forked').isPresent() }
             runner.goTo(file, 'a2')
 
-        then: 'pi runs with the extension, and the chat shows the train branch'
+        then: 'the chat shows the train branch'
             RealLamps.eventually(Duration.ofSeconds(30)) {
                 genie.transcript().entries()*.text() == ['Plan a trip', 'Where to?', 'By train', 'Trains it is.']
             }
-            runner.canMove()
             genie.conversations().here() == new Conversations.Here(file, 'a2')
 
         when:
