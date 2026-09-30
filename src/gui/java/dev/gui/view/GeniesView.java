@@ -62,6 +62,7 @@ public final class GeniesView extends JPanel {
     /// Loops from 0 to 1 while the genie on show thinks, for the dots in its answer.
     private final Var<Double> pulse = Var.of(0.0);
     private final ChatRows rows;
+    private final SchedulePage schedulePage;
     /// Set once the conversation's scroll pane exists.
     private Optional<FollowTheEnd> follow = Optional.empty();
 
@@ -96,6 +97,7 @@ public final class GeniesView extends JPanel {
         });
         rows = new ChatRows(look, this::saveHandout, pulse, this::askInstead,
                            phase.viewAs(Boolean.class, it -> it == Genie.Phase.READY));
+        schedulePage = new SchedulePage(state, actions, look);
 
         UI.use(look, () ->
             of(this).group(Skin.FRAME)
@@ -248,22 +250,25 @@ public final class GeniesView extends JPanel {
         });
     }
 
-    // ─── the main area: a conversation, or the settings ────────────────────────────────────
+    // ─── the main area: a conversation, a schedule, or the settings ────────────────────────
 
     private UIForAnySwing<?, ?> main() {
         Val<Boolean> onChat = page.viewAs(Boolean.class, it -> it == GeniesState.Page.CHAT);
+        Val<Boolean> onSchedule = page.viewAs(Boolean.class, it -> it == GeniesState.Page.SCHEDULE);
         Val<Boolean> onSettings = page.viewAs(Boolean.class, it -> it == GeniesState.Page.SETTINGS);
         Val<Boolean> hasGenies = state.viewAs(Boolean.class, GeniesState::hasGenies);
         return
             box("fill, wrap 1, ins 0, gap 0, hidemode 3", "[grow]")
-            .add("growx, wmin 0", header(Viewable.of(Boolean.class, onChat, hasGenies, (a, b) -> a && b)))
+            .add("growx, wmin 0", header(Viewable.of(Boolean.class, onSettings, hasGenies, (a, b) -> !a && b)))
             .add("grow, push, wmin 0", conversation(Viewable.of(Boolean.class, onChat, hasGenies, (a, b) -> a && b)))
-            .add("grow, push, wmin 0", firstGenie(Viewable.of(Boolean.class, onChat, hasGenies, (a, b) -> a && !b)))
+            .add("grow, push, wmin 0", schedulePage.view(Viewable.of(Boolean.class, onSchedule, hasGenies, (a, b) -> a && b)))
+            .add("grow, push, wmin 0", firstGenie(Viewable.of(Boolean.class, onSettings, hasGenies, (a, b) -> !a && !b)))
             .add("grow, push, wmin 0", SettingsPage.of(state, actions, onSettings));
     }
 
     private UIForAnySwing<?, ?> header(Val<Boolean> visible) {
-        Val<Boolean> awake = phase.viewAs(Boolean.class, Genie.Phase::isAwake);
+        Val<Boolean> onChat = page.viewAs(Boolean.class, it -> it == GeniesState.Page.CHAT);
+        Val<Boolean> awake = Viewable.of(Boolean.class, phase, onChat, (it, chat) -> it.isAwake() && chat);
         Val<Boolean> working = phase.viewAs(Boolean.class, it -> it == Genie.Phase.WORKING);
         Val<Boolean> wide = state.viewAs(Boolean.class, GeniesState::roomForWords);
         return
@@ -280,6 +285,7 @@ public final class GeniesView extends JPanel {
                 .add("growx, wmin 0", label(genie.viewAsString(it -> it.activity())).group(Skin.SUBTITLE)))
             // One group on the right, so buttons that are hidden leave no gap behind.
             .add(box("ins 0, gap 10, hidemode 3, aligny center")
+            .add(pages())
             .add(label(genie.viewAsString(it -> it.tokens() == 0 ? "" : String.format("%,d tokens", it.tokens()))).group(Skin.META)
                  .isVisibleIf(wide)
                  .withTooltip("Tokens the model counted for this genie since Genies started"))
@@ -288,12 +294,34 @@ public final class GeniesView extends JPanel {
             .add(button(worded("■  Stop", "■")).group(Skin.QUIET_BUTTON).isVisibleIf(working)
                  .withTooltip("Stop what the genie is doing")
                  .onClick(it -> actions.stop(genie.get().id())))
-            .add(button(worded("☾  Sleep", "☾")).group(Skin.QUIET_BUTTON).isVisibleIf(awake)
+            .add(button(worded("☾  Sleep", "☾")).group(Skin.QUIET_BUTTON).isVisibleIf(phase.viewAs(Boolean.class, Genie.Phase::isAwake))
                  .withTooltip("End the genie's sandbox. Its home and this conversation are kept.")
                  .onClick(it -> actions.sleep(genie.get().id())))
             .add(button("⋯").group(Skin.ICON_BUTTON)
                  .withTooltip("Rename, start a new conversation, or delete this genie")
-                 .onClick(it -> below(genieMenu(genie.get().id()), it.getComponent()))));
+                 .onClick(it -> Parts.below(genieMenu(genie.get().id()), it.getComponent()))));
+    }
+
+    /// The two pages of a genie, its chat and its schedule, as one switch of two halves. The
+    /// schedule's half says how many jobs it has, once they were read.
+    private UIForAnySwing<?, ?> pages() {
+        Val<Boolean> onChat = page.viewAs(Boolean.class, it -> it == GeniesState.Page.CHAT);
+        Val<Boolean> onSchedule = page.viewAs(Boolean.class, it -> it == GeniesState.Page.SCHEDULE);
+        Val<String> scheduleWords = genie.viewAsString(it -> "Schedule" + (it.schedule().jobs().isEmpty() ? "" : "  " + it.schedule().jobs().size()));
+        return
+            box("ins 2, gap 2")
+            .withStyle(it -> it.backgroundColor(SMOKE).border(1, BORDER).borderRadius(11))
+            .add(half(Val.of("Chat"), onChat).withTooltip("Talk with the genie")
+                 .onClick(it -> page.set(From.VIEW, GeniesState.Page.CHAT)))
+            .add(half(scheduleWords, onSchedule).withTooltip("When jobs wake the genie, and what they did")
+                 .onClick(it -> page.set(From.VIEW, GeniesState.Page.SCHEDULE)));
+    }
+
+    private static swingtree.UIForButton<javax.swing.JButton> half(Val<String> text, Val<Boolean> shown) {
+        return button(text).group(Skin.ICON_BUTTON)
+                .withStyle(shown, (on, it) -> it.borderRadius(9).padding(4, 12, 4, 12)
+                    .backgroundColor(on ? RAISED : TRANSPARENT)
+                    .componentFont(f -> f.family(FONT).size(12).weight(on ? 2f : 1f).color(on ? TEXT : SUBTEXT)));
     }
 
     /*
@@ -563,30 +591,17 @@ public final class GeniesView extends JPanel {
         state.get().find(id).ifPresent(shown -> {
             Genie.Phase now = shown.phase();
             boolean idle = now != Genie.Phase.WORKING && now != Genie.Phase.WAKING;
-            menu.add(item("Rename…", true, () -> rename(id)));
-            menu.add(item("New conversation", idle, () -> actions.startAfresh(id)));
+            menu.add(Parts.item("Rename…", true, () -> rename(id)));
+            menu.add(Parts.item("New conversation", idle, () -> actions.startAfresh(id)));
             menu.addSeparator();
-            if (now.isAwake()) menu.add(item("Sleep", true, () -> actions.sleep(id)));
-            else menu.add(item(now == Genie.Phase.BROKEN ? "Try waking again" : "Wake", now != Genie.Phase.WAKING, () -> actions.wake(id)));
+            if (now.isAwake()) menu.add(Parts.item("Sleep", true, () -> actions.sleep(id)));
+            else menu.add(Parts.item(now == Genie.Phase.BROKEN ? "Try waking again" : "Wake", now != Genie.Phase.WAKING, () -> actions.wake(id)));
             menu.addSeparator();
-            javax.swing.JMenuItem delete = item("Delete " + shown.name() + "…", true, () -> confirmDelete(id));
+            javax.swing.JMenuItem delete = Parts.item("Delete " + shown.name() + "…", true, () -> confirmDelete(id));
             delete.setForeground(TROUBLE);
             menu.add(delete);
         });
         return menu;
-    }
-
-    /// Opens `menu` under `button`, its right edge on the button's: the button is at the
-    /// window's right edge, and a menu opening rightwards would leave the window.
-    private static void below(javax.swing.JPopupMenu menu, java.awt.Component button) {
-        menu.show(button, button.getWidth() - menu.getPreferredSize().width, button.getHeight());
-    }
-
-    private static javax.swing.JMenuItem item(String text, boolean enabled, Runnable action) {
-        javax.swing.JMenuItem item = new javax.swing.JMenuItem(text);
-        item.setEnabled(enabled);
-        item.addActionListener(event -> action.run());
-        return item;
     }
 
     private void rename(UUID id) {

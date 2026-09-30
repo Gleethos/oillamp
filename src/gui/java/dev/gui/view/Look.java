@@ -97,6 +97,30 @@ final class Look extends StyleSheet {
             .borderRadius(14)
             .border(1, BORDER)
             .padding(8));
+        // The schedule: choices as chips, the days of a calendar, jobs as tiles, and times.
+        add(type(AbstractButton.class).group(Skin.CHIP), it -> it
+            .backgroundColor(TRANSPARENT)
+            .foregroundColor(TEXT)
+            .borderRadius(999)
+            .border(1, BORDER)
+            .padding(5, 12, 5, 12)
+            .componentFont(f -> f.family(FONT).size(12).color(TEXT))
+            .cursor(UI.Cursor.HAND));
+        add(type(AbstractButton.class).group(Skin.DAY), it -> it
+            .backgroundColor(TRANSPARENT)
+            .borderRadius(9)
+            .border(1, TRANSPARENT)
+            .padding(0)
+            .componentFont(f -> f.family(FONT).size(12).color(TEXT))
+            .cursor(UI.Cursor.HAND));
+        add(group(Skin.TILE), it -> it
+            .backgroundColor(CARD)
+            .borderRadius(14)
+            .border(1, BORDER)
+            .padding(12, 14, 12, 14));
+        add(group(Skin.CLOCK), it -> it
+            .componentFont(f -> f.family(FONT).size(12).weight(1.5f).color(SUBTEXT)));
+
         add(group(Skin.PROBLEM), it -> it
             .componentFont(f -> f.family(FONT).size(12).color(TROUBLE)));
         add(group(Skin.FINE), it -> it

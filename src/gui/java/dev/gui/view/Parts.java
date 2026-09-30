@@ -47,4 +47,17 @@ final class Parts {
         area.setLineWrap(true);
         area.setWrapStyleWord(true);
     }
+
+    /// Opens `menu` under `button`, its right edge on the button's: such a button is near the
+    /// window's right edge, and a menu opening rightwards would leave the window.
+    static void below(javax.swing.JPopupMenu menu, java.awt.Component button) {
+        menu.show(button, button.getWidth() - menu.getPreferredSize().width, button.getHeight());
+    }
+
+    static javax.swing.JMenuItem item(String text, boolean enabled, Runnable action) {
+        javax.swing.JMenuItem item = new javax.swing.JMenuItem(text);
+        item.setEnabled(enabled);
+        item.addActionListener(event -> action.run());
+        return item;
+    }
 }
