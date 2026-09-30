@@ -22,9 +22,11 @@ import sprouts.Tuple;
 /// @param lookUp   the models a server on this computer offered when last asked, for the settings
 /// @param zoom     how large a genie's desktop is shown
 /// @param area     the room the conversation, and the desktop beside it, have in the window
+/// @param now      the time the window shows things relative to, such as the schedule's timeline;
+///                 moved on every half minute
 public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings, Page page,
                           Optional<String> environmentKey, boolean sidebarShown, boolean narrow,
-                          ModelLookUp lookUp, DesktopZoom zoom, Area area) {
+                          ModelLookUp lookUp, DesktopZoom zoom, Area area, java.time.Instant now) {
 
     /// A width and a height, in the window's own units.
     public record Area(int width, int height) {}
@@ -37,7 +39,8 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
         public static final ModelLookUp NOT_YET = new ModelLookUp(Tuple.of(String.class), "");
     }
 
-    public enum Page { CHAT, SETTINGS }
+    /// The selected genie's chat, its schedule, or the settings every genie shares.
+    public enum Page { CHAT, SCHEDULE, SETTINGS }
 
     /// The selection when there is no genie.
     public static final UUID NONE = new UUID(0, 0);
@@ -45,16 +48,17 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public static GeniesState of(Tuple<Genie> genies, Settings settings, Optional<String> environmentKey) {
         return new GeniesState(genies, genies.isEmpty() ? NONE : genies.first().id(), settings,
                                Page.CHAT, environmentKey, true, false, ModelLookUp.NOT_YET, DesktopZoom.FIT,
-                               new Area(1030, 760));
+                               new Area(1030, 760), java.time.Instant.now());
     }
 
-    public GeniesState withGenies(Tuple<Genie> genies) { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
-    public GeniesState withSelected(UUID selected)     { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
-    public GeniesState withSettings(Settings settings) { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
-    public GeniesState withPage(Page page)             { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
-    public GeniesState withSidebarShown(boolean shown) { return new GeniesState(genies, selected, settings, page, environmentKey, shown, narrow, lookUp, zoom, area); }
-    public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
-    public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area); }
+    public GeniesState withGenies(Tuple<Genie> genies) { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
+    public GeniesState withSelected(UUID selected)     { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
+    public GeniesState withSettings(Settings settings) { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
+    public GeniesState withPage(Page page)             { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
+    public GeniesState withSidebarShown(boolean shown) { return new GeniesState(genies, selected, settings, page, environmentKey, shown, narrow, lookUp, zoom, area, now); }
+    public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
+    public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
+    public GeniesState withNow(java.time.Instant now)  { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
 
     /// Below this width, in the window's own units, the list of genies and a conversation do not
     /// both fit.
@@ -67,7 +71,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withViewWidth(int width) {
         boolean nowNarrow = narrow ? width < NARROW * 1.1 : width < NARROW / 1.1;
         if (nowNarrow == narrow) return this;
-        return new GeniesState(genies, selected, settings, page, environmentKey, !nowNarrow, nowNarrow, lookUp, zoom, area);
+        return new GeniesState(genies, selected, settings, page, environmentKey, !nowNarrow, nowNarrow, lookUp, zoom, area, now);
     }
 
     /// From this width of the conversation's area, a genie's desktop is shown beside the chat;
@@ -81,7 +85,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withArea(int width, int height) {
         Area rounded = new Area(width / 10 * 10, height / 10 * 10);
         return rounded.equals(area) ? this : new GeniesState(genies, selected, settings, page, environmentKey,
-                                                            sidebarShown, narrow, lookUp, zoom, rounded);
+                                                            sidebarShown, narrow, lookUp, zoom, rounded, now);
     }
 
     /// Below this width of the conversation's area, the header's buttons do not fit with their
@@ -147,8 +151,19 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
         return withGenies(rest).withSelected(next);
     }
 
+    /// Shows genie `id`: its chat, or its schedule when a schedule is on show.
     public GeniesState select(UUID id) {
-        return find(id).isPresent() ? withSelected(id).withPage(Page.CHAT) : this;
+        return find(id).isPresent() ? withSelected(id).withPage(page == Page.SCHEDULE ? Page.SCHEDULE : Page.CHAT) : this;
+    }
+
+    /// The selected genie's schedule, laid out around [#now].
+    public Timeline timeline() {
+        return Timeline.of(genie().schedule(), now);
+    }
+
+    /// [#now] on the clock of the selected genie's schedule.
+    public java.time.LocalDateTime localNow() {
+        return java.time.LocalDateTime.ofInstant(now, genie().schedule().zone());
     }
 
     /// The models a server on this computer offered. The first becomes the genies' model if none
