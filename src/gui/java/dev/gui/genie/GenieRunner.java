@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
+import dev.gui.desktop.Desktop;
 import dev.gui.model.Conversation;
 import dev.gui.model.Conversations;
 import dev.gui.model.Genie;
@@ -394,6 +395,7 @@ public final class GenieRunner {
             case LampEvent.RunFinished finished when runsOfThisChat.contains(finished.run().id()) -> chatRunFinished(finished);
             // Another run, such as a scheduled job's, may have added to the conversations.
             case LampEvent.RunFinished ignored -> reloadConversations();
+            case LampEvent.LookAtDesktop look -> changes.accept(genie -> genie.shows(look.what()));
             case LampEvent.SessionStateChanged changed when changed.status().state().equals("stopped") && !sleeping -> {
                 lamp = Optional.empty();
                 schedule.wentOut();
@@ -453,8 +455,8 @@ public final class GenieRunner {
 
     public boolean isAwake() { return lamp.isPresent(); }
 
-    /// The desktop's VNC socket, while the lamp is lit.
-    public Optional<Path> desktop() { return lamp.map(Lighter.Lit::desktop); }
+    /// The desktop, while the lamp is lit.
+    public Optional<Desktop> desktop() { return lamp.map(Lighter.Lit::desktop); }
 
     private void putOutLamp() {
         schedule.wentOut();

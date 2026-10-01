@@ -447,6 +447,37 @@ class KeepingAGenieAliveSpec extends Specification {
             !runner.isAwake()
     }
 
+    def 'When the genie shows the user something, its desktop opens next to the chat, saying what'() {
+        reportInfo """
+            The genie opened a map on its desktop and ran `lamp show "the map you asked for"`. The
+            lamp reports that it asks the user to look, and the genie's desktop opens next to the
+            chat, with what it shows. When the user closes the desktop, that is forgotten. The app
+            also learns the desktop's own size, which the desktop gets back when it was shown at
+            the size of the panel.
+        """
+        given:
+            awake()
+
+        when:
+            var shown = lampShow('the map you asked for')
+
+        then:
+            shown.status == 0
+            waitUntil { genie.desktopShown() }
+            genie.showing() == 'the map you asked for'
+
+        and: 'the desktop, as the app reaches it'
+            var desktop = runner.desktop().orElseThrow()
+            desktop.socket().endsWith('sockets/infra/vnc.sock')
+            [desktop.ownWidth(), desktop.ownHeight()] == [1920, 1080]
+
+        when: 'the user closes the desktop'
+            synchronized (this) { genie = genie.withDesktopShown(false) }
+
+        then:
+            genie.showing() == ''
+    }
+
     def 'A genie left running when the app closed is awake again when it opens, where it was'() {
         reportInfo """
             Closing Genies, the user may keep a genie running, so that it keeps to its schedule.
@@ -555,6 +586,18 @@ class KeepingAGenieAliveSpec extends Specification {
 
     private Path home() { Lamp.agentHome(lamp).orElseThrow() }
 
+    /** Runs the sandbox's real `lamp show`, as the genie does, against the session's desktop socket. */
+    private Map lampShow(String what) {
+        var socket = Files.list(host.runtime.resolve('oillamp')).findFirst().orElseThrow().resolve('sockets/host/desktop.sock')
+        var process = new ProcessBuilder('bash', 'src/main/resources/image/rootfs/usr/local/bin/lamp', 'show', what)
+                .redirectErrorStream(true)
+        process.environment().put('LAMP_DESKTOP_SOCKET', socket.toString())
+        var started = process.start()
+        var output = started.inputStream.text
+        started.waitFor()
+        [status: started.exitValue(), output: output]
+    }
+
     /** The questions and answers in the chat, leaving out the model's thinking and the tools. */
     private List<String> said() {
         genie.transcript().entries().findAll { it.kind() in [Entry.Kind.YOU, Entry.Kind.GENIE] }*.text()
@@ -589,7 +632,7 @@ class KeepingAGenieAliveSpec extends Specification {
                     builder.directory(home().toFile())
                     builder.start()
                 }
-                Path desktop() { lit.desktop() }
+                dev.gui.desktop.Desktop desktop() { lit.desktop() }
                 LampEvent.Run send(Lamp.Question question) { lit.send(question) }
                 void cancel(String run) { lit.cancel(run) }
                 void close() { closed << 'closed'; lit.close() }

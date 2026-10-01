@@ -20,10 +20,12 @@ import sprouts.Tuple;
 /// @param tokens    how many tokens its model calls have counted since the app started
 /// @param handouts  the files in its outbox, which the user can save
 /// @param desktopShown whether its desktop is shown next to the chat
+/// @param showing   what the genie said it shows on its desktop, such as "the chart you asked
+///                  for", until the user closes the desktop; empty when it said nothing
 /// @param conversations every conversation with it, and which one the chat shows
 /// @param schedule  the jobs that wake it, as its schedule page shows them
 public record Genie(UUID id, String name, Phase phase, String activity, Transcript transcript,
-                    String draft, int tokens, Tuple<Handout> handouts, boolean desktopShown,
+                    String draft, int tokens, Tuple<Handout> handouts, boolean desktopShown, String showing,
                     Conversations conversations, Schedule schedule)
         implements HasId<UUID> {
 
@@ -48,19 +50,21 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
 
     public static Genie asleep(UUID id, String name) {
         return new Genie(id, name, Phase.ASLEEP, "asleep", Transcript.empty(), "", 0,
-                         Tuple.of(Handout.class), false, Conversations.NONE, Schedule.unread(ZoneId.systemDefault()));
+                         Tuple.of(Handout.class), false, "", Conversations.NONE, Schedule.unread(ZoneId.systemDefault()));
     }
 
-    public Genie withName(String name)             { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
-    public Genie withPhase(Phase phase)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
-    public Genie withActivity(String activity)     { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
-    public Genie withTranscript(Transcript transcript) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
-    public Genie withDraft(String draft)           { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
-    public Genie withTokens(int tokens)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
-    public Genie withHandouts(Tuple<Handout> handouts) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
-    public Genie withDesktopShown(boolean shown)   { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, shown, conversations, schedule); }
-    public Genie withConversations(Conversations conversations) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
-    public Genie withSchedule(Schedule schedule)   { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }
+    public Genie withName(String name)             { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, showing, conversations, schedule); }
+    public Genie withPhase(Phase phase)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, showing, conversations, schedule); }
+    public Genie withActivity(String activity)     { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, showing, conversations, schedule); }
+    public Genie withTranscript(Transcript transcript) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, showing, conversations, schedule); }
+    public Genie withDraft(String draft)           { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, showing, conversations, schedule); }
+    public Genie withTokens(int tokens)            { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, showing, conversations, schedule); }
+    public Genie withHandouts(Tuple<Handout> handouts) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, showing, conversations, schedule); }
+    /// Closing the desktop also forgets what the genie said it shows there.
+    public Genie withDesktopShown(boolean shown)   { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, shown, shown ? showing : "", conversations, schedule); }
+    public Genie withShowing(String showing)       { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, showing, conversations, schedule); }
+    public Genie withConversations(Conversations conversations) { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, showing, conversations, schedule); }
+    public Genie withSchedule(Schedule schedule)   { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, showing, conversations, schedule); }
 
     // ─── its lamp ──────────────────────────────────────────────────────────────────────────
 
@@ -83,6 +87,12 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
     public Genie asleep() {
         return withPhase(Phase.ASLEEP).withActivity("asleep").withConversations(conversations.withAside(Optional.empty()))
                 .withTranscript(transcript.settled()).withDesktopShown(false);
+    }
+
+    /// The genie asks the user to look at its desktop, where it shows `what`: the desktop opens
+    /// next to the chat, and says what it shows.
+    public Genie shows(String what) {
+        return withDesktopShown(true).withShowing(what);
     }
 
     public Genie broken(String why) {

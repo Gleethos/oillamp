@@ -67,7 +67,7 @@ class UsingGeniesForRealSpec extends Specification {
             Files.isDirectory(shelf.lampOf(id).resolve('.oillamp'))
 
         and: 'its desktop is there to be shown'
-            app.desktopOf(id).map { Files.exists(it) }.orElse(false)
+            app.desktopOf(id).map { Files.exists(it.socket()) }.orElse(false)
     }
 
     @Requires({ KEY })

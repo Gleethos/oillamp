@@ -89,6 +89,7 @@ public final class GeniesView extends JPanel {
         });
         zoom = state.zoomTo(GeniesState::zoom, GeniesState::withZoom);
         Viewable.cast(zoom).onChange(From.ALL, it -> desktop.zoom(it.currentValue().orElse(DesktopZoom.FIT).scale()));
+        desktop.zoom(zoom.get().scale());
         desktop.onZoomSteps(steps -> zoom.update(From.VIEW, it -> steps > 0 ? it.in(desktop.fitScale()) : it.out(desktop.fitScale())));
         Viewable.cast(phase).onChange(From.ALL, it -> {
             if (it.currentValue().orElseNull() == Genie.Phase.WORKING) breathe();
@@ -109,6 +110,12 @@ public final class GeniesView extends JPanel {
     }
 
     // ─── the sidebar: every genie ──────────────────────────────────────────────────────────
+
+    /// Lets go of the desktop on show, which gets its own size back if it had the panel's. The
+    /// thread doing that, for an application that is about to end and must wait for it.
+    public Optional<Thread> letGoOfTheDesktop() {
+        return desktop.letGo();
+    }
 
     private UIForAnySwing<?, ?> sidebar() {
         return
@@ -144,6 +151,9 @@ public final class GeniesView extends JPanel {
     private UIForPanel<JPanel> genieChipBody(Var<Genie> shown) {
         UUID id = shown.get().id();
         Val<Boolean> isSelected = selected.viewAs(Boolean.class, it -> it.equals(id));
+        // What the genie shows on its desktop, said here until the user is at its chat to see it.
+        Val<Boolean> atItsChat = state.viewAs(Boolean.class, it -> it.selected().equals(id) && it.page() == GeniesState.Page.CHAT);
+        Val<Boolean> showsElsewhere = Viewable.of(Boolean.class, shown, atItsChat, (it, there) -> !it.showing().isEmpty() && !there);
         return
             panel("fill, ins 7 8 7 8, gap 8", "[26!][grow]")
             .withStyle(isSelected, (on, it) -> it
@@ -160,10 +170,13 @@ public final class GeniesView extends JPanel {
             })
             .add("top", ViewPartsUtil.lamp(shown.viewAs(Genie.Phase.class, Genie::phase), 26))
             .add("growx, wmin 0, wrap",
-                box("fill, wrap 1, ins 0, gap 0")
+                box("fill, wrap 1, ins 0, gap 0, hidemode 3")
                 .add("growx, wmin 0", label(shown.viewAsString(Genie::name)).withStyle(it -> it
                     .componentFont(f -> f.family(FONT).size(13).weight(2f).color(TEXT))))
-                .add("growx, wmin 0", label(shown.viewAsString(Genie::activity)).group(Skin.META)))
+                .add("growx, wmin 0", label(shown.viewAsString(Genie::activity)).group(Skin.META))
+                .add("growx, wmin 0", label(shown.viewAsString(it -> "▣  shows you: " + it.showing()))
+                     .isVisibleIf(showsElsewhere)
+                     .withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(FLAME)))))
             .add("span 2, growx, wmin 0", conversationsOf(shown));
     }
 
@@ -439,26 +452,42 @@ public final class GeniesView extends JPanel {
     }
 
     /// The genie's desktop, in a scroll pane so a large desktop never blocks the layout, with
-    /// the zoom above it: fit the room, or a scale at which small text is readable.
+    /// how it is shown above it: at the size of this panel, which the desktop then takes; fitted
+    /// into the panel at its own size; or at a scale at which small text is readable. Above that,
+    /// what the genie said it shows there.
     private UIForAnySwing<?, ?> desktopPane(Val<Boolean> shown) {
+        Val<Boolean> showing = genie.viewAs(Boolean.class, it -> !it.showing().isEmpty());
+        Val<String> scale = Viewable.of(String.class, zoom, desktop.desktopSize(),
+                (it, size) -> it.isPanel() ? size : it.isFit() ? "fitted" : it.label());
+        // A recorded desktop keeps its size; at the panel's size, that needs saying.
+        Val<Boolean> keeps = Viewable.of(Boolean.class, zoom, desktop.keepsItsSize(), (it, kept) -> it.isPanel() && kept);
+        Val<String> hint = Viewable.of(String.class, keeps, state.viewAs(Boolean.class, GeniesState::narrow),
+                (kept, narrow) -> kept ? "Recorded, so it keeps its own size" : narrow ? "" : "Click the desktop to use it");
         return
-            panel("fill, wrap 1, ins 8 12 12 12, gap 6", "[grow]", "[][grow]")
+            panel("fill, wrap 1, ins 8 12 12 12, gap 6, hidemode 3", "[grow]", "[][][grow]")
             .isVisibleIf(shown)
             .withMinSize(0, 0)
             .withStyle(state.viewAs(Integer.class, GeniesState::desktopHeight), (height, it) -> it
                 .backgroundColor(TRANSPARENT).prefHeight(height))
             .add("growx, wmin 0",
-                box("fill, ins 0, gap 2, hidemode 3", "[][][][][grow, right]")
-                .add(zoomButton("⊡  Fit", "Fit the whole desktop into the room there is")
+                label(genie.viewAsString(it -> "✦  " + it.name() + " shows you: " + it.showing()))
+                .isVisibleIf(showing)
+                .withStyle(it -> it.componentFont(f -> f.family(FONT).size(13).weight(2f).color(FLAME))))
+            .add("growx, wmin 0",
+                box("fill, ins 0, gap 2, hidemode 3", "[][][][][][grow, right]")
+                .add(modeButton("⤢  Panel", "Give the desktop the size of this panel, so what the genie shows fills it."
+                                + " It gets its own size back when you close it.", zoom.viewAs(Boolean.class, DesktopZoom::isPanel))
+                     .onClick(it -> zoom.set(From.VIEW, DesktopZoom.PANEL)))
+                .add(modeButton("⊡  Fit", "Show the whole desktop at its own size, shrunk into this panel",
+                                zoom.viewAs(Boolean.class, DesktopZoom::isFit))
                      .onClick(it -> zoom.set(From.VIEW, DesktopZoom.FIT)))
                 .add(zoomButton("−", "Smaller (or Ctrl and the mouse wheel on the desktop)")
                      .onClick(it -> zoom.update(From.VIEW, z -> z.out(desktop.fitScale()))))
-                .add(label(zoom.viewAsString(it -> it.isFit() ? "fitted" : it.label())).group(Skin.META)
-                     .withMinSize(46, 0).withHorizontalAlignment(UI.HorizontalAlignment.CENTER))
+                .add(label(scale).group(Skin.META)
+                     .withMinSize(70, 0).withHorizontalAlignment(UI.HorizontalAlignment.CENTER))
                 .add(zoomButton("+", "Larger (or Ctrl and the mouse wheel on the desktop)")
                      .onClick(it -> zoom.update(From.VIEW, z -> z.in(desktop.fitScale()))))
-                .add("wmin 0", label(state.viewAsString(it -> it.narrow() ? "" : "Click the desktop to use it"))
-                     .group(Skin.META)))
+                .add("wmin 0", label(hint).group(Skin.META)))
             .add("grow, push, wmin 0, hmin 0",
                 scrollPane().withEmptyBorder(0).withMinSize(0, 0)
                 .withStyle(it -> it.backgroundColor(SMOKE).border(1, BORDER).borderRadius(10))
@@ -647,6 +676,14 @@ public final class GeniesView extends JPanel {
     /// The lamp, lit, for the window's icon.
     public static Image windowIcon() {
         return SvgIcon.of(LampSvgUtil.lamp(Genie.Phase.READY)).withIconSize(64, 64).getImage();
+    }
+
+    /// One of the ways to show the desktop, lit while it is the one in use.
+    private static UIForButton<JButton> modeButton(String text, String tip, Val<Boolean> on) {
+        return button(text).group(Skin.ICON_BUTTON).withTooltip(tip)
+                .withStyle(on, (lit, it) -> it.borderRadius(9).padding(3, 10, 3, 10)
+                    .backgroundColor(lit ? RAISED : TRANSPARENT)
+                    .componentFont(f -> f.family(FONT).size(12).weight(lit ? 2f : 1f).color(lit ? TEXT : SUBTEXT)));
     }
 
     private static UIForButton<JButton> zoomButton(String text, String tip) {

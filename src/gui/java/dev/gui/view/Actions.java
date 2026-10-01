@@ -4,6 +4,8 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.UUID;
 
+import dev.gui.desktop.Desktop;
+
 /// What the window asks the app to do, beyond changing its state: everything that starts,
 /// stops or moves something outside the window. The app, [dev.gui.Genies], does it.
 public interface Actions {
@@ -70,6 +72,6 @@ public interface Actions {
     /// The settings page closes. Leaving it, however, keeps the settings.
     void settingsDone();
 
-    /// The socket of the genie's desktop, while it is awake.
-    Optional<Path> desktopOf(UUID genie);
+    /// The genie's desktop, while it is awake.
+    Optional<Desktop> desktopOf(UUID genie);
 }
