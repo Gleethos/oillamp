@@ -156,11 +156,11 @@ known lifetime:
 | Place | Written by | Read by | Lifetime |
 |---|---|---|---|
 | `<lamp>/oillamp.toml` | you; created from a template if missing | every command that reads configuration | until `oillamp remove` |
-| `<lamp>/.oillamp/lamp.json` | `LampPlanner` (identity); `Supervisor` (`lastSessionAt`) | every command that names the lamp | until `oillamp remove` |
+| `<lamp>/.oillamp/lamp.json` | `LampPlanUtil` (identity); `Supervisor` (`lastSessionAt`) | every command that names the lamp | until `oillamp remove` |
 | `<lamp>/.oillamp/lock` | `LampLock`; the kernel holds the lock | `Commands.at` | the lock ends with the process, however it ends |
 | `<lamp>/.oillamp/session.json` | `Supervisor`, after its sockets are bound | `Commands.at` on a busy lamp | deleted at shutdown; a killed supervisor leaves it |
-| `<lamp>/.oillamp/keys/`, `ssh_config`, `known_hosts` | `LampPlanner` (keys once, the rest every start) | the shell window, `oillamp shell` | until `oillamp remove` |
-| `<lamp>/.oillamp/session/` | `LampPlanner.planSession`, every start | the entrypoint, sshd, every shell | rewritten each session |
+| `<lamp>/.oillamp/keys/`, `ssh_config`, `known_hosts` | `LampPlanUtil` (keys once, the rest every start) | the shell window, `oillamp shell` | until `oillamp remove` |
+| `<lamp>/.oillamp/session/` | `LampPlanUtil.planSession`, every start | the entrypoint, sshd, every shell | rewritten each session |
 | `<lamp>/.oillamp/image/context/` | `ImageResources`, before a build | `podman build` | overwritten at the next build |
 | `<lamp>/.oillamp/sockets/*/` | the proxy (host); wayvnc and the ssh listener (container) | relays, viewer, socat | files outlive their servers; deleted before the next session |
 | `<lamp>/.oillamp/recordings/` | wf-recorder | you, the agent (read only) | until retention deletes them |
@@ -169,8 +169,8 @@ known lifetime:
 | `<lamp>/.oillamp/schedule.json` | `ScheduleBook`, for `oillamp schedule`, for the session as runs start, and for the agent's requests | `oillamp schedule`, the session every 30 s | until `oillamp remove` |
 | `<lamp>/.oillamp/schedule.lock` | `ScheduleBook`; held for the moment one change takes | every other change | the lock ends with the process |
 | `<lamp>/.oillamp/history.lock` | `History`; the kernel holds the lock while one save or restore runs | every other save and restore, which wait for it | the lock ends with the process |
-| `<lamp>/agent-lamp-<id>/` | the agent; `LampPlanner` writes `AGENTS.md`, `.bashrc` and, with the schedule on, `.pi/agent/extensions/oillamp-schedule.js` | the agent, you | until `oillamp remove` |
-| `$XDG_RUNTIME_DIR/oillamp/<id>/sockets` (a symlink) | `LampPlanner.planSkeleton`, every start | every host-side socket path | in memory: gone at reboot, made again next start |
+| `<lamp>/agent-lamp-<id>/` | the agent; `LampPlanUtil` writes `AGENTS.md`, `.bashrc` and, with the schedule on, `.pi/agent/extensions/oillamp-schedule.js` | the agent, you | until `oillamp remove` |
+| `$XDG_RUNTIME_DIR/oillamp/<id>/sockets` (a symlink) | `LampPlanUtil.planSkeleton`, every start | every host-side socket path | in memory: gone at reboot, made again next start |
 | `$XDG_RUNTIME_DIR/oillamp/<id>/run/*.sock` | `Supervisor` (relays, control socket) | `oillamp stop/status/view/shell`, the shell window | deleted at shutdown; a killed supervisor leaves them |
 | `~/.config/oillamp/config.toml` | you (optional) | every command that reads configuration | until you delete it |
 | `~/.cache/oillamp/<version>-<fingerprint>/` | the launcher, on first run | the launcher | until you delete it |
@@ -233,7 +233,7 @@ The paths come from `LampLayout`. Why it is laid out like this:
   reason.
 - **`.oillamp/` is mode 0700**, so no other user on the host can reach the sockets inside it. That
   lets the proxy socket itself be 0666, so the infra user's socat can connect.
-- **`sockets/infra/` and `recordings/` belong to the infra user.** `LampPlanner` hands them over
+- **`sockets/infra/` and `recordings/` belong to the infra user.** `LampPlanUtil` hands them over
   with `podman unshare chown 1001:1001`. The agent (uid 1000, no capabilities) cannot write,
   delete or replace anything there. It can *read* recordings, on purpose: you need to read them,
   and to the infra user you and the agent are the same kind of outsider.
@@ -485,9 +485,9 @@ The same, step by step:
      else's files, or damaged.
    - Loads the configuration (`ConfigLoader`), decides on the GPU (`Gpu.decide`) and prints a
      summary.
-   - `LampPlanner.planSkeleton` plans the directory tree, identity file, SSH keys, ownership
+   - `LampPlanUtil.planSkeleton` plans the directory tree, identity file, SSH keys, ownership
      changes, recording retention and the runtime directory. `StepRunner` runs it.
-   - `LampPlanner.planSession` then plans the per-session files: `runtime.env`, the agent guide,
+   - `LampPlanUtil.planSession` then plans the per-session files: `runtime.env`, the agent guide,
      the agent's git identity (`AgentGitConfigUtil`), `authorized_keys`, `ssh_config`, `known_hosts`. It is a second plan because it needs the
      public keys the first one generated.
 5. **`--dry-run` stops here**, after also planning the image and container steps, so the full
@@ -769,7 +769,7 @@ Exit codes by shutdown reason (`ShutdownReason.exitStatus`): `oillamp stop` → 
 
 If the supervisor is killed (`kill -9`, power loss), the OS releases the lock, but `session.json`,
 the `run/` sockets and the running container stay. On the next `oillamp at`, `SandboxPhase` removes
-the container with the same name and `LampPlanner` removes the stale `session.json`. `oillamp stop`
+the container with the same name and `LampPlanUtil` removes the stale `session.json`. `oillamp stop`
 on a lamp with no supervisor removes all three. A reboot empties the runtime directory and stops
 the container, and the next start cleans up the rest.
 
@@ -818,7 +818,7 @@ conversation:
 - a new one: `new_session`, and for a job's run `set_session_name` (`run-12 (job-3)`);
 - an existing one: `switch_session`, then, to continue after an entry or instead of a question,
   `/oillamp-goto <entry>`. That is a command of oillamp's own pi extension,
-  `~/.pi/agent/extensions/oillamp-conversations.js`, which `LampPlanner` writes every session,
+  `~/.pi/agent/extensions/oillamp-conversations.js`, which `LampPlanUtil` writes every session,
   because pi's RPC mode can open a conversation but not move within one. It calls pi's
   `navigateTree`: moving to a question sets the leaf to the question's parent, so the next prompt
   is asked instead of it; moving to any other entry sets the leaf to that entry. The extension
@@ -892,7 +892,7 @@ which the sandbox sees as `/oillamp/sockets/host/schedule.sock`, with `Control.S
 `Runs.answerAgent`: one JSON line in, one out. Requests are `list`, `add` (`cron`, `at`, `prompt`,
 `expires`), `remove` (`id`) and `history` (`run`, or nothing for the recent runs). Replies have a
 `text` or an `error`, written for the agent to read. The extension
-`src/main/resources/agent/oillamp-schedule.js`, which `LampPlanner` writes into pi's extension
+`src/main/resources/agent/oillamp-schedule.js`, which `LampPlanUtil` writes into pi's extension
 directory each session, turns these into the tools `schedule_add`, `schedule_list`,
 `schedule_remove` and `run_history`. It checks nothing itself: the host decides. `AGENTS.md` gets
 a section on the tools, the limits and the notes.
@@ -1189,8 +1189,8 @@ line** by the entrypoint or the supervisor.
 | wayvnc | command-line flags, `--config=/dev/null` | every start, the entrypoint (`OILLAMP_VNC_MAX_FPS`) |
 | wf-recorder | command-line flags | every start, the entrypoint (`OILLAMP_RECORDING_*`) |
 | socat bridges | command-line arguments | every start, the entrypoint (`OILLAMP_PROXY_PORT`, `OILLAMP_FORWARDS`) |
-| sshd | `/etc/oillamp/sshd_config`; `HostKey` and `AuthorizedKeysFile` point into `/oillamp/session/` | config in the image; keys copied by `LampPlanner` every start |
-| every shell | `/etc/profile.d/oillamp.sh`, reached from `/etc/profile` and from `~/.bashrc` | the script is in the image; it reads `runtime.env`; `.bashrc` is written once by `LampPlanner` |
+| sshd | `/etc/oillamp/sshd_config`; `HostKey` and `AuthorizedKeysFile` point into `/oillamp/session/` | config in the image; keys copied by `LampPlanUtil` every start |
+| every shell | `/etc/profile.d/oillamp.sh`, reached from `/etc/profile` and from `~/.bashrc` | the script is in the image; it reads `runtime.env`; `.bashrc` is written once by `LampPlanUtil` |
 | git | `/etc/gitconfig`, which includes `/oillamp/session/gitconfig` | the include is in the image; the file is written every start by `AgentGitConfigUtil`, from `git.*`; git on the host never reads it |
 | outbound ssh | `/etc/ssh/ssh_config.d/50-oillamp-proxy.conf` | in the image |
 | foot (in-sandbox terminal) | `/etc/xdg/foot/foot.ini` | in the image |
@@ -1198,7 +1198,7 @@ line** by the entrypoint or the supervisor.
 | opencode | `/usr/local/share/oillamp/opencode/opencode.json` via `OPENCODE_CONFIG` | written during the image build |
 | SDKMAN | `~/.sdkman/etc/config` (questions off) | installed in the image, copied into the home by the entrypoint once |
 | the agent | `~/AGENTS.md` | every start, `AgentGuide`, from the live configuration |
-| ssh on the host | `.oillamp/ssh_config`, `.oillamp/known_hosts` | every start, `LampPlanner` |
+| ssh on the host | `.oillamp/ssh_config`, `.oillamp/known_hosts` | every start, `LampPlanUtil` |
 | the terminal emulator | its argument template in `TerminalEmulatorUtil` | chosen each session from `terminal.*` |
 | vncviewer | command-line flags | each time a viewer opens, `Viewers`, from `viewer.*` |
 | the egress proxy | the `[network]` table | read at start into a `Policy` value |
@@ -1316,7 +1316,7 @@ removed.
 | Entry and commands | `OilLamp`, `Invocation`, `Commands`, `Context`, `ConsoleRenderer`, `Handbook` (the texts of `oillamp about` and `oillamp guide`) |
 | The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `Filesystem`, `LampLock` |
 | Host phase | `HostPhase`, `HostProbe`, `HostPlanner`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
-| Lamp phase | `LampPhase`, `LampPlanner`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
+| Lamp phase | `LampPhase`, `LampPlanUtil`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
 | History | `History` (reads the agent directory, writes and reads the repository), `GitFormat` (git's object format and the commit messages, pure) |
 | Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `TimeNotationUtil` (times as people write them), `WakePrompt` (a run's prompt, pure); in `dev.lamp`, `PiSessionFile` (pi's session files as `Lamp.Conversation`, pure) |
 | Configuration | `ConfigLoader`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `GeneratedFileTextUtil`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |

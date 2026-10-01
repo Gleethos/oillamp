@@ -21,9 +21,9 @@ import sprouts.Tuple;
 /// The ownership of the lamp's directories is decided here. The recordings directory and the
 /// infra socket directory are given to container uid 1001, so the agent (uid 1000) can read its
 /// recordings but cannot change them.
-final class LampPlanner {
+final class LampPlanUtil {
 
-    private LampPlanner() {}
+    private LampPlanUtil() {}
 
     /// The container's infra user, which owns everything the agent must not be able to change.
     public static final int INFRA_UID = 1001;

@@ -267,12 +267,12 @@ final class Commands {
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
         for (Path lampPath : lampPaths) roots.add(LampPhase.resolve(machine, lampPath));
 
-        Tuple<LampPlanner.Removal> removals = Tuple.of(LampPlanner.Removal.class);
+        Tuple<LampPlanUtil.Removal> removals = Tuple.of(LampPlanUtil.Removal.class);
         Tuple<Problem> refusals = Tuple.of(Problem.class);
         boolean anyInUse = false;
         for (Path root : roots) {
-            Result<LampPlanner.Removal> examined = examineForRemoval(root);
-            if (examined instanceof Result.Ok<LampPlanner.Removal> ok) removals = removals.add(ok.value());
+            Result<LampPlanUtil.Removal> examined = examineForRemoval(root);
+            if (examined instanceof Result.Ok<LampPlanUtil.Removal> ok) removals = removals.add(ok.value());
             else refusals = refusals.addAll(examined.problems());
             anyInUse |= examined.problems().stream().anyMatch(p -> p.code().equals(Problems.LAMP_STILL_RUNNING));
         }
@@ -286,12 +286,12 @@ final class Commands {
         }
 
         boolean several = removals.size() > 1;
-        for (LampPlanner.Removal found : removals)
+        for (LampPlanUtil.Removal found : removals)
             context.emit(new LampEvent.Answer((several ? "── " + found.root() + "\n\n" : "")
                     + describeWhatWouldGo(found)));
         if (!confirmed && !context.options().dryRun()) {
             StringBuilder command = new StringBuilder("oillamp remove");
-            for (LampPlanner.Removal found : removals) command.append(' ').append(found.root());
+            for (LampPlanUtil.Removal found : removals) command.append(' ').append(found.root());
             context.emit(new LampEvent.Answer("Nothing has been removed. To go ahead"
                     + (several ? " and delete all " + removals.size() + " lamps" : "") + ":\n\n  "
                     + command + " --yes"));
@@ -302,8 +302,8 @@ final class Commands {
         // delete does not stop the others.
         Tuple<Problem> failures = Tuple.of(Problem.class);
         int removed = 0;
-        for (LampPlanner.Removal found : removals) {
-            Result<Plan> done = new StepRunner(machine, context).run(LampPlanner.planRemoval(found));
+        for (LampPlanUtil.Removal found : removals) {
+            Result<Plan> done = new StepRunner(machine, context).run(LampPlanUtil.planRemoval(found));
             if (done instanceof Result.Err<Plan> failure) {
                 context.report(failure.problems());
                 failures = failures.addAll(failure.problems());
@@ -325,7 +325,7 @@ final class Commands {
 
     /// What `remove` would delete for one lamp, or why it must not: the directory holds nothing
     /// of oillamp's, or the lamp is still running.
-    private Result<LampPlanner.Removal> examineForRemoval(Path root) {
+    private Result<LampPlanUtil.Removal> examineForRemoval(Path root) {
         DirListing listing = Filesystem.list(root);
         Tuple<Path> agentDirs = Tuple.of(Path.class);
         for (String entry : listing.entries())
@@ -348,7 +348,7 @@ final class Commands {
         if (inUse.isPresent())
             return Result.err(Problems.lampStillRunning(root, inUse.get()));
 
-        return Result.ok(new LampPlanner.Removal(root, agentDirs, layout.map(LampLayout::runtimeDir)));
+        return Result.ok(new LampPlanUtil.Removal(root, agentDirs, layout.map(LampLayout::runtimeDir)));
     }
 
     /// What is still running for this lamp, if anything: a container, a supervisor that answers, or
@@ -414,7 +414,7 @@ final class Commands {
 
     /// The list of what `remove` would delete, shown before the user adds `--yes`. The
     /// agent's home is listed entry by entry, so the user can see which repositories would go.
-    private static String describeWhatWouldGo(LampPlanner.Removal found) {
+    private static String describeWhatWouldGo(LampPlanUtil.Removal found) {
         StringBuilder out = new StringBuilder("`oillamp remove` permanently deletes:\n\n");
         for (Path agentDir : found.agentDirs()) {
             out.append("  ").append(agentDir.getFileName()).append("/\n      the agent's home");
@@ -898,7 +898,7 @@ final class Commands {
             return ExitStatus.SUCCESS;
         }
         Result<Plan> done = new StepRunner(machine, context)
-                .run(LampPlanner.planPrune(doomed, policy));
+                .run(LampPlanUtil.planPrune(doomed, policy));
         if (done instanceof Result.Err<Plan> failure) {
             context.report(failure.problems());
             return exitStatusFor(failure.problems());

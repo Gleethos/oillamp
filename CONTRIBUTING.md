@@ -41,13 +41,13 @@ clear them now and then with `podman images localhost/oillamp/sandbox` and `podm
 
 1. **Run it with `--dry-run`.** `oillamp at /tmp/x --dry-run --verbose` prints everything a real
    run would do, including the full `podman run` command, and changes nothing. Read that output
-   next to `LampPlanner.java`.
+   next to `LampPlanUtil.java`.
 2. **`OilLamp.java`**: the entry point.
 3. **`Machine.java`**: every effect the program can have on your computer. The exceptions are the
    lamp's own files (`Filesystem.java`) and the sockets of a running session (`Relay.java`,
    `Control.java`, `Egress.java`).
 4. **`Step.java`**: every kind of change oillamp can make during setup.
-5. **`LampPlanner.java`**: a pure function turning facts into a plan. The clearest example of the
+5. **`LampPlanUtil.java`**: a pure function turning facts into a plan. The clearest example of the
    style of the whole code base.
 6. **`SandboxPhase.java`**: where the container command is built.
 7. **`SessionMachine.java`**: every rule about how a session starts and ends.

@@ -17,7 +17,7 @@ import sprouts.Tuple;
 /// It does the reading the pure planners cannot: resolves the path, looks at what is there,
 /// reads the configuration files and checks the filesystem can hold Unix sockets. The decisions are
 /// made by [LampPaths], [LampDirectoryUtil], [ConfigLoader], [Gpu] and
-/// [LampPlanner]. The lock is taken afterwards, by `Commands.at`.
+/// [LampPlanUtil]. The lock is taken afterwards, by `Commands.at`.
 final class LampPhase {
 
     /// Filesystems that cannot hold Unix domain sockets, which every connection to the sandbox uses.
@@ -86,7 +86,7 @@ final class LampPhase {
 
         SessionId session = SessionId.at(machine.now());
 
-        Result<Plan> skeleton = LampPlanner.planSkeleton(new LampPlanner.Inputs(
+        Result<Plan> skeleton = LampPlanUtil.planSkeleton(new LampPlanUtil.Inputs(
                 state, layout, config, session, agentId, machine.now(), context.version(),
                 existingRecordings(layout), Optional.empty(), Filesystem.exists(layout.sessionMeta()),
                 context.options().init()));
@@ -126,11 +126,11 @@ final class LampPhase {
     }
 
     /// Renders the per-session files. Separate from the skeleton because it needs the keys that
-    /// the skeleton generated; see [LampPlanner#planSession].
+    /// the skeleton generated; see [LampPlanUtil#planSession].
     private Result<Plan> planSessionFiles(LampLayout layout, LampConfig config,
                                           SessionId session, Gpu.Decision gpu) {
         if (context.options().dryRun())
-            return LampPlanner.planSession(layout, "(generated client key)", "(generated host key)",
+            return LampPlanUtil.planSession(layout, "(generated client key)", "(generated host key)",
                     "(rendered per session)", "(rendered per session)", "(rendered per session)",
                     config.schedule().enabled() ? Optional.of("(the scheduling tools)") : Optional.empty());
 
@@ -146,7 +146,7 @@ final class LampPhase {
                 RuntimeEnv.variables(config, layout, session, gpu.renderer(), inheritedFromHost()));
         if (environment instanceof Result.Err<String> failure) return Result.err(failure.problems());
 
-        return LampPlanner.planSession(layout, clientKey.get(), hostKey.get(),
+        return LampPlanUtil.planSession(layout, clientKey.get(), hostKey.get(),
                 ((Result.Ok<String>) environment).value(), AgentGuide.render(config),
                 AgentGitConfigUtil.render(gitAuthor(config.git(), layout)),
                 config.schedule().enabled() ? Optional.of(AgentGuide.scheduleTools()) : Optional.empty());
