@@ -12,9 +12,9 @@ import sprouts.Tuple;
 /// Decides what is at a lamp path: nothing, an empty directory, an existing lamp, someone else's
 /// files, or a damaged lamp. The caller reads the directory listing and `lamp.json`; this class
 /// only interprets them.
-final class LampClassifier {
+final class LampDirectoryUtil {
 
-    private LampClassifier() {}
+    private LampDirectoryUtil() {}
 
     /// Entries that do not make a directory count as someone else's: files that editors and file
     /// managers leave behind, and the lamp's own `oillamp.toml` and `README.txt`. Writing

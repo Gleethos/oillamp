@@ -103,7 +103,7 @@ final class StepRunner {
                     yield Result.ok(step);
                 }
                 case Step.WriteLampMeta s -> {
-                    Filesystem.writeFile(s.path(), LampClassifier.render(s.meta()),
+                    Filesystem.writeFile(s.path(), LampDirectoryUtil.render(s.meta()),
                             PosixMode.PUBLIC_FILE);
                     yield Result.ok(step);
                 }

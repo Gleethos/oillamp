@@ -481,7 +481,7 @@ The same, step by step:
    - Resolves the path (following symlinks) and refuses dangerous ones (`LampPaths`): `/`, your
      home directory itself, system directories such as `/etc`.
    - Refuses network and FAT filesystems, which cannot hold Unix sockets.
-   - `LampClassifier` decides what the directory is: missing, empty, an existing lamp, someone
+   - `LampDirectoryUtil` decides what the directory is: missing, empty, an existing lamp, someone
      else's files, or damaged.
    - Loads the configuration (`ConfigLoader`), decides on the GPU (`Gpu.decide`) and prints a
      summary.
@@ -1316,7 +1316,7 @@ removed.
 | Entry and commands | `OilLamp`, `Invocation`, `Commands`, `Context`, `ConsoleRenderer`, `Handbook` (the texts of `oillamp about` and `oillamp guide`) |
 | The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `Filesystem`, `LampLock` |
 | Host phase | `HostPhase`, `HostProbe`, `HostPlanner`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
-| Lamp phase | `LampPhase`, `LampPlanner`, `LampClassifier`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
+| Lamp phase | `LampPhase`, `LampPlanner`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
 | History | `History` (reads the agent directory, writes and reads the repository), `GitFormat` (git's object format and the commit messages, pure) |
 | Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `TimeNotationUtil` (times as people write them), `WakePrompt` (a run's prompt, pure); in `dev.lamp`, `PiSessionFile` (pi's session files as `Lamp.Conversation`, pure) |
 | Configuration | `ConfigLoader`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `GeneratedFileTextUtil`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |

@@ -166,7 +166,7 @@ final class Filesystem {
                            .orElse(created);
     }
 
-    /// Lists a directory for [LampClassifier].
+    /// Lists a directory for [LampDirectoryUtil].
     public static DirListing list(Path path) {
         if (!Files.exists(path)) return DirListing.missing();
         if (!Files.isDirectory(path) || !Files.isReadable(path))

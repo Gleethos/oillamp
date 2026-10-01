@@ -4,7 +4,7 @@ import java.nio.file.Path;
 
 import sprouts.Tuple;
 
-/// What oillamp found at the path given as a lamp. Decided by [LampClassifier].
+/// What oillamp found at the path given as a lamp. Decided by [LampDirectoryUtil].
 sealed interface LampState {
 
     /// Nothing there yet. oillamp will create it, including missing parent directories.

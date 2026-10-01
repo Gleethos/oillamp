@@ -16,7 +16,7 @@ import sprouts.Tuple;
 ///
 /// It does the reading the pure planners cannot: resolves the path, looks at what is there,
 /// reads the configuration files and checks the filesystem can hold Unix sockets. The decisions are
-/// made by [LampPaths], [LampClassifier], [ConfigLoader], [Gpu] and
+/// made by [LampPaths], [LampDirectoryUtil], [ConfigLoader], [Gpu] and
 /// [LampPlanner]. The lock is taken afterwards, by `Commands.at`.
 final class LampPhase {
 
@@ -46,7 +46,7 @@ final class LampPhase {
         if (UNUSABLE_FILESYSTEMS.contains(host.fileSystemTypeOfLamp()))
             return Result.err(Problems.lampBadFilesystem(root, host.fileSystemTypeOfLamp()));
 
-        LampState state = LampClassifier.classify(root, Filesystem.list(root),
+        LampState state = LampDirectoryUtil.classify(root, Filesystem.list(root),
                 Filesystem.readString(root.resolve(".oillamp").resolve("lamp.json")));
 
         AgentId agentId = switch (state) {

@@ -980,7 +980,7 @@ final class Commands {
     /// `shell`, `stop`, `status` and `recordings`.
     private Result<LampLayout> layoutOf(Path lampPath) {
         Path root = LampPhase.resolve(machine, lampPath);
-        LampState state = LampClassifier.classify(root, Filesystem.list(root),
+        LampState state = LampDirectoryUtil.classify(root, Filesystem.list(root),
                 Filesystem.readString(root.resolve(".oillamp").resolve("lamp.json")));
         if (!(state instanceof LampState.Existing existing))
             return Result.err(Problems.lampNotWritable(root,

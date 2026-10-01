@@ -492,12 +492,12 @@ final class Supervisor {
         Path metaFile = prepared.layout().lampMeta();
         Optional<String> json = Filesystem.readString(metaFile);
         if (json.isEmpty()) return Tuple.of(Problem.class);
-        LampState meta = LampClassifier.classify(prepared.layout().root(),
+        LampState meta = LampDirectoryUtil.classify(prepared.layout().root(),
                 Filesystem.list(prepared.layout().root()), json);
         if (!(meta instanceof LampState.Existing existing)) return Tuple.of(Problem.class);
         try {
             Filesystem.writeFile(metaFile,
-                    LampClassifier.render(existing.meta().usedAt(machine.now())),
+                    LampDirectoryUtil.render(existing.meta().usedAt(machine.now())),
                     PosixMode.PUBLIC_FILE);
             return Tuple.of(Problem.class);
         } catch (IOException e) {
