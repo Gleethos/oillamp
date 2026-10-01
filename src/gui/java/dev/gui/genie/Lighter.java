@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+import dev.gui.desktop.Desktop;
 import dev.gui.model.Settings;
 import dev.lamp.Lamp;
 import dev.lamp.LampEvent;
@@ -51,8 +52,8 @@ public interface Lighter {
         /// Runs a command in the sandbox, as the agent, with the agent's environment.
         Process exec(String... command) throws IOException;
 
-        /// The sandbox desktop's VNC socket.
-        Path desktop();
+        /// The sandbox's desktop.
+        Desktop desktop();
 
         /// See [Lamp#send].
         LampEvent.Run send(Lamp.Question question) throws IOException, InterruptedException, Lamp.Failed;

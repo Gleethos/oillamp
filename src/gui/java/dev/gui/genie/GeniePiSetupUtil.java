@@ -60,7 +60,8 @@ final class GeniePiSetupUtil {
               user can save it. Mention the file's name when you do.
             - Files the user gives you arrive in ~/inbox. The app tells you when one does.
             - To show the user something graphical (a picture, a web page, a program), open it on
-              your desktop and say so; the user can watch your desktop in the app.
+              your desktop, fullscreen where it can be, and run `lamp show "what it is"`: the app
+              then shows your desktop next to the chat, usually at the size of that panel.
             - Keep answers short unless the user asks for more.
             """.formatted(name);
     }

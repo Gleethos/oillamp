@@ -86,7 +86,7 @@ class RunningARealGenieSpec extends Specification {
             var painted = new CopyOnWriteArrayList<String>()
 
         when:
-            var desktop = RfbConnection.open(runner.desktop().get(), new RfbConnection.Listener() {
+            var desktop = RfbConnection.open(runner.desktop().get().socket(), new RfbConnection.Listener() {
                 void resized(int width, int height) {}
                 void painted(int x, int y, int width, int height) { painted << "${width}x${height}".toString() }
                 void ended(Optional<String> reason) {}

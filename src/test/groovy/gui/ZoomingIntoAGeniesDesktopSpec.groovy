@@ -1,14 +1,19 @@
 package gui
 
 import dev.gui.model.DesktopZoom
+import dev.gui.model.Genie
+import dev.gui.model.GeniesState
+import dev.gui.model.Settings
 import spock.lang.Specification
+import sprouts.Tuple
 
 /**
  *  How large a genie's desktop is shown next to the chat.
  *
- *  <p>A genie's desktop has a size of its own, usually larger than the room beside the chat. By
- *  default it is fitted into that room, so all of it is visible. To read small text, the user
- *  zooms in, with the buttons above it or Control and the mouse wheel; it then scrolls.
+ *  <p>By default the desktop takes the size of the room beside the chat, its panel, so that what
+ *  the genie shows there fills it, pixel for pixel. The user can show it at its own size instead,
+ *  which is usually larger than the panel: fitted into it, so all of it is visible, or zoomed in
+ *  to read small text, with the buttons above it or Control and the mouse wheel; it then scrolls.
  */
 class ZoomingIntoAGeniesDesktopSpec extends Specification {
 
@@ -37,10 +42,34 @@ class ZoomingIntoAGeniesDesktopSpec extends Specification {
 
     def 'The zoom says what it is'() {
         reportInfo """
-            Between the buttons, the current size is shown: fitted, or a percentage.
+            Between the buttons, the current size is shown: the panel's, fitted, or a percentage.
         """
         expect:
+            DesktopZoom.PANEL.label() == 'Panel'
             DesktopZoom.FIT.label() == 'Fit'
             new DesktopZoom(1.25).label() == '125%'
+    }
+
+    def 'A desktop takes the size of its panel, unless the user chooses otherwise'() {
+        reportInfo """
+            A genie shows the user something on its desktop, so the desktop fits the panel it is
+            shown in, rather than being shrunk into it. The user who would rather move around a
+            larger desktop picks Fit or a scale.
+        """
+        expect:
+            GeniesState.of(Tuple.of(Genie), Settings.defaults(), Optional.empty()).zoom() == DesktopZoom.PANEL
+            DesktopZoom.PANEL.isPanel() && !DesktopZoom.PANEL.isFit()
+            DesktopZoom.FIT.isFit() && !DesktopZoom.FIT.isPanel()
+    }
+
+    def 'Zooming from the panel\'s size starts from the scale the desktop is drawn at'() {
+        reportInfo """
+            While the desktop is on its way to the panel's size, or when it keeps its own size
+            because it is recorded, it is drawn fitted. Zooming then starts from there, as it does
+            from Fit, and leaves the panel's size: the desktop gets its own size back.
+        """
+        expect:
+            DesktopZoom.PANEL.in(0.6) == new DesktopZoom(0.67)
+            DesktopZoom.PANEL.out(0.6) == new DesktopZoom(0.5)
     }
 }

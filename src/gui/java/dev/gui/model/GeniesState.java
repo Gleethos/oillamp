@@ -57,7 +57,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
 
     public static GeniesState of(Tuple<Genie> genies, Settings settings, Optional<String> environmentKey) {
         return new GeniesState(genies, genies.isEmpty() ? NONE : genies.first().id(), settings,
-                               Page.CHAT, environmentKey, true, false, ModelLookUp.NOT_YET, DesktopZoom.FIT,
+                               Page.CHAT, environmentKey, true, false, ModelLookUp.NOT_YET, DesktopZoom.PANEL,
                                new Area(1030, 760), Instant.now());
     }
 

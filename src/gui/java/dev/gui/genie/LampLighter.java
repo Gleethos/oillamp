@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import dev.gui.desktop.Desktop;
 import dev.gui.model.Settings;
 import dev.lamp.Lamp;
 import dev.lamp.LampEvent;
@@ -81,7 +82,10 @@ public final class LampLighter implements Lighter {
     private static Lit lit(Lamp lamp) {
         return new Lit() {
             @Override public Process exec(String... command) throws IOException { return lamp.exec(command); }
-            @Override public Path desktop() { return lamp.desktop(); }
+            @Override public Desktop desktop() {
+                LampEvent.SessionOpened session = lamp.session();
+                return new Desktop(session.desktop(), session.desktopWidth(), session.desktopHeight());
+            }
             @Override public LampEvent.Run send(Lamp.Question question)
                     throws IOException, InterruptedException, Lamp.Failed { return lamp.send(question); }
             @Override public void cancel(String run)

@@ -6,6 +6,8 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.KeyAdapter;
@@ -15,7 +17,6 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -26,36 +27,67 @@ import javax.swing.JViewport;
 import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 
+import dev.gui.desktop.Desktop;
 import dev.gui.desktop.RfbConnection;
 import dev.gui.desktop.X11KeysymUtil;
 
+import sprouts.Val;
+import sprouts.Var;
 import swingtree.UI;
 
-/// A genie's desktop, drawn to fit or at a chosen scale, with the pointer and the keyboard passed
-/// through to it.
+/// A genie's desktop, at the size of the room it has, drawn to fit, or at a chosen scale, with
+/// the pointer and the keyboard passed through to it.
 ///
-/// It connects to the desktop socket it is shown with [#show(Optional)], and lets go of it when
-/// shown nothing. Click it to type into the desktop; everything typed then goes there, Tab
-/// included, until another component takes the focus. A flame-coloured frame shows when it does.
+/// It connects to the desktop it is shown with [#show(Optional)], and lets go of it when shown
+/// nothing. Click it to type into the desktop; everything typed then goes there, Tab included,
+/// until another component takes the focus. A flame-coloured frame shows when it does.
 ///
-/// Meant to sit in a scroll pane: fitted, it takes whatever room the pane has; zoomed, it is as
-/// large as the desktop at that scale, and the pane scrolls.
+/// At the size of the room, it asks the desktop to take the room's size, in the screen's own
+/// pixels, a moment after the room stopped changing. The desktop gets its own size back when it
+/// is drawn otherwise, and when this lets go of it. A desktop that keeps its size, because it is
+/// recorded, is drawn to fit.
+///
+/// Meant to sit in a scroll pane: fitted or at the room's size, it takes whatever room the pane
+/// has; zoomed, it is as large as the desktop at that scale, and the pane scrolls.
 final class DesktopScreen extends JComponent implements Scrollable {
 
+    /// The smallest size the desktop is given: smaller, applications have no room to work in. A
+    /// smaller room shows the desktop shrunk to fit.
+    static final int SMALLEST_WIDTH = 400, SMALLEST_HEIGHT = 300;
+    /// How long the room keeps its size before the desktop is asked to take it, so that dragging
+    /// the window's edge does not ask at every step.
+    static final int SETTLING_MILLIS = 250;
+    /// How long a desktop that is let go of has to take its own size back.
+    static final int GIVING_BACK_MILLIS = 3000;
+
     private Optional<RfbConnection> connection = Optional.empty();
-    private Optional<Path> shown = Optional.empty();
+    private Optional<Desktop> shown = Optional.empty();
+    /// Whether the desktop shown said no to another size; it is then drawn to fit.
+    private final Var<Boolean> keepsItsSize = Var.of(false);
+    /// The size the desktop shown has, such as "1024 × 640"; empty while none is shown.
+    private final Var<String> desktopSize = Var.of("");
+    /// The size last asked of the desktop shown, so that one request is not sent again and again.
+    private Optional<Dimension> asked = Optional.empty();
+    private final Timer sizeSettled = new Timer(SETTLING_MILLIS, settled -> sizeTheDesktop());
+    /// The connection being let go of, while it gives the desktop its own size back.
+    private Optional<Thread> lettingGo = Optional.empty();
     private String message = "The desktop shows here while the genie is awake.";
     /// Where the desktop's picture was last drawn, to map the mouse back onto the desktop.
     private double scale = 1, left, top;
     private int buttons;
     private final Map<Integer, Integer> pressed = new HashMap<>();
-    /// The scale the desktop is drawn at; 0 means fit.
+    /// The scale the desktop is drawn at; 0 means fit, less than 0 at the size of the room.
     private double zoom;
     /// Called with +1 or -1 when the user turns the wheel with Control held, to zoom.
     private IntConsumer zoomSteps = steps -> {};
 
     DesktopScreen() {
+        sizeSettled.setRepeats(false);
+        addComponentListener(new ComponentAdapter() {
+            @Override public void componentResized(ComponentEvent event) { sizeSettled.restart(); }
+        });
         setFocusable(true);
         setFocusTraversalKeysEnabled(false);
         addFocusListener(new FocusAdapter() {
@@ -106,12 +138,24 @@ final class DesktopScreen extends JComponent implements Scrollable {
         });
     }
 
-    /// Draws the desktop at `scale`, or to fit when it is 0 or less.
+    /// Draws the desktop at `scale`, to fit when it is 0, or at the size of the room when it is
+    /// less than 0.
     void zoom(double scale) {
         if (scale == zoom) return;
         zoom = scale;
         revalidate();
         repaint();
+        sizeSettled.restart();
+    }
+
+    /// Whether the desktop shown said no to taking the room's size.
+    Val<Boolean> keepsItsSize() { return keepsItsSize; }
+
+    /// The size the desktop shown has now, such as "1024 × 640"; empty while none is shown.
+    Val<String> desktopSize() { return desktopSize; }
+
+    private void sizeIs(RfbConnection desktop) {
+        desktopSize.set(desktop.screen().getWidth() + " × " + desktop.screen().getHeight());
     }
 
     void onZoomSteps(IntConsumer steps) { zoomSteps = steps; }
@@ -126,7 +170,8 @@ final class DesktopScreen extends JComponent implements Scrollable {
 
     // ─── in a scroll pane ──────────────────────────────────────────────────────────────────
 
-    /// Fitted, small, so it never pushes the layout; zoomed, the desktop's size at that scale.
+    /// Fitted or at the room's size, small, so it never pushes the layout; zoomed, the desktop's
+    /// size at that scale.
     @Override public Dimension getPreferredSize() {
         if (zoom <= 0) return new Dimension(UI.scale(320), UI.scale(200));
         return connection.map(desktop -> new Dimension(
@@ -145,8 +190,8 @@ final class DesktopScreen extends JComponent implements Scrollable {
         return orientation == SwingConstants.VERTICAL ? visible.height : visible.width;
     }
 
-    /// Fitted, it follows the pane's size exactly. Zoomed, it does too while it is smaller than
-    /// the pane, so it stays centred rather than stuck in a corner.
+    /// Fitted or at the room's size, it follows the pane's size exactly. Zoomed, it does too while
+    /// it is smaller than the pane, so it stays centred rather than stuck in a corner.
     @Override public boolean getScrollableTracksViewportWidth() {
         return zoom <= 0 || (getParent() instanceof JViewport viewport && viewport.getWidth() > getPreferredSize().width);
     }
@@ -155,28 +200,93 @@ final class DesktopScreen extends JComponent implements Scrollable {
         return zoom <= 0 || (getParent() instanceof JViewport viewport && viewport.getHeight() > getPreferredSize().height);
     }
 
-    /// Shows the desktop at `socket`, or, when empty, nothing. Showing the one already shown
-    /// changes nothing.
-    void show(Optional<Path> socket) {
-        if (socket.equals(shown) && (connection.isPresent() || socket.isEmpty())) return;
-        connection.ifPresent(RfbConnection::close);
+    /// Shows `desktop`, or, when empty, nothing. Showing the one already shown changes nothing.
+    /// The desktop shown before gets its own size back.
+    void show(Optional<Desktop> desktop) {
+        if (desktop.equals(shown) && (connection.isPresent() || desktop.isEmpty())) return;
+        if (connection.isPresent() && shown.isPresent()) letGo(connection.get(), shown.get());
         connection = Optional.empty();
-        shown = socket;
-        message = socket.isEmpty() ? "The desktop shows here while the genie is awake." : "Connecting to the desktop…";
+        shown = desktop;
+        asked = Optional.empty();
+        keepsItsSize.set(false);
+        desktopSize.set("");
+        message = desktop.isEmpty() ? "The desktop shows here while the genie is awake." : "Connecting to the desktop…";
         repaint();
-        socket.ifPresent(path -> Thread.ofVirtual().name("desktop connect").start(() -> connect(path)));
+        desktop.ifPresent(it -> Thread.ofVirtual().name("desktop connect").start(() -> connect(it)));
     }
 
-    private void connect(Path socket) {
+    /// Lets go of the desktop shown, which gets its own size back. The thread doing that, for
+    /// whoever has to wait for it, such as an application that is about to end.
+    Optional<Thread> letGo() {
+        show(Optional.empty());
+        return lettingGo;
+    }
+
+    /// Closes `old` once `desktop` has its own size back, or once it had the time to. wayvnc
+    /// finishes a change of size only while a viewer is connected, so the connection stays until
+    /// then.
+    private void letGo(RfbConnection old, Desktop desktop) {
+        lettingGo = Optional.of(Thread.ofVirtual().name("desktop let go").start(() -> {
+            long until = System.currentTimeMillis() + GIVING_BACK_MILLIS;
+            try {
+                if (!hasSize(old, desktop.ownWidth(), desktop.ownHeight())) {
+                    old.askForSize(desktop.ownWidth(), desktop.ownHeight());
+                    while (!hasSize(old, desktop.ownWidth(), desktop.ownHeight()) && System.currentTimeMillis() < until)
+                        Thread.sleep(50);
+                }
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } finally {
+                old.close();
+            }
+        }));
+    }
+
+    private static boolean hasSize(RfbConnection desktop, int width, int height) {
+        return desktop.screen().getWidth() == width && desktop.screen().getHeight() == height;
+    }
+
+    /// Asks the desktop for the size it should have now, unless it has it, or was asked already.
+    private void sizeTheDesktop() {
+        if (connection.isEmpty() || shown.isEmpty()) return;
+        Dimension wanted = wantedSize(shown.get());
+        if (hasSize(connection.get(), wanted.width, wanted.height) || asked.equals(Optional.of(wanted))) return;
+        asked = Optional.of(wanted);
+        connection.get().askForSize(wanted.width, wanted.height);
+    }
+
+    /// At the room's size: the room, in the screen's own pixels, and at least the smallest size.
+    /// Otherwise, and for a desktop that keeps its size: its own size.
+    private Dimension wantedSize(Desktop desktop) {
+        if (zoom >= 0 || keepsItsSize.get() || getWidth() <= 0 || getHeight() <= 0 || getGraphicsConfiguration() == null)
+            return new Dimension(desktop.ownWidth(), desktop.ownHeight());
+        double pixels = getGraphicsConfiguration().getDefaultTransform().getScaleX();
+        return new Dimension(Math.max(SMALLEST_WIDTH, (int) Math.floor(getWidth() * pixels)),
+                             Math.max(SMALLEST_HEIGHT, (int) Math.floor(getHeight() * pixels)));
+    }
+
+    private void connect(Desktop desktop) {
         try {
-            RfbConnection opened = RfbConnection.open(socket, new RfbConnection.Listener() {
-                @Override public void resized(int width, int height) { SwingUtilities.invokeLater(() -> { revalidate(); repaint(); }); }
+            RfbConnection opened = RfbConnection.open(desktop.socket(), new RfbConnection.Listener() {
+                @Override public void resized(int width, int height) {
+                    SwingUtilities.invokeLater(() -> {
+                        connection.filter(it -> shown.equals(Optional.of(desktop))).ifPresent(DesktopScreen.this::sizeIs);
+                        revalidate();
+                        repaint();
+                    });
+                }
                 @Override public void painted(int x, int y, int width, int height) { repaint(); }
+                @Override public void keptItsSize() {
+                    SwingUtilities.invokeLater(() -> {
+                        if (shown.equals(Optional.of(desktop))) keepsItsSize.set(true);
+                    });
+                }
                 @Override public void ended(Optional<String> reason) {
                     reason.ifPresent(why -> SwingUtilities.invokeLater(() -> {
-                        if (shown.equals(Optional.of(socket))) {
+                        if (shown.equals(Optional.of(desktop))) {
                             connection = Optional.empty();
                             shown = Optional.empty();
+                            desktopSize.set("");
                             message = "The desktop went away: " + why;
                             repaint();
                         }
@@ -184,10 +294,15 @@ final class DesktopScreen extends JComponent implements Scrollable {
                 }
             });
             SwingUtilities.invokeLater(() -> {
-                if (shown.equals(Optional.of(socket))) connection = Optional.of(opened);
-                else opened.close();
+                if (shown.equals(Optional.of(desktop))) {
+                    connection = Optional.of(opened);
+                    sizeIs(opened);
+                } else {
+                    opened.close();
+                }
                 revalidate();
                 repaint();
+                sizeSettled.restart();
             });
         } catch (IOException failed) {
             SwingUtilities.invokeLater(() -> {

@@ -20,6 +20,7 @@ import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 
+import dev.gui.desktop.Desktop;
 import dev.gui.genie.GenieRunner;
 import dev.gui.genie.LampLighter;
 import dev.gui.genie.Lighter;
@@ -111,11 +112,12 @@ public final class Genies implements Actions {
                                 shelf, new LampLighter());
         JFrame frame = new JFrame("Genies");
         new JGlassPane(frame.getRootPane());
-        frame.setContentPane(new GeniesView(app.state, app));
+        GeniesView view = new GeniesView(app.state, app);
+        frame.setContentPane(view);
         frame.setIconImage(GeniesView.windowIcon());
         frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
-            @Override public void windowClosing(WindowEvent event) { app.quit(frame); }
+            @Override public void windowClosing(WindowEvent event) { app.quit(frame, view); }
         });
         // The tree of conversations under each genie is there before any genie wakes, and a genie
         // left running when Genies last closed is awake again.
@@ -305,7 +307,7 @@ public final class Genies implements Actions {
         });
     }
 
-    @Override public Optional<Path> desktopOf(UUID id) {
+    @Override public Optional<Desktop> desktopOf(UUID id) {
         return Optional.ofNullable(runners.get(id)).flatMap(GenieRunner::desktop);
     }
 
@@ -350,7 +352,7 @@ public final class Genies implements Actions {
     /// Asks the user what becomes of the genies that are awake, then puts them to sleep or leaves
     /// them running, before the window goes. Without an answer, nothing closes. (If Genies is
     /// killed instead, the lamps end by themselves: each notices its application is gone.)
-    private void quit(JFrame frame) {
+    private void quit(JFrame frame, GeniesView view) {
         List<String> awake = new ArrayList<>();
         for (Genie genie : state.get().genies())
             if (genie.phase().isAwake() || genie.phase() == Genie.Phase.WAKING) awake.add(genie.name());
@@ -366,7 +368,15 @@ public final class Genies implements Actions {
         frame.setTitle(keep ? "Genies — leaving the genies running…" : "Genies — putting the genies to sleep…");
         keepGenies();
         keepSettings();
+        // A desktop shown at the size of the panel gets its own size back, for the genie that
+        // goes on without the panel.
+        Optional<Thread> givingBack = view.letGoOfTheDesktop();
         Thread.ofVirtual().name("quit").start(() -> {
+            try {
+                if (givingBack.isPresent()) givingBack.get().join();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
             for (GenieRunner runner : runners.values()) {
                 try {
                     if (keep) runner.leaveRunningAndWait(SECONDS_TO_LET_GO_OF_A_LAMP);
