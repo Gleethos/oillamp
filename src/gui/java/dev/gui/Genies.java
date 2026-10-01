@@ -216,9 +216,8 @@ public final class Genies implements Actions {
         Genie genie = state.get().genie();
         if (!genie.canSend()) return;
         String text = genie.draft().strip();
-        boolean busy = genie.phase() == Genie.Phase.WORKING;
         state.update(From.VIEW, it -> it.update(genie.id(), Genie::send));
-        runner(genie.id()).say(text, busy);
+        runner(genie.id()).say(text);
     }
 
     @Override public void stop(UUID id) {

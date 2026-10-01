@@ -130,7 +130,7 @@ public final class GenieRunner {
 
     /// Sends the user's message, to where the chat is. While the genie still works on another
     /// run, it waits its turn.
-    public void say(String text, boolean busy) {
+    public void say(String text) {
         send(question(text));
     }
 

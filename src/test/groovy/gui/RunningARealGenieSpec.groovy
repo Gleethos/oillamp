@@ -186,7 +186,7 @@ class RunningARealGenieSpec extends Specification {
         when:
             synchronized (RunningARealGenieSpec) { genie = genie.withDraft('x').send() }
             runner.say('Use your bash tool to run exactly this command: echo hello > ~/outbox/hello.txt ' +
-                       '— then reply with the single word done.', false)
+                       '— then reply with the single word done.')
 
         then:
             RealLamps.eventually(Duration.ofMinutes(4)) {
