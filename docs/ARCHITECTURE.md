@@ -1021,7 +1021,8 @@ sandbox:
   regions. None of them is copied from the host.
 - **opencode.** It knows only Eden AI's global endpoint, with a model list from its own catalogue.
   `build/write-opencode-config.mjs` writes `opencode.json` during the image build, setting the
-  relay's address and the model list the EU endpoint gives (its catalogue needs no key).
+  relay's address, the model list the EU endpoint gives (its catalogue needs no key), and
+  `permission: "allow"` so it does not ask for approvals by default.
   `OPENCODE_CONFIG` points opencode at it. If the list could not be fetched during the build,
   opencode still uses the relay.
 - **The network policy.** The shipped rule refuses `api.edenai.run` for any tool that tries it
