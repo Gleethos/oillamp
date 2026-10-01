@@ -169,7 +169,7 @@ tasks.register('spikes', Test) {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Packaging: one file that contains the program and the Java runtime it needs.
 //
-// The result is `build/dist/oillamp`: an executable of about 40 MB that can be copied to a machine
+// The result is `build/dist/oillamp-djinn`: an executable of about 40 MB that can be copied to a machine
 // without Java and run there. It is a shell script with a compressed archive attached;
 // `src/packaging/launcher.sh` is that script, and it is meant to be read.
 //
@@ -222,13 +222,13 @@ def jlinkRuntime = tasks.register('jlinkRuntime') {
 
 tasks.register('singleFile') {
     group = 'distribution'
-    description = 'Builds build/dist/oillamp - the whole program in one executable file.'
+    description = 'Builds build/dist/oillamp-djinn - the whole program in one executable file.'
     dependsOn(jlinkRuntime)
     def services = objects.newInstance(PackagingServices)
     def launcherSource = file('src/packaging/launcher.sh')
     def runtimeDirectory = layout.buildDirectory.dir('oillamp-runtime')
     def staging = layout.buildDirectory.dir('package')
-    def result = layout.buildDirectory.file('dist/oillamp')
+    def result = layout.buildDirectory.file('dist/oillamp-djinn')
     def libraries = configurations.runtimeClasspath
     def applicationJar = tasks.named('jar').flatMap { it.archiveFile }
     def theVersion = version.toString()

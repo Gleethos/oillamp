@@ -26,7 +26,7 @@ You need a JDK 25. Gradle downloads itself through the wrapper.
 ./gradlew test           # the scenarios only; then read build/spock-reports/*.md
 ./gradlew spikes         # checks against real podman; slow, needs podman and a network
 ./gradlew installDist    # build/install/oillamp/bin/oillamp, for development
-./gradlew singleFile     # build/dist/oillamp, the single-file executable
+./gradlew singleFile     # build/dist/oillamp-djinn, the single-file executable
 ```
 
 `./gradlew build` must stay fast and must pass on a machine without podman. Anything that needs a

@@ -7,7 +7,7 @@
 # text. Everything above it is this script. Your terminal will show the archive as garbage if you
 # `cat` the file; that is expected. To read only the part meant for humans:
 #
-#     sed -n '1,/^__OILLAMP_PAYLOAD_BELOW__$/p' oillamp
+#     sed -n '1,/^__OILLAMP_PAYLOAD_BELOW__$/p' oillamp-djinn
 #
 # WHAT IT DOES WHEN YOU RUN IT
 #

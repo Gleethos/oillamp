@@ -51,7 +51,7 @@ does need a JDK 25):
 
 ```sh
 ./gradlew singleFile
-cp build/dist/oillamp ~/bin/      # or anywhere on your PATH
+cp build/dist/oillamp-djinn ~/bin/      # or anywhere on your PATH
 ```
 
 You can copy that file to any other Linux machine and run it there. Nothing gets installed.

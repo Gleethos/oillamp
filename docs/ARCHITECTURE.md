@@ -1327,7 +1327,7 @@ removed.
 
 ## Packaging
 
-`./gradlew singleFile` produces `build/dist/oillamp`, one executable of about 40 MB:
+`./gradlew singleFile` produces `build/dist/oillamp-djinn`, one executable of about 40 MB:
 
 1. `jlinkRuntime` builds a reduced Java runtime with `java.base`, `java.desktop` (used by Sprouts),
    `java.sql` (used by Jackson) and `jdk.charsets` (added by hand, because character sets are
@@ -1344,7 +1344,7 @@ copy), then `exec`s the bundled Java, so Ctrl-C reaches Java directly. Later sta
 oillamp. To read just the script part of the built file:
 
 ```sh
-sed -n '1,/^__OILLAMP_PAYLOAD_BELOW__$/p' build/dist/oillamp
+sed -n '1,/^__OILLAMP_PAYLOAD_BELOW__$/p' build/dist/oillamp-djinn
 ```
 
 `./gradlew installDist` produces a conventional `bin/` and `lib/` layout in `build/install/`, for

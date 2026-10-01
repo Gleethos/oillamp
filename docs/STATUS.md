@@ -262,7 +262,7 @@ not yet been used by a person.
 
 | Measurement | Value |
 |---|---|
-| size of `build/dist/oillamp` | 40.2 MB |
+| size of `build/dist/oillamp-djinn` | 40.8 MB |
 | first run, including unpacking | 0.69 s |
 | later runs | 0.14 s |
 | with `PATH=/nonexistent` and an empty environment | runs |
@@ -415,4 +415,3 @@ the code that would otherwise look unnecessary.
 | `oillamp remove` deleted a lamp whose container was still running, when `lamp.json` was already gone. | It looked for the container by a name derived from `lamp.json`. | It asks podman for a container labelled with the lamp's path. |
 | The first real run failed with a 403: "Model(s) 'vertex/claude-sonnet-5-5' not allowed by your guardrail policy". | pi's default model, in a lamp whose pi had no model set, was one the account's Eden AI policy refuses. | Not a bug in oillamp: the run reported it, with the service's message. Set `defaultProvider` and `defaultModel` in the agent's `~/.pi/agent/settings.json`. |
 | `pi` and `opencode` seemed to be missing. | Not a bug: the locally installed oillamp was older than the change. | Remember to run `./gradlew installDist` (or `singleFile`) after changing the image. |
-
