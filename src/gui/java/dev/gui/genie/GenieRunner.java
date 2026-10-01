@@ -107,13 +107,13 @@ public final class GenieRunner {
                         what -> changes.accept(genie -> genie.lampSays(what)), this::onLampEvent);
                 lamp = Optional.of(lit);
                 changes.accept(genie -> genie.lampSays("waking the genie"));
-                Handouts.makeDirectories(lit);
+                GenieFileTransferUtil.makeDirectories(lit);
                 GeniePiSetupUtil.prepare(home().orElseThrow(() -> new IOException("the genie's lamp has no home")),
                         name, settings.model());
                 List<Lamp.Conversation> all = Lamp.conversations(directory);
                 String file = !conversation.isEmpty() ? conversation : all.isEmpty() ? "" : all.getFirst().file();
                 showConversation(file, leaf);
-                var files = Handouts.list(lit);
+                var files = GenieFileTransferUtil.list(lit);
                 changes.accept(genie -> genie.withHandouts(files).awake());
                 reloadConversations();
             } catch (IOException | RuntimeException failed) {
@@ -271,7 +271,7 @@ public final class GenieRunner {
                     return;
                 }
                 lamp = lit;
-                var files = Handouts.list(lit.get());
+                var files = GenieFileTransferUtil.list(lit.get());
                 changes.accept(genie -> genie.withHandouts(files).awake());
                 reloadConversations();
             } catch (IOException | RuntimeException failed) {
@@ -469,7 +469,7 @@ public final class GenieRunner {
     public void checkOutbox() {
         lamp.ifPresent(lit -> Thread.ofVirtual().name("outbox").start(() -> {
             try {
-                var files = Handouts.list(lit);
+                var files = GenieFileTransferUtil.list(lit);
                 changes.accept(genie -> genie.outbox(files));
             } catch (IOException | InterruptedException stillThere) {
                 // Looked for again after the next answer.
@@ -479,14 +479,14 @@ public final class GenieRunner {
 
     /// Copies the outbox file `name` to `target`, which the user chose.
     public void saveOutboxFile(String name, Path target) {
-        transfer("Saved " + name + " to " + target + ".", lit -> Handouts.fetch(lit, name, target));
+        transfer("Saved " + name + " to " + target + ".", lit -> GenieFileTransferUtil.fetch(lit, name, target));
     }
 
     /// Puts `file` into the genie's inbox, and tells the genie.
     public void giveFile(Path file) {
         String name = file.getFileName().toString();
         transfer("", lit -> {
-            Handouts.give(lit, file);
+            GenieFileTransferUtil.give(lit, file);
             changes.accept(genie -> genie.gave(name));
         });
     }
