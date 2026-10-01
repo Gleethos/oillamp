@@ -369,8 +369,8 @@ public final class Genies implements Actions {
         keepGenies();
         keepSettings();
         // A desktop shown at the size of the panel gets its own size back, for the genie that
-        // goes on without the panel.
-        Optional<Thread> givingBack = view.letGoOfTheDesktop();
+        // goes on without the panel. A genie put to sleep takes its desktop with it.
+        Optional<Thread> givingBack = keep ? view.letGoOfTheDesktop() : Optional.empty();
         Thread.ofVirtual().name("quit").start(() -> {
             try {
                 if (givingBack.isPresent()) givingBack.get().join();
