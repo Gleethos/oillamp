@@ -44,7 +44,7 @@ clear them now and then with `podman images localhost/oillamp/sandbox` and `podm
    next to `LampPlanUtil.java`.
 2. **`OilLamp.java`**: the entry point.
 3. **`Machine.java`**: every effect the program can have on your computer. The exceptions are the
-   lamp's own files (`Filesystem.java`) and the sockets of a running session (`Relay.java`,
+   lamp's own files (`FilesystemUtil.java`) and the sockets of a running session (`Relay.java`,
    `Control.java`, `Egress.java`).
 4. **`Step.java`**: every kind of change oillamp can make during setup.
 5. **`LampPlanUtil.java`**: a pure function turning facts into a plan. The clearest example of the
