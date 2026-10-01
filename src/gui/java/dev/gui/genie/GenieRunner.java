@@ -207,7 +207,7 @@ public final class GenieRunner {
     public void reloadConversations() {
         conversationReader.execute(() -> {
             Tuple<Conversation> all = Tuple.of(Conversation.class);
-            for (Lamp.Conversation conversation : Lamp.conversations(directory)) all = all.add(LampTalk.conversation(conversation));
+            for (Lamp.Conversation conversation : Lamp.conversations(directory)) all = all.add(LampApiConversionUtil.conversation(conversation));
             Tuple<Conversation> read = all;
             changes.accept(genie -> genie.withConversations(genie.conversations().withAll(read)));
         });
@@ -224,7 +224,7 @@ public final class GenieRunner {
         }
         String at = conversation.get().entry(leaf).isPresent() ? leaf : conversation.get().leaf().orElse("");
         where = new Conversations.Here(file, at);
-        PiEvent.History history = LampTalk.history(conversation.get(), at);
+        PiEvent.History history = LampApiConversionUtil.history(conversation.get(), at);
         changes.accept(genie -> genie.shows(file, history));
     }
 
@@ -311,7 +311,7 @@ public final class GenieRunner {
         String before = conversation.map(it -> entryBefore(it, run.prompt())).orElse("");
         where = conversation.isPresent() ? new Conversations.Here(file, before) : Conversations.Here.UNKNOWN;
         conversationOfRuns = where.file();
-        PiEvent.History history = conversation.map(it -> LampTalk.history(it, before))
+        PiEvent.History history = conversation.map(it -> LampApiConversionUtil.history(it, before))
                 .orElseGet(() -> new PiEvent.History(Tuple.of(PiEvent.History.Line.class), ""));
         changes.accept(genie -> genie.answering(file, history, run.prompt()));
     }
@@ -389,7 +389,7 @@ public final class GenieRunner {
             }
             case LampEvent.RunProgress progress when runsOfThisChat.contains(progress.run()) -> {
                 if (progress.progress() instanceof LampEvent.Progress.Answered) runsThatAnswered.add(progress.run());
-                LampTalk.chatEventFor(progress.progress()).ifPresent(heard -> changes.accept(genie -> genie.hear(heard)));
+                LampApiConversionUtil.chatEventFor(progress.progress()).ifPresent(heard -> changes.accept(genie -> genie.hear(heard)));
             }
             case LampEvent.RunFinished finished when runsOfThisChat.contains(finished.run().id()) -> chatRunFinished(finished);
             // Another run, such as a scheduled job's, may have added to the conversations.
@@ -418,7 +418,7 @@ public final class GenieRunner {
             String leaf = conversation.get().leaf().orElse("");
             // The user may be reading another conversation; they stay there.
             if (where.file().equals(conversationOfRuns)) where = new Conversations.Here(file, leaf);
-            PiEvent.History history = LampTalk.history(conversation.get(), leaf);
+            PiEvent.History history = LampApiConversionUtil.history(conversation.get(), leaf);
             changes.accept(genie -> genie.finishedIn(file, history));
         } else {
             changes.accept(genie -> genie.withConversations(genie.conversations().withAside(Optional.empty())));

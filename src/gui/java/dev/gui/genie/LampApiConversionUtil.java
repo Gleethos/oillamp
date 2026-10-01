@@ -19,9 +19,9 @@ import dev.lamp.LampEvent;
 import sprouts.Tuple;
 
 /// Turns what the Lamp API reports into the values the chat and the tree are drawn from.
-final class LampTalk {
+final class LampApiConversionUtil {
 
-    private LampTalk() {}
+    private LampApiConversionUtil() {}
 
     /// A conversation as the tree of conversations shows it: only which entries are questions.
     static Conversation conversation(Lamp.Conversation conversation) {
@@ -94,7 +94,7 @@ final class LampTalk {
             int body = snapshot.message().indexOf("\n\n");
             String said = body < 0 ? "" : snapshot.message().substring(body + 2).strip();
             runs = runs.add(new Schedule.Run(snapshot.run().get(), snapshot.job().get(), snapshot.at(),
-                    snapshot.outcome().map(LampTalk::outcome).orElse(Schedule.Outcome.FAILED), said, snapshot.conversation()));
+                    snapshot.outcome().map(LampApiConversionUtil::outcome).orElse(Schedule.Outcome.FAILED), said, snapshot.conversation()));
         }
         return runs;
     }

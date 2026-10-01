@@ -48,8 +48,8 @@ public final class ScheduleKeeper {
             readingQueued.set(false);
             try {
                 LampEvent.Schedule schedule = lamp.schedule();
-                var runs = LampTalk.runs(lamp.history());
-                var jobs = LampTalk.jobs(schedule);
+                var runs = LampApiConversionUtil.runs(lamp.history());
+                var jobs = LampApiConversionUtil.jobs(schedule);
                 ZoneId zone = ZoneId.of(schedule.zone());
                 change(it -> it.readAs(schedule.paused(), zone, jobs, runs));
             } catch (IOException | Lamp.Failed failed) {
