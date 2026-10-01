@@ -60,9 +60,9 @@ class WatchingAGeniesDesktopSpec extends Specification {
         then: 'the pixel format: 32 bits, 24 deep, little-endian, true colour, red at bit 16'
             fromViewer.readNBytes(20) as List == [0, 0, 0, 0, 32, 24, 0, 1, 0, -1, 0, -1, 0, -1, 16, 8, 0, 0, 0, 0] as List<Byte>
 
-        and: 'the encodings: raw, copy-rect, and being told when the desktop changes size'
-            fromViewer.readNBytes(4) as List == [2, 0, 0, 3] as List<Byte>
-            [fromViewer.readInt(), fromViewer.readInt(), fromViewer.readInt()] == [0, 1, -223]
+        and: 'the encodings: raw, copy-rect, and being told when the desktop changes size, in both forms'
+            fromViewer.readNBytes(4) as List == [2, 0, 0, 4] as List<Byte>
+            [fromViewer.readInt(), fromViewer.readInt(), fromViewer.readInt(), fromViewer.readInt()] == [0, 1, -223, -308]
 
         and: 'the whole screen, not just what changed'
             fromViewer.readNBytes(2) as List == [3, 0] as List<Byte>
@@ -135,6 +135,78 @@ class WatchingAGeniesDesktopSpec extends Specification {
             waitUntil { heard.contains('resized 1280x800') }
             viewer.screen().width == 1280
             viewer.screen().height == 800
+    }
+
+    def 'The viewer asks the desktop for another size, and draws it at that size once it has it'() {
+        reportInfo """
+            Genies can show the desktop at the size of the panel it sits in. The viewer asks for
+            that size with a "set desktop size" message, naming the desktop's one screen. wayvnc
+            answers with a rectangle of the "extended desktop size" kind: x 1 means the answer is
+            for this viewer, y 0 that it is done. The picture then has the new size.
+        """
+        given:
+            connect(4, 2)
+            skipTheViewersSetup()
+            announce(7)
+
+        when:
+            viewer.askForSize(1280, 800)
+
+        then: 'the request: type 251, the size, one screen, its id 7, at 0,0, of that size'
+            fromViewer.readNBytes(2) as List == [(byte) 251, 0] as List<Byte>
+            [fromViewer.readUnsignedShort(), fromViewer.readUnsignedShort()] == [1280, 800]
+            fromViewer.readNBytes(2) as List == [1, 0] as List<Byte>
+            [fromViewer.readInt(), fromViewer.readUnsignedShort(), fromViewer.readUnsignedShort(),
+             fromViewer.readUnsignedShort(), fromViewer.readUnsignedShort(), fromViewer.readInt()] == [7, 0, 0, 1280, 800, 0]
+
+        when: 'the desktop answers that it is done'
+            sizeChanged(1, 0, 1280, 800)
+
+        then:
+            waitUntil { heard.contains('resized 1280x800') }
+            viewer.screen().width == 1280
+    }
+
+    def 'A desktop that keeps its size says so, and the picture stays as it was'() {
+        reportInfo """
+            A recorded desktop does not change size: wayvnc answers y 1, "not allowed". The
+            viewer passes that on, so Genies can say why the desktop does not fit the panel, and
+            goes on showing the desktop at the size it has.
+        """
+        given:
+            connect(4, 2)
+            skipTheViewersSetup()
+
+        when:
+            viewer.askForSize(1280, 800)
+            sizeChanged(1, 1, 1280, 800)
+
+        then:
+            waitUntil { heard.contains('kept its size') }
+            !heard.any { it.startsWith('resized') }
+            viewer.screen().width == 4
+    }
+
+    def 'A desktop that passes the request on changes size later, as it does by itself'() {
+        reportInfo """
+            wayvnc does not change the size itself: it asks sway, and answers y 4, "passed on".
+            Once sway has done it, wayvnc reports the new size like any change, x 0. Only then
+            does the picture change. The rectangle wayvnc sends once, unasked, to say it knows
+            this extension, has the size the desktop already has, and changes nothing.
+        """
+        given:
+            connect(4, 2)
+            skipTheViewersSetup()
+
+        when:
+            announce(0)
+            viewer.askForSize(1280, 800)
+            sizeChanged(1, 4, 1280, 800)
+            sizeChanged(0, 0, 1280, 800)
+
+        then:
+            waitUntil { heard.contains('resized 1280x800') }
+            heard.findAll { it.startsWith('resized') || it == 'kept its size' } == ['resized 1280x800']
     }
 
     def 'When the desktop goes away, the viewer says so'() {
@@ -231,7 +303,24 @@ class WatchingAGeniesDesktopSpec extends Specification {
     }
 
     private void skipTheViewersSetup() {
-        fromViewer.readNBytes(20 + 4 + 12 + 10)
+        fromViewer.readNBytes(20 + 4 + 16 + 10)
+    }
+
+    /** The rectangle wayvnc sends once to say it knows the extension: the size as it is. */
+    private void announce(int screenId) {
+        sizeChanged(0, 0, viewer.screen().width, viewer.screen().height, screenId)
+        fromViewer.readNBytes(10)                     // the viewer, having read it, asks for more
+    }
+
+    /** An extended-desktop-size rectangle: why (0 by itself, 1 this viewer asked), how it went, and one screen. */
+    private void sizeChanged(int why, int how, int width, int height, int screenId = 0) {
+        toViewer.write([0, 0, 0, 1] as byte[])
+        rectangle(why, how, width, height, -308)
+        toViewer.write([1, 0, 0, 0] as byte[])
+        toViewer.writeInt(screenId)
+        toViewer.writeShort(0); toViewer.writeShort(0); toViewer.writeShort(width); toViewer.writeShort(height)
+        toViewer.writeInt(0)
+        toViewer.flush()
     }
 
     private void rectangle(int x, int y, int width, int height, int encoding) {
@@ -247,6 +336,7 @@ class WatchingAGeniesDesktopSpec extends Specification {
             void resized(int width, int height) { heard << "resized ${width}x${height}".toString() }
             void painted(int x, int y, int width, int height) { heard << "painted ${x},${y} ${width}x${height}".toString() }
             void ended(Optional<String> reason) { heard << "ended ${reason.orElse('')}".toString() }
+            void keptItsSize() { heard << 'kept its size' }
         }
     }
 
