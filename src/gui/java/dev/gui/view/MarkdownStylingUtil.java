@@ -15,9 +15,9 @@ import static dev.gui.view.Palette.*;
 /// are drawn from nearly transparent at the very end to opaque, and `settled` lifts them all
 /// towards opaque as the moment of their arrival passes. So text appears the way ink spreads,
 /// rather than in jumps, without any clock in the data: each new piece restarts `settled` at 0.
-final class Typeset {
+final class MarkdownStylingUtil {
 
-    private Typeset() {}
+    private MarkdownStylingUtil() {}
 
     /// How many of the newest characters fade in.
     static final int TAIL = 48;

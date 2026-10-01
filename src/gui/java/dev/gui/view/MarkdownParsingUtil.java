@@ -11,7 +11,7 @@ import sprouts.Tuple;
 
 /// Markdown as models write it, read into runs of text that each have one look.
 ///
-/// Pure: text in, runs out, nothing drawn. [Typeset] turns the runs into what SwingTree paints.
+/// Pure: text in, runs out, nothing drawn. [MarkdownStylingUtil] turns the runs into what SwingTree paints.
 /// Only what models commonly write is understood: headings, emphasis, inline code, fenced code
 /// blocks, lists, quotes, links, rules and tables. Anything else stays as it was written, and so
 /// does anything not closed yet, such as `**bold` while an answer is still streaming in.
