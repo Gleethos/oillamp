@@ -1,6 +1,7 @@
 package dev.gui.view;
 
 import java.awt.Font;
+import java.awt.GradientPaint;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.font.FontRenderContext;
@@ -193,7 +194,7 @@ final class ChatRows {
                 return it.backgroundColor(RAISED).borderRadius(2)
                          .painter(UI.Layer.CONTENT, g -> {
                              if (!glow.moving()) return;
-                             g.setPaint(new java.awt.GradientPaint(at, 0, TRANSPARENT, at + glowLength / 2f, 0, FLAME, true));
+                             g.setPaint(new GradientPaint(at, 0, TRANSPARENT, at + glowLength / 2f, 0, FLAME, true));
                              g.fillRect(Math.max(0, at), 0, Math.max(0, Math.min(glowLength, length - Math.max(0, at))), thickness);
                          });
             });

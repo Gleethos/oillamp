@@ -1,5 +1,7 @@
 package dev.gui.view;
 
+import java.awt.Color;
+
 import javax.swing.AbstractButton;
 import javax.swing.text.JTextComponent;
 
@@ -39,7 +41,7 @@ final class Look extends StyleSheet {
             .componentFont(f -> f.family(FONT).size(11).weight(2f).spacing(0.14f).color(SUBTEXT)));
 
         add(group(Skin.HEADER), it -> it
-            .backgroundColor(new java.awt.Color(0x1a, 0x16, 0x22, 220))
+            .backgroundColor(new Color(0x1a, 0x16, 0x22, 220))
             .borderAt(UI.Edge.BOTTOM, 1, BORDER)
             .padding(10, 16, 10, 16));
         add(group(Skin.TITLE), it -> it
@@ -54,7 +56,7 @@ final class Look extends StyleSheet {
             .borderRadius(16)
             .border(1, BORDER)
             .padding(22)
-            .shadow("card", s -> s.color(new java.awt.Color(0, 0, 0, 120)).offset(0, 4).blurRadius(18)));
+            .shadow("card", s -> s.color(new Color(0, 0, 0, 120)).offset(0, 4).blurRadius(18)));
         add(group(Skin.EMPTY_TITLE), it -> it
             .componentFont(f -> f.family(FONT).size(20).weight(2f).color(TEXT)));
         add(group(Skin.EMPTY_TEXT), it -> it

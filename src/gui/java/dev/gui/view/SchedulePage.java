@@ -2,22 +2,29 @@ package dev.gui.view;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
+import java.awt.GradientPaint;
 import java.awt.RenderingHints;
+import java.awt.event.KeyEvent;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.RoundRectangle2D;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.TextStyle;
+import java.time.temporal.TemporalAdjusters;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.function.UnaryOperator;
 
 import javax.swing.JButton;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 
 import dev.gui.model.Dates;
 import dev.gui.model.Genie;
@@ -42,6 +49,7 @@ import swingtree.components.JBox;
 import swingtree.animation.LifeTime;
 import swingtree.api.Layout;
 import swingtree.api.Painter;
+import swingtree.dialogs.ConfirmAnswer;
 import swingtree.layout.FlowCell;
 import swingtree.style.StyledString;
 
@@ -321,7 +329,7 @@ final class SchedulePage {
             .withStyle(it -> it.backgroundColor(TRANSPARENT).painter(UI.Layer.BACKGROUND,
                     Painter.of(it.componentWidth(), g -> {
                         int width = it.componentWidth();
-                        g.setPaint(new java.awt.GradientPaint(0, 0, FLAME, Math.max(1, width), 0, TRANSPARENT));
+                        g.setPaint(new GradientPaint(0, 0, FLAME, Math.max(1, width), 0, TRANSPARENT));
                         g.fillRect(0, NODE_Y - 1, width, 2);
                     })));
     }
@@ -439,7 +447,7 @@ final class SchedulePage {
     private static String nextWords(Schedule.Job job, GeniesState state) {
         if (!job.enabled()) return "switched off";
         if (job.next().isEmpty()) return "will not run again";
-        java.time.Instant next = job.next().get();
+        Instant next = job.next().get();
         if (!next.isAfter(state.now())) return "due now";
         if (job.repeats().isEmpty()) return "";
         LocalDateTime at = LocalDateTime.ofInstant(next, state.genie().schedule().zone());
@@ -449,13 +457,13 @@ final class SchedulePage {
         return "next: " + day + ", " + Recurrence.clock(at.toLocalTime());
     }
 
-    private javax.swing.JPopupMenu menu(String id) {
-        javax.swing.JPopupMenu menu = new javax.swing.JPopupMenu();
+    private JPopupMenu menu(String id) {
+        JPopupMenu menu = new JPopupMenu();
         schedule.get().job(id).ifPresent(job -> {
             menu.add(Parts.item("Change…", true, () -> schedule.update(From.VIEW, s -> s.change(id, state.get().localNow()))));
             menu.add(Parts.item(job.enabled() ? "Switch off" : "Switch on", true, () -> actions.switchJob(selected(), id, !job.enabled())));
             menu.addSeparator();
-            javax.swing.JMenuItem remove = Parts.item("Remove…", true, () -> confirmRemove(job));
+            JMenuItem remove = Parts.item("Remove…", true, () -> confirmRemove(job));
             remove.setForeground(TROUBLE);
             menu.add(remove);
         });
@@ -463,10 +471,10 @@ final class SchedulePage {
     }
 
     private void confirmRemove(Schedule.Job job) {
-        swingtree.dialogs.ConfirmAnswer answer = UI.confirmation("Take \"" + job.title() + "\" off the schedule? "
+        ConfirmAnswer answer = UI.confirmation("Take \"" + job.title() + "\" off the schedule? "
                 + "What its runs did stays in the history.").titled("Remove a job")
                 .yesOption("Remove").noOption("Keep").cancelOption("").show();
-        if (answer == swingtree.dialogs.ConfirmAnswer.YES) actions.removeJob(selected(), job.id());
+        if (answer == ConfirmAnswer.YES) actions.removeJob(selected(), job.id());
     }
 
     // ─── the editor ────────────────────────────────────────────────────────────────────────
@@ -523,8 +531,8 @@ final class SchedulePage {
                     .withStyle(it -> it.backgroundColor(TRANSPARENT).border(0, TRANSPARENT).padding(10, 12, 10, 12)
                         .componentFont(f -> f.family(FONT).size(14).color(TEXT)))
                     .onKeyPress(it -> {
-                        java.awt.event.KeyEvent key = it.getEvent();
-                        if (key.getKeyCode() == java.awt.event.KeyEvent.VK_ENTER && key.isControlDown()) {
+                        KeyEvent key = it.getEvent();
+                        if (key.getKeyCode() == KeyEvent.VK_ENTER && key.isControlDown()) {
                             key.consume();
                             actions.saveJob(selected());
                         }
@@ -564,7 +572,7 @@ final class SchedulePage {
                 .add(quickPick("This evening", now -> now.toLocalDate().atTime(now.getHour() >= 18 ? 21 : 18, 0)))
                 .add(quickPick("Tomorrow morning", now -> now.toLocalDate().plusDays(1).atTime(9, 0)))
                 .add(quickPick("Monday morning", now -> now.toLocalDate()
-                        .with(java.time.temporal.TemporalAdjusters.next(DayOfWeek.MONDAY)).atTime(9, 0))))
+                        .with(TemporalAdjusters.next(DayOfWeek.MONDAY)).atTime(9, 0))))
 
             // ── again and again: how often ──
             .add("growx, wmin 0",
@@ -709,7 +717,7 @@ final class SchedulePage {
     }
 
     /// A chip that sets the day and the time of a job that runs once, from now.
-    private UIForButton<JButton> quickPick(String text, java.util.function.UnaryOperator<LocalDateTime> from) {
+    private UIForButton<JButton> quickPick(String text, UnaryOperator<LocalDateTime> from) {
         return
             button(text).group(Skin.CHIP)
             .onClick(it -> {

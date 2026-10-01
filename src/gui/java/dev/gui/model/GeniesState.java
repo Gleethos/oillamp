@@ -1,5 +1,7 @@
 package dev.gui.model;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
@@ -26,7 +28,7 @@ import sprouts.Tuple;
 ///                 moved on every half minute
 public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings, Page page,
                           Optional<String> environmentKey, boolean sidebarShown, boolean narrow,
-                          ModelLookUp lookUp, DesktopZoom zoom, Area area, java.time.Instant now) {
+                          ModelLookUp lookUp, DesktopZoom zoom, Area area, Instant now) {
 
     /// A width and a height, in the window's own units.
     public record Area(int width, int height) {}
@@ -56,7 +58,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public static GeniesState of(Tuple<Genie> genies, Settings settings, Optional<String> environmentKey) {
         return new GeniesState(genies, genies.isEmpty() ? NONE : genies.first().id(), settings,
                                Page.CHAT, environmentKey, true, false, ModelLookUp.NOT_YET, DesktopZoom.FIT,
-                               new Area(1030, 760), java.time.Instant.now());
+                               new Area(1030, 760), Instant.now());
     }
 
     public GeniesState withGenies(Tuple<Genie> genies) { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
@@ -66,7 +68,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withSidebarShown(boolean shown) { return new GeniesState(genies, selected, settings, page, environmentKey, shown, narrow, lookUp, zoom, area, now); }
     public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
     public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
-    public GeniesState withNow(java.time.Instant now)  { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
+    public GeniesState withNow(Instant now)  { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
 
     /// Below this width, in the window's own units, the list of genies and a conversation do not
     /// both fit.
@@ -170,8 +172,8 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     }
 
     /// [#now] on the clock of the selected genie's schedule.
-    public java.time.LocalDateTime localNow() {
-        return java.time.LocalDateTime.ofInstant(now, genie().schedule().zone());
+    public LocalDateTime localNow() {
+        return LocalDateTime.ofInstant(now, genie().schedule().zone());
     }
 
     /// The settings are asking the service they name for its models.

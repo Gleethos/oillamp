@@ -1,5 +1,9 @@
 package dev.gui.view;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -52,7 +56,7 @@ final class Markdown {
             } else if (line.startsWith("|")) {
                 int end = i;
                 while (end + 1 < lines.length && lines[end + 1].startsWith("|")) end++;
-                runs = table(java.util.Arrays.asList(lines).subList(i, end + 1), runs);
+                runs = table(Arrays.asList(lines).subList(i, end + 1), runs);
                 i = end;
             } else {
                 runs = line(line, runs);
@@ -64,14 +68,14 @@ final class Markdown {
     /// A table, with its columns lined up, which takes a font of even widths. The pipes become
     /// thin lines, the row of dashes under the header a line across, and the header is bold. A
     /// cell keeps its words without their Markdown markers, and the alignment the dashes ask for.
-    private static Tuple<Run> table(java.util.List<String> lines, Tuple<Run> runs) {
-        java.util.List<java.util.List<String>> rows = new java.util.ArrayList<>();
+    private static Tuple<Run> table(List<String> lines, Tuple<Run> runs) {
+        List<List<String>> rows = new ArrayList<>();
         for (String line : lines) rows.add(cells(line));
         int divider = rows.size() > 1 && rows.get(1).stream().allMatch(cell -> DIVIDER.matcher(cell).matches()) ? 1 : -1;
-        int columns = rows.stream().mapToInt(java.util.List::size).max().orElse(0);
+        int columns = rows.stream().mapToInt(List::size).max().orElse(0);
         int[] widths = new int[columns];
         char[] align = new char[columns];
-        java.util.Arrays.fill(align, 'l');
+        Arrays.fill(align, 'l');
         for (int r = 0; r < rows.size(); r++) {
             for (int c = 0; c < rows.get(r).size(); c++) {
                 String cell = rows.get(r).get(c);
@@ -101,11 +105,11 @@ final class Markdown {
     }
 
     /// The cells of a table's row, trimmed, without their Markdown markers.
-    private static java.util.List<String> cells(String line) {
+    private static List<String> cells(String line) {
         String inner = line.strip();
         inner = inner.substring(1);                     // the leading pipe
         if (inner.endsWith("|")) inner = inner.substring(0, inner.length() - 1);
-        java.util.List<String> cells = new java.util.ArrayList<>();
+        List<String> cells = new ArrayList<>();
         for (String cell : inner.split("\\|", -1)) {
             StringBuilder words = new StringBuilder();
             for (Run run : inline(cell.strip(), Block.TABLE, Tuple.of(Run.class))) words.append(run.text());
@@ -153,7 +157,7 @@ final class Markdown {
         StringBuilder plain = new StringBuilder();
         int i = 0;
         while (i < text.length()) {
-            java.util.Optional<Span> found = span(text, i);
+            Optional<Span> found = span(text, i);
             if (found.isEmpty()) {
                 plain.append(text.charAt(i++));
                 continue;
@@ -172,7 +176,7 @@ final class Markdown {
 
     private record Span(String text, Inline look, int end) {}
 
-    private static java.util.Optional<Span> span(String text, int at) {
+    private static Optional<Span> span(String text, int at) {
         if (text.charAt(at) == '`') return closed(text, at, "`", Inline.CODE);
         if (text.startsWith("***", at)) return closed(text, at, "***", Inline.BOLD_ITALIC);
         if (text.startsWith("**", at)) return closed(text, at, "**", Inline.BOLD);
@@ -186,15 +190,15 @@ final class Markdown {
         if (text.charAt(at) == '[') {
             int close = text.indexOf("](", at + 1);
             int end = close < 0 ? -1 : text.indexOf(')', close + 2);
-            if (close > at + 1 && end > 0) return java.util.Optional.of(new Span(text.substring(at + 1, close), Inline.LINK, end + 1));
+            if (close > at + 1 && end > 0) return Optional.of(new Span(text.substring(at + 1, close), Inline.LINK, end + 1));
         }
-        return java.util.Optional.empty();
+        return Optional.empty();
     }
 
-    private static java.util.Optional<Span> closed(String text, int at, String marker, Inline look) {
+    private static Optional<Span> closed(String text, int at, String marker, Inline look) {
         int end = text.indexOf(marker, at + marker.length());
         // Not closed, or closed at once, as in `**` alone: text, not emphasis.
-        if (end < 0 || end == at + marker.length()) return java.util.Optional.empty();
-        return java.util.Optional.of(new Span(text.substring(at + marker.length(), end), look, end + marker.length()));
+        if (end < 0 || end == at + marker.length()) return Optional.empty();
+        return Optional.of(new Span(text.substring(at + marker.length(), end), look, end + marker.length()));
     }
 }

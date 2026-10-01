@@ -1,8 +1,13 @@
 package dev.gui.view;
 
+import java.awt.BasicStroke;
+import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -14,8 +19,12 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.IntConsumer;
 
 import javax.swing.JComponent;
+import javax.swing.JViewport;
+import javax.swing.Scrollable;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
 import dev.gui.desktop.Keysyms;
@@ -32,7 +41,7 @@ import swingtree.UI;
 ///
 /// Meant to sit in a scroll pane: fitted, it takes whatever room the pane has; zoomed, it is as
 /// large as the desktop at that scale, and the pane scrolls.
-final class DesktopScreen extends JComponent implements javax.swing.Scrollable {
+final class DesktopScreen extends JComponent implements Scrollable {
 
     private Optional<RfbConnection> connection = Optional.empty();
     private Optional<Path> shown = Optional.empty();
@@ -44,14 +53,14 @@ final class DesktopScreen extends JComponent implements javax.swing.Scrollable {
     /// The scale the desktop is drawn at; 0 means fit.
     private double zoom;
     /// Called with +1 or -1 when the user turns the wheel with Control held, to zoom.
-    private java.util.function.IntConsumer zoomSteps = steps -> {};
+    private IntConsumer zoomSteps = steps -> {};
 
     DesktopScreen() {
         setFocusable(true);
         setFocusTraversalKeysEnabled(false);
-        addFocusListener(new java.awt.event.FocusAdapter() {
-            @Override public void focusGained(java.awt.event.FocusEvent event) { repaint(); }
-            @Override public void focusLost(java.awt.event.FocusEvent event) { repaint(); }
+        addFocusListener(new FocusAdapter() {
+            @Override public void focusGained(FocusEvent event) { repaint(); }
+            @Override public void focusLost(FocusEvent event) { repaint(); }
         });
         MouseAdapter mouse = new MouseAdapter() {
             @Override public void mousePressed(MouseEvent event) {
@@ -105,11 +114,11 @@ final class DesktopScreen extends JComponent implements javax.swing.Scrollable {
         repaint();
     }
 
-    void onZoomSteps(java.util.function.IntConsumer steps) { zoomSteps = steps; }
+    void onZoomSteps(IntConsumer steps) { zoomSteps = steps; }
 
     /// The scale fit draws the desktop at right now, so that zooming from fit starts there.
     double fitScale() {
-        java.awt.Dimension room = getParent() instanceof javax.swing.JViewport viewport ? viewport.getExtentSize() : getSize();
+        Dimension room = getParent() instanceof JViewport viewport ? viewport.getExtentSize() : getSize();
         return connection.map(desktop -> Math.min((double) room.width / desktop.screen().getWidth(),
                                                   (double) room.height / desktop.screen().getHeight()))
                          .filter(scale -> scale > 0).orElse(1.0);
@@ -118,32 +127,32 @@ final class DesktopScreen extends JComponent implements javax.swing.Scrollable {
     // ─── in a scroll pane ──────────────────────────────────────────────────────────────────
 
     /// Fitted, small, so it never pushes the layout; zoomed, the desktop's size at that scale.
-    @Override public java.awt.Dimension getPreferredSize() {
-        if (zoom <= 0) return new java.awt.Dimension(UI.scale(320), UI.scale(200));
-        return connection.map(desktop -> new java.awt.Dimension(
+    @Override public Dimension getPreferredSize() {
+        if (zoom <= 0) return new Dimension(UI.scale(320), UI.scale(200));
+        return connection.map(desktop -> new Dimension(
                         (int) Math.round(desktop.screen().getWidth() * zoom),
                         (int) Math.round(desktop.screen().getHeight() * zoom)))
-                .orElse(new java.awt.Dimension(UI.scale(320), UI.scale(200)));
+                .orElse(new Dimension(UI.scale(320), UI.scale(200)));
     }
 
-    @Override public java.awt.Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+    @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
 
-    @Override public int getScrollableUnitIncrement(java.awt.Rectangle visible, int orientation, int direction) {
+    @Override public int getScrollableUnitIncrement(Rectangle visible, int orientation, int direction) {
         return UI.scale(24);
     }
 
-    @Override public int getScrollableBlockIncrement(java.awt.Rectangle visible, int orientation, int direction) {
-        return orientation == javax.swing.SwingConstants.VERTICAL ? visible.height : visible.width;
+    @Override public int getScrollableBlockIncrement(Rectangle visible, int orientation, int direction) {
+        return orientation == SwingConstants.VERTICAL ? visible.height : visible.width;
     }
 
     /// Fitted, it follows the pane's size exactly. Zoomed, it does too while it is smaller than
     /// the pane, so it stays centred rather than stuck in a corner.
     @Override public boolean getScrollableTracksViewportWidth() {
-        return zoom <= 0 || (getParent() instanceof javax.swing.JViewport viewport && viewport.getWidth() > getPreferredSize().width);
+        return zoom <= 0 || (getParent() instanceof JViewport viewport && viewport.getWidth() > getPreferredSize().width);
     }
 
     @Override public boolean getScrollableTracksViewportHeight() {
-        return zoom <= 0 || (getParent() instanceof javax.swing.JViewport viewport && viewport.getHeight() > getPreferredSize().height);
+        return zoom <= 0 || (getParent() instanceof JViewport viewport && viewport.getHeight() > getPreferredSize().height);
     }
 
     /// Shows the desktop at `socket`, or, when empty, nothing. Showing the one already shown
@@ -213,7 +222,7 @@ final class DesktopScreen extends JComponent implements javax.swing.Scrollable {
             if (hasFocus()) {
                 // The keyboard goes to the desktop now: say so, around the picture.
                 g.setColor(Palette.FLAME);
-                g.setStroke(new java.awt.BasicStroke(UI.scale(2f)));
+                g.setStroke(new BasicStroke(UI.scale(2f)));
                 g.drawRect((int) left + 1, (int) top + 1, width - 2, height - 2);
             }
         } finally {

@@ -4,15 +4,27 @@ import dev.gui.model.*;
 import sprouts.*;
 import swingtree.UI;
 import swingtree.UIForAnySwing;
+import swingtree.UIForButton;
 import swingtree.UIForPanel;
 import swingtree.api.Layout;
+import swingtree.dialogs.ConfirmAnswer;
 import swingtree.layout.FlowCell;
+import swingtree.style.SvgIcon;
 
 import javax.swing.*;
+import javax.swing.plaf.FontUIResource;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.RenderingHints;
+import java.awt.event.KeyEvent;
 import java.io.File;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static dev.gui.view.Palette.*;
 import static swingtree.UI.*;
@@ -261,9 +273,9 @@ public final class GeniesView extends JPanel {
 
     /// The grip under a tree: a thin line across, like a split pane's divider, with a short
     /// raised handle in its middle.
-    private static void grip(java.awt.Graphics2D g, int width, int height) {
+    private static void grip(Graphics2D g, int width, int height) {
         int middle = height / 2;
-        g.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setColor(BORDER);
         g.fillRect(0, middle, width, 1);
         g.setColor(SUBTEXT);
@@ -295,10 +307,10 @@ public final class GeniesView extends JPanel {
 
     private void confirmForget(UUID id) {
         state.get().find(id).flatMap(genie -> genie.conversations().current()).ifPresent(doomed -> {
-            swingtree.dialogs.ConfirmAnswer answer = UI.confirmation("Delete the conversation \"" + doomed.title()
+            ConfirmAnswer answer = UI.confirmation("Delete the conversation \"" + doomed.title()
                     + "\" for good, with all its branches?").titled("Delete a conversation")
                     .yesOption("Delete").noOption("Keep").cancelOption("").show();
-            if (answer == swingtree.dialogs.ConfirmAnswer.YES) actions.forget(id, doomed.file());
+            if (answer == ConfirmAnswer.YES) actions.forget(id, doomed.file());
         });
     }
 
@@ -369,7 +381,7 @@ public final class GeniesView extends JPanel {
                  .onClick(it -> page.set(From.VIEW, GeniesState.Page.SCHEDULE)));
     }
 
-    private static swingtree.UIForButton<javax.swing.JButton> half(Val<String> text, Val<Boolean> shown) {
+    private static UIForButton<JButton> half(Val<String> text, Val<Boolean> shown) {
         return button(text).group(Skin.ICON_BUTTON)
                 .withStyle(shown, (on, it) -> it.borderRadius(9).padding(4, 12, 4, 12)
                     .backgroundColor(on ? RAISED : TRANSPARENT)
@@ -501,7 +513,7 @@ public final class GeniesView extends JPanel {
                     button("⤓ " + file.name() + "  ·  " + file.readableSize()).group(Skin.QUIET_BUTTON)
                     .withTooltip("Save " + file.name() + " somewhere on this computer")
                     .onClick(it -> saveHandout(file.name()))
-                    .get(javax.swing.JButton.class)))));
+                    .get(JButton.class)))));
     }
 
     /// The composer while the genie is awake; otherwise a bar that wakes it, and says how
@@ -530,8 +542,8 @@ public final class GeniesView extends JPanel {
                         .withStyle(it -> it.backgroundColor(TRANSPARENT).border(0, TRANSPARENT))
                         .withTooltip("Return sends; Shift and Return starts a new line")
                         .onKeyPress(it -> {
-                            java.awt.event.KeyEvent key = it.getEvent();
-                            if (key.getKeyCode() != java.awt.event.KeyEvent.VK_ENTER) return;
+                            KeyEvent key = it.getEvent();
+                            if (key.getKeyCode() != KeyEvent.VK_ENTER) return;
                             key.consume();
                             // Swing makes a new line only of a plain Return, so Shift and Return
                             // would do nothing at all; the line is put in here.
@@ -579,61 +591,61 @@ public final class GeniesView extends JPanel {
     public static void setUpLook() {
         com.formdev.flatlaf.FlatLaf.setPreferredFontFamily(FONT);
         com.formdev.flatlaf.FlatLaf.setPreferredMonospacedFontFamily(MONO);
-        com.formdev.flatlaf.FlatLaf.setGlobalExtraDefaults(java.util.Map.ofEntries(
-            java.util.Map.entry("@background", hex(CARD)),
-            java.util.Map.entry("@foreground", hex(TEXT)),
-            java.util.Map.entry("@accentColor", hex(FLAME)),
-            java.util.Map.entry("@selectionBackground", hex(YOURS)),
-            java.util.Map.entry("@selectionForeground", hex(TEXT)),
-            java.util.Map.entry("@selectionInactiveBackground", hex(YOURS)),
-            java.util.Map.entry("@selectionInactiveForeground", hex(TEXT)),
-            java.util.Map.entry("Component.borderColor", hex(BORDER)),
-            java.util.Map.entry("Component.focusColor", hex(FLAME)),
-            java.util.Map.entry("Component.focusedBorderColor", hex(BRASS)),
-            java.util.Map.entry("Component.arc", "10"),
-            java.util.Map.entry("Button.arc", "10"),
-            java.util.Map.entry("TextComponent.arc", "10"),
-            java.util.Map.entry("ComboBox.background", hex(RAISED)),
-            java.util.Map.entry("ComboBox.editableBackground", hex(RAISED)),
-            java.util.Map.entry("ComboBox.buttonBackground", hex(RAISED)),
-            java.util.Map.entry("ComboBox.buttonEditableBackground", hex(RAISED)),
-            java.util.Map.entry("ComboBox.popupBackground", hex(CARD)),
-            java.util.Map.entry("TextField.background", hex(RAISED)),
-            java.util.Map.entry("PasswordField.background", hex(RAISED)),
-            java.util.Map.entry("TextArea.background", hex(RAISED)),
-            java.util.Map.entry("Tree.selectionArc", "6"),
-            java.util.Map.entry("CheckBox.icon.selectedBackground", hex(FLAME)),
-            java.util.Map.entry("CheckBox.icon.selectedBorderColor", hex(FLAME)),
-            java.util.Map.entry("CheckBox.icon.checkmarkColor", hex(ON_FLAME)),
-            java.util.Map.entry("CheckBox.icon.focusedSelectedBackground", hex(FLAME)),
-            java.util.Map.entry("CheckBox.icon.hoverSelectedBackground", hex(FLAME)),
-            java.util.Map.entry("ScrollBar.width", "10"),
-            java.util.Map.entry("ScrollBar.showButtons", "false"),
-            java.util.Map.entry("ScrollBar.track", hex(NIGHT)),
-            java.util.Map.entry("ScrollBar.thumb", hex(BORDER)),
-            java.util.Map.entry("ScrollBar.hoverThumbColor", hex(SUBTEXT)),
-            java.util.Map.entry("ScrollBar.pressedThumbColor", hex(BRASS)),
-            java.util.Map.entry("ScrollBar.thumbArc", "999"),
-            java.util.Map.entry("ScrollBar.thumbInsets", "2,2,2,2"),
-            java.util.Map.entry("ToolTip.background", hex(RAISED)),
-            java.util.Map.entry("ToolTip.foreground", hex(TEXT))));
+        com.formdev.flatlaf.FlatLaf.setGlobalExtraDefaults(Map.ofEntries(
+            Map.entry("@background", hex(CARD)),
+            Map.entry("@foreground", hex(TEXT)),
+            Map.entry("@accentColor", hex(FLAME)),
+            Map.entry("@selectionBackground", hex(YOURS)),
+            Map.entry("@selectionForeground", hex(TEXT)),
+            Map.entry("@selectionInactiveBackground", hex(YOURS)),
+            Map.entry("@selectionInactiveForeground", hex(TEXT)),
+            Map.entry("Component.borderColor", hex(BORDER)),
+            Map.entry("Component.focusColor", hex(FLAME)),
+            Map.entry("Component.focusedBorderColor", hex(BRASS)),
+            Map.entry("Component.arc", "10"),
+            Map.entry("Button.arc", "10"),
+            Map.entry("TextComponent.arc", "10"),
+            Map.entry("ComboBox.background", hex(RAISED)),
+            Map.entry("ComboBox.editableBackground", hex(RAISED)),
+            Map.entry("ComboBox.buttonBackground", hex(RAISED)),
+            Map.entry("ComboBox.buttonEditableBackground", hex(RAISED)),
+            Map.entry("ComboBox.popupBackground", hex(CARD)),
+            Map.entry("TextField.background", hex(RAISED)),
+            Map.entry("PasswordField.background", hex(RAISED)),
+            Map.entry("TextArea.background", hex(RAISED)),
+            Map.entry("Tree.selectionArc", "6"),
+            Map.entry("CheckBox.icon.selectedBackground", hex(FLAME)),
+            Map.entry("CheckBox.icon.selectedBorderColor", hex(FLAME)),
+            Map.entry("CheckBox.icon.checkmarkColor", hex(ON_FLAME)),
+            Map.entry("CheckBox.icon.focusedSelectedBackground", hex(FLAME)),
+            Map.entry("CheckBox.icon.hoverSelectedBackground", hex(FLAME)),
+            Map.entry("ScrollBar.width", "10"),
+            Map.entry("ScrollBar.showButtons", "false"),
+            Map.entry("ScrollBar.track", hex(NIGHT)),
+            Map.entry("ScrollBar.thumb", hex(BORDER)),
+            Map.entry("ScrollBar.hoverThumbColor", hex(SUBTEXT)),
+            Map.entry("ScrollBar.pressedThumbColor", hex(BRASS)),
+            Map.entry("ScrollBar.thumbArc", "999"),
+            Map.entry("ScrollBar.thumbInsets", "2,2,2,2"),
+            Map.entry("ToolTip.background", hex(RAISED)),
+            Map.entry("ToolTip.foreground", hex(TEXT))));
         com.formdev.flatlaf.FlatDarkLaf.setup();
         // The size of the window's own text, rather than the desktop's, for menus and dialogs too.
         // Derived from FlatLaf's font, which falls back to other fonts for signs Inter lacks.
-        java.awt.Font base = javax.swing.UIManager.getFont("defaultFont");
-        if (base != null) javax.swing.UIManager.put("defaultFont", new javax.swing.plaf.FontUIResource(base.deriveFont(13f)));
+        Font base = UIManager.getFont("defaultFont");
+        if (base != null) UIManager.put("defaultFont", new FontUIResource(base.deriveFont(13f)));
     }
 
-    private static String hex(java.awt.Color colour) {
+    private static String hex(Color colour) {
         return String.format("#%02x%02x%02x", colour.getRed(), colour.getGreen(), colour.getBlue());
     }
 
     /// The lamp, lit, for the window's icon.
-    public static java.awt.Image windowIcon() {
-        return swingtree.style.SvgIcon.of(Art.lamp(Genie.Phase.READY)).withIconSize(64, 64).getImage();
+    public static Image windowIcon() {
+        return SvgIcon.of(Art.lamp(Genie.Phase.READY)).withIconSize(64, 64).getImage();
     }
 
-    private static swingtree.UIForButton<javax.swing.JButton> zoomButton(String text, String tip) {
+    private static UIForButton<JButton> zoomButton(String text, String tip) {
         return button(text).group(Skin.ICON_BUTTON).withTooltip(tip)
                 .withStyle(it -> it.componentFont(f -> f.family(FONT).size(12).color(TEXT)));
     }
@@ -645,7 +657,7 @@ public final class GeniesView extends JPanel {
 
     /// What can be done with a genie beyond its everyday buttons: behind "⋯" in the header,
     /// and a right-click on its card. Deleting it is last, away from the rest.
-    private javax.swing.JPopupMenu genieMenu(UUID id) {
+    private JPopupMenu genieMenu(UUID id) {
         return UI.popupMenu().applyIfPresent(state.get().find(id).map( shown -> ui -> {
                 Genie.Phase now = shown.phase();
                 boolean idle = now != Genie.Phase.WORKING && now != Genie.Phase.WAKING;
@@ -669,8 +681,8 @@ public final class GeniesView extends JPanel {
 
     private void rename(UUID id) {
         state.get().find(id).ifPresent(named -> {
-            Object answer = javax.swing.JOptionPane.showInputDialog(this, "A new name for " + named.name() + ":",
-                    "Rename a genie", javax.swing.JOptionPane.PLAIN_MESSAGE, null, null, named.name());
+            Object answer = JOptionPane.showInputDialog(this, "A new name for " + named.name() + ":",
+                    "Rename a genie", JOptionPane.PLAIN_MESSAGE, null, null, named.name());
             if (answer instanceof String text && !text.isBlank())
                 state.update(From.VIEW, it -> it.update(id, genie -> genie.withName(text.strip())));
         });
@@ -678,22 +690,22 @@ public final class GeniesView extends JPanel {
 
     private void confirmDelete(UUID id) {
         state.get().find(id).ifPresent(doomed -> {
-            swingtree.dialogs.ConfirmAnswer answer = UI.confirmation("Delete " + doomed.name() + " for good? Its home, everything it made "
+            ConfirmAnswer answer = UI.confirmation("Delete " + doomed.name() + " for good? Its home, everything it made "
                     + "and your conversations with it are deleted.").titled("Delete a genie").yesOption("Delete").noOption("Keep").cancelOption("").show();
-            if (answer == swingtree.dialogs.ConfirmAnswer.YES) actions.delete(id);
+            if (answer == ConfirmAnswer.YES) actions.delete(id);
         });
     }
 
     /// Lets the user change a question they asked, in a dialog holding the question as it was.
     private void askInstead(Entry question) {
-        javax.swing.JTextArea text = new javax.swing.JTextArea(question.text(), 6, 48);
+        JTextArea text = new JTextArea(question.text(), 6, 48);
         text.setLineWrap(true);
         text.setWrapStyleWord(true);
-        int answer = javax.swing.JOptionPane.showConfirmDialog(this, new JScrollPane(text),
-                "Ask " + genie.get().name() + " differently", javax.swing.JOptionPane.OK_CANCEL_OPTION,
-                javax.swing.JOptionPane.PLAIN_MESSAGE);
+        int answer = JOptionPane.showConfirmDialog(this, new JScrollPane(text),
+                "Ask " + genie.get().name() + " differently", JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE);
         String changed = text.getText().strip();
-        if (answer == javax.swing.JOptionPane.OK_OPTION && !changed.isEmpty() && !changed.equals(question.text().strip()))
+        if (answer == JOptionPane.OK_OPTION && !changed.isEmpty() && !changed.equals(question.text().strip()))
             actions.askInstead(question.ref(), changed);
     }
 
@@ -716,7 +728,7 @@ public final class GeniesView extends JPanel {
 
     /// Moves the thinking bars for as long as the genie on show works.
     private void breathe() {
-        UI.animateFor(1.2, java.util.concurrent.TimeUnit.SECONDS)
+        UI.animateFor(1.2, TimeUnit.SECONDS)
           .asLongAs(status -> genie.get().phase() == Genie.Phase.WORKING)
           .go(status -> pulse.set(status.progress()));
     }

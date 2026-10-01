@@ -1,6 +1,7 @@
 package dev.gui.view;
 
 import java.awt.Color;
+import java.awt.Font;
 
 /// The colours of Genies: a lamp burning at night. Deep plum for the dark, brass for the lamp,
 /// and the amber of its flame for whatever is alive or asks to be clicked.
@@ -45,7 +46,7 @@ final class Palette {
     /// a set of separate weights. The last family is used when none fits.
     private static String regular(String... families) {
         for (String family : families)
-            if (new java.awt.Font(family, java.awt.Font.PLAIN, 13).getFontName().equals(family + " Regular")) return family;
+            if (new Font(family, Font.PLAIN, 13).getFontName().equals(family + " Regular")) return family;
         return families[families.length - 1];
     }
 }

@@ -1,5 +1,7 @@
 package dev.gui.model;
 
+import java.util.Iterator;
+import java.util.List;
 import java.util.Optional;
 
 import dev.gui.pi.PiEvent;
@@ -111,11 +113,11 @@ public record Transcript(Tuple<Entry> entries) {
     /// pi's ids for the user's questions, which the chat learns after they were sent, so that
     /// each can be asked differently later.
     private Transcript learnIds(PiEvent.History history) {
-        java.util.Iterator<PiEvent.History.Line> asked = history.lines().stream().filter(PiEvent.History.Line::fromUser).iterator();
+        Iterator<PiEvent.History.Line> asked = history.lines().stream().filter(PiEvent.History.Line::fromUser).iterator();
         return new Transcript(entries.map(entry -> entry.kind() == Entry.Kind.YOU ? entry.withRef(asked.next().id()) : entry));
     }
 
-    private java.util.List<String> questions() {
+    private List<String> questions() {
         return entries.stream().filter(entry -> entry.kind() == Entry.Kind.YOU).map(entry -> entry.text().strip()).toList();
     }
 
