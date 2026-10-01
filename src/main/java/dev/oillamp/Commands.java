@@ -891,7 +891,7 @@ final class Commands {
             return exitStatusFor(failure.problems());
         }
         LampConfig.Recording policy = ((Result.Ok<LampConfig>) loaded).value().recording();
-        Tuple<RecordingFile> doomed = Retention.select(existing, policy, machine.now());
+        Tuple<RecordingFile> doomed = RecordingRetentionUtil.select(existing, policy, machine.now());
         if (doomed.isEmpty()) {
             context.ok("recordings", "nothing is beyond the configured retention of "
                     + policy.maxAgeDays() + " days / " + policy.maxTotalGb() + " GB");

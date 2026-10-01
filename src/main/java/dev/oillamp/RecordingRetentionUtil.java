@@ -17,9 +17,9 @@ import sprouts.Tuple;
 ///
 /// This only selects; it deletes nothing. The caller turns the selection into a step, which
 /// deletes through `podman unshare` because the files belong to the infra user.
-final class Retention {
+final class RecordingRetentionUtil {
 
-    private Retention() {}
+    private RecordingRetentionUtil() {}
 
     private static final long BYTES_PER_GB = 1024L * 1024L * 1024L;
 

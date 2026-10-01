@@ -134,7 +134,7 @@ final class LampPlanUtil {
         steps = steps.add(new Step.ChownForContainer(layout.recordingsDir(),
                 INFRA_UID, INFRA_GID, PosixMode.PUBLIC_DIR));
 
-        Tuple<RecordingFile> doomed = Retention.select(inputs.recordings(),
+        Tuple<RecordingFile> doomed = RecordingRetentionUtil.select(inputs.recordings(),
                 inputs.config().recording(), inputs.now());
         if (!doomed.isEmpty()) {
             Tuple<Path> paths = Tuple.of(Path.class);
@@ -173,7 +173,7 @@ final class LampPlanUtil {
     ///                   named after it
     record Removal(Path root, Tuple<Path> agentDirs, Optional<Path> runtimeDir) {}
 
-    /// The plan for `oillamp recordings --prune`: delete the recordings [Retention]
+    /// The plan for `oillamp recordings --prune`: delete the recordings [RecordingRetentionUtil]
     /// selected. It is the same decision the next session start would make, done now.
     public static Plan planPrune(Tuple<RecordingFile> doomed, LampConfig.Recording policy) {
         if (doomed.isEmpty()) return Plan.of(LampEvent.Phase.LAMP, Tuple.of(Step.class));

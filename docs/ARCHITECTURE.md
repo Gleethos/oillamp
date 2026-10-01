@@ -1150,7 +1150,7 @@ Off by default. With `recording.enabled = true`, wf-recorder writes
 called `crf` for software encoders and `qp` for hardware ones (`*vaapi*`, `*nvenc*`, `*qsv*`,
 `*_v4l2m2m`). A Matroska file stays playable even if the recorder is killed.
 
-Retention (`Retention.select`) runs at every session start and on `oillamp recordings --prune`. A
+Retention (`RecordingRetentionUtil.select`) runs at every session start and on `oillamp recordings --prune`. A
 recording is deleted if it is older than `max_age_days` **or** falls outside the newest
 `max_total_gb`. `0` disables either limit. Deletion goes through `podman unshare rm`.
 
@@ -1316,7 +1316,7 @@ removed.
 | Entry and commands | `OilLamp`, `Invocation`, `Commands`, `Context`, `ConsoleRenderer`, `IntroductionTextUtil` (the texts of `oillamp about` and `oillamp guide`) |
 | The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `FilesystemUtil`, `LampLock` |
 | Host phase | `HostPhase`, `HostProbeUtil`, `HostPlanUtil`, `HostFacts`, `HostRequirements`, `SubIdRangeUtil`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
-| Lamp phase | `LampPhase`, `LampPlanUtil`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
+| Lamp phase | `LampPhase`, `LampPlanUtil`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `RecordingRetentionUtil`, `RecordingFile` |
 | History | `History` (reads the agent directory, writes and reads the repository), `GitObjectUtil` (git's object format and the commit messages, pure) |
 | Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `TimeNotationUtil` (times as people write them), `WakePromptUtil` (a run's prompt, pure); in `dev.lamp`, `PiSessionFile` (pi's session files as `Lamp.Conversation`, pure) |
 | Configuration | `ConfigLoadingUtil`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaultsUtil`, `LampConfig`, `GeneratedFileTextUtil`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
