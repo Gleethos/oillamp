@@ -16,7 +16,7 @@ import sprouts.Tuple;
 ///
 /// It does the reading the pure planners cannot: resolves the path, looks at what is there,
 /// reads the configuration files and checks the filesystem can hold Unix sockets. The decisions are
-/// made by [LampPaths], [LampDirectoryUtil], [ConfigLoadingUtil], [DesktopRendererUtil] and
+/// made by [LampLocationUtil], [LampDirectoryUtil], [ConfigLoadingUtil], [DesktopRendererUtil] and
 /// [LampPlanUtil]. The lock is taken afterwards, by `Commands.at`.
 final class LampPhase {
 
@@ -39,7 +39,7 @@ final class LampPhase {
     public Result<Prepared> prepare(Path requestedPath, HostFacts host) {
         Path resolved = resolve(machine, requestedPath);
 
-        Result<Path> validated = LampPaths.validate(resolved, host.user());
+        Result<Path> validated = LampLocationUtil.validate(resolved, host.user());
         if (validated instanceof Result.Err<Path> failure) return Result.err(failure.problems());
         Path root = ((Result.Ok<Path>) validated).value();
 
@@ -255,7 +255,7 @@ final class LampPhase {
     }
 
     /// Makes the path absolute and resolves symlinks _before_ validation, so a link
-    /// pointing into a system directory cannot get past the refusal in [LampPaths].
+    /// pointing into a system directory cannot get past the refusal in [LampLocationUtil].
     ///
     /// Every command that names a lamp uses this, so a lamp reached through a link is the same
     /// lamp to all of them. `at` labels the container with this path, and `remove` looks for

@@ -12,9 +12,9 @@ import sprouts.Tuple;
 /// sandbox exists to protect.
 ///
 /// There is deliberately no option to override this. It would only ever be used by mistake.
-final class LampPaths {
+final class LampLocationUtil {
 
-    private LampPaths() {}
+    private LampLocationUtil() {}
 
     /// System directories a lamp may never be in or under.
     private static final Tuple<String> FORBIDDEN_PREFIXES = Tuple.of(String.class,
