@@ -16,9 +16,9 @@ import sprouts.Tuple;
 ///   rest as a separate command, and no real value needs one.
 ///
 /// Keys are written in sorted order, so the file is the same for the same configuration.
-final class RuntimeEnv {
+final class RuntimeEnvFileUtil {
 
-    private RuntimeEnv() {}
+    private RuntimeEnvFileUtil() {}
 
     public static Result<String> render(Association<String, String> variables) {
         Tuple<String> lines = Tuple.of(String.class);

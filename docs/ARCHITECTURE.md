@@ -1184,7 +1184,7 @@ line** by the entrypoint or the supervisor.
 |---|---|---|
 | podman | the `podman run` arguments | every start, `SandboxPhase.containerArgv`, from `oillamp.toml` (`limits.*`, GPU decision) |
 | the image contents | Containerfile build arguments | every build, `SandboxPhase`, from `image.*` and `agent_tools.install` |
-| the entrypoint | `/oillamp/session/runtime.env` | every start, `RuntimeEnv.render` |
+| the entrypoint | `/oillamp/session/runtime.env` | every start, `RuntimeEnvFileUtil.render` |
 | sway | `/etc/oillamp/sway/config`, which includes `/run/lamp/output.conf` and `/run/lamp/windows.conf` | the config is in the image; the two includes are written by the entrypoint from `runtime.env` |
 | wayvnc | command-line flags, `--config=/dev/null` | every start, the entrypoint (`OILLAMP_VNC_MAX_FPS`) |
 | wf-recorder | command-line flags | every start, the entrypoint (`OILLAMP_RECORDING_*`) |
@@ -1205,7 +1205,7 @@ line** by the entrypoint or the supervisor.
 
 ### `runtime.env`
 
-`RuntimeEnv.render` writes `.oillamp/session/runtime.env`, which the entrypoint and every shell
+`RuntimeEnvFileUtil.render` writes `.oillamp/session/runtime.env`, which the entrypoint and every shell
 read. Every value is single-quoted, a single quote inside is escaped as `'\''`, and values
 containing a line break are refused, because a root shell executes this file. Keys are sorted so
 the file is stable.
@@ -1214,7 +1214,7 @@ Contents: `OILLAMP_SESSION`, `OILLAMP_AGENT_ID`, `OILLAMP_LAMP_NAME`,
 `OILLAMP_DISPLAY_WIDTH/HEIGHT/SCALE`, `OILLAMP_WINDOWS`, `OILLAMP_RENDERER`, `OILLAMP_VNC_MAX_FPS`,
 `OILLAMP_RECORDING_ENABLED/CODEC/CRF/MAX_FPS`, `OILLAMP_PROXY_PORT`, `OILLAMP_MODEL_PORT`, `OILLAMP_MODEL_EU_ONLY`, `OILLAMP_FORWARDS`
 (`name:port name:port`), the LLM variables when configured, and `EDENAI_MAX_TOKENS` when it is set
-on the host (`RuntimeEnv.INHERITED_FROM_HOST`). The model key is never in it: it stays on the host,
+on the host (`RuntimeEnvFileUtil.INHERITED_FROM_HOST`). The model key is never in it: it stays on the host,
 and the relay adds it to each model request. `EDENAI_BASE_URL`, `EDENAI_API_KEY` and
 `EDENAI_EU_ONLY` are set by the sandbox's profile, never copied from the host.
 
@@ -1323,7 +1323,7 @@ removed.
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
 | Shared | `Json` (every JSON file, message and answer goes through it) |
-| Image and container | `SandboxPhase`, `ImageResources`, `ImageTag`, `ContainerName`, `RuntimeEnv`, `ReadyInfo`, `AgentGuide`, `Gpu` |
+| Image and container | `SandboxPhase`, `ImageResources`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuide`, `Gpu` |
 | Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `Ssh`, `TerminalEmulatorUtil`, `Viewers` |
 | Network | `Egress`, `Policy`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |
 

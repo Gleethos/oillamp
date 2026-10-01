@@ -107,13 +107,13 @@ final class LampPhase {
     }
 
     /// The host environment variables passed to the agent's tools: only the names in
-    /// [RuntimeEnv#INHERITED_FROM_HOST]. A user who set `EDENAI_API_KEY` on the host
+    /// [RuntimeEnvFileUtil#INHERITED_FROM_HOST]. A user who set `EDENAI_API_KEY` on the host
     /// does not have to set it again in the sandbox. The console says which were found, never their
     /// values.
     private Association<String, String> inheritedFromHost() {
         Association<String, String> found = Association.between(String.class, String.class);
         Tuple<String> names = Tuple.of(String.class);
-        for (String name : RuntimeEnv.INHERITED_FROM_HOST) {
+        for (String name : RuntimeEnvFileUtil.INHERITED_FROM_HOST) {
             Optional<String> value = machine.environmentVariable(name);
             if (value.isEmpty()) continue;
             found = found.put(name, value.get());
@@ -142,8 +142,8 @@ final class LampPhase {
                     "the generated public key could not be read back from " + layout.keysDir(),
                     Duration.ZERO)));
 
-        Result<String> environment = RuntimeEnv.render(
-                RuntimeEnv.variables(config, layout, session, gpu.renderer(), inheritedFromHost()));
+        Result<String> environment = RuntimeEnvFileUtil.render(
+                RuntimeEnvFileUtil.variables(config, layout, session, gpu.renderer(), inheritedFromHost()));
         if (environment instanceof Result.Err<String> failure) return Result.err(failure.problems());
 
         return LampPlanUtil.planSession(layout, clientKey.get(), hostKey.get(),
