@@ -237,6 +237,13 @@ message sent right after typing could go out before the draft had the last keyst
 sent while pi was still starting was replaced by the conversation pi sent back late. The window has
 not yet been used by a person.
 
+The desktop at the size of its panel was checked the same way on 2026-10-02, against a real lamp
+with Firefox in kiosk mode on its desktop: the page filled the panel exactly (it said 644 × 728,
+the size the bar showed), a narrow window gave it 614 × 328, Fit and closing the panel gave the
+desktop its own 1920 × 1080 back, and so did closing Genies with the genie kept running. On a
+recorded lamp, the bar said the desktop keeps its size, the desktop was drawn fitted, and the
+recorder logged no error.
+
 ### Desktop, recording, GPU
 
 - `lamp info`, `screenshot`, `type`, `key` and `wait-stable` work against the real desktop.
@@ -258,6 +265,11 @@ not yet been used by a person.
 - Recording: `wf-recorder --framerate=10 -p crf=30` produced a 10 fps file (checked with
   `ffprobe`), and its duration matched the session within 1.6 s.
 - `oillamp recordings`, `--open` (played in VLC) and `--prune` work on real infra-owned files.
+- The desktop takes the size a viewer asks for. The desktop spike asks wayvnc for 640 × 400:
+  `lamp info` says so, a fullscreen window has that size, and a floating window near the corner is
+  moved onto the smaller screen at the size it had; asked for 1280 × 720 again, the floating window
+  is back exactly where it was. On a recorded desktop wayvnc answers "not allowed", keeps serving
+  the viewer, and the recorder logs nothing (checked on 2026-10-01).
 
 ### Packaging
 
@@ -291,6 +303,9 @@ design prepared was needed.
 | pi and opencode reach Eden AI only through its EU endpoint | confirmed in a real sandbox, with the host pointing `EDENAI_BASE_URL` at the global endpoint: both answered through `api.eu.edenai.run`, offered its 270 models, and the proxy refused `api.edenai.run` |
 | Terminal argument templates | confirmed only for the terminals on the development machine |
 | wayvnc can set the viewer's window title | not checked; cosmetic |
+| wayvnc 0.9.1 gives a headless screen the size a viewer asks for (RFB's ExtendedDesktopSize) | confirmed: it answers "passed on to the compositor", and reports the new size once sway has made it, while a viewer is connected |
+| wf-recorder survives a change of the screen's size | **refuted**; see the lessons below |
+| wayvnc reads a "set desktop size" message that arrives in pieces | **refuted**: it dropped the viewer ("uninterpretable qemu message"), and on a recorded desktop the whole desktop crashed. Genies sends it in one write |
 
 ---
 
@@ -412,6 +427,7 @@ the code that would otherwise look unnecessary.
 | `lamp click` never clicked where it was told, and its clicks reached no window, in Swing or anywhere else. `lamp type` lost the first key in X11 applications. | `wlrctl pointer move` is relative, and each `wlrctl` call's virtual mouse disappears when it exits, taking pointer focus with it. Each `wtype` call sends a new keyboard layout, and Xwayland drops the key that comes with it. The earlier check only confirmed that `wlrctl` accepted the commands. | Pointer input goes through the desktop's VNC server (`lamp-pointer`), keyboard input waits 150 ms before the first key. A spike clicks and types into a real X11 application and checks what it received. |
 | The new click-and-type spike failed on its first run although `lamp` worked. | The scenario before it leaves a terminal open, sway tiles the windows side by side, and the fixed click position was on the terminal. | The scenario asks X11 where the test window is and clicks its centre. |
 | A 403 sometimes arrived without the sentence naming the rule. | Head and body were written separately; some clients read once. | One write. |
+| After a viewer changed the desktop's size, the recording froze on its last picture, the recorder used four cores, and the file grew to 5,800 seconds of video in two minutes. The session reported itself healthy. | wf-recorder loses the screen at a change of size ("invalid buffer dimensions") and stays alive. wayvnc accepted size changes from any viewer, the agent included. | With recording on, wayvnc runs with `--disable-resizing`. A spike asks a recorded desktop for another size and checks that it says no. |
 | A lamp could not be deleted. | Infra-owned files are a subordinate id on the host. | `oillamp remove`. |
 | `oillamp remove` deleted a lamp whose container was still running, when `lamp.json` was already gone. | It looked for the container by a name derived from `lamp.json`. | It asks podman for a container labelled with the lamp's path. |
 | The first real run failed with a 403: "Model(s) 'vertex/claude-sonnet-5-5' not allowed by your guardrail policy". | pi's default model, in a lamp whose pi had no model set, was one the account's Eden AI policy refuses. | Not a bug in oillamp: the run reported it, with the service's message. Set `defaultProvider` and `defaultModel` in the agent's `~/.pi/agent/settings.json`. |

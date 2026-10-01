@@ -224,16 +224,33 @@ oillamp refuses leaves the old one, and the editor says why in oillamp's words.
 
 The desktop is served by wayvnc inside the sandbox, on a Unix socket that `Lamp.desktop()` names.
 Only the user can open that socket, so it asks for no password. Genies draws it with a VNC client
-of its own, `RfbConnection` (RFB 3.8, about 250 lines), because the protocol is simple for a local
+of its own, `RfbConnection` (RFB 3.8, about 300 lines), because the protocol is simple for a local
 socket: raw 32-bit pixels in exactly the layout of a Java image, copy-rect, and desktop resizes.
 The pointer and keys go back as RFB events, keys as X11 key symbols (`X11KeysymUtil`).
 
-The desktop is fitted into the room next to the chat, or shown at a scale from 50% to 300% in a
-scroll pane (the buttons above it, or Control and the mouse wheel on it). Clicking it gives it the
-keyboard, and a flame-coloured frame says so.
+The bar above the desktop says how it is shown:
 
-A genie shows the user something graphical by opening it on its desktop. Its instructions say so,
-and the user watches with the Desktop button.
+| Choice | What happens |
+|---|---|
+| **Panel**, the default | The desktop takes the size of the panel, in the screen's own pixels, and is drawn pixel for pixel. `DesktopScreen` asks for that size with RFB's "set desktop size" once the panel kept its size for 250 ms, and the bar shows the size, such as `644 × 728`. A fullscreen window on the desktop follows by itself. Never smaller than 400 × 300: a smaller panel shows the desktop shrunk |
+| **Fit** | The desktop at its own size, shrunk into the panel |
+| −, + | The desktop at its own size, at a scale from 50% to 300%, in a scroll pane; also Control and the mouse wheel on it. Not offered at the panel's size, where there is nothing to zoom |
+
+The desktop gets its own size back, `display.width` × `display.height` from `SessionOpened`, when
+it is no longer shown at the panel's size: on Fit or a scale, when the panel closes, when another
+genie is shown, and when Genies closes with the genies kept running. The connection stays until the
+desktop has that size, or for 3 s, because wayvnc finishes a change of size only while a viewer is
+connected. A recorded desktop keeps its size (wayvnc answers "not allowed"); it is then drawn
+fitted, and the bar says "Recorded, so it keeps its own size".
+
+Clicking the desktop gives it the keyboard, and a flame-coloured frame says so.
+
+**A genie shows the user something** by opening it on its desktop, fullscreen where it can, and
+running `lamp show "what it is"`. Its instructions say so. The lamp reports
+`LampEvent.LookAtDesktop`; `GenieRunner` turns it into `Genie.shows(what)`, which opens the genie's
+desktop next to the chat, with a line above it: "Rex shows you: the chart you asked for". A genie
+that is not on screen says it on its card in the sidebar, until the user is at its chat. Closing
+the desktop forgets it.
 
 ## How the code is arranged
 
@@ -241,7 +258,7 @@ and the user watches with the Desktop button.
 |---|---|---|
 | `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, and `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `DateWordingUtil` for the schedule: records with withers, every change a pure method | no |
 | `dev.gui.pi` | `PiEvent` (what the chat is told) | no |
-| `dev.gui.desktop` | `RfbConnection`, `X11KeysymUtil` | `RfbConnection` only |
+| `dev.gui.desktop` | `RfbConnection`, `X11KeysymUtil`, `Desktop` (its socket and its own size) | `RfbConnection` only |
 | `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `GenieFileTransferUtil` (files), `LampApiConversionUtil` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePiSetupUtil` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `Shelf` (what is kept on disk) | yes |
 | `dev.gui.view` | `GeniesView` (the window, bound to `Var<GeniesState>` through lenses), `SchedulePage`, `SettingsPage`, `DesktopScreen`, the look | Swing only |
 | `dev.gui` | `Genies`: the entry point, and the `Actions` the window calls | ties it together |
@@ -259,11 +276,11 @@ through one place, one at a time.
 | `FollowingAConversationSpec` | how events become the chat, and asking a question differently |
 | `BranchingAConversationSpec` | how pi's entries become the tree of conversations and branches |
 | `ReadingAGeniesMarkdownSpec` | Markdown as models write it, and the fade of a streaming answer |
-| `ZoomingIntoAGeniesDesktopSpec` | the desktop's zoom steps |
+| `ZoomingIntoAGeniesDesktopSpec` | the panel's size as the default, and the zoom steps |
 | `KeepingManyGeniesSpec` | the list of genies, the settings for the three places and their model lists, a narrow window |
 | `KeepingGeniesBetweenRunsSpec` | the shelf |
-| `WatchingAGeniesDesktopSpec` | the VNC client, against a stand-in desktop playing wayvnc's part byte by byte |
-| `KeepingAGenieAliveSpec` | a genie's life through the Lamp API, with oillamp's engine in the test's JVM on a simulated machine and a stand-in pi that writes conversations as pi does |
+| `WatchingAGeniesDesktopSpec` | the VNC client, against a stand-in desktop playing wayvnc's part byte by byte, asking for a size and being told no included |
+| `KeepingAGenieAliveSpec` | a genie's life through the Lamp API, with oillamp's engine in the test's JVM on a simulated machine and a stand-in pi that writes conversations as pi does; `lamp show` opening its desktop |
 | `PlanningAGeniesWeekSpec` | the ways a job repeats and their cron expressions, the editor's checks and sentence, and the timeline |
 | `KeepingAGeniesScheduleSpec` | the schedule read and changed through the lamp, asleep and awake, and a job's run followed on the page, against the engine in the test's JVM |
 | `RunningARealGenieSpec` (spike) | the same with a real lamp, real pi, real wayvnc and, with a key, the real model |
