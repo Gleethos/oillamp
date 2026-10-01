@@ -26,7 +26,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 
-import dev.gui.model.Dates;
+import dev.gui.model.DateWordingUtil;
 import dev.gui.model.Genie;
 import dev.gui.model.GeniesState;
 import dev.gui.model.JobDraft;
@@ -254,7 +254,7 @@ final class SchedulePage {
                 .withStyle(it -> it.backgroundColor(TRANSPARENT))
                 .add("skip 1, center", dot(Val.of(day.date().equals(today) ? FLAME : SUBTEXT), 5))
                 .add("growx, wmin 0, gapleft 8",
-                    words((day.label() + (near ? "  ·  " + Dates.shortDay(day.date()) : "")), 13, 2f,
+                    words((day.label() + (near ? "  ·  " + DateWordingUtil.shortDay(day.date()) : "")), 13, 2f,
                           day.date().isBefore(today) ? SUBTEXT : TEXT)));
         for (Timeline.Moment moment : day.moments()) view = view.add("growx, wmin 0", momentView(moment));
         return view;
@@ -436,7 +436,7 @@ final class SchedulePage {
             .add("growx, wmin 0",
                 box("ins 0, gap 6, hidemode 3")
                 .add(tag(next).isVisibleIf(next.viewAs(Boolean.class, it -> !it.isEmpty())))
-                .add(tag(job.viewAsString(it -> it.expires().map(end -> "until " + Dates.shortDay(
+                .add(tag(job.viewAsString(it -> it.expires().map(end -> "until " + DateWordingUtil.shortDay(
                         end.minusSeconds(1).atZone(schedule.get().zone()).toLocalDate())).orElse("")))
                      .isVisibleIf(job.viewAs(Boolean.class, it -> it.expires().isPresent())))
                 .add(tag(genie.viewAsString(it -> "added by " + it.name())).isVisibleIf(job.viewAs(Boolean.class, Schedule.Job::byGenie))));
@@ -453,7 +453,7 @@ final class SchedulePage {
         LocalDateTime at = LocalDateTime.ofInstant(next, state.genie().schedule().zone());
         LocalDate today = state.localNow().toLocalDate();
         String day = at.toLocalDate().equals(today) ? "today" : at.toLocalDate().equals(today.plusDays(1)) ? "tomorrow"
-                   : Dates.shortDay(at.toLocalDate());
+                   : DateWordingUtil.shortDay(at.toLocalDate());
         return "next: " + day + ", " + Recurrence.clock(at.toLocalTime());
     }
 
@@ -676,7 +676,7 @@ final class SchedulePage {
         return
             button(String.valueOf(day.getDayOfMonth())).group(Skin.DAY)
             .isEnabledIf(!past)
-            .withTooltip(Dates.day(day, month.today()))
+            .withTooltip(DateWordingUtil.day(day, month.today()))
             .withStyle(it -> it
                 .backgroundColor(picked ? FLAME : inStretch ? YOURS : TRANSPARENT)
                 .border(1, today && !picked ? BRASS : TRANSPARENT)

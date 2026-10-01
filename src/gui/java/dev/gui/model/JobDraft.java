@@ -170,15 +170,15 @@ public record JobDraft(Optional<String> replaces, String prompt, boolean repeats
         LocalDate today = now.toLocalDate();
         if (!repeats) {
             LocalDateTime at = once().orElseThrow();
-            return "Once, " + Dates.dayInSentence(at.toLocalDate(), today) + " at " + Recurrence.clock(at.toLocalTime())
-                 + " — " + Dates.fromNow(Duration.between(now, at)) + ".";
+            return "Once, " + DateWordingUtil.dayInSentence(at.toLocalDate(), today) + " at " + Recurrence.clock(at.toLocalTime())
+                 + " — " + DateWordingUtil.fromNow(Duration.between(now, at)) + ".";
         }
         Recurrence recurrence = recurrence().orElseThrow();
         String first = recurrence.nextAfter(now)
                 .filter(next -> ends().isEmpty() || next.isBefore(ends().get()))
-                .map(next -> ", first " + Dates.dayInSentence(next.toLocalDate(), today) + " at " + Recurrence.clock(next.toLocalTime()))
+                .map(next -> ", first " + DateWordingUtil.dayInSentence(next.toLocalDate(), today) + " at " + Recurrence.clock(next.toLocalTime()))
                 .orElse(recurrence instanceof Recurrence.Custom ? "" : ", but not before its last day");
-        String last = endsOn.map(day -> ", until " + Dates.dayInSentence(day, today).replaceFirst("^on ", "")).orElse("");
+        String last = endsOn.map(day -> ", until " + DateWordingUtil.dayInSentence(day, today).replaceFirst("^on ", "")).orElse("");
         return recurrence.describe() + first + last + "."
              + (recurrence instanceof Recurrence.Custom ? " oillamp reads the expression when you save the job." : "");
     }
