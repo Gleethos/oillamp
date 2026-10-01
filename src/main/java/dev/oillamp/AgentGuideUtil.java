@@ -96,7 +96,8 @@ final class AgentGuideUtil {
             lamp type "some text"
             lamp key ctrl+shift+t
             lamp wait-stable                # block until the screen stops changing
-            lamp info                       # size, renderer, output name
+            lamp info                       # size now, renderer, output name
+            lamp show "the chart"           # ask the human to look at your desktop
             ```
 
             This works the same for Wayland and X11 applications, including Java Swing. Click a
@@ -123,6 +124,27 @@ final class AgentGuideUtil {
             Read the script with `cat $(command -v lamp)` if you want to see exactly what it
             runs. If you find something it should do and does not, say so; it is one file.
 
+            ### Showing the human something
+
+            To show the human a page, a chart or a program you made, open it on your desktop and
+            run `lamp show "what it is"`. The human's app is asked to show them your desktop;
+            whether they look is up to them. Fullscreen shows it best: `firefox --kiosk <url>`,
+            or the application's own fullscreen.
+
+            """);
+        // A recorded desktop keeps its size: the recorder does not survive a change of size.
+        out.append(config.recording().enabled()
+                ? "Your desktop is recorded, so it keeps its size.\n\n"
+                : "The human's app may give your desktop the size of the panel they watch it in, and\n"
+                + "its own size back afterwards. "
+                + (config.display().windows() == WindowLayout.FLOATING
+                        ? "A fullscreen window follows by itself; a window that\n"
+                        + "would leave the screen is moved, and made smaller if it must, and goes back when\n"
+                        + "it can. "
+                        : "Tiled and fullscreen windows follow by themselves.\n")
+                + "After the size changed, positions from an older screenshot are wrong:\n"
+                + "`lamp info` says the size now, and a new screenshot shows where things are.\n\n");
+        out.append("""
             ## Network
 
             """);

@@ -148,7 +148,40 @@ class ShowingTheUserTheDesktopSpec extends Specification {
             opened.desktopHeight() == 900
     }
 
+    def 'The agent\'s guide says how to show something, and whether the desktop may change size'() {
+        reportInfo """
+            The agent learns about `lamp show` from AGENTS.md in its home. The guide also says that
+            the desktop may take the size of the panel the user watches it in, because positions
+            from an older screenshot are then wrong; unless the desktop is recorded, which keeps
+            it at its size.
+        """
+        given:
+            var lamp = host.lampPath()
+
+        when: 'a lamp whose desktop is not recorded'
+            host.givenConfig(lamp, 'schema_version = 1\n')
+            host.oillamp.run('at', lamp.toString())
+            var guide = Files.readString(home(lamp).resolve('AGENTS.md'))
+
+        then:
+            guide.contains('run `lamp show "what it is"`')
+            guide.contains('may give your desktop the size of the panel they watch it in')
+            guide.contains('a window that\nwould leave the screen is moved')
+
+        when: 'the same lamp, recorded'
+            host.givenConfig(lamp, 'schema_version = 1\n[recording]\nenabled = true\n')
+            host.oillamp.run('at', lamp.toString())
+            guide = Files.readString(home(lamp).resolve('AGENTS.md'))
+
+        then:
+            guide.contains('run `lamp show "what it is"`')
+            guide.contains('Your desktop is recorded, so it keeps its size.')
+            !guide.contains('size of the panel')
+    }
+
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
+
+    private static Path home(Path lamp) { dev.lamp.Lamp.agentHome(lamp).orElseThrow() }
 
     private Path desktopSocket() { host.runtime.resolve('oillamp/k3v7x2ab/sockets/host/desktop.sock') }
 
