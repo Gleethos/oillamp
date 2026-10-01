@@ -4,7 +4,6 @@ import dev.lamp.ExitStatus
 import dev.lamp.Lamp
 import dev.lamp.LampEvent
 import dev.lamp.LampEvent.SaveKind
-import dev.oillamp.OilLamp
 import spock.lang.IgnoreIf
 import spock.lang.Specification
 import spock.lang.Subject
@@ -34,19 +33,19 @@ import java.util.concurrent.TimeUnit
 class TravellingBackInTimeSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     final List<LampEvent> reported = new java.util.concurrent.CopyOnWriteArrayList<>()
     Thread session
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
     }
 
     def cleanup() {
         if (session?.alive) {
-            sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            host.oillamp.run('stop', host.lampPath().toString())
             session.join(20_000)
         }
     }
@@ -59,10 +58,10 @@ class TravellingBackInTimeSpec extends Specification {
             and which session it began, so a person reading the history knows what it is.
         """
         given: 'a new lamp'
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
 
         when: 'a session runs on it and ends, having changed nothing'
-            var ran = sandbox.oillamp.run('at', lamp.toString())
+            var ran = host.oillamp.run('at', lamp.toString())
 
         then:
             ran.succeeded()
@@ -84,8 +83,8 @@ class TravellingBackInTimeSpec extends Specification {
             It is part of the shutdown itself, which is also what runs after Ctrl-C.
         """
         given: 'a lamp whose agent writes a file during the session'
-            var lamp = sandbox.lampPath()
-            var oillamp = sandbox.oillamp.observedBy { event ->
+            var lamp = host.lampPath()
+            var oillamp = host.oillamp.observedBy { event ->
                 if (event instanceof LampEvent.Summary && event.title() == 'your session is up')
                     Files.writeString(home(lamp).resolve('workspace/notes.txt'), 'done for today\n')
             }
@@ -109,8 +108,8 @@ class TravellingBackInTimeSpec extends Specification {
             Files.writeString(home(lamp).resolve('workspace/plan.md'), '# the plan\n')
 
         when:
-            var first = sandbox.oillamp.run('save', lamp.toString(), '--message', 'before the upgrade')
-            var second = sandbox.oillamp.run('save', lamp.toString(), '-m', 'again')
+            var first = host.oillamp.run('save', lamp.toString(), '--message', 'before the upgrade')
+            var second = host.oillamp.run('save', lamp.toString(), '-m', 'again')
 
         then: 'the first made a snapshot, marked as saved while no session ran'
             first.succeeded()
@@ -125,7 +124,7 @@ class TravellingBackInTimeSpec extends Specification {
             second.console().contains('nothing changed since ' + made.shortId())
 
         and: 'the history lists it by what the person wrote'
-            var listed = sandbox.oillamp.run('history', lamp.toString())
+            var listed = host.oillamp.run('history', lamp.toString())
             listed.console().contains(made.shortId())
             listed.console().contains('idle save')
             listed.console().contains('before the upgrade')
@@ -172,7 +171,7 @@ class TravellingBackInTimeSpec extends Specification {
             chmod(home.resolve('go/pkg/mod/lib@v1'), 'r-xr-xr-x')
 
         when: 'the person restores the snapshot, by the first eight characters of its id'
-            var restored = sandbox.oillamp.run('restore', lamp.toString(), saved.shortId())
+            var restored = host.oillamp.run('restore', lamp.toString(), saved.shortId())
 
         then:
             restored.succeeded()
@@ -214,7 +213,7 @@ class TravellingBackInTimeSpec extends Specification {
             Files.writeString(home.resolve('workspace/story.txt'), 'chapter two\n')
 
         when: 'the person restores the early snapshot'
-            var restored = sandbox.oillamp.run('restore', lamp.toString(), early.shortId())
+            var restored = host.oillamp.run('restore', lamp.toString(), early.shortId())
 
         then: 'the lamp was saved first, and the way back is printed'
             restored.succeeded()
@@ -224,7 +223,7 @@ class TravellingBackInTimeSpec extends Specification {
             Files.readString(home.resolve('workspace/story.txt')) == 'chapter one\n'
 
         when: 'they change their mind'
-            var undone = sandbox.oillamp.run('restore', lamp.toString(), safety.shortId())
+            var undone = host.oillamp.run('restore', lamp.toString(), safety.shortId())
 
         then: 'chapter two is back'
             undone.succeeded()
@@ -247,7 +246,7 @@ class TravellingBackInTimeSpec extends Specification {
             Files.writeString(config, original + '\n# changed later\n')
 
         when:
-            var restored = sandbox.oillamp.run('restore', lamp.toString(), saved.shortId())
+            var restored = host.oillamp.run('restore', lamp.toString(), saved.shortId())
 
         then:
             restored.succeeded()
@@ -271,7 +270,7 @@ class TravellingBackInTimeSpec extends Specification {
             write(home(lamp), 'workspace/risky.txt', 'about to try something\n')
 
         when:
-            var restore = sandbox.oillamp.run('restore', lamp.toString(), earlier.shortId())
+            var restore = host.oillamp.run('restore', lamp.toString(), earlier.shortId())
 
         then:
             restore.status() == ExitStatus.LAMP_BUSY
@@ -279,7 +278,7 @@ class TravellingBackInTimeSpec extends Specification {
             Files.exists(home(lamp).resolve('workspace/risky.txt'))
 
         when:
-            var save = sandbox.oillamp.run('save', lamp.toString(), '-m', 'before the risky part')
+            var save = host.oillamp.run('save', lamp.toString(), '-m', 'before the risky part')
 
         then:
             save.succeeded()
@@ -298,7 +297,7 @@ class TravellingBackInTimeSpec extends Specification {
             var lamp = aLampThatHasRun()
 
         when:
-            var outcome = sandbox.oillamp.run('restore', lamp.toString(), given)
+            var outcome = host.oillamp.run('restore', lamp.toString(), given)
 
         then:
             outcome.status() == ExitStatus.USAGE
@@ -317,7 +316,7 @@ class TravellingBackInTimeSpec extends Specification {
         """
         given:
             var lamp = aLampThatHasRun()
-            var lamps = Lamp.at(lamp).launchedBy(sandbox.launcher)
+            var lamps = Lamp.at(lamp).launchedBy(host.launcher)
             write(home(lamp), 'workspace/draft.txt', 'first draft\n')
 
         when:
@@ -373,8 +372,8 @@ class TravellingBackInTimeSpec extends Specification {
 
     /** A lamp that exists, has run one session, and so has its first snapshot. */
     private Path aLampThatHasRun() {
-        var lamp = sandbox.lampPath()
-        assert sandbox.oillamp.run('at', lamp.toString()).succeeded()
+        var lamp = host.lampPath()
+        assert host.oillamp.run('at', lamp.toString()).succeeded()
         lamp
     }
 
@@ -382,13 +381,13 @@ class TravellingBackInTimeSpec extends Specification {
 
     /** Saves the lamp, and returns its newest snapshot: the one made, or the unchanged one before. */
     private LampEvent.Snapshot save(Path lamp, String message = '') {
-        var saved = sandbox.oillamp.run('save', lamp.toString(), '--message', message)
+        var saved = host.oillamp.run('save', lamp.toString(), '--message', message)
         assert saved.succeeded()
         saved.events().find { it instanceof LampEvent.Saved }?.snapshot() ?: history(lamp).first()
     }
 
     private List<LampEvent.Snapshot> history(Path lamp) {
-        var listed = sandbox.oillamp.run('history', lamp.toString())
+        var listed = host.oillamp.run('history', lamp.toString())
         assert listed.succeeded()
         listed.events().find { it instanceof LampEvent.History }.snapshots().collect()
     }
@@ -419,8 +418,8 @@ class TravellingBackInTimeSpec extends Specification {
     }
 
     private void startASession(Path lamp) {
-        sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(60)) }
-        var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
+        host.machine { it.windowsStayOpenFor(Duration.ofSeconds(60)) }
+        var oillamp = host.oillamp.observedBy { reported.add(it) }
         session = Thread.start { oillamp.run('at', lamp.toString()) }
         var deadline = System.currentTimeMillis() + 30_000
         while (!reported.any { it instanceof LampEvent.Summary && it.title() == 'your session is up' }) {

@@ -10,8 +10,6 @@ import spock.lang.Subject
 import spock.lang.TempDir
 import spock.lang.Timeout
 
-import java.net.StandardProtocolFamily
-import java.net.UnixDomainSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import java.nio.channels.SocketChannel
@@ -41,7 +39,7 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
     static final String KEY = 'sk-the-real-key-0123456789'
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
     HttpServer service
     /** What the stand-in model service received, one map per request. */
     final List<Map> received = new CopyOnWriteArrayList<>()
@@ -50,8 +48,8 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
     OilLamp.Outcome sessionOutcome
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen').windowsStayOpenFor(Duration.ofSeconds(60)) }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen').windowsStayOpenFor(Duration.ofSeconds(60)) }
         service = HttpServer.create(new InetSocketAddress('127.0.0.1', 0), 0)
         service.createContext('/') { HttpExchange exchange ->
             received << [method: exchange.requestMethod, path: exchange.requestURI.toString(),
@@ -66,7 +64,7 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
 
     def cleanup() {
         if (session?.alive) {
-            sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            host.oillamp.run('stop', host.lampPath().toString())
             session.join(20_000)
         }
         service?.stop(0)
@@ -89,7 +87,7 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             sandbox as the service gave it.
         """
         given: 'a key in the environment oillamp starts from, and a session'
-            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
+            host.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
             startASession()
 
         when: 'the sandbox sends a chat request with its placeholder'
@@ -120,11 +118,11 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             this checks the files the container would be given, not a description of them.
         """
         given:
-            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
+            host.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
             startASession()
 
         when: 'every file the container is given is read'
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
             var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
                                             .findFirst().orElseThrow()
             var given = [lamp.resolve('.oillamp/session'), agentHome, lamp.resolve('.oillamp/sockets'),
@@ -151,8 +149,8 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             holds the key. The agent cannot see either setting.
         """
         given:
-            sandbox.machine { it.environmentVariable('CAMPAIGN_KEY', 'sk-campaign').environmentVariable('EDENAI_API_KEY', KEY) }
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.machine { it.environmentVariable('CAMPAIGN_KEY', 'sk-campaign').environmentVariable('EDENAI_API_KEY', KEY) }
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
                 [model]
                 service = "http://127.0.0.1:${service.address.port}"
@@ -177,8 +175,8 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             option names the variable that holds it.
         """
         given: 'a lamp configured for one service and key, and another key in the environment'
-            sandbox.machine { it.environmentVariable('APP_MODEL_KEY', 'sk-from-the-app').environmentVariable('EDENAI_API_KEY', KEY) }
-            sandbox.givenConfig(sandbox.lampPath(), '''
+            host.machine { it.environmentVariable('APP_MODEL_KEY', 'sk-from-the-app').environmentVariable('EDENAI_API_KEY', KEY) }
+            host.givenConfig(host.lampPath(), '''
                 schema_version = 1
                 [model]
                 service = "https://api.eu.edenai.run"
@@ -194,7 +192,7 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             received.first().authorization == 'Bearer sk-from-the-app'
 
         and: 'the lamp\'s own configuration is unchanged'
-            Files.readString(sandbox.lampPath().resolve('oillamp.toml')).contains('https://api.eu.edenai.run')
+            Files.readString(host.lampPath().resolve('oillamp.toml')).contains('https://api.eu.edenai.run')
     }
 
     def 'A service or key variable on the command line is checked like the one in the file'() {
@@ -204,12 +202,12 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             a name, not a key. A mistake is a usage error before anything starts.
         """
         when:
-            var outcome = sandbox.oillamp.run(['at', sandbox.lampPath().toString(), *given] as String[])
+            var outcome = host.oillamp.run(['at', host.lampPath().toString(), *given] as String[])
 
         then:
             outcome.status() == ExitStatus.USAGE
             outcome.console().contains(complaint)
-            !Files.exists(sandbox.lampPath())
+            !Files.exists(host.lampPath())
 
         where:
             given                                                || complaint
@@ -229,8 +227,8 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             by the relay itself.
         """
         given:
-            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', 'local') }
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.machine { it.environmentVariable('EDENAI_API_KEY', 'local') }
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
                 [model]
                 service = "http://127.0.0.1:${service.address.port}/v1"
@@ -257,7 +255,7 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             OILLAMP_MODEL_EU_ONLY; the agent's guide says what it means.
         """
         given:
-            if (local) sandbox.givenConfig(sandbox.lampPath(), """
+            if (local) host.givenConfig(host.lampPath(), """
                 schema_version = 1
                 [model]
                 service = "http://127.0.0.1:11434/v1"
@@ -265,8 +263,8 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
 
         when: 'the lamp is set up for a session, which writes the settings the sandbox reads'
             startASession(false)
-            var settings = Files.readString(sandbox.lampPath().resolve('.oillamp/session/runtime.env'))
-            var agentHome = Files.list(sandbox.lampPath()).filter { it.fileName.toString().startsWith('agent-lamp-') }.findFirst().orElseThrow()
+            var settings = Files.readString(host.lampPath().resolve('.oillamp/session/runtime.env'))
+            var agentHome = Files.list(host.lampPath()).filter { it.fileName.toString().startsWith('agent-lamp-') }.findFirst().orElseThrow()
             var guide = Files.readString(agentHome.resolve('AGENTS.md'))
 
         then:
@@ -322,7 +320,7 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
                 exchange.responseBody.write('data: second\n\n'.bytes)
                 exchange.responseBody.close()
             }
-            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
+            host.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
             startASession()
 
         when:
@@ -347,7 +345,7 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             to that host. Such requests are refused before anything is sent.
         """
         given:
-            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
+            host.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
             startASession()
 
         when:
@@ -371,16 +369,16 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             attached to bug reports.
         """
         given:
-            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
+            host.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
             startASession()
 
         when:
             ask(request('POST', '/v3/chat/completions', '{}', 'Authorization: Bearer placeholder'))
-            sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            host.oillamp.run('stop', host.lampPath().toString())
             session.join(20_000)
 
         then:
-            var logs = Files.list(sandbox.lampPath().resolve('.oillamp/logs')).toList()
+            var logs = Files.list(host.lampPath().resolve('.oillamp/logs')).toList()
             var text = logs.collect { Files.readString(it) }.join('\n')
             text.contains('"channel":"model"')
             !text.contains(KEY)
@@ -394,14 +392,14 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             model server whose API lives under one; a user, query or fragment is not.
         """
         given:
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
                 [model]
                 service = "${address}"
             """.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('config', sandbox.lampPath().toString(), 'check')
+            var outcome = host.oillamp.run('config', host.lampPath().toString(), 'check')
 
         then:
             outcome.reported('OIL-CONFIG-004') != accepted
@@ -428,19 +426,19 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
     /** Starts a session, with the stand-in as its model service unless the lamp configures one. */
     private void startASession(boolean configureService = true, String... options) {
         if (configureService)
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
                 [model]
                 service = "http://127.0.0.1:${service.address.port}"
             """.stripIndent())
-        var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
-        session = Thread.start { sessionOutcome = oillamp.run(['at', sandbox.lampPath().toString(), *options] as String[]) }
+        var oillamp = host.oillamp.observedBy { reported.add(it) }
+        session = Thread.start { sessionOutcome = oillamp.run(['at', host.lampPath().toString(), *options] as String[]) }
         waitUntil { reported.any { it instanceof LampEvent.Summary && it.title() == 'your session is up' } }
     }
 
     /** The relay's socket, reached the way the host reaches it: through the short runtime path. */
     private Path modelSocket() {
-        try (var lamps = Files.list(sandbox.runtime.resolve('oillamp'))) {
+        try (var lamps = Files.list(host.runtime.resolve('oillamp'))) {
             lamps.findFirst().orElseThrow().resolve('sockets/host/model.sock')
         }
     }

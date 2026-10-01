@@ -24,11 +24,11 @@ import java.nio.file.Path
 class GivingTheAgentAGitIdentitySpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
     }
 
     def 'By default the agent commits as a genie of its lamp, and nothing about the user enters the sandbox'() {
@@ -39,11 +39,11 @@ class GivingTheAgentAGitIdentitySpec extends Specification {
             lamp. The console says whose name the commits will carry.
         """
         given: 'a user whose git knows who they are'
-            sandbox.machine { it.gitIdentity('Ada Lovelace', 'ada@example.com') }
+            host.machine { it.gitIdentity('Ada Lovelace', 'ada@example.com') }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
-            var lampId = Files.list(sandbox.lampPath()).map { it.fileName.toString() }
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
+            var lampId = Files.list(host.lampPath()).map { it.fileName.toString() }
                               .filter { it.startsWith('agent-lamp-') }.findFirst().orElseThrow() - 'agent-lamp-'
 
         then:
@@ -68,15 +68,15 @@ class GivingTheAgentAGitIdentitySpec extends Specification {
             from the user's global git configuration when a session starts.
         """
         given: 'a user whose git knows who they are, and asks for it'
-            sandbox.machine { it.gitIdentity('Ada Lovelace', 'ada@example.com') }
-            sandbox.givenConfig(sandbox.lampPath(), '''
+            host.machine { it.gitIdentity('Ada Lovelace', 'ada@example.com') }
+            host.givenConfig(host.lampPath(), '''
                 schema_version = 1
                 [git]
                 identity = "host"
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -97,8 +97,8 @@ class GivingTheAgentAGitIdentitySpec extends Specification {
             a name must reach git unchanged; real git reads the file back here to check that.
         """
         given:
-            sandbox.machine { it.gitIdentity('Ada Lovelace', 'ada@example.com') }
-            sandbox.givenConfig(sandbox.lampPath(), '''
+            host.machine { it.gitIdentity('Ada Lovelace', 'ada@example.com') }
+            host.givenConfig(host.lampPath(), '''
                 schema_version = 1
                 [git]
                 identity = "custom"
@@ -107,7 +107,7 @@ class GivingTheAgentAGitIdentitySpec extends Specification {
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -122,15 +122,15 @@ class GivingTheAgentAGitIdentitySpec extends Specification {
             at all, or wants it to choose its own in ~/.gitconfig.
         """
         given:
-            sandbox.machine { it.gitIdentity('Ada Lovelace', 'ada@example.com') }
-            sandbox.givenConfig(sandbox.lampPath(), '''
+            host.machine { it.gitIdentity('Ada Lovelace', 'ada@example.com') }
+            host.givenConfig(host.lampPath(), '''
                 schema_version = 1
                 [git]
                 identity = "none"
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -146,14 +146,14 @@ class GivingTheAgentAGitIdentitySpec extends Specification {
             agent.
         """
         given: 'a machine without git, and a lamp asking for the user\'s identity'
-            sandbox.givenConfig(sandbox.lampPath(), '''
+            host.givenConfig(host.lampPath(), '''
                 schema_version = 1
                 [git]
                 identity = "host"
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -168,7 +168,7 @@ class GivingTheAgentAGitIdentitySpec extends Specification {
             reported where they are made, with the file and the key.
         """
         given:
-            sandbox.givenConfig(sandbox.lampPath(), '''
+            host.givenConfig(host.lampPath(), '''
                 schema_version = 1
                 [git]
                 identity = "custom"
@@ -176,7 +176,7 @@ class GivingTheAgentAGitIdentitySpec extends Specification {
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then:
             outcome.status() != ExitStatus.SUCCESS
@@ -193,7 +193,7 @@ class GivingTheAgentAGitIdentitySpec extends Specification {
             the path pointed at a written session file.
         """
         given: 'a session file, as oillamp writes it'
-            sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            host.oillamp.run('at', host.lampPath().toString())
 
         and: 'the image\'s /etc/gitconfig, pointed at it instead of at the mount'
             var system = Files.readString(Path.of('src/main/resources/image/rootfs/etc/gitconfig'))
@@ -206,7 +206,7 @@ class GivingTheAgentAGitIdentitySpec extends Specification {
                  .out.trim() == 'genie agent'
     }
 
-    private Path sessionGitConfig() { sandbox.lampPath().resolve('.oillamp/session/gitconfig') }
+    private Path sessionGitConfig() { host.lampPath().resolve('.oillamp/session/gitconfig') }
 
     /** A value from the session's file, as real git reads it. */
     private String gitValue(String key) {

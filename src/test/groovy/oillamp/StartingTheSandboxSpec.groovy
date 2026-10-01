@@ -30,11 +30,11 @@ import java.time.Instant
 class StartingTheSandboxSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
     }
 
     def 'A session is not reported as started until oillamp has opened every socket itself'() {
@@ -49,10 +49,10 @@ class StartingTheSandboxSpec extends Specification {
             rather than another assertion.
         """
         given: 'a lamp'
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString())
+            var outcome = host.oillamp.run('at', lamp.toString())
 
         then: 'the session starts'
             outcome.status() == ExitStatus.SUCCESS
@@ -74,11 +74,11 @@ class StartingTheSandboxSpec extends Specification {
             so the problem carries it.
         """
         given: 'a sandbox whose VNC socket is there but answers nothing'
-            sandbox.machine { it.endpointRefusingConnections('vnc.sock') }
-            var lamp = sandbox.lampPath()
+            host.machine { it.endpointRefusingConnections('vnc.sock') }
+            var lamp = host.lampPath()
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString())
+            var outcome = host.oillamp.run('at', lamp.toString())
 
         then: 'oillamp refuses to call this a session'
             outcome.status() != ExitStatus.SUCCESS
@@ -104,10 +104,10 @@ class StartingTheSandboxSpec extends Specification {
             The user had every reason to believe nothing was running.
         """
         given: 'a sandbox whose desktop never answers'
-            sandbox.machine { it.endpointRefusingConnections('vnc.sock') }
+            host.machine { it.endpointRefusingConnections('vnc.sock') }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'the start fails'
             outcome.status() != ExitStatus.SUCCESS
@@ -135,27 +135,27 @@ class StartingTheSandboxSpec extends Specification {
             `podman unshare` and can fail on its own.
         """
         given: 'a lamp that has been used before, so a readiness file is already in place'
-            var lamp = sandbox.lampPath()
-            sandbox.oillamp.run('at', lamp.toString())
+            var lamp = host.lampPath()
+            host.oillamp.run('at', lamp.toString())
             var readyFile = lamp.resolve('.oillamp/sockets/infra/ready.json')
             var previous = Files.readString(readyFile)
             previous.contains('"session"')
 
         and: 'a later session whose attempt to clear that file fails'
-            sandbox.machine {
+            host.machine {
                 it.clockAt(Instant.parse('2026-09-22T18:30:00Z'))
                   .command('podman unshare rm', new Machine.Outcome.Finished(
                           1, '', 'rm: cannot remove: Operation not permitted', Duration.ofMillis(5)))
             }
 
         and: 'and whose container never gets as far as writing a readiness file of its own'
-            sandbox.machine {
+            host.machine {
                 it.command('podman run', new Machine.Outcome.Finished(
                         0, 'simulated-container-id', '', Duration.ofMillis(10)))
             }
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString())
+            var outcome = host.oillamp.run('at', lamp.toString())
 
         then: 'the session fails, because the only readiness file present is the old one'
             outcome.status() != ExitStatus.SUCCESS
@@ -174,14 +174,14 @@ class StartingTheSandboxSpec extends Specification {
             previous answer.
         """
         given: 'a lamp that has been used before'
-            var lamp = sandbox.lampPath()
-            sandbox.oillamp.run('at', lamp.toString())
+            var lamp = host.lampPath()
+            host.oillamp.run('at', lamp.toString())
             var readyFile = lamp.resolve('.oillamp/sockets/infra/ready.json')
             var previous = Files.readString(readyFile)
 
         when: 'it is used again, a minute later'
-            sandbox.machine { it.clockAt(Instant.parse('2026-09-22T18:30:00Z')) }
-            var outcome = sandbox.oillamp.run('at', lamp.toString())
+            host.machine { it.clockAt(Instant.parse('2026-09-22T18:30:00Z')) }
+            var outcome = host.oillamp.run('at', lamp.toString())
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -204,11 +204,11 @@ class StartingTheSandboxSpec extends Specification {
             covers the state the user was actually in.
         """
         given:
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
 
         when: 'the lamp is used twice in a row'
-            var first = sandbox.oillamp.run('at', lamp.toString())
-            var second = sandbox.oillamp.run('at', lamp.toString())
+            var first = host.oillamp.run('at', lamp.toString())
+            var second = host.oillamp.run('at', lamp.toString())
 
         then: 'both sessions are equally good'
             first.status() == ExitStatus.SUCCESS
@@ -234,10 +234,10 @@ class StartingTheSandboxSpec extends Specification {
             delete here would be a plan that fails on every machine.
         """
         given:
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+            var outcome = host.oillamp.run('at', lamp.toString(), '--dry-run')
 
         then: 'the plan names the sockets that outlive a container'
             outcome.steps().any { it.contains('previous session') }

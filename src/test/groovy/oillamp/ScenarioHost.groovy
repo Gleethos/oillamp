@@ -14,13 +14,13 @@ import java.nio.file.Path
  * therefore written against the same surface a real caller has, not because a rule says so,
  * but because the compiler will not allow anything else.
  */
-class Sandbox {
+class ScenarioHost {
 
     final Path home
     final Path runtime
     private Machine.SimulationBuilder simulation
 
-    Sandbox(Path temporaryDirectory) {
+    ScenarioHost(Path temporaryDirectory) {
         home = Files.createDirectories(temporaryDirectory.resolve('home/dev'))
         runtime = shortRuntimeDirectory()
         simulation =
@@ -49,7 +49,7 @@ class Sandbox {
     }
 
     /** Adjusts the machine, e.g. {@code sandbox.machine { it.withoutPodman() }}. */
-    Sandbox machine(Closure<Machine.SimulationBuilder> change) {
+    ScenarioHost machine(Closure<Machine.SimulationBuilder> change) {
         simulation = change(simulation)
         this
     }

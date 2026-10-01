@@ -2,7 +2,6 @@ package oillamp
 
 import dev.lamp.ExitStatus
 import dev.lamp.LampEvent
-import dev.oillamp.OilLamp
 import spock.lang.Specification
 import spock.lang.Subject
 import spock.lang.TempDir
@@ -26,11 +25,11 @@ import java.util.concurrent.TimeUnit
 class SupervisingASessionSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
     }
 
     def 'A session opens two new windows and leaves the terminal oillamp was started from alone'() {
@@ -44,7 +43,7 @@ class SupervisingASessionSpec extends Specification {
             Neither of them is this one.
         """
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'the session ran and ended cleanly'
             outcome.status() == ExitStatus.SUCCESS
@@ -83,7 +82,7 @@ class SupervisingASessionSpec extends Specification {
             user then runs `oillamp stop`. Nothing about the shutdown is simulated.
         """
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'oillamp exits 0, because this is how a session is supposed to end'
             outcome.status() == ExitStatus.SUCCESS
@@ -105,7 +104,7 @@ class SupervisingASessionSpec extends Specification {
         and: 'the container was asked to stop, with time to finalise the recording, and is gone'
             outcome.console().contains('stopping the sandbox — up to 15s')
             outcome.console().contains('(removed)')
-            var sessionFile = sandbox.lampPath().resolve('.oillamp/session.json')
+            var sessionFile = host.lampPath().resolve('.oillamp/session.json')
             !java.nio.file.Files.exists(sessionFile)
     }
 
@@ -117,7 +116,7 @@ class SupervisingASessionSpec extends Specification {
             there are three different ways to end the session.
         """
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then:
             var briefing = outcome.events().find { it instanceof LampEvent.Summary
@@ -148,10 +147,10 @@ class SupervisingASessionSpec extends Specification {
             away working state over a window the user can reopen with `oillamp view`.
         """
         given: 'a machine whose viewer refuses to start'
-            sandbox.machine { it.windowRefusing('vncviewer') }
+            host.machine { it.windowRefusing('vncviewer') }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'the session still ran, and still ended cleanly'
             outcome.status() == ExitStatus.SUCCESS
@@ -174,10 +173,10 @@ class SupervisingASessionSpec extends Specification {
             a missing window every time.
         """
         given: 'a machine whose terminal emulator refuses to start'
-            sandbox.machine { it.windowRefusing('ptyxis') }
+            host.machine { it.windowRefusing('ptyxis') }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'the session failed, with the session exit code rather than a generic error'
             outcome.status() == ExitStatus.SESSION_FAILED
@@ -189,7 +188,7 @@ class SupervisingASessionSpec extends Specification {
             }
 
         and: 'and the sandbox was not left behind'
-            var sessionFile = sandbox.lampPath().resolve('.oillamp/session.json')
+            var sessionFile = host.lampPath().resolve('.oillamp/session.json')
             !java.nio.file.Files.exists(sessionFile)
     }
 
@@ -204,23 +203,23 @@ class SupervisingASessionSpec extends Specification {
             needs time to actually pass. This is the scenario that asks for a clock that moves.
         """
         given: 'a terminal that opens and never reaches the sandbox, and a short patience'
-            sandbox.machine { it.terminalThatNeverConnects().clockRuns()
+            host.machine { it.terminalThatNeverConnects().clockRuns()
                                 .windowsStayOpenFor(Duration.ofSeconds(10)) }
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
                 [timeouts]
                 terminal_connect_seconds = 2
             """.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'oillamp gives up rather than wait, and says what it was waiting for'
             outcome.status() == ExitStatus.SESSION_FAILED
             outcome.reported('OIL-TERM-002')
 
         and: 'and the lamp is free again: a second run is not refused as busy'
-            var second = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var second = host.oillamp.run('at', host.lampPath().toString())
             second.status() != ExitStatus.LAMP_BUSY
     }
 
@@ -231,10 +230,10 @@ class SupervisingASessionSpec extends Specification {
             is the point: the viewer is how you watch, not part of how it works.
         """
         given:
-            sandbox.machine { it.windowsStayOpenFor(Duration.ofMillis(400)) }
+            host.machine { it.windowsStayOpenFor(Duration.ofMillis(400)) }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--no-viewer')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--no-viewer')
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -254,10 +253,10 @@ class SupervisingASessionSpec extends Specification {
             right name, which is the whole lesson of OIL-SANDBOX-004.
         """
         given: 'a session that stays up long enough to report on itself'
-            sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(4)) }
+            host.machine { it.windowsStayOpenFor(Duration.ofSeconds(4)) }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -278,13 +277,13 @@ class SupervisingASessionSpec extends Specification {
             sandbox's exit code, and still cleans up everything the session made.
         """
         given: 'a sandbox that exits a second after it started, while the shell is still open'
-            sandbox.machine {
+            host.machine {
                 it.windowsStayOpenFor(Duration.ofSeconds(60))
                   .sandboxDiesAfter(Duration.ofSeconds(1))
             }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'the session ends as failed, not as a normal stop'
             outcome.status() == ExitStatus.SESSION_FAILED
@@ -294,7 +293,7 @@ class SupervisingASessionSpec extends Specification {
 
         and: 'and the container and the session\'s files were still cleaned up'
             outcome.console().contains('(removed)')
-            !java.nio.file.Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
+            !java.nio.file.Files.exists(host.lampPath().resolve('.oillamp/session.json'))
     }
 
     def 'A second connection to the shell window\'s socket is refused, and the session goes on'() {
@@ -306,14 +305,14 @@ class SupervisingASessionSpec extends Specification {
             `oillamp shell`, and the session carries on.
         """
         given: 'a session whose shell window stays open'
-            sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(60)) }
+            host.machine { it.windowsStayOpenFor(Duration.ofSeconds(60)) }
             var reported = new java.util.concurrent.CopyOnWriteArrayList<LampEvent>()
-            var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
-            var session = Thread.start { oillamp.run('at', sandbox.lampPath().toString()) }
+            var oillamp = host.oillamp.observedBy { reported.add(it) }
+            var session = Thread.start { oillamp.run('at', host.lampPath().toString()) }
             waitUntil { reported.any { it instanceof LampEvent.Summary && it.title() == 'your session is up' } }
 
         when: 'something else connects to the shell window\'s socket'
-            var primary = java.nio.file.Files.list(sandbox.runtime.resolve('oillamp')).toList().first()
+            var primary = java.nio.file.Files.list(host.runtime.resolve('oillamp')).toList().first()
                                                  .resolve('run/ssh-primary.sock')
             java.nio.channels.SocketChannel.open(java.net.UnixDomainSocketAddress.of(primary)).close()
 
@@ -326,7 +325,7 @@ class SupervisingASessionSpec extends Specification {
             session.alive
 
         cleanup:
-            sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            host.oillamp.run('stop', host.lampPath().toString())
             session?.join(20_000)
     }
 
@@ -356,13 +355,13 @@ class SupervisingASessionSpec extends Specification {
             state - is the container gone? - rather than each command's opinion of itself.
         """
         given: 'a `podman stop` that dies the way a signalled process does: non-zero, and silent'
-            sandbox.machine {
+            host.machine {
                 it.commandFailing('podman stop', 130, '')
                   .windowsStayOpenFor(Duration.ofMillis(400))
             }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'the session still ends successfully, because the container did go away'
             outcome.status() == ExitStatus.SUCCESS
@@ -386,14 +385,14 @@ class SupervisingASessionSpec extends Specification {
             code and the command that fixes it, rather than "please file a bug".
         """
         given:
-            sandbox.machine {
+            host.machine {
                 it.commandFailing('podman stop', 125, 'Error: no such container')
                   .commandFailing('podman rm', 125, 'Error: container is in use')
                   .windowsStayOpenFor(Duration.ofMillis(400))
             }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'the user is told, with the code for a container left behind'
             outcome.console().contains('OIL-SANDBOX-005')
@@ -415,14 +414,14 @@ class SupervisingASessionSpec extends Specification {
             session carries on.
         """
         given: 'a podman that fails every question about the container while the session runs'
-            sandbox.machine {
+            host.machine {
                 it.commandFailing('podman container inspect', 125,
                                   'Error: timed out waiting for the database lock')
                   .windowsStayOpenFor(Duration.ofSeconds(6))
             }
 
         when: 'the session runs until the user closes the terminal'
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'it ended because the terminal closed, not because the sandbox was thought dead'
             outcome.status() == ExitStatus.SUCCESS

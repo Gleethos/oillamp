@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit
 class FollowingASessionSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     Path lamp
     Lamp held
@@ -35,15 +35,15 @@ class FollowingASessionSpec extends Specification {
     final CountDownLatch release = new CountDownLatch(1)
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
-        lamp = sandbox.lampPath()
-        assert sandbox.oillamp.run('at', lamp.toString()).succeeded()
-        sandbox.machine { it.agent { String prompt ->
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
+        lamp = host.lampPath()
+        assert host.oillamp.run('at', lamp.toString()).succeeded()
+        host.machine { it.agent { String prompt ->
             if (prompt.startsWith('wait')) release.await()
             'Done: ' + prompt
         } }
-        held = Lamp.at(lamp).launchedBy(sandbox.launcher).start()
+        held = Lamp.at(lamp).launchedBy(host.launcher).start()
         assert held.awaitRunning(Duration.ofSeconds(30))
     }
 
@@ -105,8 +105,8 @@ class FollowingASessionSpec extends Specification {
             ends the following: the session, which someone else holds, keeps running.
         """
         when: 'an application follows, and closes its end a second later'
-            sandbox.machine { it.standardInput(closingAfter(Duration.ofSeconds(1))) }
-            var outcome = sandbox.oillamp.run('follow', lamp.toString(), '--embedded')
+            host.machine { it.standardInput(closingAfter(Duration.ofSeconds(1))) }
+            var outcome = host.oillamp.run('follow', lamp.toString(), '--embedded')
 
         then: 'following ended cleanly'
             outcome.status() == ExitStatus.SUCCESS
@@ -126,7 +126,7 @@ class FollowingASessionSpec extends Specification {
             held.close()
 
         when:
-            var outcome = sandbox.oillamp.run('follow', lamp.toString())
+            var outcome = host.oillamp.run('follow', lamp.toString())
 
         then:
             !outcome.succeeded()
@@ -139,7 +139,7 @@ class FollowingASessionSpec extends Specification {
     private Following follow() {
         var following = new Following()
         following.thread = Thread.start {
-            following.outcome = sandbox.oillamp.observedBy { followed << it }.run('follow', lamp.toString())
+            following.outcome = host.oillamp.observedBy { followed << it }.run('follow', lamp.toString())
         }
         following
     }

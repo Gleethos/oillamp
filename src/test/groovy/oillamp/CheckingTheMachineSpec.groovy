@@ -14,9 +14,9 @@ import java.nio.file.Path
 class CheckingTheMachineSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
-    def setup() { sandbox = new Sandbox(tmp) }
+    def setup() { host = new ScenarioHost(tmp) }
 
     def 'A prepared machine is told, item by item, that it can run sandboxes'() {
         reportInfo """
@@ -25,7 +25,7 @@ class CheckingTheMachineSpec extends Specification {
             podman version and how it runs - not a bare "OK" they have no reason to believe.
         """
         given: 'a stock Ubuntu desktop with everything oillamp needs'
-            var oillamp = sandbox.oillamp
+            var oillamp = host.oillamp
 
         when: 'the user asks oillamp to check the machine'
             var outcome = oillamp.run('doctor')
@@ -64,10 +64,10 @@ class CheckingTheMachineSpec extends Specification {
             from a generic failure, so a script wrapping oillamp can tell the two apart.
         """
         given: 'a machine where podman and socat were never installed'
-            sandbox.machine { it.withoutPodman().withoutPackages('socat') }
+            host.machine { it.withoutPodman().withoutPackages('socat') }
 
         when: 'the user checks the machine'
-            var outcome = sandbox.oillamp.run('doctor')
+            var outcome = host.oillamp.run('doctor')
 
         then: 'oillamp reports the prerequisites as missing, with its own problem code'
             outcome.reported('OIL-PKG-001')
@@ -103,14 +103,14 @@ class CheckingTheMachineSpec extends Specification {
             with installing allowed, the first two of these become steps in a plan instead.
         """
         given: 'a machine missing packages AND missing a subordinate id range AND with no terminal'
-            sandbox.machine {
+            host.machine {
                 it.withoutPodman()
                   .withoutSubordinateIds()
                   .withoutTerminals()
             }
 
         when: 'the user asks oillamp to set up without letting it change the machine'
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--no-install')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--no-install')
 
         then: 'all three are reported together, in one run'
             outcome.reported('OIL-PKG-001')
@@ -133,10 +133,10 @@ class CheckingTheMachineSpec extends Specification {
             list - every package, every command - and carries none of it out.
         """
         given: 'a machine with no podman and no subordinate id range, but a terminal and sudo'
-            sandbox.machine { it.withoutPodman().withoutSubordinateIds() }
+            host.machine { it.withoutPodman().withoutSubordinateIds() }
 
         when: 'the user asks what oillamp would do'
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--dry-run')
 
         then: 'installing the packages and adding an id range are planned, not reported as errors'
             outcome.stepKinds().contains('InstallPackages')
@@ -168,10 +168,10 @@ class CheckingTheMachineSpec extends Specification {
             and is exactly the trap.
         """
         given: 'a stock Ubuntu where podman is present but crun is not'
-            sandbox.machine { it.withoutPackages('crun') }
+            host.machine { it.withoutPackages('crun') }
 
         when: 'the user asks what oillamp would do'
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--dry-run')
 
         then: 'crun is installed rather than left to chance'
             outcome.stepKinds().contains('InstallPackages')
@@ -198,10 +198,10 @@ class CheckingTheMachineSpec extends Specification {
             machine, where the image was already built, and failed for every new user.
         """
         given: 'a machine with podman but no rootless networking backend'
-            sandbox.machine { it.withoutPackages('slirp4netns') }
+            host.machine { it.withoutPackages('slirp4netns') }
 
         when: 'the user asks what oillamp would do'
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--dry-run')
 
         then: 'it is installed along with everything else, before an image build needs it'
             outcome.stepKinds().contains('InstallPackages')
@@ -225,10 +225,10 @@ class CheckingTheMachineSpec extends Specification {
             itself.
         """
         given: 'a modern Ubuntu whose AppArmor policy blocks unprivileged user namespaces'
-            sandbox.machine { it.userNamespacesBlockedByAppArmor() }
+            host.machine { it.userNamespacesBlockedByAppArmor() }
 
         when: 'the user checks the machine'
-            var outcome = sandbox.oillamp.run('doctor')
+            var outcome = host.oillamp.run('doctor')
 
         then: 'oillamp names the actual cause rather than the symptom'
             outcome.reported('OIL-PODMAN-004')
@@ -257,11 +257,11 @@ class CheckingTheMachineSpec extends Specification {
             fixes for it: see what podman says, and check which podman is on PATH.
         """
         given: 'podman is installed, but asking it for its version fails'
-            sandbox.machine { it.commandFailing('podman version', 125,
+            host.machine { it.commandFailing('podman version', 125,
                     'Error: cannot parse configuration file containers.conf') }
 
         when:
-            var outcome = sandbox.oillamp.run('doctor')
+            var outcome = host.oillamp.run('doctor')
 
         then:
             outcome.reported('OIL-PODMAN-005')
@@ -281,16 +281,16 @@ class CheckingTheMachineSpec extends Specification {
             gets a shell window, which is easy to miss; `--no-windows` opens nothing at all.
         """
         given: 'a machine reached over SSH, with no desktop session'
-            sandbox.machine { it.noGraphicalSession() }
+            host.machine { it.noGraphicalSession() }
 
         when: 'the user checks the machine'
-            var outcome = sandbox.oillamp.run('doctor')
+            var outcome = host.oillamp.run('doctor')
 
         then: 'doctor still runs and reports the machine as usable'
             outcome.status() == ExitStatus.SUCCESS
 
         when: 'but they try to actually start a session'
-            var session = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run')
+            var session = host.oillamp.run('at', host.lampPath().toString(), '--dry-run')
 
         then: 'that is refused, because there is nowhere to put the terminal and the viewer'
             session.reported('OIL-HOST-003')
@@ -321,11 +321,11 @@ class CheckingTheMachineSpec extends Specification {
             silently would leave them on software rendering anyway, now with an altered account.
         """
         given: 'a machine with a render node the user has no access to'
-            var lamp = sandbox.lampPath()
-            sandbox.machine { it.renderNode('/dev/dri/renderD128', 'render', 'i915') }
+            var lamp = host.lampPath()
+            host.machine { it.renderNode('/dev/dri/renderD128', 'render', 'i915') }
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+            var outcome = host.oillamp.run('at', lamp.toString(), '--dry-run')
 
         then: 'the reason is stated'
             outcome.console().contains("not in the 'render' group")
@@ -344,10 +344,10 @@ class CheckingTheMachineSpec extends Specification {
             failing later with something about missing binaries.
         """
         given: 'oillamp running somewhere that is not Linux'
-            sandbox.machine { it.notLinux('Mac OS X') }
+            host.machine { it.notLinux('Mac OS X') }
 
         when: 'the user checks the machine'
-            var outcome = sandbox.oillamp.run('doctor')
+            var outcome = host.oillamp.run('doctor')
 
         then:
             outcome.reported('OIL-HOST-001')
@@ -365,10 +365,10 @@ class CheckingTheMachineSpec extends Specification {
             will work". The problem carries the package list for that reason.
         """
         given: 'a Fedora machine'
-            sandbox.machine { it.fedora('42') }
+            host.machine { it.fedora('42') }
 
         when: 'the user checks the machine'
-            var outcome = sandbox.oillamp.run('doctor')
+            var outcome = host.oillamp.run('doctor')
 
         then:
             outcome.reported('OIL-HOST-002')
@@ -386,9 +386,9 @@ class CheckingTheMachineSpec extends Specification {
             accepted and then ignored, so oillamp asked for a sudo password anyway.
         """
         given: 'a machine without podman, and a lamp that says not to install'
-            sandbox.machine { it.withoutPodman() }
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            host.machine { it.withoutPodman() }
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [host]
@@ -396,7 +396,7 @@ class CheckingTheMachineSpec extends Specification {
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+            var outcome = host.oillamp.run('at', lamp.toString(), '--dry-run')
 
         then: 'nothing is installed; the missing packages are reported instead'
             !outcome.stepKinds().contains('InstallPackages')

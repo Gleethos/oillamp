@@ -8,8 +8,6 @@ import spock.lang.Subject
 import spock.lang.TempDir
 import spock.lang.Timeout
 
-import java.net.StandardProtocolFamily
-import java.net.UnixDomainSocketAddress
 import java.nio.channels.ServerSocketChannel
 import java.nio.file.Files
 import java.nio.file.Path
@@ -31,7 +29,7 @@ import java.util.concurrent.TimeUnit
 class TheSessionCommandsSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     /**
      *  Everything the running session said, as it said it.
@@ -45,13 +43,13 @@ class TheSessionCommandsSpec extends Specification {
     OilLamp.Outcome sessionOutcome
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
     }
 
     def cleanup() {
         if (session?.alive) {
-            sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            host.oillamp.run('stop', host.lampPath().toString())
             session.join(20_000)
         }
     }
@@ -63,11 +61,11 @@ class TheSessionCommandsSpec extends Specification {
             session is in, and how many extra shells are attached to it.
         """
         given:
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
             startASession(lamp)
 
         when:
-            var outcome = sandbox.oillamp.run('status', lamp.toString())
+            var outcome = host.oillamp.run('status', lamp.toString())
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -89,11 +87,11 @@ class TheSessionCommandsSpec extends Specification {
             the container, release the lock - which is the same sequence Ctrl-C sets off.
         """
         given:
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
             startASession(lamp)
 
         when:
-            var outcome = sandbox.oillamp.run('stop', lamp.toString())
+            var outcome = host.oillamp.run('stop', lamp.toString())
 
         then: 'the request is accepted'
             outcome.status() == ExitStatus.SUCCESS
@@ -111,12 +109,12 @@ class TheSessionCommandsSpec extends Specification {
             and powerless to end anything, and so is the window oillamp opened itself.
         """
         given:
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
             startASession(lamp)
 
         when: 'a second oillamp opens an extra shell, which the user then closes'
-            sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(2)) }
-            var outcome = sandbox.oillamp.run('shell', lamp.toString())
+            host.machine { it.windowsStayOpenFor(Duration.ofSeconds(2)) }
+            var outcome = host.oillamp.run('shell', lamp.toString())
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -139,9 +137,9 @@ class TheSessionCommandsSpec extends Specification {
             by forwarding the desktop's socket over ssh. The session ends the usual way.
         """
         given: 'a machine with no desktop session'
-            var lamp = sandbox.lampPath()
-            sandbox.machine { it.noGraphicalSession() }
-            var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
+            var lamp = host.lampPath()
+            host.machine { it.noGraphicalSession() }
+            var oillamp = host.oillamp.observedBy { reported.add(it) }
 
         when:
             session = Thread.start { sessionOutcome = oillamp.run('at', lamp.toString(), '--no-windows') }
@@ -164,10 +162,10 @@ class TheSessionCommandsSpec extends Specification {
             briefing.contains('from another machine')
 
         and: 'the session is running without anyone having connected'
-            sandbox.oillamp.run('status', lamp.toString()).console().contains('no windows opened')
+            host.oillamp.run('status', lamp.toString()).console().contains('no windows opened')
 
         when: 'the user ends it'
-            sandbox.oillamp.run('stop', lamp.toString())
+            host.oillamp.run('stop', lamp.toString())
             session.join(20_000)
 
         then:
@@ -181,17 +179,17 @@ class TheSessionCommandsSpec extends Specification {
             the desktop carry on, and `oillamp shell` opens a new way in.
         """
         given: 'a session whose shell window the user closes after a second'
-            var lamp = sandbox.lampPath()
-            sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(1))
+            var lamp = host.lampPath()
+            host.machine { it.windowsStayOpenFor(Duration.ofSeconds(1))
                                 .userStopsTheSessionAfter(Duration.ofSeconds(60)) }
-            var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
+            var oillamp = host.oillamp.observedBy { reported.add(it) }
             session = Thread.start { sessionOutcome = oillamp.run('at', lamp.toString()) }
             waitUntil { reported.any { it instanceof LampEvent.Info &&
                                        it.text().contains('the shell window closed') } }
 
         when:
-            var status = sandbox.oillamp.run('status', lamp.toString())
-            var shell = sandbox.oillamp.run('shell', lamp.toString())
+            var status = host.oillamp.run('status', lamp.toString())
+            var shell = host.oillamp.run('shell', lamp.toString())
 
         then: 'the session still answers, and says the window is closed'
             status.status() == ExitStatus.SUCCESS
@@ -216,12 +214,12 @@ class TheSessionCommandsSpec extends Specification {
             nothing back beyond "opening".
         """
         given:
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
             startASession(lamp)
             var before = windowsOpened()
 
         when:
-            var outcome = sandbox.oillamp.run('view', lamp.toString())
+            var outcome = host.oillamp.run('view', lamp.toString())
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -239,7 +237,7 @@ class TheSessionCommandsSpec extends Specification {
             wrong in exactly the case it is needed: after a supervisor was killed.
         """
         when:
-            var outcome = sandbox.oillamp.run('list')
+            var outcome = host.oillamp.run('list')
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -259,16 +257,16 @@ class TheSessionCommandsSpec extends Specification {
             so the user went round in a circle.
         """
         given: 'what a killed supervisor leaves behind: a socket nobody listens on, and session.json'
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
             var socket = leftBehindByAKilledSupervisor(lamp)
-            sandbox.machine { containerStillThere ? it.commandSucceeding('podman container exists', '')
+            host.machine { containerStillThere ? it.commandSucceeding('podman container exists', '')
                                                   : it.commandFailing('podman container exists', 1, '') }
 
         expect: 'status says the session does not answer'
-            sandbox.oillamp.run('status', lamp.toString()).reported('OIL-SESSION-002')
+            host.oillamp.run('status', lamp.toString()).reported('OIL-SESSION-002')
 
         when:
-            var stopped = sandbox.oillamp.run('stop', lamp.toString())
+            var stopped = host.oillamp.run('stop', lamp.toString())
 
         then: 'stop cleans up and says what it did'
             stopped.status() == ExitStatus.SUCCESS
@@ -278,7 +276,7 @@ class TheSessionCommandsSpec extends Specification {
             !Files.exists(lamp.resolve('.oillamp/session.json'))
 
         and: 'afterwards status says plainly that no session is running'
-            sandbox.oillamp.run('status', lamp.toString()).reported('OIL-SESSION-001')
+            host.oillamp.run('status', lamp.toString()).reported('OIL-SESSION-001')
 
         where:
             containerStillThere << [true, false]
@@ -293,13 +291,13 @@ class TheSessionCommandsSpec extends Specification {
             connection now has its own thread, and a few seconds to say what it wants.
         """
         given:
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
             startASession(lamp)
             var silent = java.nio.channels.SocketChannel.open(UnixDomainSocketAddress.of(controlSocket(lamp)))
 
         when:
             var started = System.nanoTime()
-            var outcome = sandbox.oillamp.run('status', lamp.toString())
+            var outcome = host.oillamp.run('status', lamp.toString())
 
         then: 'status is answered straight away'
             outcome.status() == ExitStatus.SUCCESS
@@ -321,7 +319,7 @@ class TheSessionCommandsSpec extends Specification {
             a few seconds and say the session did not answer.
         """
         given: 'a control socket that accepts connections and never answers them'
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
             var socket = leftBehindByAKilledSupervisor(lamp)
             Files.delete(socket)
             var frozen = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
@@ -329,7 +327,7 @@ class TheSessionCommandsSpec extends Specification {
 
         when:
             var started = System.nanoTime()
-            var outcome = sandbox.oillamp.run(command, lamp.toString())
+            var outcome = host.oillamp.run(command, lamp.toString())
 
         then: 'the user is told the session did not answer'
             outcome.reported('OIL-SESSION-002')
@@ -361,7 +359,7 @@ class TheSessionCommandsSpec extends Specification {
         startASession(lamp)
         var sessionJson = Files.readString(lamp.resolve('.oillamp/session.json'))
         var socket = Path.of((sessionJson =~ /"controlSocket": "([^"]+)"/)[0][1] as String)
-        sandbox.oillamp.run('stop', lamp.toString())
+        host.oillamp.run('stop', lamp.toString())
         session.join(20_000)
 
         var abandoned = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
@@ -381,8 +379,8 @@ class TheSessionCommandsSpec extends Specification {
      *  every one of these pass for the wrong reason.
      */
     private void startASession(Path lamp) {
-        sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(60)) }
-        var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
+        host.machine { it.windowsStayOpenFor(Duration.ofSeconds(60)) }
+        var oillamp = host.oillamp.observedBy { reported.add(it) }
         session = Thread.start { sessionOutcome = oillamp.run('at', lamp.toString()) }
         waitUntil { reported.any { it instanceof LampEvent.Summary &&
                                    it.title() == 'your session is up' } }

@@ -21,13 +21,13 @@ import java.time.Instant
 class SettingUpALampSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     def setup() {
-        sandbox = new Sandbox(tmp)
+        host = new ScenarioHost(tmp)
         // Key generation is the one step whose *result* matters rather than its exit code:
         // a lamp is only really set up if the key files exist afterwards.
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host.machine { it.reallyRuns('ssh-keygen') }
     }
 
     def 'A dry run shows the user everything that would happen, and changes nothing'() {
@@ -43,11 +43,11 @@ class SettingUpALampSpec extends Specification {
             instead of carrying them out. There is no second implementation to drift.
         """
         given: 'a directory that does not exist yet'
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
             !Files.exists(lamp)
 
         when: 'the user asks what oillamp would do'
-            var outcome = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+            var outcome = host.oillamp.run('at', lamp.toString(), '--dry-run')
 
         then: 'it succeeds'
             outcome.status() == ExitStatus.SUCCESS
@@ -81,10 +81,10 @@ class SettingUpALampSpec extends Specification {
             the tool your password at all, is a large part of why the dry run exists.
         """
         given: 'a machine that needs packages installed, where sudo cannot currently be used'
-            sandbox.machine { it.withoutPodman().sudoNeedsPassword().interactive(false) }
+            host.machine { it.withoutPodman().sudoNeedsPassword().interactive(false) }
 
         when: 'the user asks what oillamp would do'
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--dry-run')
 
         then: 'they get the plan, not a complaint about sudo'
             outcome.status() == ExitStatus.SUCCESS
@@ -97,7 +97,7 @@ class SettingUpALampSpec extends Specification {
             outcome.steps().any { it.contains('known_hosts') }
 
         when: 'but they actually ask oillamp to do it'
-            var real = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var real = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'then the missing sudo is the blocker it really is'
             real.reported('OIL-PKG-002')
@@ -115,10 +115,10 @@ class SettingUpALampSpec extends Specification {
             trusting that the code that creates the directories got it right.
         """
         given:
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
 
         when: 'the user sets up a lamp'
-            var outcome = sandbox.oillamp.run('at', lamp.toString())
+            var outcome = host.oillamp.run('at', lamp.toString())
 
         then: 'it succeeds'
             outcome.status() == ExitStatus.SUCCESS
@@ -166,10 +166,10 @@ class SettingUpALampSpec extends Specification {
             to read ~/AGENTS.md, and for a long time nothing put a file there.
         """
         given:
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
 
         when:
-            sandbox.oillamp.run('at', lamp.toString())
+            host.oillamp.run('at', lamp.toString())
             var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
                                             .findFirst().orElseThrow()
 
@@ -181,7 +181,7 @@ class SettingUpALampSpec extends Specification {
 
         when: 'the agent makes the file its own'
             Files.writeString(agentHome.resolve('.bashrc'), 'export EDITOR=vim\n')
-            sandbox.oillamp.run('at', lamp.toString())
+            host.oillamp.run('at', lamp.toString())
 
         then: 'oillamp does not write over it'
             Files.readString(agentHome.resolve('.bashrc')) == 'export EDITOR=vim\n'
@@ -208,15 +208,15 @@ class SettingUpALampSpec extends Specification {
             confirmation. Without it the command prints what would go and stops.
         """
         given: 'a lamp with work in it, and a file of the user\'s own beside it'
-            var lamp = sandbox.lampPath()
-            sandbox.oillamp.run('at', lamp.toString())
+            var lamp = host.lampPath()
+            host.oillamp.run('at', lamp.toString())
             var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
                                             .findFirst().orElseThrow()
             Files.writeString(agentHome.resolve('workspace').resolve('README.md'), 'the agent\'s work\n')
             Files.writeString(lamp.resolve('my-notes.txt'), 'not oillamp\'s\n')
 
         when: 'the user asks without saying --yes'
-            var asked = sandbox.oillamp.run('remove', lamp.toString())
+            var asked = host.oillamp.run('remove', lamp.toString())
 
         then: 'it says what would go, names the agent\'s work, and stops'
             asked.status() == ExitStatus.USAGE
@@ -228,7 +228,7 @@ class SettingUpALampSpec extends Specification {
             Files.exists(agentHome.resolve('workspace').resolve('README.md'))
 
         when: 'the user says it'
-            var removed = sandbox.oillamp.run('remove', lamp.toString(), '--yes')
+            var removed = host.oillamp.run('remove', lamp.toString(), '--yes')
 
         then: 'everything oillamp made is gone, the agent home included'
             removed.status() == ExitStatus.SUCCESS
@@ -240,7 +240,7 @@ class SettingUpALampSpec extends Specification {
             Files.readString(lamp.resolve('my-notes.txt')) == 'not oillamp\'s\n'
 
         and: 'the directory that is not a lamp any more says so if asked again'
-            sandbox.oillamp.run('remove', lamp.toString(), '--yes')
+            host.oillamp.run('remove', lamp.toString(), '--yes')
                     .errors().first().whatHappened().contains('not an oillamp lamp')
     }
 
@@ -258,18 +258,18 @@ class SettingUpALampSpec extends Specification {
             there is nothing to name them with.
         """
         given: 'a lamp that a hand-rolled deletion got halfway through'
-            var lamp = sandbox.lampPath()
-            sandbox.oillamp.run('at', lamp.toString())
+            var lamp = host.lampPath()
+            host.oillamp.run('at', lamp.toString())
             var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
                                             .findFirst().orElseThrow()
             Files.delete(lamp.resolve('.oillamp/lamp.json'))
 
         when: 'its sandbox is still up, which the lamp can no longer say'
-            sandbox.machine { it.commandSucceeding('podman ps', """
+            host.machine { it.commandSucceeding('podman ps', """
                 [{"Names":["oillamp-y62b5ihg"],"State":"running",
                   "Labels":{"oillamp.agent-id":"y62b5ihg","oillamp.lamp":"${lamp}"}}]
             """) }
-            var refused = sandbox.oillamp.run('remove', lamp.toString(), '--yes')
+            var refused = host.oillamp.run('remove', lamp.toString(), '--yes')
 
         then: 'podman is asked instead, by the label that carries the lamp path'
             refused.status() == ExitStatus.LAMP_BUSY
@@ -279,8 +279,8 @@ class SettingUpALampSpec extends Specification {
             Files.exists(agentHome)
 
         when: 'the sandbox is gone'
-            sandbox.machine { it.commandSucceeding('podman ps', '[]') }
-            var outcome = sandbox.oillamp.run('remove', lamp.toString(), '--yes')
+            host.machine { it.commandSucceeding('podman ps', '[]') }
+            var outcome = host.oillamp.run('remove', lamp.toString(), '--yes')
 
         then: 'removal works anyway, and takes the agent home it found by name'
             outcome.status() == ExitStatus.SUCCESS
@@ -298,21 +298,21 @@ class SettingUpALampSpec extends Specification {
             under it.
         """
         given: 'a lamp on another disk, reached through a link'
-            var real = Files.createDirectories(sandbox.home.resolve('big-disk/feature-x'))
-            var link = sandbox.lampPath()
+            var real = Files.createDirectories(host.home.resolve('big-disk/feature-x'))
+            var link = host.lampPath()
             Files.createDirectories(link.parent)
             Files.createSymbolicLink(link, real)
-            sandbox.oillamp.run('at', link.toString())
+            host.oillamp.run('at', link.toString())
             Files.delete(real.resolve('.oillamp/lamp.json'))
 
         and: 'its sandbox still running, labelled with the real path as `at` labels it'
-            sandbox.machine { it.commandSucceeding('podman ps', """
+            host.machine { it.commandSucceeding('podman ps', """
                 [{"Names":["oillamp-y62b5ihg"],"State":"running",
                   "Labels":{"oillamp.agent-id":"y62b5ihg","oillamp.lamp":"${real.toRealPath()}"}}]
             """) }
 
         when: 'the user removes it by the path they know'
-            var outcome = sandbox.oillamp.run('remove', link.toString(), '--yes')
+            var outcome = host.oillamp.run('remove', link.toString(), '--yes')
 
         then: 'the running sandbox is found, and nothing is removed'
             outcome.status() == ExitStatus.LAMP_BUSY
@@ -329,13 +329,13 @@ class SettingUpALampSpec extends Specification {
             bug in itself.
         """
         given: 'a link to a directory that does not exist yet'
-            var real = sandbox.home.resolve('big-disk/feature-x')
-            var link = sandbox.lampPath()
+            var real = host.home.resolve('big-disk/feature-x')
+            var link = host.lampPath()
             Files.createDirectories(link.parent)
             Files.createSymbolicLink(link, real)
 
         when:
-            var outcome = sandbox.oillamp.run('at', link.toString())
+            var outcome = host.oillamp.run('at', link.toString())
 
         then: 'the lamp is made where the link points'
             outcome.status() == ExitStatus.SUCCESS
@@ -356,14 +356,14 @@ class SettingUpALampSpec extends Specification {
             would go for each lamp, and the command it suggests names all of them.
         """
         given: 'two lamps, and a directory beside them that the pattern also matches'
-            var first = sandbox.lampPath('test1')
-            var second = sandbox.lampPath('test2')
-            var notALamp = Files.createDirectories(sandbox.lampPath('test-notes'))
-            sandbox.oillamp.run('at', first.toString())
-            sandbox.oillamp.run('at', second.toString())
+            var first = host.lampPath('test1')
+            var second = host.lampPath('test2')
+            var notALamp = Files.createDirectories(host.lampPath('test-notes'))
+            host.oillamp.run('at', first.toString())
+            host.oillamp.run('at', second.toString())
 
         when: 'the pattern catches the directory that is not a lamp'
-            var refused = sandbox.oillamp.run('remove', first.toString(), notALamp.toString(),
+            var refused = host.oillamp.run('remove', first.toString(), notALamp.toString(),
                                               second.toString(), '--yes')
 
         then: 'nothing is removed, and the directory at fault is named'
@@ -374,7 +374,7 @@ class SettingUpALampSpec extends Specification {
             Files.exists(second.resolve('oillamp.toml'))
 
         when: 'only the lamps are named, without --yes'
-            var asked = sandbox.oillamp.run('remove', first.toString(), second.toString())
+            var asked = host.oillamp.run('remove', first.toString(), second.toString())
 
         then: 'it lists both, and offers one command that removes both'
             asked.status() == ExitStatus.USAGE
@@ -384,7 +384,7 @@ class SettingUpALampSpec extends Specification {
             Files.exists(first.resolve('oillamp.toml'))
 
         when: 'the user confirms'
-            var removed = sandbox.oillamp.run('remove', first.toString(), second.toString(), '--yes')
+            var removed = host.oillamp.run('remove', first.toString(), second.toString(), '--yes')
 
         then: 'both are gone'
             removed.status() == ExitStatus.SUCCESS
@@ -400,8 +400,8 @@ class SettingUpALampSpec extends Specification {
             So every command that takes one lamp says it was given several, and names them.
         """
         when:
-            var outcome = sandbox.oillamp.run('stop', sandbox.lampPath('test1').toString(),
-                                              sandbox.lampPath('test2').toString())
+            var outcome = host.oillamp.run('stop', host.lampPath('test1').toString(),
+                                              host.lampPath('test2').toString())
 
         then:
             outcome.status() == ExitStatus.USAGE
@@ -419,12 +419,12 @@ class SettingUpALampSpec extends Specification {
             message.
         """
         given: 'a lamp whose container is still registered with podman'
-            var lamp = sandbox.lampPath()
-            sandbox.oillamp.run('at', lamp.toString())
-            sandbox.machine { it.commandSucceeding('podman container exists', '') }
+            var lamp = host.lampPath()
+            host.oillamp.run('at', lamp.toString())
+            host.machine { it.commandSucceeding('podman container exists', '') }
 
         when:
-            var outcome = sandbox.oillamp.run('remove', lamp.toString(), '--yes')
+            var outcome = host.oillamp.run('remove', lamp.toString(), '--yes')
 
         then: 'it refuses, and says which command to run first'
             outcome.status() == ExitStatus.LAMP_BUSY
@@ -444,8 +444,8 @@ class SettingUpALampSpec extends Specification {
             So the second run must be almost entirely a no-op, and must say so.
         """
         given: 'a lamp that has been set up once'
-            var lamp = sandbox.lampPath()
-            sandbox.oillamp.run('at', lamp.toString())
+            var lamp = host.lampPath()
+            host.oillamp.run('at', lamp.toString())
             var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
                                             .findFirst().orElseThrow()
 
@@ -457,7 +457,7 @@ class SettingUpALampSpec extends Specification {
             var keyBefore = Files.readString(lamp.resolve('.oillamp/keys/client_ed25519'))
 
         when: 'the user runs oillamp on that lamp again'
-            var outcome = sandbox.oillamp.run('at', lamp.toString())
+            var outcome = host.oillamp.run('at', lamp.toString())
 
         then: 'it succeeds'
             outcome.status() == ExitStatus.SUCCESS
@@ -495,7 +495,7 @@ class SettingUpALampSpec extends Specification {
             Files.createDirectory(directory.resolve('src'))
 
         when: 'the user points oillamp at it'
-            var outcome = sandbox.oillamp.run('at', directory.toString())
+            var outcome = host.oillamp.run('at', directory.toString())
 
         then: 'oillamp refuses'
             outcome.reported('OIL-LAMP-002')
@@ -513,7 +513,7 @@ class SettingUpALampSpec extends Specification {
             problem.fixes().any { it.command().orElse('').contains('--init') }
 
         when: 'the user confirms with --init'
-            var confirmed = sandbox.oillamp.run('at', directory.toString(), '--init')
+            var confirmed = host.oillamp.run('at', directory.toString(), '--init')
 
         then: 'oillamp sets the lamp up alongside their files'
             confirmed.status() == ExitStatus.SUCCESS
@@ -532,7 +532,7 @@ class SettingUpALampSpec extends Specification {
             exactly once, by someone in a hurry, on the wrong directory.
         """
         when: 'the user points oillamp at their home directory itself'
-            var outcome = sandbox.oillamp.run('at', sandbox.home.toString())
+            var outcome = host.oillamp.run('at', host.home.toString())
 
         then: 'oillamp refuses and explains why, suggesting a subdirectory instead'
             outcome.reported('OIL-LAMP-003')
@@ -540,7 +540,7 @@ class SettingUpALampSpec extends Specification {
             outcome.errors().first().whatHappened().contains('lamps')
 
         when: 'or at a system directory'
-            var system = sandbox.oillamp.run('at', '/etc/oillamp')
+            var system = host.oillamp.run('at', '/etc/oillamp')
 
         then: 'that is refused too'
             system.reported('OIL-LAMP-003')
@@ -561,7 +561,7 @@ class SettingUpALampSpec extends Specification {
             host/ is attached read-only, since the sandbox only ever connects to it.
         """
         when: 'the user asks what oillamp would run'
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run', '--verbose')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--dry-run', '--verbose')
             var podmanRun = outcome.stepDetails().find { it.startsWith('podman run') }
 
         then:
@@ -587,22 +587,22 @@ class SettingUpALampSpec extends Specification {
             points, and says how to remove it, without touching either.
         """
         given: 'a lamp that has run before'
-            var lamp = sandbox.lampPath()
-            sandbox.oillamp.run('at', lamp.toString())
+            var lamp = host.lampPath()
+            host.oillamp.run('at', lamp.toString())
 
         and: 'whose infra/ directory the agent moved aside and replaced with a link to the user\'s home'
             var infra = lamp.resolve('.oillamp/sockets/infra')
             Files.move(infra, lamp.resolve('.oillamp/sockets/moved-away'))
-            Files.createSymbolicLink(infra, sandbox.home)
+            Files.createSymbolicLink(infra, host.home)
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString())
+            var outcome = host.oillamp.run('at', lamp.toString())
 
         then: 'oillamp refuses, saying what it found'
             outcome.status() != ExitStatus.SUCCESS
             outcome.reported('OIL-LAMP-011')
             outcome.errors().first().whatHappened().contains(infra.toString())
-            outcome.errors().first().whatHappened().contains(sandbox.home.toString())
+            outcome.errors().first().whatHappened().contains(host.home.toString())
 
         and: 'nothing was handed to the infrastructure user and no sandbox was started'
             !outcome.stepKinds().contains('ChownForContainer')
@@ -627,15 +627,15 @@ class SettingUpALampSpec extends Specification {
             it is checked up front, where the message can name the filesystem and suggest a fix.
         """
         given: 'a lamp directory on a network share'
-            sandbox.machine { it.lampFilesystemType('nfs') }
+            host.machine { it.lampFilesystemType('nfs') }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then:
             outcome.reported('OIL-LAMP-005')
             outcome.errors().first().whatHappened().contains('nfs')
-            !Files.exists(sandbox.lampPath())
+            !Files.exists(host.lampPath())
     }
 
     def 'A lamp written by a newer oillamp is left alone rather than damaged'() {
@@ -646,7 +646,7 @@ class SettingUpALampSpec extends Specification {
             useful advice there is: upgrade.
         """
         given: 'a lamp created by a later version of oillamp'
-            var lamp = Files.createDirectories(sandbox.lampPath())
+            var lamp = Files.createDirectories(host.lampPath())
             Files.createDirectories(lamp.resolve('.oillamp'))
             Files.writeString(lamp.resolve('.oillamp/lamp.json'), '''
                 {
@@ -658,7 +658,7 @@ class SettingUpALampSpec extends Specification {
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString())
+            var outcome = host.oillamp.run('at', lamp.toString())
 
         then:
             outcome.reported('OIL-LAMP-004')
@@ -696,14 +696,14 @@ class SettingUpALampSpec extends Specification {
             having no duration rather than hidden, deleted, or given a made-up one.
         """
         given: 'a lamp with two recordings, and a file nobody can date'
-            var lamp = sandbox.lampPath()
-            sandbox.oillamp.run('at', lamp.toString())
+            var lamp = host.lampPath()
+            host.oillamp.run('at', lamp.toString())
             givenRecording(lamp, '20260115-100000', Duration.ofMinutes(5), 2048)
             givenRecording(lamp, '20260115-140000', Duration.ofSeconds(90), 512)
             Files.write(lamp.resolve('.oillamp/recordings/notes.mkv'), new byte[1024])
 
         when:
-            var listed = sandbox.oillamp.run('recordings', lamp.toString())
+            var listed = host.oillamp.run('recordings', lamp.toString())
 
         then: 'each is named with how long it ran and what it cost'
             listed.status() == ExitStatus.SUCCESS
@@ -717,7 +717,7 @@ class SettingUpALampSpec extends Specification {
             listed.console().contains('3 recording(s)')
 
         when: 'a session that was never recorded is asked for'
-            var missing = sandbox.oillamp.run('recordings', lamp.toString(), '--open', '20200101-000000')
+            var missing = host.oillamp.run('recordings', lamp.toString(), '--open', '20200101-000000')
 
         then: 'it says so, and names the ones that do exist'
             missing.status() == ExitStatus.USAGE
@@ -740,14 +740,14 @@ class SettingUpALampSpec extends Specification {
             podman's user namespace - the same reason `rm -rf` cannot remove a lamp.
         """
         given: 'a lamp that keeps a fortnight, and a recording from well before that'
-            var lamp = sandbox.lampPath()
-            sandbox.machine { it.clockAt(Instant.parse('2026-02-01T12:00:00Z')) }
-            sandbox.oillamp.run('at', lamp.toString())
+            var lamp = host.lampPath()
+            host.machine { it.clockAt(Instant.parse('2026-02-01T12:00:00Z')) }
+            host.oillamp.run('at', lamp.toString())
             var old = givenRecording(lamp, '20251201-090000', Duration.ofMinutes(20), 64)
             var recent = givenRecording(lamp, '20260131-090000', Duration.ofMinutes(20), 64)
 
         when:
-            var pruned = sandbox.oillamp.run('recordings', lamp.toString(), '--prune')
+            var pruned = host.oillamp.run('recordings', lamp.toString(), '--prune')
 
         then: 'the one past its fortnight is gone and the one inside it is not'
             pruned.status() == ExitStatus.SUCCESS
@@ -755,7 +755,7 @@ class SettingUpALampSpec extends Specification {
             Files.exists(recent)
 
         when: 'there is nothing left to prune'
-            var again = sandbox.oillamp.run('recordings', lamp.toString(), '--prune')
+            var again = host.oillamp.run('recordings', lamp.toString(), '--prune')
 
         then: 'it says so rather than reporting work it did not do'
             again.status() == ExitStatus.SUCCESS
@@ -771,10 +771,10 @@ class SettingUpALampSpec extends Specification {
             directories or fail to start with a message about something else.
         """
         given:
-            var lamp = sandbox.home.resolve('lamps').resolve('feature:x')
+            var lamp = host.home.resolve('lamps').resolve('feature:x')
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString())
+            var outcome = host.oillamp.run('at', lamp.toString())
 
         then: 'oillamp refuses before creating anything, and says what is wrong with the path'
             outcome.reported('OIL-LAMP-001')

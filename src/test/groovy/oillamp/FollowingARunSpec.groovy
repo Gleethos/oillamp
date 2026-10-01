@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit
 class FollowingARunSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     Path lamp
     Lamp held
@@ -41,11 +41,11 @@ class FollowingARunSpec extends Specification {
     final CountDownLatch release = new CountDownLatch(1)
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
-        lamp = sandbox.lampPath()
-        assert sandbox.oillamp.run('at', lamp.toString()).succeeded()
-        sandbox.machine { it.agent { String prompt ->
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
+        lamp = host.lampPath()
+        assert host.oillamp.run('at', lamp.toString()).succeeded()
+        host.machine { it.agent { String prompt ->
             prompts << prompt
             if (prompt.startsWith('wait')) release.await()
             if (prompt.startsWith('forever')) Thread.sleep(60_000)
@@ -55,7 +55,7 @@ class FollowingARunSpec extends Specification {
             }
             'Done: ' + prompt
         } }
-        held = Lamp.at(lamp).launchedBy(sandbox.launcher).onEvent { heard << it }.start()
+        held = Lamp.at(lamp).launchedBy(host.launcher).onEvent { heard << it }.start()
         assert held.awaitRunning(Duration.ofSeconds(30))
     }
 
@@ -158,13 +158,13 @@ class FollowingARunSpec extends Specification {
             returns, oillamp status says what the agent is doing, and oillamp cancel stops it.
         """
         when:
-            var asked = sandbox.oillamp.run('ask', lamp.toString(), '--no-wait', 'forever, please')
+            var asked = host.oillamp.run('ask', lamp.toString(), '--no-wait', 'forever, please')
             var run = asked.events().find { it instanceof LampEvent.RunAccepted }.run()
             waitFor(LampEvent.RunStarted) { it.run().id() == run.id() }
-            var status = sandbox.oillamp.run('status', lamp.toString())
-            var cancelled = sandbox.oillamp.run('cancel', lamp.toString(), run.id())
+            var status = host.oillamp.run('status', lamp.toString())
+            var cancelled = host.oillamp.run('cancel', lamp.toString(), run.id())
             waitFor(LampEvent.RunFinished) { it.run().id() == run.id() }
-            var nothing = sandbox.oillamp.run('cancel', lamp.toString())
+            var nothing = host.oillamp.run('cancel', lamp.toString())
 
         then:
             asked.succeeded()

@@ -26,12 +26,12 @@ import java.util.concurrent.TimeUnit
 class HoldingALampSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
     final List<LampEvent> received = new CopyOnWriteArrayList<>()
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
     }
 
     def 'An application starts a lamp, sees it running, and ends it by closing it'() {
@@ -42,8 +42,8 @@ class HoldingALampSpec extends Specification {
             nothing is left running.
         """
         given:
-            var lamp = Lamp.at(sandbox.lampPath()).onEvent { received << it }
-                           .launchedBy(sandbox.launcher).start()
+            var lamp = Lamp.at(host.lampPath()).onEvent { received << it }
+                           .launchedBy(host.launcher).start()
 
         expect: 'the session comes up'
             lamp.awaitRunning(Duration.ofSeconds(30))
@@ -57,7 +57,7 @@ class HoldingALampSpec extends Specification {
                            && it.lines().toList().any { line -> line.contains('asked to stop by the application') } }
 
         and: 'nothing of the session is left'
-            !Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
+            !Files.exists(host.lampPath().resolve('.oillamp/session.json'))
     }
 
     def 'An application can leave its lamp running when it closes, until oillamp stop ends it'() {
@@ -72,8 +72,8 @@ class HoldingALampSpec extends Specification {
             crashes, without a word still takes its sandbox with it.
         """
         given:
-            var lamp = Lamp.at(sandbox.lampPath()).onEvent { received << it }
-                           .launchedBy(sandbox.launcher).start()
+            var lamp = Lamp.at(host.lampPath()).onEvent { received << it }
+                           .launchedBy(host.launcher).start()
             lamp.awaitRunning(Duration.ofSeconds(30))
 
         when: 'the application leaves it running, and closes it'
@@ -83,18 +83,18 @@ class HoldingALampSpec extends Specification {
 
         then: 'the session goes on, on its own'
             lamp.exitStatus().isEmpty()
-            Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
-            sandbox.oillamp.run('status', sandbox.lampPath().toString()).console()
+            Files.exists(host.lampPath().resolve('.oillamp/session.json'))
+            host.oillamp.run('status', host.lampPath().toString()).console()
                    .contains('running on its own')
 
         when: 'someone stops it'
-            var stopped = sandbox.oillamp.run('stop', sandbox.lampPath().toString())
-            sandbox.engines.first().waitFor()
+            var stopped = host.oillamp.run('stop', host.lampPath().toString())
+            host.engines.first().waitFor()
 
         then: 'it ends cleanly, and leaves nothing behind'
             stopped.succeeded()
             lamp.exitStatus() == Optional.of(ExitStatus.SUCCESS)
-            !Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
+            !Files.exists(host.lampPath().resolve('.oillamp/session.json'))
     }
 
     def 'An application that left its lamp running joins it again, and can stop it'() {
@@ -105,13 +105,13 @@ class HoldingALampSpec extends Specification {
             only stops following. stop() ends the session, and returns once it has.
         """
         given: 'a lamp left running by an application that has closed'
-            var first = Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start()
+            var first = Lamp.at(host.lampPath()).launchedBy(host.launcher).start()
             first.awaitRunning(Duration.ofSeconds(30))
             first.leaveRunning()
             first.close()
 
         when: 'the application opens again, and joins it'
-            var starting = Lamp.at(sandbox.lampPath()).onEvent { received << it }.launchedBy(sandbox.launcher)
+            var starting = Lamp.at(host.lampPath()).onEvent { received << it }.launchedBy(host.launcher)
             var running = starting.isRunning()
             var joined = starting.join()
 
@@ -120,7 +120,7 @@ class HoldingALampSpec extends Specification {
             joined.awaitRunning(Duration.ofSeconds(10))
             !joined.holds()
             joined.commandLine('true').first() == 'ssh'
-            sandbox.engines.last().arguments == ['follow', sandbox.lampPath().toString(), '--embedded']
+            host.engines.last().arguments == ['follow', host.lampPath().toString(), '--embedded']
 
         when: 'it stops the session'
             joined.stop()
@@ -137,10 +137,10 @@ class HoldingALampSpec extends Specification {
             an error to crash on: the lamp never comes up, and the events say why.
         """
         given: 'a lamp whose session has ended'
-            assert sandbox.oillamp.run('at', sandbox.lampPath().toString()).succeeded()
+            assert host.oillamp.run('at', host.lampPath().toString()).succeeded()
 
         when:
-            var starting = Lamp.at(sandbox.lampPath()).onEvent { received << it }.launchedBy(sandbox.launcher)
+            var starting = Lamp.at(host.lampPath()).onEvent { received << it }.launchedBy(host.launcher)
             var joined = starting.join()
 
         then:
@@ -156,7 +156,7 @@ class HoldingALampSpec extends Specification {
             argument, so the application passes what it means and the sandbox receives that.
         """
         given:
-            var lamp = Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start()
+            var lamp = Lamp.at(host.lampPath()).launchedBy(host.launcher).start()
             lamp.awaitRunning(Duration.ofSeconds(30))
 
         when:
@@ -182,12 +182,12 @@ class HoldingALampSpec extends Specification {
             knows where it is.
         """
         given:
-            var lamp = Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start()
+            var lamp = Lamp.at(host.lampPath()).launchedBy(host.launcher).start()
             lamp.awaitRunning(Duration.ofSeconds(30))
 
         expect: 'the desktop socket of this session'
             lamp.desktop().fileName.toString() == 'vnc.sock'
-            lamp.desktop().startsWith(sandbox.runtime)
+            lamp.desktop().startsWith(host.runtime)
 
         cleanup:
             lamp?.close()
@@ -200,7 +200,7 @@ class HoldingALampSpec extends Specification {
             nothing listens on.
         """
         given:
-            var lamp = Lamp.at(sandbox.home).launchedBy(sandbox.launcher).start()
+            var lamp = Lamp.at(host.home).launchedBy(host.launcher).start()
             lamp.awaitRunning(Duration.ofSeconds(30))
 
         when:
@@ -221,20 +221,20 @@ class HoldingALampSpec extends Specification {
             to, reporting what it did as events, like everything else.
         """
         given: 'a lamp that ran once, and is closed'
-            Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start().withCloseable {
+            Lamp.at(host.lampPath()).launchedBy(host.launcher).start().withCloseable {
                 assert it.awaitRunning(Duration.ofSeconds(30))
             }
 
         when:
-            var status = Lamp.at(sandbox.lampPath()).onEvent { received << it }.launchedBy(sandbox.launcher).remove()
+            var status = Lamp.at(host.lampPath()).onEvent { received << it }.launchedBy(host.launcher).remove()
 
         then: 'it is gone'
             status == ExitStatus.SUCCESS
-            !Files.exists(sandbox.lampPath().resolve('.oillamp'))
-            !Files.exists(sandbox.lampPath().resolve('oillamp.toml'))
+            !Files.exists(host.lampPath().resolve('.oillamp'))
+            !Files.exists(host.lampPath().resolve('oillamp.toml'))
 
         and: 'the engine was asked as the command line asks it, confirmed and answering in JSON'
-            sandbox.engines.last().arguments == ['remove', sandbox.lampPath().toString(), '--yes', '--embedded']
+            host.engines.last().arguments == ['remove', host.lampPath().toString(), '--yes', '--embedded']
             !received.isEmpty()
     }
 
@@ -247,15 +247,15 @@ class HoldingALampSpec extends Specification {
             no home yet.
         """
         expect: 'no home before the first start'
-            Lamp.agentHome(sandbox.lampPath()).isEmpty()
+            Lamp.agentHome(host.lampPath()).isEmpty()
 
         when: 'the lamp ran once, and is closed'
-            Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start().withCloseable {
+            Lamp.at(host.lampPath()).launchedBy(host.launcher).start().withCloseable {
                 assert it.awaitRunning(Duration.ofSeconds(30))
             }
 
         then: 'its home is the agent directory, the one holding AGENTS.md'
-            var home = Lamp.agentHome(sandbox.lampPath())
+            var home = Lamp.agentHome(host.lampPath())
             home.isPresent()
             home.get().fileName.toString().startsWith('agent-lamp-')
             Files.exists(home.get().resolve('AGENTS.md'))
@@ -267,15 +267,15 @@ class HoldingALampSpec extends Specification {
             a directory that is not a lamp, and says so in an event the application can show.
         """
         given:
-            Files.createDirectories(sandbox.lampPath())
-            Files.writeString(sandbox.lampPath().resolve('notes.txt'), 'mine')
+            Files.createDirectories(host.lampPath())
+            Files.writeString(host.lampPath().resolve('notes.txt'), 'mine')
 
         when:
-            var status = Lamp.at(sandbox.lampPath()).onEvent { received << it }.launchedBy(sandbox.launcher).remove()
+            var status = Lamp.at(host.lampPath()).onEvent { received << it }.launchedBy(host.launcher).remove()
 
         then:
             status != ExitStatus.SUCCESS
-            Files.exists(sandbox.lampPath().resolve('notes.txt'))
+            Files.exists(host.lampPath().resolve('notes.txt'))
             received.any { it instanceof LampEvent.Failure && it.problem().whatHappened().contains('not an oillamp lamp') }
     }
 
@@ -288,7 +288,7 @@ class HoldingALampSpec extends Specification {
             wrong, and the application can show the problem the events already carried.
         """
         given:
-            var lamp = Lamp.at(sandbox.home).launchedBy(sandbox.launcher).start()
+            var lamp = Lamp.at(host.home).launchedBy(host.launcher).start()
             lamp.awaitRunning(Duration.ofSeconds(30))
 
         when:
@@ -310,10 +310,10 @@ class HoldingALampSpec extends Specification {
             window it never asked for, and output it could not read.
         """
         given:
-            var lamp = Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start()
+            var lamp = Lamp.at(host.lampPath()).launchedBy(host.launcher).start()
 
         expect:
-            sandbox.engines.first().arguments == ['at', sandbox.lampPath().toString(), '--embedded']
+            host.engines.first().arguments == ['at', host.lampPath().toString(), '--embedded']
 
         cleanup:
             lamp?.close()
@@ -326,8 +326,8 @@ class HoldingALampSpec extends Specification {
             Here the lamp directory is the home directory itself, which oillamp refuses.
         """
         given:
-            var lamp = Lamp.at(sandbox.home).onEvent { received << it }
-                           .launchedBy(sandbox.launcher).start()
+            var lamp = Lamp.at(host.home).onEvent { received << it }
+                           .launchedBy(host.launcher).start()
 
         expect:
             !lamp.awaitRunning(Duration.ofSeconds(30))

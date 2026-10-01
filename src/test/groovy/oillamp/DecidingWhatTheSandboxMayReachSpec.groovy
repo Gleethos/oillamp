@@ -7,9 +7,6 @@ import spock.lang.Subject
 import spock.lang.TempDir
 import spock.lang.Timeout
 
-import java.net.ServerSocket
-import java.net.StandardProtocolFamily
-import java.net.UnixDomainSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 import java.nio.charset.StandardCharsets
@@ -37,7 +34,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
     static final String PRIVATE_RANGES = 'block private, internal and loopback ranges'
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     final List<LampEvent> reported = new CopyOnWriteArrayList<>()
     final List<String> requestsSeen = new CopyOnWriteArrayList<>()
@@ -46,14 +43,14 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
     ServerSocket origin
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
     }
 
     def cleanup() {
         origin?.close()
         if (session?.alive) {
-            sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            host.oillamp.run('stop', host.lampPath().toString())
             session.join(20_000)
         }
     }
@@ -155,7 +152,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             waitUntil { reported.count { isDenial(it) } == 300 }
 
         and: 'the session ends'
-            sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            host.oillamp.run('stop', host.lampPath().toString())
             session.join(30_000)
 
         then: 'the outcome holds every one of them'
@@ -401,7 +398,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
             one rather than change one.
         """
         given: 'a lamp that denies by default and has no rules'
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
 
                 [network]
@@ -427,7 +424,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
         """
         given: 'a lamp with a forward to the test server'
             var port = givenAnOriginServer('hello from the company model')
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
 
                 [[network.forwards]]
@@ -456,7 +453,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
      *  being added to it; listing only the allow rule would drop the deny rule.
      */
     private void givenALampAllowing(int port) {
-        sandbox.givenConfig(sandbox.lampPath(), """
+        host.givenConfig(host.lampPath(), """
             schema_version = 1
 
             [[network.rules]]
@@ -476,7 +473,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
 
     /** A lamp whose only rule allows every address, as a hand-written policy might. */
     private void givenALampAllowingEverything() {
-        sandbox.givenConfig(sandbox.lampPath(), """
+        host.givenConfig(host.lampPath(), """
             schema_version = 1
 
             [[network.rules]]
@@ -718,7 +715,7 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
      *  directory holds a symlink into the lamp, and oillamp always connects through it.
      */
     private Path proxySocket() {
-        var agents = Files.list(sandbox.runtime.resolve('oillamp')).toList()
+        var agents = Files.list(host.runtime.resolve('oillamp')).toList()
         assert agents.size() == 1 : "expected one agent runtime directory, found ${agents}"
         var socket = agents.first().resolve('sockets/host/proxy.sock')
         assert Files.exists(socket) : "the session never bound a proxy socket at ${socket}"
@@ -726,18 +723,18 @@ class DecidingWhatTheSandboxMayReachSpec extends Specification {
     }
 
     private Path networkLog() {
-        Files.list(sandbox.lampPath().resolve('.oillamp/logs'))
+        Files.list(host.lampPath().resolve('.oillamp/logs'))
              .filter { it.fileName.toString().startsWith('network-') }
              .findFirst()
-             .orElse(sandbox.lampPath().resolve('.oillamp/logs/network-none.jsonl'))
+             .orElse(host.lampPath().resolve('.oillamp/logs/network-none.jsonl'))
     }
 
     // ─── running a session beside the scenario ─────────────────────────────────────────────
 
     private void startASession() {
-        sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(60)) }
-        var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
-        session = Thread.start { finished = oillamp.run('at', sandbox.lampPath().toString()) }
+        host.machine { it.windowsStayOpenFor(Duration.ofSeconds(60)) }
+        var oillamp = host.oillamp.observedBy { reported.add(it) }
+        session = Thread.start { finished = oillamp.run('at', host.lampPath().toString()) }
         waitUntil { reported.any { it instanceof LampEvent.Summary &&
                                    it.title() == 'your session is up' } }
     }

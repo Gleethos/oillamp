@@ -32,7 +32,7 @@ import java.util.concurrent.TimeUnit
 class AskingInAConversationSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     Path lamp
     final List<LampEvent> reported = new java.util.concurrent.CopyOnWriteArrayList<>()
@@ -48,20 +48,20 @@ class AskingInAConversationSpec extends Specification {
             'Name a river'   : 'The Danube.']
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
-        lamp = sandbox.lampPath()
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
+        lamp = host.lampPath()
         // With the schedule on, so that a question that continues a conversation is seen to go
         // without the notes and recent runs a new one gets.
-        sandbox.givenConfig(lamp, 'schema_version = 1\n[schedule]\nenabled = true\n')
-        assert sandbox.oillamp.run('at', lamp.toString()).succeeded()
-        sandbox.machine { it.agent { String prompt -> prompts << prompt; ANSWERS.find { prompt.contains(it.key) }?.value ?: 'Hm.' } }
+        host.givenConfig(lamp, 'schema_version = 1\n[schedule]\nenabled = true\n')
+        assert host.oillamp.run('at', lamp.toString()).succeeded()
+        host.machine { it.agent { String prompt -> prompts << prompt; ANSWERS.find { prompt.contains(it.key) }?.value ?: 'Hm.' } }
         startASession()
     }
 
     def cleanup() {
         if (session?.alive) {
-            sandbox.oillamp.run('stop', lamp.toString())
+            host.oillamp.run('stop', lamp.toString())
             session.join(30_000)
         }
     }
@@ -92,7 +92,7 @@ class AskingInAConversationSpec extends Specification {
             var first = ask('Name a colour').conversation().orElseThrow()
 
         when:
-            var second = sandbox.oillamp.run('ask', lamp.toString(), '--in', first.take(13), 'Name a fruit')
+            var second = host.oillamp.run('ask', lamp.toString(), '--in', first.take(13), 'Name a fruit')
 
         then:
             second.succeeded()
@@ -140,7 +140,7 @@ class AskingInAConversationSpec extends Specification {
             var blue = answerTo(conversation, 'Name a colour')
 
         when:
-            var asked = sandbox.oillamp.run('ask', lamp.toString(), '--in', conversation, '--after', blue.id(), 'Name a tree')
+            var asked = host.oillamp.run('ask', lamp.toString(), '--in', conversation, '--after', blue.id(), 'Name a tree')
 
         then:
             asked.succeeded()
@@ -163,11 +163,11 @@ class AskingInAConversationSpec extends Specification {
             var asked = prompts.size()
 
         when:
-            var noConversation = sandbox.oillamp.run('ask', lamp.toString(), '--in', 'ffffffff', 'x')
-            var noEntry = sandbox.oillamp.run('ask', lamp.toString(), '--in', conversation, '--after', 'deadbeef', 'x')
-            var afterAQuestion = sandbox.oillamp.run('ask', lamp.toString(), '--in', conversation, '--after', colour.id(), 'x')
-            var insteadOfAnAnswer = sandbox.oillamp.run('ask', lamp.toString(), '--in', conversation, '--instead-of', blue.id(), 'x')
-            var entryWithoutConversation = sandbox.oillamp.run('ask', lamp.toString(), '--after', blue.id(), 'x')
+            var noConversation = host.oillamp.run('ask', lamp.toString(), '--in', 'ffffffff', 'x')
+            var noEntry = host.oillamp.run('ask', lamp.toString(), '--in', conversation, '--after', 'deadbeef', 'x')
+            var afterAQuestion = host.oillamp.run('ask', lamp.toString(), '--in', conversation, '--after', colour.id(), 'x')
+            var insteadOfAnAnswer = host.oillamp.run('ask', lamp.toString(), '--in', conversation, '--instead-of', blue.id(), 'x')
+            var entryWithoutConversation = host.oillamp.run('ask', lamp.toString(), '--after', blue.id(), 'x')
 
         then:
             noConversation.reported('OIL-CONVERSATION-001')
@@ -203,18 +203,18 @@ class AskingInAConversationSpec extends Specification {
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
 
     private LampEvent.RunFinished ask(String prompt) {
-        var asked = sandbox.oillamp.run('ask', lamp.toString(), prompt)
+        var asked = host.oillamp.run('ask', lamp.toString(), prompt)
         assert asked.succeeded()
         asked.events().find { it instanceof LampEvent.RunFinished }
     }
 
     private void askIn(String conversation, String prompt) {
-        assert sandbox.oillamp.run('ask', lamp.toString(), '--in', conversation, prompt).succeeded()
+        assert host.oillamp.run('ask', lamp.toString(), '--in', conversation, prompt).succeeded()
     }
 
     /** The lamp, as an application sees it. The session holding it was started from the command line. */
     private Lamp.Starting running() {
-        Lamp.at(lamp).launchedBy(sandbox.launcher)
+        Lamp.at(lamp).launchedBy(host.launcher)
     }
 
     private Lamp.Conversation.Entry question(String conversation, String text) {
@@ -231,12 +231,12 @@ class AskingInAConversationSpec extends Specification {
     }
 
     private List<LampEvent.Snapshot> history() {
-        sandbox.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots().collect()
+        host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots().collect()
     }
 
     private void startASession() {
-        sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(110)) }
-        var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
+        host.machine { it.windowsStayOpenFor(Duration.ofSeconds(110)) }
+        var oillamp = host.oillamp.observedBy { reported.add(it) }
         session = Thread.start { oillamp.run('at', lamp.toString()) }
         var deadline = System.currentTimeMillis() + 30_000
         while (!reported.any { it instanceof LampEvent.Summary && it.title() == 'your session is up' }) {

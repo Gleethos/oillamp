@@ -16,11 +16,11 @@ import java.nio.file.Path
 class ConfiguringALampSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
     }
 
     def 'Three mistakes in one file produce three located problems, in one run'() {
@@ -34,8 +34,8 @@ class ConfiguringALampSpec extends Specification {
             precisely so this scenario can hold.
         """
         given: 'a settings file with an unknown key, a malformed network range, and two forwards claiming the same port'
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [display]
@@ -59,7 +59,7 @@ class ConfiguringALampSpec extends Specification {
             '''.stripIndent())
 
         when: 'the user asks oillamp to check the configuration'
-            var outcome = sandbox.oillamp.run('config', lamp.toString(), 'check')
+            var outcome = host.oillamp.run('config', lamp.toString(), 'check')
 
         then: 'the exit code says the problem is the configuration, not the machine'
             outcome.status() == ExitStatus.USAGE
@@ -92,8 +92,8 @@ class ConfiguringALampSpec extends Specification {
             refused - with the nearest known key suggested, because it is almost always a typo.
         """
         given:
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [netwrok]
@@ -101,7 +101,7 @@ class ConfiguringALampSpec extends Specification {
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('config', lamp.toString(), 'check')
+            var outcome = host.oillamp.run('config', lamp.toString(), 'check')
 
         then:
             outcome.reported('OIL-CONFIG-002')
@@ -115,14 +115,14 @@ class ConfiguringALampSpec extends Specification {
             ability to change this format later without breaking anyone's lamp.
         """
         given: 'a configuration with no schema_version'
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 [display]
                 width = 1920
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('config', lamp.toString(), 'check')
+            var outcome = host.oillamp.run('config', lamp.toString(), 'check')
 
         then:
             outcome.reported('OIL-CONFIG-004')
@@ -140,8 +140,8 @@ class ConfiguringALampSpec extends Specification {
             Better to refuse the configuration and say which port to move.
         """
         given:
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [[network.forwards]]
@@ -151,7 +151,7 @@ class ConfiguringALampSpec extends Specification {
             '''.stripIndent().replace('${port}', port.toString()))
 
         when:
-            var outcome = sandbox.oillamp.run('config', lamp.toString(), 'check')
+            var outcome = host.oillamp.run('config', lamp.toString(), 'check')
 
         then:
             outcome.reported('OIL-CONFIG-004')
@@ -170,8 +170,8 @@ class ConfiguringALampSpec extends Specification {
             with no idea why. The message lists the forwards that do exist.
         """
         given:
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [[network.forwards]]
@@ -184,7 +184,7 @@ class ConfiguringALampSpec extends Specification {
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('config', lamp.toString(), 'check')
+            var outcome = host.oillamp.run('config', lamp.toString(), 'check')
 
         then:
             outcome.reported('OIL-CONFIG-004')
@@ -202,11 +202,11 @@ class ConfiguringALampSpec extends Specification {
             against the defaults oillamp reports for itself.
         """
         given: 'a freshly created lamp, with its shipped configuration file untouched'
-            var lamp = sandbox.lampPath()
-            sandbox.oillamp.run('at', lamp.toString())
+            var lamp = host.lampPath()
+            host.oillamp.run('at', lamp.toString())
 
         when: 'the user asks what the effective settings are'
-            var outcome = sandbox.oillamp.run('config', lamp.toString(), 'show-effective')
+            var outcome = host.oillamp.run('config', lamp.toString(), 'show-effective')
 
         then: 'it reads back the values the file documents'
             outcome.status() == ExitStatus.SUCCESS
@@ -240,7 +240,7 @@ class ConfiguringALampSpec extends Specification {
             lists rules gets exactly those rules.
         """
         given: 'a company-wide file setting the desktop size and a default policy'
-            sandbox.givenGlobalConfig('''
+            host.givenGlobalConfig('''
                 [display]
                 width  = 2560
                 height = 1440
@@ -252,8 +252,8 @@ class ConfiguringALampSpec extends Specification {
             '''.stripIndent())
 
         and: 'a lamp that overrides only the width, and lists its own rules'
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [display]
@@ -266,7 +266,7 @@ class ConfiguringALampSpec extends Specification {
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+            var outcome = host.oillamp.run('at', lamp.toString(), '--dry-run')
 
         then: 'the lamp\'s width wins, but the height from the company file still applies'
             outcome.console().contains('3840x1440')
@@ -282,8 +282,8 @@ class ConfiguringALampSpec extends Specification {
             key name or a bracket.
         """
         given:
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [display
@@ -291,7 +291,7 @@ class ConfiguringALampSpec extends Specification {
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('config', lamp.toString(), 'check')
+            var outcome = host.oillamp.run('config', lamp.toString(), 'check')
 
         then:
             outcome.reported('OIL-CONFIG-001')
@@ -308,8 +308,8 @@ class ConfiguringALampSpec extends Specification {
             cached yet, so oillamp waits twice as long then.
         """
         given:
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [timeouts]
@@ -317,14 +317,14 @@ class ConfiguringALampSpec extends Specification {
             '''.stripIndent())
 
         when: 'the image has to be built first'
-            var afterABuild = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+            var afterABuild = host.oillamp.run('at', lamp.toString(), '--dry-run')
 
         then:
             afterABuild.steps().any { it.contains('ready (up to 180s)') }
 
         when: 'the image is already there'
-            sandbox.machine { it.commandSucceeding('podman image exists', '') }
-            var withTheImage = sandbox.oillamp.run('at', lamp.toString(), '--dry-run')
+            host.machine { it.commandSucceeding('podman image exists', '') }
+            var withTheImage = host.oillamp.run('at', lamp.toString(), '--dry-run')
 
         then:
             withTheImage.steps().any { it.contains('ready (up to 90s)') }
@@ -339,8 +339,8 @@ class ConfiguringALampSpec extends Specification {
             accepts only these two words, because it turns them into compositor configuration.
         """
         given: 'a lamp that asks for tiling'
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [display]
@@ -348,27 +348,27 @@ class ConfiguringALampSpec extends Specification {
             '''.stripIndent())
 
         when:
-            sandbox.oillamp.run('at', lamp.toString())
+            host.oillamp.run('at', lamp.toString())
             var runtimeEnv = java.nio.file.Files.readString(lamp.resolve('.oillamp/session/runtime.env'))
 
         then: 'the sandbox is told to tile'
             runtimeEnv.contains("OILLAMP_WINDOWS='tiling'")
 
         when: 'the lamp says nothing about windows'
-            sandbox.givenConfig(lamp, 'schema_version = 1\n')
-            var effective = sandbox.oillamp.run('config', lamp.toString(), 'show-effective')
+            host.givenConfig(lamp, 'schema_version = 1\n')
+            var effective = host.oillamp.run('config', lamp.toString(), 'show-effective')
 
         then: 'they float'
             effective.console().contains('floating windows')
 
         when: 'the lamp asks for something else'
-            sandbox.givenConfig(lamp, '''
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [display]
                 windows = "stacking"
             '''.stripIndent())
-            var checked = sandbox.oillamp.run('config', lamp.toString(), 'check')
+            var checked = host.oillamp.run('config', lamp.toString(), 'check')
 
         then: 'it is refused, with the two values that work'
             checked.status() == ExitStatus.USAGE
@@ -388,15 +388,15 @@ class ConfiguringALampSpec extends Specification {
             request on the way out, so the sandbox has nothing to take elsewhere.
         """
         given: 'a user whose own environment points Eden AI at its global endpoint'
-            sandbox.machine {
+            host.machine {
                 it.environmentVariable('EDENAI_API_KEY', 'a-key')
                   .environmentVariable('EDENAI_BASE_URL', 'https://api.edenai.run/v3')
                   .environmentVariable('EDENAI_EU_ONLY', '')
             }
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
 
         when:
-            sandbox.oillamp.run('at', lamp.toString())
+            host.oillamp.run('at', lamp.toString())
             var runtimeEnv = Files.readString(lamp.resolve('.oillamp/session/runtime.env'))
             var agentHome = Files.list(lamp).filter { it.fileName.toString().startsWith('agent-lamp-') }
                                             .findFirst().orElseThrow()
@@ -418,7 +418,7 @@ class ConfiguringALampSpec extends Specification {
             guide.contains('`api.edenai.run`, is refused by the network policy')
 
         when: 'a lamp lists its own rules and leaves that one out'
-            sandbox.givenConfig(lamp, '''
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [[network.rules]]
@@ -426,7 +426,7 @@ class ConfiguringALampSpec extends Specification {
                 action = "deny"
                 cidrs  = ["10.0.0.0/8"]
             '''.stripIndent())
-            sandbox.oillamp.run('at', lamp.toString())
+            host.oillamp.run('at', lamp.toString())
             guide = Files.readString(agentHome.resolve('AGENTS.md'))
 
         then: 'the guide no longer claims the policy refuses it'
@@ -441,15 +441,15 @@ class ConfiguringALampSpec extends Specification {
             it could call a configuration valid that `oillamp at` then refused.
         """
         given: 'a valid lamp file, and a company-wide file with a mistake in it'
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, 'schema_version = 1\n')
-            sandbox.givenGlobalConfig('''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, 'schema_version = 1\n')
+            host.givenGlobalConfig('''
                 [display]
                 width = 10
             '''.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('config', lamp.toString(), 'check')
+            var outcome = host.oillamp.run('config', lamp.toString(), 'check')
 
         then: 'the mistake is found, and located in the company-wide file'
             outcome.status() == ExitStatus.USAGE
@@ -469,11 +469,11 @@ class ConfiguringALampSpec extends Specification {
             var marker = tmp.resolve('ran')
             var hostile = "it's \$(touch ran)"
             var key = "k'\$(touch ran)\"`touch ran`"
-            sandbox.machine { it.environmentVariable('EDENAI_MAX_TOKENS', key) }
-            var lamp = sandbox.lampPath(hostile)
+            host.machine { it.environmentVariable('EDENAI_MAX_TOKENS', key) }
+            var lamp = host.lampPath(hostile)
 
         when:
-            sandbox.oillamp.run('at', lamp.toString())
+            host.oillamp.run('at', lamp.toString())
             var sourced = new ProcessBuilder('bash', '-c',
                     'set -a; . "$1"; set +a; printf "%s\\n%s\\n" "$OILLAMP_LAMP_NAME" "$EDENAI_MAX_TOKENS"',
                     'bash', lamp.resolve('.oillamp/session/runtime.env').toString())
@@ -495,11 +495,11 @@ class ConfiguringALampSpec extends Specification {
             session from starting, with a problem that names the variable and not its value.
         """
         given:
-            sandbox.machine { it.environmentVariable('EDENAI_MAX_TOKENS', 'first-line\ntouch /tmp/pwned') }
-            var lamp = sandbox.lampPath()
+            host.machine { it.environmentVariable('EDENAI_MAX_TOKENS', 'first-line\ntouch /tmp/pwned') }
+            var lamp = host.lampPath()
 
         when:
-            var outcome = sandbox.oillamp.run('at', lamp.toString())
+            var outcome = host.oillamp.run('at', lamp.toString())
 
         then: 'the session does not start'
             outcome.status() != ExitStatus.SUCCESS
@@ -520,8 +520,8 @@ class ConfiguringALampSpec extends Specification {
             models and the provider name, so the agent's tools can be pointed at it.
         """
         given:
-            var lamp = sandbox.lampPath()
-            sandbox.givenConfig(lamp, '''
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '''
                 schema_version = 1
 
                 [[network.forwards]]
@@ -537,7 +537,7 @@ class ConfiguringALampSpec extends Specification {
             '''.stripIndent())
 
         when:
-            sandbox.oillamp.run('at', lamp.toString())
+            host.oillamp.run('at', lamp.toString())
             var runtimeEnv = Files.readString(lamp.resolve('.oillamp/session/runtime.env'))
 
         then:

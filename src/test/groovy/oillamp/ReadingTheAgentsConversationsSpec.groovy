@@ -28,15 +28,15 @@ import java.util.concurrent.TimeUnit
 class ReadingTheAgentsConversationsSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     Path lamp
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
-        lamp = sandbox.lampPath()
-        assert sandbox.oillamp.run('at', lamp.toString()).succeeded()
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
+        lamp = host.lampPath()
+        assert host.oillamp.run('at', lamp.toString()).succeeded()
     }
 
     def 'An application reads the agent\'s conversations as values, the most recent first'() {
@@ -197,9 +197,9 @@ class ReadingTheAgentsConversationsSpec extends Specification {
             }
 
         when:
-            var listed = sandbox.oillamp.run('conversations', lamp.toString())
-            var shown = sandbox.oillamp.run('conversations', lamp.toString(), '01a0ec69-de1c')
-            var missing = sandbox.oillamp.run('conversations', lamp.toString(), 'ffff')
+            var listed = host.oillamp.run('conversations', lamp.toString())
+            var shown = host.oillamp.run('conversations', lamp.toString(), '01a0ec69-de1c')
+            var missing = host.oillamp.run('conversations', lamp.toString(), 'ffff')
 
         then:
             listed.succeeded()

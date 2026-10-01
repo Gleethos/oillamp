@@ -16,13 +16,13 @@ import java.nio.file.Path
 class UsingTheCommandLineSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
-    def setup() { sandbox = new Sandbox(tmp) }
+    def setup() { host = new ScenarioHost(tmp) }
 
     def 'Running oillamp with no arguments shows what it can do'() {
         when:
-            var outcome = sandbox.oillamp.run()
+            var outcome = host.oillamp.run()
 
         then: 'the user is shown the commands rather than an error about nothing'
             outcome.console().contains('at <dir>')
@@ -41,7 +41,7 @@ class UsingTheCommandLineSpec extends Specification {
             command or option stops everything, and the message says so explicitly.
         """
         when: 'the user mistypes the command'
-            var command = sandbox.oillamp.run('doctro')
+            var command = host.oillamp.run('doctro')
 
         then:
             command.status() == ExitStatus.USAGE
@@ -49,7 +49,7 @@ class UsingTheCommandLineSpec extends Specification {
             command.errors().first().whyItMatters().contains('nothing on your machine changed')
 
         when: 'or invents an option'
-            var option = sandbox.oillamp.run('doctor', '--fix-everything')
+            var option = host.oillamp.run('doctor', '--fix-everything')
 
         then:
             option.status() == ExitStatus.USAGE
@@ -66,10 +66,10 @@ class UsingTheCommandLineSpec extends Specification {
             is a usage error, and the message shows what the command does take.
         """
         given:
-            var lamp = sandbox.lampPath().toString()
+            var lamp = host.lampPath().toString()
 
         when:
-            var outcome = sandbox.oillamp.run(*line.replace('LAMP', lamp).split(' '))
+            var outcome = host.oillamp.run(*line.replace('LAMP', lamp).split(' '))
 
         then:
             outcome.status() == ExitStatus.USAGE
@@ -91,7 +91,7 @@ class UsingTheCommandLineSpec extends Specification {
 
     def 'The options a command does take are still accepted: oillamp #line'() {
         when:
-            var outcome = sandbox.oillamp.run(*line.replace('LAMP', sandbox.lampPath().toString()).split(' '))
+            var outcome = host.oillamp.run(*line.replace('LAMP', host.lampPath().toString()).split(' '))
 
         then:
             outcome.status() != ExitStatus.USAGE || !outcome.errors().any { it.whatHappened().contains('does not take') }
@@ -105,7 +105,7 @@ class UsingTheCommandLineSpec extends Specification {
 
     def 'Asking to set up a lamp without saying where is a usage error, not a crash'() {
         when:
-            var outcome = sandbox.oillamp.run('at')
+            var outcome = host.oillamp.run('at')
 
         then:
             outcome.status() == ExitStatus.USAGE
@@ -114,7 +114,7 @@ class UsingTheCommandLineSpec extends Specification {
 
     def 'The version is reported without needing a machine or a lamp'() {
         when:
-            var outcome = sandbox.oillamp.run('version')
+            var outcome = host.oillamp.run('version')
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -128,7 +128,7 @@ class UsingTheCommandLineSpec extends Specification {
             no lamp, and change nothing.
         """
         when: 'the user asks what oillamp is'
-            var about = sandbox.oillamp.run('about')
+            var about = host.oillamp.run('about')
 
         then: 'they learn why it exists and what it is built from'
             about.status() == ExitStatus.SUCCESS
@@ -137,7 +137,7 @@ class UsingTheCommandLineSpec extends Specification {
             about.console().contains('oillamp 0.2.0')
 
         when: 'and how to get going'
-            var guide = sandbox.oillamp.run('guide')
+            var guide = host.oillamp.run('guide')
 
         then: 'they get the steps in the order they need them, from checking the machine to deleting the lamp'
             guide.status() == ExitStatus.SUCCESS
@@ -151,7 +151,7 @@ class UsingTheCommandLineSpec extends Specification {
             guide.console().contains('--no-viewer is not the same')
 
         and: 'the command list sends newcomers to both'
-            var help = sandbox.oillamp.run('help')
+            var help = host.oillamp.run('help')
             help.console().contains('oillamp guide')
             help.console().contains('oillamp about')
     }
@@ -167,10 +167,10 @@ class UsingTheCommandLineSpec extends Specification {
             raw.
         """
         given: 'a machine whose id lookup returns something impossible'
-            sandbox.machine { it.generatedAgentId('NOT A VALID ID') }
+            host.machine { it.generatedAgentId('NOT A VALID ID') }
 
         when: 'the user tries to set up a lamp'
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('at', host.lampPath().toString())
 
         then: 'they get a problem, not a stack trace'
             outcome.reported('OIL-INTERNAL-001')
@@ -193,10 +193,10 @@ class UsingTheCommandLineSpec extends Specification {
             whole purpose is to report.
         """
         given: 'a directory that was never made into a lamp'
-            var lamp = sandbox.lampPath()
+            var lamp = host.lampPath()
 
         when:
-            var outcome = sandbox.oillamp.run('view', lamp.toString())
+            var outcome = host.oillamp.run('view', lamp.toString())
 
         then: 'oillamp says so, and names the way out'
             !outcome.succeeded()
@@ -208,7 +208,7 @@ class UsingTheCommandLineSpec extends Specification {
 
     def '--open without a session to play is a usage error, not a silent listing'() {
         when:
-            var outcome = sandbox.oillamp.run('recordings', sandbox.lampPath().toString(), '--open')
+            var outcome = host.oillamp.run('recordings', host.lampPath().toString(), '--open')
 
         then:
             outcome.status() == ExitStatus.USAGE
@@ -222,8 +222,8 @@ class UsingTheCommandLineSpec extends Specification {
             listed in the help but did nothing.
         """
         when: 'the same command runs on a terminal, with and without the option'
-            var coloured = sandbox.oillamp.run('doctor')
-            var plain = sandbox.oillamp.run('doctor', '--no-color')
+            var coloured = host.oillamp.run('doctor')
+            var plain = host.oillamp.run('doctor', '--no-color')
 
         then:
             coloured.console().contains('\u001B[')
@@ -238,7 +238,7 @@ class UsingTheCommandLineSpec extends Specification {
             from a machine that cannot run sandboxes (3).
         """
         given:
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
 
                 [display]
@@ -246,7 +246,7 @@ class UsingTheCommandLineSpec extends Specification {
                 """.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('doctor', sandbox.lampPath().toString())
+            var outcome = host.oillamp.run('doctor', host.lampPath().toString())
 
         then:
             outcome.status() == ExitStatus.USAGE
@@ -256,11 +256,11 @@ class UsingTheCommandLineSpec extends Specification {
 
     def 'config path prints where the lamp\'s configuration lives'() {
         when:
-            var outcome = sandbox.oillamp.run('config', sandbox.lampPath().toString(), 'path')
+            var outcome = host.oillamp.run('config', host.lampPath().toString(), 'path')
 
         then:
             outcome.status() == ExitStatus.SUCCESS
-            outcome.console().trim().endsWith(sandbox.lampPath().resolve('oillamp.toml').toString())
+            outcome.console().trim().endsWith(host.lampPath().resolve('oillamp.toml').toString())
     }
 
     def 'The completion script is only the script, and completes what oillamp accepts'() {
@@ -271,7 +271,7 @@ class UsingTheCommandLineSpec extends Specification {
             first, so the word after `config` is a path and the one after that is the action.
         """
         when:
-            var outcome = sandbox.oillamp.run('completion', 'bash')
+            var outcome = host.oillamp.run('completion', 'bash')
 
         then: 'nothing but the script is printed'
             outcome.status() == ExitStatus.SUCCESS

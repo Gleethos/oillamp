@@ -11,7 +11,6 @@ import spock.lang.Subject
 import spock.lang.TempDir
 import spock.lang.Timeout
 
-import java.net.UnixDomainSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.SocketChannel
 import java.nio.charset.StandardCharsets
@@ -38,7 +37,7 @@ import java.util.concurrent.TimeUnit
 class WakingTheAgentSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     /** A Tuesday afternoon: 16:15 in Berlin. */
     static final Instant NOW = Instant.parse('2026-09-22T14:15:03Z')
@@ -48,13 +47,13 @@ class WakingTheAgentSpec extends Specification {
     Thread session
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen').clockAt(NOW).timeZone('Europe/Berlin') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen').clockAt(NOW).timeZone('Europe/Berlin') }
     }
 
     def cleanup() {
         if (session?.alive) {
-            sandbox.oillamp.run('stop', sandbox.lampPath().toString())
+            host.oillamp.run('stop', host.lampPath().toString())
             session.join(30_000)
         }
     }
@@ -213,7 +212,7 @@ class WakingTheAgentSpec extends Specification {
             anAgent { prompt -> 'Tidied up.' }
 
         when: 'a session starts ten minutes later with the flag'
-            sandbox.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
+            host.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
             startASession(lamp, '--enable-scheduling')
             var finished = waitFor(LampEvent.RunFinished)
             var during = schedule(lamp)
@@ -252,7 +251,7 @@ class WakingTheAgentSpec extends Specification {
             }
 
         when: 'a session runs ten minutes later'
-            sandbox.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
+            host.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
             startASession(lamp)
             var finished = waitFor(LampEvent.RunFinished)
             stop(lamp)
@@ -311,7 +310,7 @@ class WakingTheAgentSpec extends Specification {
             }
 
         when: 'a session runs once both are due'
-            sandbox.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
+            host.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
             startASession(lamp)
             waitFor(LampEvent.RunFinished) { it.run().id() == 'run-2' }
             stop(lamp)
@@ -337,7 +336,7 @@ class WakingTheAgentSpec extends Specification {
             startASession(lamp)
 
         when:
-            sandbox.oillamp.run('ask', lamp.toString(), 'How are you?')
+            host.oillamp.run('ask', lamp.toString(), 'How are you?')
 
         then:
             prompts == ['How are you?']
@@ -359,10 +358,10 @@ class WakingTheAgentSpec extends Specification {
             startASession(lamp)
 
         when:
-            var slow = Thread.start { assert sandbox.oillamp.run('ask', lamp.toString(), 'slow').succeeded() }
+            var slow = Thread.start { assert host.oillamp.run('ask', lamp.toString(), 'slow').succeeded() }
             waitFor(LampEvent.RunStarted)
             var quick = null
-            var second = Thread.start { quick = sandbox.oillamp.run('ask', lamp.toString(), 'quick') }
+            var second = Thread.start { quick = host.oillamp.run('ask', lamp.toString(), 'quick') }
             var queued = waitFor(LampEvent.RunQueued)
             release.countDown()
             slow.join(20_000)
@@ -395,11 +394,11 @@ class WakingTheAgentSpec extends Specification {
                 Thread.sleep(60_000)
                 'never reached'
             }
-            sandbox.machine { it.clockRunsFaster(600) }
+            host.machine { it.clockRunsFaster(600) }
             startASession(lamp)
 
         when:
-            var asked = sandbox.oillamp.run('ask', lamp.toString(), 'Work forever')
+            var asked = host.oillamp.run('ask', lamp.toString(), 'Work forever')
 
         then:
             !asked.succeeded()
@@ -429,7 +428,7 @@ class WakingTheAgentSpec extends Specification {
             startASession(lamp)
 
         when:
-            Thread.start { sandbox.oillamp.run('ask', lamp.toString(), 'A long task') }
+            Thread.start { host.oillamp.run('ask', lamp.toString(), 'A long task') }
             waitFor(LampEvent.RunStarted)
             Thread.sleep(300)
             stop(lamp)
@@ -453,7 +452,7 @@ class WakingTheAgentSpec extends Specification {
             startASession(lamp)
 
         when:
-            var asked = sandbox.oillamp.run('ask', lamp.toString(), 'Hello?')
+            var asked = host.oillamp.run('ask', lamp.toString(), 'Hello?')
 
         then:
             !asked.succeeded()
@@ -476,7 +475,7 @@ class WakingTheAgentSpec extends Specification {
             startASession(lamp)
 
         when:
-            var asked = sandbox.oillamp.run('ask', lamp.toString(), 'Anything')
+            var asked = host.oillamp.run('ask', lamp.toString(), 'Anything')
 
         then:
             asked.succeeded()
@@ -540,7 +539,7 @@ class WakingTheAgentSpec extends Specification {
                 'The answer is in answer.txt.'
             }
             startASession(lamp)
-            sandbox.oillamp.run('ask', lamp.toString(), 'Find the answer')
+            host.oillamp.run('ask', lamp.toString(), 'Find the answer')
 
         when:
             var all = agentAsks(op: 'history')
@@ -575,7 +574,7 @@ class WakingTheAgentSpec extends Specification {
         when: 'the schedule is switched off again'
             Files.writeString(lamp.resolve('oillamp.toml'),
                     Files.readString(lamp.resolve('oillamp.toml')).replace('enabled = true', 'enabled = false'))
-            sandbox.oillamp.run('at', lamp.toString())
+            host.oillamp.run('at', lamp.toString())
 
         then:
             !Files.readString(home(lamp).resolve('AGENTS.md')).contains('## Working on a schedule')
@@ -591,7 +590,7 @@ class WakingTheAgentSpec extends Specification {
         given:
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
             anAgent { prompt -> 'Hello from the sandbox.' }
-            var lamps = Lamp.at(lamp).launchedBy(sandbox.launcher)
+            var lamps = Lamp.at(lamp).launchedBy(host.launcher)
 
         when:
             var job = lamps.repeat('0 8 * * *', 'Morning check')
@@ -634,20 +633,20 @@ class WakingTheAgentSpec extends Specification {
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
 
     private Path aLampThatHasRun(String toml) {
-        var lamp = sandbox.lampPath()
-        sandbox.givenConfig(lamp, 'schema_version = 1\n' + toml.stripIndent())
-        assert sandbox.oillamp.run('at', lamp.toString()).succeeded()
+        var lamp = host.lampPath()
+        host.givenConfig(lamp, 'schema_version = 1\n' + toml.stripIndent())
+        assert host.oillamp.run('at', lamp.toString()).succeeded()
         lamp
     }
 
     private void anAgent(Closure<String> work) {
-        sandbox.machine { it.agent { String prompt -> prompts << prompt; work(prompt) } }
+        host.machine { it.agent { String prompt -> prompts << prompt; work(prompt) } }
     }
 
     private static Path home(Path lamp) { Lamp.agentHome(lamp).orElseThrow() }
 
     private def schedule(Path lamp, String... arguments) {
-        sandbox.oillamp.run(*(['schedule', lamp.toString()] + arguments.toList()))
+        host.oillamp.run(*(['schedule', lamp.toString()] + arguments.toList()))
     }
 
     private List<LampEvent.Job> jobs(Path lamp) {
@@ -657,20 +656,20 @@ class WakingTheAgentSpec extends Specification {
     }
 
     private List<LampEvent.Snapshot> history(Path lamp) {
-        var listed = sandbox.oillamp.run('history', lamp.toString())
+        var listed = host.oillamp.run('history', lamp.toString())
         assert listed.succeeded()
         listed.events().find { it instanceof LampEvent.History }.snapshots().collect()
     }
 
     private void startASession(Path lamp, String... options) {
-        sandbox.machine { it.windowsStayOpenFor(Duration.ofSeconds(90)) }
-        var oillamp = sandbox.oillamp.observedBy { reported.add(it) }
+        host.machine { it.windowsStayOpenFor(Duration.ofSeconds(90)) }
+        var oillamp = host.oillamp.observedBy { reported.add(it) }
         session = Thread.start { oillamp.run(*(['at', lamp.toString()] + options.toList())) }
         waitFor(LampEvent.Summary) { it.title() == 'your session is up' }
     }
 
     private void stop(Path lamp) {
-        assert sandbox.oillamp.run('stop', lamp.toString()).succeeded()
+        assert host.oillamp.run('stop', lamp.toString()).succeeded()
         session.join(30_000)
         assert !session.alive
     }
@@ -687,7 +686,7 @@ class WakingTheAgentSpec extends Specification {
 
     /** What the agent's tools do: one JSON line to the session's schedule socket, one line back. */
     private Map agentAsks(Map request) {
-        var socket = sandbox.runtime.resolve('oillamp/k3v7x2ab/sockets/host/schedule.sock')
+        var socket = host.runtime.resolve('oillamp/k3v7x2ab/sockets/host/schedule.sock')
         SocketChannel.open(UnixDomainSocketAddress.of(socket)).withCloseable { channel ->
             channel.write(ByteBuffer.wrap((JsonOutput.toJson(request) + '\n').getBytes(StandardCharsets.UTF_8)))
             channel.shutdownOutput()

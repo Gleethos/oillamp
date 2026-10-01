@@ -25,11 +25,11 @@ import java.util.concurrent.TimeUnit
 class EmbeddingASessionSpec extends Specification {
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
     }
 
     def 'An embedded session opens no windows, and ends when the application lets go of it'() {
@@ -43,7 +43,7 @@ class EmbeddingASessionSpec extends Specification {
             So the sandbox never outlives the application that wanted it.
         """
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--embedded')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--embedded')
 
         then: 'the session ran and ended cleanly'
             outcome.status() == ExitStatus.SUCCESS
@@ -65,7 +65,7 @@ class EmbeddingASessionSpec extends Specification {
             outcome.events().any { it instanceof LampEvent.Summary
                                    && it.lines().toList().any { line ->
                                           line.contains('asked to stop by the application') } }
-            !Files.exists(sandbox.lampPath().resolve('.oillamp/session.json'))
+            !Files.exists(host.lampPath().resolve('.oillamp/session.json'))
     }
 
     def 'An embedded oillamp reports on standard output in JSON, one event per line, and nothing else'() {
@@ -75,7 +75,7 @@ class EmbeddingASessionSpec extends Specification {
             read, so in embedded mode every line is an event, and every event is a line.
         """
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--embedded')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--embedded')
 
         then: 'every line of output reads back as an event'
             var lines = outcome.console().readLines()
@@ -94,15 +94,15 @@ class EmbeddingASessionSpec extends Specification {
             after a minute.
         """
         given: 'a short terminal timeout, and an application that keeps the session longer'
-            sandbox.machine { it.clockRuns().applicationLeavesAfter(Duration.ofSeconds(3)) }
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.machine { it.clockRuns().applicationLeavesAfter(Duration.ofSeconds(3)) }
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
                 [timeouts]
                 terminal_connect_seconds = 1
             """.stripIndent())
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--embedded')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--embedded')
 
         then:
             outcome.status() == ExitStatus.SUCCESS
@@ -116,10 +116,10 @@ class EmbeddingASessionSpec extends Specification {
             SSH login. Refusing to start there would be refusing for a reason that does not apply.
         """
         given: 'a machine with no desktop session'
-            sandbox.machine { it.noGraphicalSession() }
+            host.machine { it.noGraphicalSession() }
 
         when:
-            var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--embedded')
+            var outcome = host.oillamp.run('at', host.lampPath().toString(), '--embedded')
 
         then: 'the session runs, and nobody is told a display is missing'
             outcome.status() == ExitStatus.SUCCESS

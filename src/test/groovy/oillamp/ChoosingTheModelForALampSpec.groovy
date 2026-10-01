@@ -10,8 +10,6 @@ import spock.lang.Subject
 import spock.lang.TempDir
 import spock.lang.Timeout
 
-import java.net.StandardProtocolFamily
-import java.net.UnixDomainSocketAddress
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import java.nio.channels.SocketChannel
@@ -41,7 +39,7 @@ class ChoosingTheModelForALampSpec extends Specification {
     static final String APP_KEY = 'sk-typed-into-the-app-0123456789'
 
     @TempDir Path tmp
-    @Subject Sandbox sandbox
+    @Subject ScenarioHost host
     HttpServer service
     /** The Authorization header of each request the stand-in model service received. */
     final List<String> received = new CopyOnWriteArrayList<>()
@@ -51,8 +49,8 @@ class ChoosingTheModelForALampSpec extends Specification {
     Lamp lamp
 
     def setup() {
-        sandbox = new Sandbox(tmp)
-        sandbox.machine { it.reallyRuns('ssh-keygen') }
+        host = new ScenarioHost(tmp)
+        host.machine { it.reallyRuns('ssh-keygen') }
         service = HttpServer.create(new InetSocketAddress('127.0.0.1', 0), 0)
         service.createContext('/') { HttpExchange exchange ->
             received << exchange.requestHeaders.getFirst('Authorization')
@@ -78,13 +76,13 @@ class ChoosingTheModelForALampSpec extends Specification {
             this session.
         """
         given: 'a key in the environment the application inherited, which should not be used'
-            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', 'sk-from-the-environment') }
+            host.machine { it.environmentVariable('EDENAI_API_KEY', 'sk-from-the-environment') }
 
         when: 'the application starts the lamp with its own service and key'
-            lamp = Lamp.at(sandbox.lampPath()).onEvent { events << it }
+            lamp = Lamp.at(host.lampPath()).onEvent { events << it }
                        .modelService(standInService())
                        .modelKey(APP_KEY)
-                       .launchedBy(sandbox.launcher).start()
+                       .launchedBy(host.launcher).start()
 
         then:
             lamp.awaitRunning(Duration.ofSeconds(30))
@@ -97,7 +95,7 @@ class ChoosingTheModelForALampSpec extends Specification {
             received == ["Bearer ${APP_KEY}".toString()]
 
         and: 'the configuration file oillamp wrote for the new lamp holds neither'
-            var written = Files.readString(sandbox.lampPath().resolve('oillamp.toml'))
+            var written = Files.readString(host.lampPath().resolve('oillamp.toml'))
             !written.contains(APP_KEY)
             !written.contains(standInService().toString())
     }
@@ -110,12 +108,12 @@ class ChoosingTheModelForALampSpec extends Specification {
             variable that holds it. The service is not a secret and goes on the command line.
         """
         when:
-            lamp = Lamp.at(sandbox.lampPath()).modelService(standInService()).modelKey(APP_KEY)
-                       .launchedBy(sandbox.launcher).start()
-            var engine = sandbox.engines.first()
+            lamp = Lamp.at(host.lampPath()).modelService(standInService()).modelKey(APP_KEY)
+                       .launchedBy(host.launcher).start()
+            var engine = host.engines.first()
 
         then: 'the command line names the service and the variable'
-            engine.arguments == ['at', sandbox.lampPath().toString(), '--embedded',
+            engine.arguments == ['at', host.lampPath().toString(), '--embedded',
                                  '--model-service', standInService().toString(),
                                  '--model-key-env', 'OILLAMP_MODEL_KEY']
 
@@ -134,20 +132,20 @@ class ChoosingTheModelForALampSpec extends Specification {
             engine's command line.
         """
         given:
-            sandbox.machine { it.environmentVariable('EDENAI_API_KEY', 'sk-from-the-environment') }
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.machine { it.environmentVariable('EDENAI_API_KEY', 'sk-from-the-environment') }
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
                 [model]
                 service = "${standInService()}"
             """.stripIndent())
 
         when:
-            lamp = Lamp.at(sandbox.lampPath()).launchedBy(sandbox.launcher).start()
+            lamp = Lamp.at(host.lampPath()).launchedBy(host.launcher).start()
             lamp.awaitRunning(Duration.ofSeconds(30))
             ask('GET /v3/models HTTP/1.1\r\nHost: 127.0.0.1:3129\r\n\r\n')
 
         then:
-            sandbox.engines.first().arguments == ['at', sandbox.lampPath().toString(), '--embedded']
+            host.engines.first().arguments == ['at', host.lampPath().toString(), '--embedded']
             received == ['Bearer sk-from-the-environment']
     }
 
@@ -158,14 +156,14 @@ class ChoosingTheModelForALampSpec extends Specification {
             is used with the application's key.
         """
         given:
-            sandbox.givenConfig(sandbox.lampPath(), """
+            host.givenConfig(host.lampPath(), """
                 schema_version = 1
                 [model]
                 service = "${standInService()}"
             """.stripIndent())
 
         when:
-            lamp = Lamp.at(sandbox.lampPath()).modelKey(APP_KEY).launchedBy(sandbox.launcher).start()
+            lamp = Lamp.at(host.lampPath()).modelKey(APP_KEY).launchedBy(host.launcher).start()
             lamp.awaitRunning(Duration.ofSeconds(30))
             ask('GET /v3/models HTTP/1.1\r\nHost: 127.0.0.1:3129\r\n\r\n')
 
@@ -183,10 +181,10 @@ class ChoosingTheModelForALampSpec extends Specification {
             leave none of the server's.
         """
         when:
-            lamp = Lamp.at(sandbox.lampPath())
+            lamp = Lamp.at(host.lampPath())
                        .modelService(URI.create("http://127.0.0.1:${service.address.port}/v1"))
                        .modelKey('local')
-                       .launchedBy(sandbox.launcher).start()
+                       .launchedBy(host.launcher).start()
 
         then:
             lamp.awaitRunning(Duration.ofSeconds(30))
@@ -198,7 +196,7 @@ class ChoosingTheModelForALampSpec extends Specification {
             paths == ['/v1/models']
 
         and: 'the sandbox is told not to filter the models by region'
-            Files.readString(sandbox.lampPath().resolve('.oillamp/session/runtime.env')).contains("OILLAMP_MODEL_EU_ONLY='0'")
+            Files.readString(host.lampPath().resolve('.oillamp/session/runtime.env')).contains("OILLAMP_MODEL_EU_ONLY='0'")
     }
 
     def 'The models an application lists are asked for where the sandbox asks, with the same key'() {
@@ -210,8 +208,8 @@ class ChoosingTheModelForALampSpec extends Specification {
         """
         given:
             URI given = URI.create("http://127.0.0.1:${service.address.port}${path}")
-            lamp = Lamp.at(sandbox.lampPath()).modelService(given).modelKey(APP_KEY)
-                       .launchedBy(sandbox.launcher).start()
+            lamp = Lamp.at(host.lampPath()).modelService(given).modelKey(APP_KEY)
+                       .launchedBy(host.launcher).start()
 
         expect:
             lamp.awaitRunning(Duration.ofSeconds(30))
@@ -237,10 +235,10 @@ class ChoosingTheModelForALampSpec extends Specification {
             show, in the words oillamp uses on a terminal.
         """
         when:
-            lamp = Lamp.at(sandbox.lampPath()).onEvent { events << it }
+            lamp = Lamp.at(host.lampPath()).onEvent { events << it }
                        .modelService(URI.create('http://llm.example.com'))
                        .modelKey(APP_KEY)
-                       .launchedBy(sandbox.launcher).start()
+                       .launchedBy(host.launcher).start()
 
         then:
             !lamp.awaitRunning(Duration.ofSeconds(30))
@@ -255,11 +253,11 @@ class ChoosingTheModelForALampSpec extends Specification {
             application can point at the field.
         """
         when:
-            Lamp.at(sandbox.lampPath()).modelKey('  ')
+            Lamp.at(host.lampPath()).modelKey('  ')
 
         then:
             thrown(IllegalArgumentException)
-            sandbox.engines.isEmpty()
+            host.engines.isEmpty()
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
@@ -269,7 +267,7 @@ class ChoosingTheModelForALampSpec extends Specification {
     /** Sends one request into the relay's socket, as the sandbox does, and returns the answer. */
     private String ask(String request) {
         Path socket
-        try (var lamps = Files.list(sandbox.runtime.resolve('oillamp'))) {
+        try (var lamps = Files.list(host.runtime.resolve('oillamp'))) {
             socket = lamps.findFirst().orElseThrow().resolve('sockets/host/model.sock')
         }
         var channel = SocketChannel.open(StandardProtocolFamily.UNIX)
