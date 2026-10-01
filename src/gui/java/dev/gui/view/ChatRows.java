@@ -103,7 +103,7 @@ final class ChatRows {
                     .borderRadius(16)
                     .padding(9, 14, 9, 14)
                     .prefWidth(Math.min(YOURS_WIDTH, widthOf(text) * 1.08 + 36))
-                    .text(t -> t.content(Typeset.of(MarkdownParsingUtil.parse(text), 1))
+                    .text(t -> t.content(MarkdownStylingUtil.of(MarkdownParsingUtil.parse(text), 1))
                                 .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true))))
             .add("align right",
                 button("✎  Edit").group(Skin.ICON_BUTTON).isVisibleIf(editable)
@@ -129,7 +129,7 @@ final class ChatRows {
                     // Restarts on every change: each new piece fades in from its arrival.
                     .withStyle(entry, FADE, (it, animation, style) -> style
                         .padding(3, 0, 3, 0)
-                        .text(t -> t.content(Typeset.of(MarkdownParsingUtil.parse(it.text()), animation.progress()))
+                        .text(t -> t.content(MarkdownStylingUtil.of(MarkdownParsingUtil.parse(it.text()), animation.progress()))
                                     .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true))))
                 .add("left",
                     button("⧉  Copy").group(Skin.ICON_BUTTON).isVisibleIf(copyable)
@@ -298,7 +298,7 @@ final class ChatRows {
     /// About how wide `text` is at the body size, in the window's units: its longest line. The
     /// font painted may be a little wider than the one measured, hence the slack where it is used.
     private static int widthOf(String text) {
-        Font font = new Font(FONT, Font.PLAIN, Typeset.BODY);
+        Font font = new Font(FONT, Font.PLAIN, MarkdownStylingUtil.BODY);
         FontRenderContext context = new FontRenderContext(null, true, true);
         double widest = 0;
         for (String line : text.lines().toList())

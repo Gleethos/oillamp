@@ -9,7 +9,7 @@ import static dev.gui.view.MarkdownParsingUtil.Inline.*
  *  How a genie's answer, written in Markdown as models write it, is read for the chat.
  *
  *  <p>{@link MarkdownParsingUtil} turns the text into runs that each have one look, which
- *  {@link Typeset} then sets in the lamp's colours for SwingTree to paint. Both are pure, so
+ *  {@link MarkdownStylingUtil} then sets in the lamp's colours for SwingTree to paint. Both are pure, so
  *  what an answer looks like is pinned here without a window.
  */
 class ReadingAGeniesMarkdownSpec extends Specification {
@@ -101,17 +101,17 @@ class ReadingAGeniesMarkdownSpec extends Specification {
             character.
         """
         expect: 'just arrived: the very last character is faintest, earlier ones are solid'
-            Typeset.step(1, 0) == 1
-            Typeset.step(Typeset.TAIL.intdiv(2), 0) == 4
-            Typeset.step(Typeset.TAIL, 0) == 8
-            Typeset.step(1000, 0) == 8
+            MarkdownStylingUtil.step(1, 0) == 1
+            MarkdownStylingUtil.step(MarkdownStylingUtil.TAIL.intdiv(2), 0) == 4
+            MarkdownStylingUtil.step(MarkdownStylingUtil.TAIL, 0) == 8
+            MarkdownStylingUtil.step(1000, 0) == 8
 
         and: 'settled: everything is solid'
-            Typeset.step(1, 1) == 8
+            MarkdownStylingUtil.step(1, 1) == 8
 
         and: 'a settled answer is one styled run per Markdown run'
-            Typeset.of(MarkdownParsingUtil.parse('plain **bold**'), 1).size() == 2
-            Typeset.of(MarkdownParsingUtil.parse('x' * 100), 0).size() == 8
+            MarkdownStylingUtil.of(MarkdownParsingUtil.parse('plain **bold**'), 1).size() == 2
+            MarkdownStylingUtil.of(MarkdownParsingUtil.parse('x' * 100), 0).size() == 8
     }
 
     private static String text(String markdown) {
