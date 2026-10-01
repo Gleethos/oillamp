@@ -16,9 +16,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 /// pi's own files in the genie's home instead, before the first run: `APPEND_SYSTEM.md`, which pi
 /// adds to its system prompt, and `defaultProvider` and `defaultModel` in `settings.json`, keeping
 /// everything else in that file.
-final class GeniePrompt {
+final class GeniePiSetupUtil {
 
-    private GeniePrompt() {}
+    private GeniePiSetupUtil() {}
 
     private static final ObjectMapper JSON = new ObjectMapper();
 

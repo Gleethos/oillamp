@@ -242,7 +242,7 @@ and the user watches with the Desktop button.
 | `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, and `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `Dates` for the schedule: records with withers, every change a pure method | no |
 | `dev.gui.pi` | `PiEvent` (what the chat is told) | no |
 | `dev.gui.desktop` | `RfbConnection`, `Keysyms` | `RfbConnection` only |
-| `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `Handouts` (files), `LampApiConversionUtil` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePrompt` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `Shelf` (what is kept on disk) | yes |
+| `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `Handouts` (files), `LampApiConversionUtil` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePiSetupUtil` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `Shelf` (what is kept on disk) | yes |
 | `dev.gui.view` | `GeniesView` (the window, bound to `Var<GeniesState>` through lenses), `SchedulePage`, `SettingsPage`, `DesktopScreen`, the look | Swing only |
 | `dev.gui` | `Genies`: the entry point, and the `Actions` the window calls | ties it together |
 
