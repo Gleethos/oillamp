@@ -40,11 +40,11 @@ public interface Actions {
     /// conversation as a branch of its own.
     void askInstead(String id, String text);
 
-    /// Puts a file of the user's into the genie's inbox.
-    void give(UUID genie, Path file);
+    /// Into the genie's inbox.
+    void giveFile(UUID genie, Path file);
 
-    /// Saves a file from the genie's outbox where the user chose.
-    void save(UUID genie, String name, Path target);
+    /// To where the user chose.
+    void saveOutboxFile(UUID genie, String name, Path target);
 
     /// Adds the job written in the genie's schedule editor, or changes the job it replaces.
     void saveJob(UUID genie);

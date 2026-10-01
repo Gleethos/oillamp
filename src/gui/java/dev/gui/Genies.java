@@ -245,9 +245,9 @@ public final class Genies implements Actions {
         });
     }
 
-    @Override public void give(UUID id, Path file) { runner(id).giveFile(file); }
+    @Override public void giveFile(UUID id, Path file) { runner(id).giveFile(file); }
 
-    @Override public void save(UUID id, String name, Path target) { runner(id).saveOutboxFile(name, target); }
+    @Override public void saveOutboxFile(UUID id, String name, Path target) { runner(id).saveOutboxFile(name, target); }
 
     // ─── the schedule ──────────────────────────────────────────────────────────────────────
 
