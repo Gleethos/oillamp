@@ -147,9 +147,9 @@ final class LampPhase {
         if (environment instanceof Result.Err<String> failure) return Result.err(failure.problems());
 
         return LampPlanUtil.planSession(layout, clientKey.get(), hostKey.get(),
-                ((Result.Ok<String>) environment).value(), AgentGuide.render(config),
+                ((Result.Ok<String>) environment).value(), AgentGuideUtil.render(config),
                 AgentGitConfigUtil.render(gitAuthor(config.git(), layout)),
-                config.schedule().enabled() ? Optional.of(AgentGuide.scheduleTools()) : Optional.empty());
+                config.schedule().enabled() ? Optional.of(AgentGuideUtil.scheduleTools()) : Optional.empty());
     }
 
     /// The name and email the agent's commits carry, as `[git]` chooses, said on the console

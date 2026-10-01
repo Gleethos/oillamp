@@ -1197,7 +1197,7 @@ line** by the entrypoint or the supervisor.
 | pi | `~/.pi/agent/` plus `EDENAI_*` from the profile | installed in the image, copied into the home by the entrypoint once |
 | opencode | `/usr/local/share/oillamp/opencode/opencode.json` via `OPENCODE_CONFIG` | written during the image build |
 | SDKMAN | `~/.sdkman/etc/config` (questions off) | installed in the image, copied into the home by the entrypoint once |
-| the agent | `~/AGENTS.md` | every start, `AgentGuide`, from the live configuration |
+| the agent | `~/AGENTS.md` | every start, `AgentGuideUtil`, from the live configuration |
 | ssh on the host | `.oillamp/ssh_config`, `.oillamp/known_hosts` | every start, `LampPlanUtil` |
 | the terminal emulator | its argument template in `TerminalEmulatorUtil` | chosen each session from `terminal.*` |
 | vncviewer | command-line flags | each time a viewer opens, `Viewers`, from `viewer.*` |
@@ -1323,7 +1323,7 @@ removed.
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
 | Shared | `JsonUtil` (every JSON file, message and answer goes through it) |
-| Image and container | `SandboxPhase`, `SandboxImageFilesUtil`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuide`, `Gpu` |
+| Image and container | `SandboxPhase`, `SandboxImageFilesUtil`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuideUtil`, `Gpu` |
 | Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `SandboxSshUtil`, `TerminalEmulatorUtil`, `Viewers` |
 | Network | `Egress`, `Policy`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |
 

@@ -14,9 +14,9 @@ import java.nio.charset.StandardCharsets;
 ///
 /// It is open about the sandbox's limits, so the agent can work within them and report
 /// accurately when it hits one.
-final class AgentGuide {
+final class AgentGuideUtil {
 
-    private AgentGuide() {}
+    private AgentGuideUtil() {}
 
     public static String render(LampConfig config) {
         StringBuilder out = new StringBuilder();
@@ -290,7 +290,7 @@ final class AgentGuide {
     static String conversationTools() { return resource("oillamp-conversations.js"); }
 
     private static String resource(String name) {
-        try (InputStream in = AgentGuide.class.getResourceAsStream("/agent/" + name)) {
+        try (InputStream in = AgentGuideUtil.class.getResourceAsStream("/agent/" + name)) {
             if (in == null) throw new IllegalStateException(name + " is missing from this build of oillamp");
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
