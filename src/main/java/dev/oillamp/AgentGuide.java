@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 
-
 /// Writes `~/AGENTS.md`, the guide that tells the agent what kind of machine it is on.
 ///
 /// An agent that does not know it is in a sandbox wastes time: it tries `sudo apt install`,

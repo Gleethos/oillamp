@@ -10,7 +10,6 @@ import dev.lamp.Problem;
 
 import sprouts.Tuple;
 
-
 /// What every command needs: where to send events, and the options from the command line.
 ///
 /// oillamp never prints directly. Everything it has to say becomes a [LampEvent], which the

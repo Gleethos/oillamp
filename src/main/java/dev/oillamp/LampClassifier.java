@@ -16,7 +16,6 @@ final class LampClassifier {
 
     private LampClassifier() {}
 
-
     /// Entries that do not make a directory count as someone else's: files that editors and file
     /// managers leave behind, and the lamp's own `oillamp.toml` and `README.txt`. Writing
     /// `oillamp.toml` before the first run is a normal way to configure a new lamp.

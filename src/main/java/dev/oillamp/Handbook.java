@@ -1,6 +1,5 @@
 package dev.oillamp;
 
-
 /// The two texts that let someone learn oillamp from oillamp itself: `oillamp about`, which says
 /// why it exists and what it is built from, and `oillamp guide`, which walks through a first
 /// session step by step.

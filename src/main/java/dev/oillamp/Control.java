@@ -59,7 +59,6 @@ final class Control {
 
     private Control() {}
 
-
     /// What a second oillamp is asking for.
     record Request(String op, Association<String, String> arguments) {
 

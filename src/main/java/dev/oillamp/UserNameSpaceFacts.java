@@ -2,7 +2,6 @@ package dev.oillamp;
 
 import dev.lamp.Problem;
 
-
 /// Whether rootless podman can create user namespaces on this host, found by running
 /// `podman unshare true`.
 ///

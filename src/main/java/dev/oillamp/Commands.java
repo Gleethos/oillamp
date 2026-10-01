@@ -488,7 +488,6 @@ final class Commands {
         return ExitStatus.SUCCESS;
     }
 
-
     // ─── the lamp's history ────────────────────────────────────────────────────────────────
 
     /// `oillamp save <dir> [--message <text>]`: take a snapshot of the lamp now.
@@ -988,7 +987,6 @@ final class Commands {
                     "this is not an oillamp lamp — run `oillamp at " + lampPath + "` to make one"));
         return Result.ok(new LampLayout(root, existing.meta().agentId(), HostProbe.runtimeDirectory(machine)));
     }
-
 
     /// No supervisor answered. Either nothing is running, or a supervisor was killed without
     /// cleaning up. In that case its container, its control socket and `session.json` are left

@@ -17,7 +17,6 @@ import dev.lamp.Problem;
 
 import sprouts.Tuple;
 
-
 /// Prints events as text for a person to read.
 ///
 /// Progress is one short line per fact, prefixed with its area (`[host]`, `[lamp]`,

@@ -1,6 +1,5 @@
 package dev.oillamp;
 
-
 /// The text of files oillamp generates: the commented `oillamp.toml`, the lamp's
 /// `README.txt`, the agent's `.bashrc` and the bash completion script.
 ///

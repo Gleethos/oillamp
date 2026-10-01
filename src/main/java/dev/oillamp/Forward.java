@@ -1,6 +1,5 @@
 package dev.oillamp;
 
-
 /// One `[[network.forwards]]` entry: a fixed tunnel from `127.0.0.1:<port>` inside the
 /// sandbox to one address the host can reach, such as a company LLM service.
 ///

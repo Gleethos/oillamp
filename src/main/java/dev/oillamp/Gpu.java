@@ -6,7 +6,6 @@ import dev.lamp.Problem.Evidence;
 import sprouts.Tuple;
 import java.util.Optional;
 
-
 /// Decides whether the sandbox desktop is drawn by the host's graphics card (`gles2`) or by
 /// the processor (`pixman`).
 ///

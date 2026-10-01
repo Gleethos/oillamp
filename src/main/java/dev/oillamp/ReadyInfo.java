@@ -16,7 +16,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 /// `runtime.env` itself, and trusts its own value over what the container reports.
 record ReadyInfo(String renderer, boolean gpuFallback, Optional<SessionId> session) {
 
-
     /// Used when the file cannot be read. The session may still be working perfectly.
     public static ReadyInfo unknown() {
         return new ReadyInfo("unknown", false, Optional.empty());
