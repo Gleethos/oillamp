@@ -965,7 +965,7 @@ Limits: request head at most 64 KiB; at most 512 open connections; name resoluti
 5 s. TLS is never intercepted: oillamp sees the host name, port and resolved addresses, never the
 content.
 
-### The policy (`Policy.java`)
+### The policy (`NetworkPolicyUtil.java`)
 
 The policy is `[network]` in `oillamp.toml`: a default (`allow` or `deny`) and an ordered list of
 rules. Each rule has a `label`, an `action` and up to three criteria:
@@ -1201,7 +1201,7 @@ line** by the entrypoint or the supervisor.
 | ssh on the host | `.oillamp/ssh_config`, `.oillamp/known_hosts` | every start, `LampPlanUtil` |
 | the terminal emulator | its argument template in `TerminalEmulatorUtil` | chosen each session from `terminal.*` |
 | vncviewer | command-line flags | each time a viewer opens, `Viewers`, from `viewer.*` |
-| the egress proxy | the `[network]` table | read at start into a `Policy` value |
+| the egress proxy | the `[network]` table | read at start into a `NetworkPolicy` value |
 
 ### `runtime.env`
 
@@ -1325,7 +1325,7 @@ removed.
 | Shared | `JsonUtil` (every JSON file, message and answer goes through it) |
 | Image and container | `SandboxPhase`, `SandboxImageFilesUtil`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuideUtil`, `Gpu` |
 | Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `SandboxSshUtil`, `TerminalEmulatorUtil`, `Viewers` |
-| Network | `Egress`, `Policy`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |
+| Network | `Egress`, `NetworkPolicyUtil`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |
 
 ---
 

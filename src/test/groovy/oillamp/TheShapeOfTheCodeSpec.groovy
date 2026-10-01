@@ -134,7 +134,7 @@ class TheShapeOfTheCodeSpec extends Specification {
                            // session makes is SessionMachine's.
                            'Supervisor', 'Relay', 'Control',
                            // The egress proxy: sockets, DNS and byte copying. Whether a
-                           // connection is allowed is decided by Policy, a pure function.
+                           // connection is allowed is decided by NetworkPolicyUtil, a pure function.
                            'Egress',
                            // The lamp's history: reads the agent's home and writes git
                            // objects, as FilesystemUtil does the lamp's other files. What a

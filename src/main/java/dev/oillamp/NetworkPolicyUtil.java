@@ -13,9 +13,9 @@ import sprouts.Tuple;
 /// controls a domain's DNS can point any name at `127.0.0.1` or at a private network. Because
 /// every address is checked against the rules' address ranges, the default deny rule catches that
 /// whatever the name is. This is what makes "allow the internet by default" safe for the host.
-final class Policy {
+final class NetworkPolicyUtil {
 
-    private Policy() {}
+    private NetworkPolicyUtil() {}
 
     /// What the policy said, and which rule said it.
     ///

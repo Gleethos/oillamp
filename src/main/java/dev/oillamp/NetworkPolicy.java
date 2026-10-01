@@ -3,7 +3,7 @@ package dev.oillamp;
 import sprouts.Tuple;
 
 /// The `[network]` section of the configuration: which outbound connections the egress proxy
-/// allows. [Policy#decide] applies it.
+/// allows. [NetworkPolicyUtil#decide] applies it.
 ///
 /// It lives in `oillamp.toml`, outside the agent directory, so the agent cannot change it.
 record NetworkPolicy(Decision defaultDecision, Tuple<Rule> rules,

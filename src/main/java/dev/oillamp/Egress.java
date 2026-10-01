@@ -41,7 +41,7 @@ import sprouts.Tuple;
 ///
 /// The container runs with `--network=none`: no route, no DNS, only a loopback interface.
 /// Inside it, a socat relay listens on `127.0.0.1:3128` and forwards each connection to a
-/// Unix socket. On the host side of that socket, this class speaks HTTP proxy, asks [Policy]
+/// Unix socket. On the host side of that socket, this class speaks HTTP proxy, asks [NetworkPolicyUtil]
 /// whether the connection is allowed, resolves the name on the host, and connects on the agent's
 /// behalf. A program that ignores the proxy variables has no network at all.
 ///
@@ -244,7 +244,7 @@ final class Egress implements AutoCloseable {
                     Duration.between(started, Instant.now())));
             return;
         }
-        Policy.Verdict verdict = Policy.decide(policy, head.host(), head.port(), resolution.addresses());
+        NetworkPolicyUtil.Verdict verdict = NetworkPolicyUtil.decide(policy, head.host(), head.port(), resolution.addresses());
         if (!verdict.allowed()) {
             respond(out, 403, verdict.explain(head.host(), head.port()));
             record(new Journey(Instant.now(), "proxy", "CONNECT", head.host(), head.port(),
@@ -288,7 +288,7 @@ final class Egress implements AutoCloseable {
             respond(out, 502, "oillamp: cannot resolve " + head.host());
             return;
         }
-        Policy.Verdict verdict = Policy.decide(policy, head.host(), head.port(), resolution.addresses());
+        NetworkPolicyUtil.Verdict verdict = NetworkPolicyUtil.decide(policy, head.host(), head.port(), resolution.addresses());
         if (!verdict.allowed()) {
             respond(out, 403, verdict.explain(head.host(), head.port()));
             record(new Journey(Instant.now(), "proxy", head.method(), head.host(), head.port(),
@@ -550,7 +550,7 @@ final class Egress implements AutoCloseable {
         /// Built from the address's bytes, never parsed from text again, so the connection goes to
         /// exactly the address the policy judged. Parsing text a second time would let Java's idea
         /// of the address differ from the policy's.
-        InetAddress pick(Policy.Verdict verdict) throws IOException {
+        InetAddress pick(NetworkPolicyUtil.Verdict verdict) throws IOException {
             IpAddress chosen = verdict.address().orElseGet(addresses::first);
             return InetAddress.getByAddress(chosen.toBytes());
         }
