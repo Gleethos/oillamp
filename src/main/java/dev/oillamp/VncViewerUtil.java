@@ -11,9 +11,9 @@ import sprouts.Tuple;
 /// desktop size. `-SendPrimary=0` stops your X text selection from being sent into the
 /// sandbox. The two clipboard options follow `viewer.clipboard` explicitly instead of relying
 /// on the viewer's own defaults.
-final class Viewers {
+final class VncViewerUtil {
 
-    private Viewers() {}
+    private VncViewerUtil() {}
 
     /// The executable oillamp looks for on PATH, and installs as `tigervnc-viewer`.
     public static final String EXECUTABLE = "vncviewer";

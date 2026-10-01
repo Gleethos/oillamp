@@ -250,7 +250,7 @@ final class Supervisor {
     /// Closing the viewer does not end the session: the user only stopped watching. A viewer that
     /// closes immediately with an error is reported as a warning (`OIL-VIEW-001`).
     private void openViewer(boolean viewOnly) {
-        Tuple<String> argv = Viewers.argv(prepared.layout(), prepared.config(), viewOnly);
+        Tuple<String> argv = VncViewerUtil.argv(prepared.layout(), prepared.config(), viewOnly);
         if (host.vncViewer().isEmpty()) {
             post(new SessionEvent.ActionFailed(new SessionAction.LaunchViewer(viewOnly),
                     Problems.viewerDiedImmediately(argv, 127,

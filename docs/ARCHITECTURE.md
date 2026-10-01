@@ -1200,7 +1200,7 @@ line** by the entrypoint or the supervisor.
 | the agent | `~/AGENTS.md` | every start, `AgentGuideUtil`, from the live configuration |
 | ssh on the host | `.oillamp/ssh_config`, `.oillamp/known_hosts` | every start, `LampPlanUtil` |
 | the terminal emulator | its argument template in `TerminalEmulatorUtil` | chosen each session from `terminal.*` |
-| vncviewer | command-line flags | each time a viewer opens, `Viewers`, from `viewer.*` |
+| vncviewer | command-line flags | each time a viewer opens, `VncViewerUtil`, from `viewer.*` |
 | the egress proxy | the `[network]` table | read at start into a `NetworkPolicy` value |
 
 ### `runtime.env`
@@ -1324,7 +1324,7 @@ removed.
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
 | Shared | `JsonUtil` (every JSON file, message and answer goes through it) |
 | Image and container | `SandboxPhase`, `SandboxImageFilesUtil`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuideUtil`, `DesktopRendererUtil` |
-| Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `SandboxSshUtil`, `TerminalEmulatorUtil`, `Viewers` |
+| Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `SandboxSshUtil`, `TerminalEmulatorUtil`, `VncViewerUtil` |
 | Network | `Egress`, `NetworkPolicyUtil`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |
 
 ---
