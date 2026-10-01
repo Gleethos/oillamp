@@ -52,13 +52,17 @@ class TheLampCommandSpec extends Specification {
             name == 'grim' ? ': > "${@: -1}"' : 'true',
             // The pointer helper answers "where" with the last position it moved to.
             name == 'lamp-pointer' ? '[ "$1" = where ] && echo "700 400"' : 'true',
+            // ...and "size" with the size the desktop has now.
+            name == 'lamp-pointer' ? '[ "$1" = size ] && echo "${STUB_DESKTOP_SIZE:-1920x1080}"' : 'true',
             'exit 0',
         ]
         Files.writeString(script, lines.join('\n') + '\n')
         Files.setPosixFilePermissions(script, PosixFilePermissions.fromString('rwxr-xr-x'))
     }
 
-    private Map runLamp(String... arguments) {
+    private Map runLamp(String... arguments) { runLamp([:], arguments) }
+
+    private Map runLamp(Map<String, String> extraEnvironment, String... arguments) {
         var home = Files.createDirectories(temporary.resolve('home'))
         var argv = ['bash', lamp.toString()] + (arguments as List<String>)
         var process = new ProcessBuilder(argv)
@@ -70,6 +74,7 @@ class TheLampCommandSpec extends Specification {
         environment.put('OILLAMP_DISPLAY_WIDTH', '1920')
         environment.put('OILLAMP_DISPLAY_HEIGHT', '1080')
         environment.put('OILLAMP_RENDERER', 'pixman')
+        environment.putAll(extraEnvironment)
         var started = process.start()
         var output = started.inputStream.text
         started.waitFor()
@@ -186,6 +191,26 @@ class TheLampCommandSpec extends Specification {
             result.status != 0
             result.output.contains('wtype')
             result.output.contains('thin wrapper')
+    }
+
+    def 'lamp info says the size the desktop has now, and its own size when that differs'() {
+        reportInfo """
+            The user may watch the desktop in a panel of Genies, and have it take the panel's
+            size. The agent clicks by screen positions, so `lamp info` asks the desktop for its
+            size now rather than repeating the size it started with, and says which size it goes
+            back to.
+        """
+        when: 'the desktop has its own size'
+            var own = runLamp('info')
+        and: 'the desktop was given the size of a panel'
+            var panel = runLamp([STUB_DESKTOP_SIZE: '800x500'], 'info')
+
+        then:
+            own.output.readLines().first() == 'size       1920x1080'
+            !own.output.contains('own size')
+            panel.output.readLines().take(2) == [
+                    'size       800x500',
+                    'own size   1920x1080, which it goes back to when the user stops showing it in a panel']
     }
 
     def 'lamp help tells the agent how to bypass lamp entirely'() {

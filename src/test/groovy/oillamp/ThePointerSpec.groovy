@@ -115,6 +115,20 @@ class ThePointerSpec extends Specification {
             presses().isEmpty()
     }
 
+    def 'lamp info gets the size from the desktop, as the VNC server says it when a viewer connects'() {
+        reportInfo """
+            The stand-in desktop is 1280x720. The pointer helper connects, reads the size from the
+            server's greeting, and sends nothing else.
+        """
+        when:
+            var result = lamp('info')
+
+        then:
+            result.status == 0
+            result.output.readLines().first() == 'size       1280x720'
+            events.isEmpty()
+    }
+
     def 'when the desktop cannot be reached, lamp says so'() {
         given:
             server.close()

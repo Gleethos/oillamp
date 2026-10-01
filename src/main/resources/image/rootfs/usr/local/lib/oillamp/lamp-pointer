@@ -7,6 +7,7 @@ Usage:
     lamp-pointer drag X1 Y1 X2 Y2
     lamp-pointer scroll X Y AMOUNT [HORIZONTAL]   (positive AMOUNT scrolls down / right)
     lamp-pointer where                            (prints the last position lamp moved to)
+    lamp-pointer size                             (prints the desktop's size now, such as 1920x1080)
 
 Why this goes through VNC instead of wlrctl:
 
@@ -127,7 +128,11 @@ def main(argv):
         return
 
     desktop = Desktop()
-    if action == "move":
+    if action == "size":
+        # The desktop's size can change while the sandbox runs: a viewer may give it the size of
+        # the panel it is shown in. The VNC server says the size it has now when a viewer connects.
+        print(f"{desktop.width}x{desktop.height}")
+    elif action == "move":
         x, y = numbers(args, 2, "lamp move X Y")
         desktop.pointer(0, x, y)
     elif action == "click":

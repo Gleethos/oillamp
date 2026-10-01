@@ -126,7 +126,12 @@ cmd_wait_stable() {
 }
 
 cmd_info() {
-    printf 'size       %s\n' "${OILLAMP_DISPLAY_WIDTH:-?}x${OILLAMP_DISPLAY_HEIGHT:-?}"
+    # The size now, from the desktop itself: the user's viewer may have given the desktop the size
+    # of the panel they watch it in. It goes back to its own size when they close that panel.
+    local own="${OILLAMP_DISPLAY_WIDTH:-?}x${OILLAMP_DISPLAY_HEIGHT:-?}" now
+    now=$("$POINTER" size 2>/dev/null) || now="unknown: the desktop's VNC server did not answer"
+    printf 'size       %s\n' "$now"
+    [ "$now" = "$own" ] || printf 'own size   %s, which it goes back to when the user stops showing it in a panel\n' "$own"
     printf 'renderer   %s\n' "${OILLAMP_RENDERER:-?}"
     printf 'output     HEADLESS-1\n'
     printf 'screenshots %s\n' "$SCREENSHOT_DIR"
