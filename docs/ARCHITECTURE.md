@@ -483,7 +483,7 @@ The same, step by step:
    - Refuses network and FAT filesystems, which cannot hold Unix sockets.
    - `LampDirectoryUtil` decides what the directory is: missing, empty, an existing lamp, someone
      else's files, or damaged.
-   - Loads the configuration (`ConfigLoadingUtil`), decides on the GPU (`Gpu.decide`) and prints a
+   - Loads the configuration (`ConfigLoadingUtil`), decides on the GPU (`DesktopRendererUtil.decide`) and prints a
      summary.
    - `LampPlanUtil.planSkeleton` plans the directory tree, identity file, SSH keys, ownership
      changes, recording retention and the runtime directory. `StepRunner` runs it.
@@ -1159,7 +1159,7 @@ when recording started, last modified when it stopped), so no `ffmpeg` is needed
 
 ### GPU
 
-`Gpu.decide` chooses between hardware (`gles2`) and software (`pixman`) rendering:
+`DesktopRendererUtil.decide` chooses between hardware (`gles2`) and software (`pixman`) rendering:
 
 - `display.gpu = "off"`: always software.
 - `"auto"` (default): hardware only if there is a `/dev/dri/renderD*` node, podman uses crun, the
@@ -1323,7 +1323,7 @@ removed.
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
 | Shared | `JsonUtil` (every JSON file, message and answer goes through it) |
-| Image and container | `SandboxPhase`, `SandboxImageFilesUtil`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuideUtil`, `Gpu` |
+| Image and container | `SandboxPhase`, `SandboxImageFilesUtil`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuideUtil`, `DesktopRendererUtil` |
 | Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `SandboxSshUtil`, `TerminalEmulatorUtil`, `Viewers` |
 | Network | `Egress`, `NetworkPolicyUtil`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |
 

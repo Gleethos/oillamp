@@ -16,7 +16,7 @@ import sprouts.Tuple;
 ///
 /// It does the reading the pure planners cannot: resolves the path, looks at what is there,
 /// reads the configuration files and checks the filesystem can hold Unix sockets. The decisions are
-/// made by [LampPaths], [LampDirectoryUtil], [ConfigLoadingUtil], [Gpu] and
+/// made by [LampPaths], [LampDirectoryUtil], [ConfigLoadingUtil], [DesktopRendererUtil] and
 /// [LampPlanUtil]. The lock is taken afterwards, by `Commands.at`.
 final class LampPhase {
 
@@ -34,7 +34,7 @@ final class LampPhase {
 
     /// Everything the later phases need from a prepared lamp.
     public record Prepared(LampLayout layout, LampConfig config, SessionId session,
-                           Gpu.Decision gpu, LampState state) {}
+                           DesktopRendererUtil.Decision gpu, LampState state) {}
 
     public Result<Prepared> prepare(Path requestedPath, HostFacts host) {
         Path resolved = resolve(machine, requestedPath);
@@ -74,15 +74,15 @@ final class LampPhase {
         context.report(configuration.warnings());
         describeConfiguration(config);
 
-        Gpu.Decision gpu = Gpu.decide(config.display().gpu(), host.gpu(), host.user(), host.podman());
-        if (gpu instanceof Gpu.Decision.Refused refused) return Result.err(refused.problem());
+        DesktopRendererUtil.Decision gpu = DesktopRendererUtil.decide(config.display().gpu(), host.gpu(), host.user(), host.podman());
+        if (gpu instanceof DesktopRendererUtil.Decision.Refused refused) return Result.err(refused.problem());
         // The desktop size and renderer are the two things a user most wants confirmed at
         // startup, because they are what they will be looking at in the viewer window.
         context.ok("lamp", "desktop " + config.display().size()
                 + (config.display().scale() == 1.0 ? "" : " at scale " + config.display().scale())
                 + ", renderer " + gpu.renderer()
-                + (gpu instanceof Gpu.Decision.Hardware ? " (hardware)" : " (software)"));
-        Gpu.noteLine(gpu).ifPresent(note -> context.emit(new LampEvent.Info("lamp", note)));
+                + (gpu instanceof DesktopRendererUtil.Decision.Hardware ? " (hardware)" : " (software)"));
+        DesktopRendererUtil.noteLine(gpu).ifPresent(note -> context.emit(new LampEvent.Info("lamp", note)));
 
         SessionId session = SessionId.at(machine.now());
 
@@ -128,7 +128,7 @@ final class LampPhase {
     /// Renders the per-session files. Separate from the skeleton because it needs the keys that
     /// the skeleton generated; see [LampPlanUtil#planSession].
     private Result<Plan> planSessionFiles(LampLayout layout, LampConfig config,
-                                          SessionId session, Gpu.Decision gpu) {
+                                          SessionId session, DesktopRendererUtil.Decision gpu) {
         if (context.options().dryRun())
             return LampPlanUtil.planSession(layout, "(generated client key)", "(generated host key)",
                     "(rendered per session)", "(rendered per session)", "(rendered per session)",

@@ -4,7 +4,7 @@ import java.nio.file.Path;
 
 import sprouts.Tuple;
 
-/// The GPU render devices (`/dev/dri/renderD*`) found on the host. Input to [Gpu#decide],
+/// The GPU render devices (`/dev/dri/renderD*`) found on the host. Input to [DesktopRendererUtil#decide],
 /// which can always fall back to software rendering.
 record GpuFacts(Tuple<RenderNode> renderNodes) {
 

@@ -17,9 +17,9 @@ import java.util.Optional;
 /// one of the open-source Mesa drivers known to work without a monitor, and podman uses crun,
 /// because passing the host's render group into the container needs
 /// `--group-add keep-groups`, which only crun supports.
-final class Gpu {
+final class DesktopRendererUtil {
 
-    private Gpu() {}
+    private DesktopRendererUtil() {}
 
     /// The decision, including the reason, which is printed at startup.
     public sealed interface Decision {

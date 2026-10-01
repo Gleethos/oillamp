@@ -131,7 +131,7 @@ final class SandboxPhase {
 
         // Only when the GPU is used. `keep-groups` carries the host's render group into the
         // container. It works with crun but not runc, which is why crun is a required package.
-        if (prepared.gpu() instanceof Gpu.Decision.Hardware hardware)
+        if (prepared.gpu() instanceof DesktopRendererUtil.Decision.Hardware hardware)
             argv = argv.addAll(Tuple.of(String.class,
                     "--device", hardware.node().path().toString(),
                     "--group-add", "keep-groups"));

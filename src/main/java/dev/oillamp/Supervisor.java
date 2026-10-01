@@ -684,7 +684,7 @@ final class Supervisor {
         }
         Tuple<String> lines = Tuple.of(String.class,
                 "desktop        " + config.display().size() + ", renderer " + prepared.gpu().renderer()
-                        + (prepared.gpu() instanceof Gpu.Decision.Hardware ? " (hardware)" : " (software)"),
+                        + (prepared.gpu() instanceof DesktopRendererUtil.Decision.Hardware ? " (hardware)" : " (software)"),
                 // What is actually open: with `--no-viewer`, or if the viewer failed, there is none.
                 (viewers.isEmpty()
                         ? "viewer         none — open one with `oillamp view " + layout.root() + "`"
