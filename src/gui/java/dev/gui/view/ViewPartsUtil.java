@@ -18,9 +18,9 @@ import static dev.gui.view.Palette.*;
 import static swingtree.UI.*;
 
 /// Small pieces the views share.
-final class Parts {
+final class ViewPartsUtil {
 
-    private Parts() {}
+    private ViewPartsUtil() {}
 
     /// The lamp of a genie in `phase`, drawn from SVG at `size`.
     static UIForAnySwing<?, ?> lamp(Val<Genie.Phase> phase, int size) {

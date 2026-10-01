@@ -89,44 +89,44 @@ final class SettingsPage {
                     .add(FIELD,
                         box("fill, wrap 1, ins 0, gap 6")
                         .add("wmin 0", radioButton("at Eden AI", Settings.Place.EDEN_AI, place))
-                        .add("growx, wmin 0, gapleft 24", Parts.note("In the EU, with your Eden AI key.", Val.of(true)))
+                        .add("growx, wmin 0, gapleft 24", ViewPartsUtil.note("In the EU, with your Eden AI key.", Val.of(true)))
                         .add("wmin 0", radioButton("on a server elsewhere", Settings.Place.ELSEWHERE, place))
-                        .add("growx, wmin 0, gapleft 24", Parts.note("A model server of your own on another machine, "
+                        .add("growx, wmin 0, gapleft 24", ViewPartsUtil.note("A model server of your own on another machine, "
                                 + "such as Ollama behind a proxy that asks for a key.", Val.of(true)))
                         .add("wmin 0", radioButton("on this computer", Settings.Place.THIS_MACHINE, place))
-                        .add("growx, wmin 0, gapleft 24", Parts.note("A model server such as Ollama, LM Studio or llama.cpp.", Val.of(true))))
+                        .add("growx, wmin 0, gapleft 24", ViewPartsUtil.note("A model server such as Ollama, LM Studio or llama.cpp.", Val.of(true))))
 
                     // ── Eden AI ──
                     .add(LABEL, label("Key").isVisibleIf(isEdenAi))
                     .add(FIELD,
                         box("fill, wrap 1, ins 0, gap 6").isVisibleIf(isEdenAi)
                         .add("wmin 0", radioButton("Use " + Settings.KEY_VARIABLE, Settings.KeySource.ENVIRONMENT, source))
-                        .add("growx, wmin 0, gapleft 24", Parts.note(found ? "Found where Genies was started."
+                        .add("growx, wmin 0, gapleft 24", ViewPartsUtil.note(found ? "Found where Genies was started."
                                 : "Not set where Genies was started.", Val.of(true)))
                         .add("wmin 0", radioButton("Use this key:", Settings.KeySource.ENTERED, source))
                         .add("growx, wmin 0", passwordField(edenKey).group(Skin.INPUT)
                              .isEnabledIf(source.viewAs(Boolean.class, it -> it == Settings.KeySource.ENTERED)))
-                        .add("growx, wmin 0", Parts.note(KEY_STAYS_HERE, Val.of(true))))
+                        .add("growx, wmin 0", ViewPartsUtil.note(KEY_STAYS_HERE, Val.of(true))))
 
                     // ── a model server elsewhere ──
                     .add(LABEL, label("Address").isVisibleIf(isElsewhere))
                     .add(FIELD,
                         box("fill, wrap 1, ins 0, gap 4").isVisibleIf(isElsewhere)
                         .add("growx, wmin 0", textField(remoteAddress).group(Skin.INPUT))
-                        .add("growx, wmin 0", Parts.note("Where the server's OpenAI-style API is, such as "
+                        .add("growx, wmin 0", ViewPartsUtil.note("Where the server's OpenAI-style API is, such as "
                                 + "https://ollama.example.com/v1. It must be https://, because the key goes with every request.", Val.of(true))))
                     .add(LABEL, label("Key").isVisibleIf(isElsewhere))
                     .add(FIELD,
                         box("fill, wrap 1, ins 0, gap 4").isVisibleIf(isElsewhere)
                         .add("growx, wmin 0", passwordField(remoteKey).group(Skin.INPUT))
-                        .add("growx, wmin 0", Parts.note("Leave it empty if the server asks for none. " + KEY_STAYS_HERE, Val.of(true))))
+                        .add("growx, wmin 0", ViewPartsUtil.note("Leave it empty if the server asks for none. " + KEY_STAYS_HERE, Val.of(true))))
 
                     // ── a model server on this computer ──
                     .add(LABEL, label("Address").isVisibleIf(isLocal))
                     .add(FIELD,
                         box("fill, wrap 1, ins 0, gap 4").isVisibleIf(isLocal)
                         .add("growx, wmin 0", textField(localAddress).group(Skin.INPUT))
-                        .add("growx, wmin 0", Parts.note("Where the server's OpenAI-style API is: http://127.0.0.1:11434/v1 for Ollama, "
+                        .add("growx, wmin 0", ViewPartsUtil.note("Where the server's OpenAI-style API is: http://127.0.0.1:11434/v1 for Ollama, "
                                 + "http://127.0.0.1:1234/v1 for LM Studio, http://127.0.0.1:8080/v1 for llama.cpp. No key is needed.", Val.of(true))))
 
                     // ── the model, wherever it runs ──
@@ -139,11 +139,11 @@ final class SettingsPage {
                             .add(button("Look up").group(Skin.QUIET_BUTTON)
                                  .withTooltip("Ask the service which models it offers")
                                  .onClick(it -> actions.lookUpModels())))
-                        .add("growx, wmin 0", Parts.wrapped(lookUpNote, Palette.SUBTEXT,
+                        .add("growx, wmin 0", ViewPartsUtil.wrapped(lookUpNote, Palette.SUBTEXT,
                              lookUpNote.viewAs(Boolean.class, it -> !it.isEmpty()))))
 
                     .add(WHOLE, label("Changes take effect when a genie wakes.").group(Skin.META))
-                    .add(WHOLE, Parts.wrapped(problem, Palette.TROUBLE, hasProblem))
+                    .add(WHOLE, ViewPartsUtil.wrapped(problem, Palette.TROUBLE, hasProblem))
                     .add(WHOLE, label("✓  Your genies can reach their model.").group(Skin.FINE)
                          .isVisibleIf(hasProblem.viewAs(Boolean.class, it -> !it)))
                     .add(WHOLE,

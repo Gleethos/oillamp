@@ -116,7 +116,7 @@ public final class GeniesView extends JPanel {
             .isVisibleIf(sidebarShown)
             .add("growx",
                 box("fill, ins 0, gap 8", "[34!][grow]")
-                .add(Parts.lamp(Val.of(Genie.Phase.READY), 34))
+                .add(ViewPartsUtil.lamp(Val.of(Genie.Phase.READY), 34))
                 .add("growx, wmin 0", label("Genies").group(Skin.BRAND)))
             .add("growx",
                 button("+  New genie").group(Skin.FLAME_BUTTON)
@@ -129,7 +129,7 @@ public final class GeniesView extends JPanel {
                 .addAll(genies, this::genieChip))
             .add("growx",
                 box("fill, wrap 1, ins 0, gap 6, hidemode 3")
-                .add("growx, wmin 0", Parts.wrapped(state.viewAsString(it -> it.settingsProblem().orElse("")), TROUBLE,
+                .add("growx, wmin 0", ViewPartsUtil.wrapped(state.viewAsString(it -> it.settingsProblem().orElse("")), TROUBLE,
                         state.viewAs(Boolean.class, it -> it.settingsProblem().isPresent())))
                 .add("growx",
                     button("⚙  Settings").group(Skin.QUIET_BUTTON)
@@ -158,7 +158,7 @@ public final class GeniesView extends JPanel {
                 state.update(From.VIEW, s -> s.select(id));
                 if (it.isRightMouseButton()) genieMenu(id).show(it.getComponent(), it.mouseX(), it.mouseY());
             })
-            .add("top", Parts.lamp(shown.viewAs(Genie.Phase.class, Genie::phase), 26))
+            .add("top", ViewPartsUtil.lamp(shown.viewAs(Genie.Phase.class, Genie::phase), 26))
             .add("growx, wmin 0, wrap",
                 box("fill, wrap 1, ins 0, gap 0")
                 .add("growx, wmin 0", label(shown.viewAsString(Genie::name)).withStyle(it -> it
@@ -340,7 +340,7 @@ public final class GeniesView extends JPanel {
             .isVisibleIf(visible)
             .add(button("☰").group(Skin.ICON_BUTTON).withTooltip("Show or hide your genies")
                  .onClick(it -> sidebarShown.update(From.VIEW, shown -> !shown)))
-            .add(Parts.lamp(phase, 30))
+            .add(ViewPartsUtil.lamp(phase, 30))
             .add("growx, wmin 0",
                 box("fill, wrap 1, ins 0, gap 0")
                 .add("growx, wmin 0", label(name).group(Skin.TITLE)
@@ -363,7 +363,7 @@ public final class GeniesView extends JPanel {
                  .onClick(it -> actions.sleep(genie.get().id())))
             .add(button("⋯").group(Skin.ICON_BUTTON)
                  .withTooltip("Rename, start a new conversation, or delete this genie")
-                 .onClick(it -> Parts.below(genieMenu(genie.get().id()), it.getComponent()))));
+                 .onClick(it -> ViewPartsUtil.below(genieMenu(genie.get().id()), it.getComponent()))));
     }
 
     /// The two pages of a genie, its chat and its schedule, as one switch of two halves. The
@@ -486,7 +486,7 @@ public final class GeniesView extends JPanel {
             .add("grow, push, wmin 0, align center",
                 box("wrap 1, ins 30, gap 8, align center center", "[center, grow, fill]")
                 .isVisibleIf(empty)
-                .add("align center", Parts.lamp(phase, 96))
+                .add("align center", ViewPartsUtil.lamp(phase, 96))
                 .add("growx, wmin 0", label(genie.viewAsString(it -> switch (it.phase()) {
                         case READY, WORKING -> it.name() + " is listening.";
                         case WAKING -> it.name() + " is waking.";
@@ -526,7 +526,7 @@ public final class GeniesView extends JPanel {
         return
             box("fill, wrap 1, ins 6 18 16 18, gap 0, hidemode 3", "[grow]")
             .add("growx, wmin 0, gapbottom 6",
-                Parts.wrapped(genie.viewAsString(it -> it.name() + " is answering in another conversation. Write here once it is done."),
+                ViewPartsUtil.wrapped(genie.viewAsString(it -> it.name() + " is answering in another conversation. Write here once it is done."),
                               SUBTEXT, answeringElsewhere))
             .add("growx, wmin 0",
                 panel("fill, ins 0, gap 8", "[][grow][]", "[bottom]").group(Skin.COMPOSER).isVisibleIf(awake)
@@ -537,7 +537,7 @@ public final class GeniesView extends JPanel {
                     .withHorizontalScrollBarPolicy(UI.Active.NEVER)
                     .withStyle(it -> it.backgroundColor(TRANSPARENT))
                     .add(
-                        textArea(draft).group(Skin.INPUT).peek(Parts::softWrap)
+                        textArea(draft).group(Skin.INPUT).peek(ViewPartsUtil::softWrap)
                         // The composer is the box; the text in it needs no second one.
                         .withStyle(it -> it.backgroundColor(TRANSPARENT).border(0, TRANSPARENT))
                         .withTooltip("Return sends; Shift and Return starts a new line")
@@ -562,7 +562,7 @@ public final class GeniesView extends JPanel {
                         case WAKING -> "Waking " + it.name() + ": " + it.activity() + "…";
                         default -> it.name() + " is asleep. Its sandbox is off, its home and conversation are kept.";
                     })).group(Skin.SUBTITLE).isVisibleIf(phase.viewAs(Boolean.class, it -> it != Genie.Phase.BROKEN)))
-                .add("growx, wmin 0", Parts.wrapped(genie.viewAsString(it -> it.name() + " could not wake: " + it.activity()),
+                .add("growx, wmin 0", ViewPartsUtil.wrapped(genie.viewAsString(it -> it.name() + " could not wake: " + it.activity()),
                      TROUBLE, phase.viewAs(Boolean.class, it -> it == Genie.Phase.BROKEN)))
                 .add(button(genie.viewAsString(it -> it.phase() == Genie.Phase.BROKEN ? "Try again" : "✦  Wake"))
                      .group(Skin.FLAME_BUTTON).isVisibleIf(canWake)
@@ -575,7 +575,7 @@ public final class GeniesView extends JPanel {
             .isVisibleIf(visible)
             .add(
                 panel("wrap 1, ins 36 44 36 44, gap 10", "[center]").group(Skin.CARD)
-                .add(Parts.lamp(Val.of(Genie.Phase.ASLEEP), 120))
+                .add(ViewPartsUtil.lamp(Val.of(Genie.Phase.ASLEEP), 120))
                 .add(label("Rub the lamp").group(Skin.EMPTY_TITLE))
                 .add(label("Each genie is an AI agent with a Linux desktop of its own, in a sandbox.").group(Skin.EMPTY_TEXT))
                 .add(label("It can use the web, run programs and make files, but never touches yours.").group(Skin.EMPTY_TEXT))
@@ -661,18 +661,18 @@ public final class GeniesView extends JPanel {
         return UI.popupMenu().applyIfPresent(state.get().find(id).map( shown -> ui -> {
                 Genie.Phase now = shown.phase();
                 boolean idle = now != Genie.Phase.WORKING && now != Genie.Phase.WAKING;
-                ui.add(Parts.item("Rename…", true, () -> rename(id)))
-                .add(Parts.item("New conversation", idle, () -> actions.startAfresh(id)))
+                ui.add(ViewPartsUtil.item("Rename…", true, () -> rename(id)))
+                .add(ViewPartsUtil.item("New conversation", idle, () -> actions.startAfresh(id)))
                 .peek(JPopupMenu::addSeparator)
                 .applyIf(now.isAwake(), ui1 -> ui1
-                    .add(Parts.item("Sleep", true, () -> actions.sleep(id)))
+                    .add(ViewPartsUtil.item("Sleep", true, () -> actions.sleep(id)))
                 )
                 .applyIf(!now.isAwake(), ui1 -> ui1
-                    .add(Parts.item(now == Genie.Phase.BROKEN ? "Try waking again" : "Wake", now != Genie.Phase.WAKING, () -> actions.wake(id)))
+                    .add(ViewPartsUtil.item(now == Genie.Phase.BROKEN ? "Try waking again" : "Wake", now != Genie.Phase.WAKING, () -> actions.wake(id)))
                 )
                 .peek(JPopupMenu::addSeparator)
                 .add(
-                    UI.of(Parts.item("Delete " + shown.name() + "…", true, () -> confirmDelete(id)))
+                    UI.of(ViewPartsUtil.item("Delete " + shown.name() + "…", true, () -> confirmDelete(id)))
                     .withForeground(TROUBLE)
                 );
             }))

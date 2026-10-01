@@ -121,7 +121,7 @@ final class ChatRows {
         return
             panel("fill, ins 10 0 10 0, gap 12, hidemode 3", "[26!][grow]")
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
-            .add("top, gaptop 1", Parts.lamp(Val.of(Genie.Phase.READY), 26))
+            .add("top, gaptop 1", ViewPartsUtil.lamp(Val.of(Genie.Phase.READY), 26))
             .add("growx, wmin 0",
                 box("fill, wrap 1, ins 0, gap 4, hidemode 3", "[grow]")
                 .add("growx, wmin 0",
