@@ -1,18 +1,31 @@
 package dev.oillamp;
 
+import java.io.BufferedReader;
+import java.io.Console;
+import java.io.EOFException;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.Reader;
 import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import sprouts.Pair;
@@ -35,7 +48,7 @@ final class RealMachine implements Machine {
 
     @Override public Instant now() { return Instant.now(); }
 
-    @Override public java.time.ZoneId zone() { return java.time.ZoneId.systemDefault(); }
+    @Override public ZoneId zone() { return ZoneId.systemDefault(); }
 
     @Override public String operatingSystemName() { return System.getProperty("os.name", "unknown"); }
 
@@ -53,16 +66,16 @@ final class RealMachine implements Machine {
     @Override public boolean isInteractive() {
         // Since JDK 22, System.console() returns a Console even when output is redirected, so
         // ask whether it really is a terminal.
-        return Optional.ofNullable(System.console()).filter(java.io.Console::isTerminal).isPresent();
+        return Optional.ofNullable(System.console()).filter(Console::isTerminal).isPresent();
     }
 
-    @Override public java.io.InputStream standardInput() { return System.in; }
+    @Override public InputStream standardInput() { return System.in; }
 
     @Override public Outcome run(Command command) {
         return run(command, line -> { });
     }
 
-    @Override public Outcome run(Command command, java.util.function.Consumer<String> eachLine) {
+    @Override public Outcome run(Command command, Consumer<String> eachLine) {
         ProcessBuilder builder = new ProcessBuilder(shield(command));
         for (Pair<String, String> variable : command.environment())
             builder.environment().put(variable.first(), variable.second());
@@ -136,7 +149,7 @@ final class RealMachine implements Machine {
         } else {
             // A window must not read from the user's terminal, or it would compete with oillamp
             // for keystrokes.
-            builder.redirectInput(ProcessBuilder.Redirect.from(new java.io.File("/dev/null")));
+            builder.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
         }
         Process process;
         try {
@@ -166,18 +179,17 @@ final class RealMachine implements Machine {
         /// How many of its last error lines are kept.
         private static final int ERROR_LINES = 20;
         private final Process process;
-        private final java.io.Writer input;
+        private final Writer input;
         /// Each line it wrote, and then an empty one for the end of its output.
-        private final java.util.concurrent.BlockingQueue<Optional<String>> lines =
-                new java.util.concurrent.LinkedBlockingQueue<>();
-        private final java.util.ArrayDeque<String> errors = new java.util.ArrayDeque<>();
+        private final BlockingQueue<Optional<String>> lines = new LinkedBlockingQueue<>();
+        private final ArrayDeque<String> errors = new ArrayDeque<>();
         private volatile boolean ended;
 
         private ProcessConversation(Process process) {
             this.process = process;
-            this.input = new java.io.OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8);
+            this.input = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8);
             Thread.ofVirtual().name("conversation-output").start(() -> {
-                try (java.io.BufferedReader reader = process.inputReader(StandardCharsets.UTF_8)) {
+                try (BufferedReader reader = process.inputReader(StandardCharsets.UTF_8)) {
                     for (String line; (line = reader.readLine()) != null; ) lines.add(Optional.of(line));
                 } catch (IOException gone) {
                     // The pipe broke: the process ended.
@@ -185,7 +197,7 @@ final class RealMachine implements Machine {
                 lines.add(Optional.empty());
             });
             Thread.ofVirtual().name("conversation-errors").start(() -> {
-                try (java.io.BufferedReader reader = process.errorReader(StandardCharsets.UTF_8)) {
+                try (BufferedReader reader = process.errorReader(StandardCharsets.UTF_8)) {
                     for (String line; (line = reader.readLine()) != null; ) {
                         if (line.isBlank()) continue;
                         synchronized (errors) {
@@ -207,12 +219,12 @@ final class RealMachine implements Machine {
         }
 
         @Override public Optional<String> receive(Duration limit) throws IOException, InterruptedException {
-            if (ended) throw new java.io.EOFException("it has ended");
+            if (ended) throw new EOFException("it has ended");
             Optional<String> line = lines.poll(limit.toMillis(), TimeUnit.MILLISECONDS);
             if (line == null) return Optional.empty();
             if (line.isEmpty()) {
                 ended = true;
-                throw new java.io.EOFException("it has ended");
+                throw new EOFException("it has ended");
             }
             return line;
         }
@@ -246,7 +258,7 @@ final class RealMachine implements Machine {
     private record EndedConversation(String why) implements Conversation {
         @Override public void send(String line) throws IOException { throw new IOException(why); }
         @Override public Optional<String> receive(Duration limit) throws IOException {
-            throw new java.io.EOFException(why);
+            throw new EOFException(why);
         }
         @Override public boolean isRunning() { return false; }
         @Override public String errorOutput() { return why; }
@@ -349,10 +361,10 @@ final class RealMachine implements Machine {
     /// `eachLine` as it arrives. A carriage return also ends a line, because progress output
     /// often rewrites one line with `\r`.
     private static Thread drain(InputStream stream, Captured sink,
-                                java.util.function.Consumer<String> eachLine) {
+                                Consumer<String> eachLine) {
         return Thread.ofVirtual().start(() -> {
             StringBuilder line = new StringBuilder();
-            try (java.io.Reader reader = new java.io.InputStreamReader(stream, StandardCharsets.UTF_8)) {
+            try (Reader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
                 char[] buffer = new char[8192];
                 int read;
                 while ((read = reader.read(buffer)) >= 0) {
@@ -385,7 +397,7 @@ final class RealMachine implements Machine {
         private static final int TAIL = MAX_CAPTURED_CHARS - HEAD;
 
         private final StringBuilder head = new StringBuilder();
-        private final java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>();
+        private final ArrayDeque<String> tail = new ArrayDeque<>();
         private int tailLength;
         private long leftOut;
 
@@ -420,8 +432,8 @@ final class RealMachine implements Machine {
         process.destroyForcibly();
     }
 
-    private static java.util.List<String> asList(Tuple<String> argv) {
-        java.util.List<String> out = new java.util.ArrayList<>(argv.size());
+    private static List<String> asList(Tuple<String> argv) {
+        List<String> out = new ArrayList<>(argv.size());
         for (String value : argv) out.add(value);
         return out;
     }

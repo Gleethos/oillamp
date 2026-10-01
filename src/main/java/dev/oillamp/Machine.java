@@ -1,9 +1,13 @@
 package dev.oillamp;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import sprouts.Association;
 import sprouts.Tuple;
@@ -40,7 +44,7 @@ public interface Machine {
 
     /// The time zone this machine's clock shows. A schedule such as "at nine every weekday" means
     /// nine on this clock.
-    java.time.ZoneId zone();
+    ZoneId zone();
 
     /// What this machine calls itself, as `os.name` reports it. oillamp requires Linux.
     String operatingSystemName();
@@ -61,7 +65,7 @@ public interface Machine {
     /// An embedded session watches it: the application that started oillamp closes it when it
     /// is done, and the operating system closes it when that application dies. Either way the
     /// session ends.
-    java.io.InputStream standardInput();
+    InputStream standardInput();
 
     /// Runs an external command to completion, or until its timeout expires.
     Outcome run(Command command);
@@ -72,7 +76,7 @@ public interface Machine {
     /// Used for long commands, such as building the image, so that the user can see progress
     /// while they run. The default implementation passes the lines on only once the command has
     /// finished, which is enough for a simulated machine.
-    default Outcome run(Command command, java.util.function.Consumer<String> eachLine) {
+    default Outcome run(Command command, Consumer<String> eachLine) {
         Outcome outcome = run(command);
         outcome.output().lines().forEach(eachLine);
         outcome.errorOutput().lines().forEach(eachLine);
@@ -149,13 +153,13 @@ public interface Machine {
         /// Writes one line to the program's standard input.
         ///
         /// @throws java.io.IOException when the program has ended
-        void send(String line) throws java.io.IOException;
+        void send(String line) throws IOException;
 
         /// The next line the program wrote, waiting at most `limit` for it.
         ///
         /// @return the line, or empty when none came in time
         /// @throws java.io.EOFException when the program has ended and said everything it had to
-        Optional<String> receive(Duration limit) throws java.io.IOException, InterruptedException;
+        Optional<String> receive(Duration limit) throws IOException, InterruptedException;
 
         boolean isRunning();
 
@@ -395,21 +399,21 @@ public interface Machine {
         ///
         /// Closing the shell window does not end a session, so the simulated user then runs
         /// `oillamp stop`, 200 ms later unless [#userStopsTheSessionAfter] says otherwise.
-        public Simulation windowsStayOpenFor(java.time.Duration duration) {
+        public Simulation windowsStayOpenFor(Duration duration) {
             builder.terminalStaysOpen(duration);
             return this;
         }
 
         /// The simulated sandbox exits on its own, with the entrypoint's failure code 70, this long
         /// after it started, as it does when a critical process such as the compositor dies.
-        public Simulation sandboxDiesAfter(java.time.Duration duration) {
+        public Simulation sandboxDiesAfter(Duration duration) {
             builder.sandboxDiesAfter(duration);
             return this;
         }
 
         /// How long the simulated user leaves the session running after closing its shell window,
         /// before they end it with `oillamp stop`.
-        public Simulation userStopsTheSessionAfter(java.time.Duration duration) {
+        public Simulation userStopsTheSessionAfter(Duration duration) {
             builder.stopsAfterClosingTheShell(duration);
             return this;
         }
@@ -423,14 +427,14 @@ public interface Machine {
 
         /// How long the application that started an embedded session keeps it, before it closes
         /// oillamp's standard input.
-        public Simulation applicationLeavesAfter(java.time.Duration duration) {
+        public Simulation applicationLeavesAfter(Duration duration) {
             builder.applicationLeavesAfter(duration);
             return this;
         }
 
         /// A real stream as the simulated machine's standard input, for a scenario in which a real
         /// application holds it, as `dev.lamp.Lamp` does.
-        public Simulation standardInput(java.io.InputStream input) {
+        public Simulation standardInput(InputStream input) {
             builder.standardInput(input);
             return this;
         }
@@ -585,7 +589,7 @@ public interface Machine {
 
         /// The time zone the machine's clock shows, such as `Europe/Berlin`. UTC unless set.
         public Simulation timeZone(String zone) {
-            builder.zone(java.time.ZoneId.of(zone));
+            builder.zone(ZoneId.of(zone));
             return this;
         }
 

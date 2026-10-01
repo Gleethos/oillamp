@@ -1,14 +1,35 @@
 package dev.oillamp;
 
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InterruptedIOException;
+import java.io.UncheckedIOException;
+import java.net.StandardProtocolFamily;
+import java.net.UnixDomainSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import sprouts.Tuple;
 
@@ -34,20 +55,20 @@ final class SimulatedMachine implements Machine {
     private final boolean clockRuns;
     /// How many simulated seconds pass in one real second, when the clock runs.
     private final long clockSpeed;
-    private final java.time.ZoneId zone;
+    private final ZoneId zone;
     /// Wall-clock reference for a running clock, taken once so that `now()` stays monotonic.
     private final Instant built = Instant.now();
     private final String randomToken;
     private final boolean interactive;
-    private final java.util.Set<String> passThrough;
-    private final java.util.Set<String> deadEndpoints;
-    private final java.util.Set<String> refusedWindows;
+    private final Set<String> passThrough;
+    private final Set<String> deadEndpoints;
+    private final Set<String> refusedWindows;
     private final Duration terminalStaysOpen;
     private final boolean terminalConnects;
     private final Duration stopsAfterClosingTheShell;
     private final Optional<Duration> sandboxDiesAfter;
     private final Duration applicationLeavesAfter;
-    private final Optional<java.io.InputStream> standardInput;
+    private final Optional<InputStream> standardInput;
     private final RealMachine realMachine = new RealMachine();
     private final Optional<SimulatedAgent> agent;
 
@@ -55,16 +76,16 @@ final class SimulatedMachine implements Machine {
     ///
     /// These are real sockets, not files, so that session scenarios really test [Relay],
     /// which binds sockets and copies bytes and has no pure part that could be tested otherwise.
-    private final java.util.Map<String, java.nio.channels.ServerSocketChannel> listening =
-            new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, ServerSocketChannel> listening =
+            new ConcurrentHashMap<>();
     private volatile boolean containerRunning;
     /// The exit code of a simulated container that exited on its own and has not been removed.
     private volatile Optional<Integer> containerExitedWith = Optional.empty();
 
     private SimulatedMachine(Builder builder) {
-        this.passThrough = java.util.Set.copyOf(builder.passThrough);
-        this.deadEndpoints = java.util.Set.copyOf(builder.deadEndpoints);
-        this.refusedWindows = java.util.Set.copyOf(builder.refusedWindows);
+        this.passThrough = Set.copyOf(builder.passThrough);
+        this.deadEndpoints = Set.copyOf(builder.deadEndpoints);
+        this.refusedWindows = Set.copyOf(builder.refusedWindows);
         this.terminalStaysOpen = builder.terminalStaysOpen;
         this.terminalConnects = builder.terminalConnects;
         this.stopsAfterClosingTheShell = builder.stopsAfterClosingTheShell;
@@ -92,7 +113,7 @@ final class SimulatedMachine implements Machine {
     /// But a supervisor is the one part of oillamp whose job includes waiting, and a timeout that
     /// can never be reached cannot be tested at all, so a scenario about waiting can ask for time
     /// to pass, and only those scenarios pay for it.
-    @Override public java.time.ZoneId zone() { return zone; }
+    @Override public ZoneId zone() { return zone; }
 
     @Override public Instant now() {
         return clockRuns ? clock.plus(Duration.between(built, Instant.now()).multipliedBy(clockSpeed)) : clock;
@@ -114,19 +135,19 @@ final class SimulatedMachine implements Machine {
 
     /// A standard input that stays open for a while and then closes, the way an application that
     /// started an embedded session closes it when it is done. The time counts from the first read.
-    @Override public java.io.InputStream standardInput() {
+    @Override public InputStream standardInput() {
         if (standardInput.isPresent()) return standardInput.get();
-        return new java.io.InputStream() {
-            @Override public int read(byte[] buffer, int offset, int length) throws java.io.IOException {
+        return new InputStream() {
+            @Override public int read(byte[] buffer, int offset, int length) throws IOException {
                 return read();
             }
 
-            @Override public int read() throws java.io.IOException {
+            @Override public int read() throws IOException {
                 try {
                     Thread.sleep(applicationLeavesAfter);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    throw new java.io.InterruptedIOException("interrupted");
+                    throw new InterruptedIOException("interrupted");
                 }
                 return -1;
             }
@@ -181,8 +202,8 @@ final class SimulatedMachine implements Machine {
                     "[entrypoint] runtime.env is missing OILLAMP_SESSION\n", Duration.ofMillis(30));
         try {
             Path infra = infraMount.get();
-            java.nio.file.Files.createDirectories(infra);
-            java.nio.file.Files.createDirectories(agentMount.get());
+            Files.createDirectories(infra);
+            Files.createDirectories(agentMount.get());
             // Bound through the short runtime-directory path, not through the lamp, because lamp
             // paths are often longer than the 107-byte limit on socket paths. A broken symlink
             // therefore fails here as it would on a real machine.
@@ -192,10 +213,10 @@ final class SimulatedMachine implements Machine {
             // ready.json makes: both servers are already accepting connections.
             bind(shortSockets.resolve("infra").resolve("vnc.sock"));
             bind(shortSockets.resolve("agent").resolve("ssh.sock"));
-            java.nio.file.Files.writeString(infra.resolve("ready.json"),
+            Files.writeString(infra.resolve("ready.json"),
                     "{\"renderer\":\"pixman\",\"gpu_fallback\":false,\"simulated\":true,"
                   + "\"session\":\"" + session.get() + "\"}\n");
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return new Outcome.Finished(125, "", "Error: " + e.getMessage() + "\n", Duration.ofMillis(30));
         }
         containerRunning = true;
@@ -236,35 +257,35 @@ final class SimulatedMachine implements Machine {
     /// ordinary file instead, and nothing binds it, which is precisely the failure that got this
     /// simulation written: wayvnc could not take a path the previous session had left behind, so
     /// the file was there and no server was.
-    private void bind(Path socket) throws java.io.IOException {
+    private void bind(Path socket) throws IOException {
         Path fileName = socket.getFileName();
         String name = fileName == null ? "" : fileName.toString();
-        java.nio.file.Files.deleteIfExists(socket);
+        Files.deleteIfExists(socket);
         if (deadEndpoints.contains(name)) {
-            java.nio.file.Files.writeString(socket, "");
+            Files.writeString(socket, "");
             return;
         }
-        java.nio.channels.ServerSocketChannel server =
-                java.nio.channels.ServerSocketChannel.open(java.net.StandardProtocolFamily.UNIX);
-        server.bind(java.net.UnixDomainSocketAddress.of(socket));
+        ServerSocketChannel server =
+                ServerSocketChannel.open(StandardProtocolFamily.UNIX);
+        server.bind(UnixDomainSocketAddress.of(socket));
         listening.put(socket.toString(), server);
         Thread.ofVirtual().name("simulated-sandbox-" + name).start(() -> accept(server));
     }
 
     /// A simulated server: it answers, reads whatever is sent, and goes away when the client does.
-    private static void accept(java.nio.channels.ServerSocketChannel server) {
+    private static void accept(ServerSocketChannel server) {
         while (server.isOpen()) {
             try {
-                java.nio.channels.SocketChannel client = server.accept();
+                SocketChannel client = server.accept();
                 Thread.ofVirtual().start(() -> {
                     try (client) {
-                        java.nio.ByteBuffer buffer = java.nio.ByteBuffer.allocate(4096);
+                        ByteBuffer buffer = ByteBuffer.allocate(4096);
                         while (client.read(buffer) >= 0) buffer.clear();
-                    } catch (java.io.IOException closed) {
+                    } catch (IOException closed) {
                         // The other end went away, which is the normal end of a connection.
                     }
                 });
-            } catch (java.io.IOException closed) {
+            } catch (IOException closed) {
                 return;
             }
         }
@@ -279,10 +300,10 @@ final class SimulatedMachine implements Machine {
     }
 
     private void closeListeningSockets() {
-        for (java.nio.channels.ServerSocketChannel server : listening.values()) {
+        for (ServerSocketChannel server : listening.values()) {
             try {
                 server.close();
-            } catch (java.io.IOException ignored) {
+            } catch (IOException ignored) {
                 // Closing a socket that is already closed is not a failure worth modelling.
             }
         }
@@ -335,8 +356,8 @@ final class SimulatedMachine implements Machine {
                 continue;
             }
             try {
-                java.nio.file.Files.deleteIfExists(path);
-            } catch (java.io.IOException e) {
+                Files.deleteIfExists(path);
+            } catch (IOException e) {
                 return new Outcome.Finished(1, "",
                         "rm: cannot remove '" + argument + "': " + e.getMessage() + "\n",
                         Duration.ofMillis(5));
@@ -358,12 +379,12 @@ final class SimulatedMachine implements Machine {
         // Really connect. The simulated container binds real sockets, so this is the same
         // question the host's check asks and the same one the user's viewer asks a second later:
         // is something listening, or is this only a file with the right name?
-        try (java.nio.channels.SocketChannel channel = java.nio.channels.SocketChannel.open(
-                java.net.UnixDomainSocketAddress.of(socket.get()))) {
+        try (SocketChannel channel = SocketChannel.open(
+                UnixDomainSocketAddress.of(socket.get()))) {
             return channel.isConnected()
                     ? new Outcome.Finished(0, "", "", Duration.ofMillis(5))
                     : new Outcome.Finished(1, "", "socat: E connect: not connected\n", Duration.ofMillis(5));
-        } catch (java.io.IOException refused) {
+        } catch (IOException refused) {
             return new Outcome.Finished(1, "",
                     "socat: E connect(, AF=1 \"" + socket.get() + "\"): "
                   + Problems.reason(refused) + "\n",
@@ -394,14 +415,14 @@ final class SimulatedMachine implements Machine {
         Optional<Path> sessionDir = mountedHostPath(command, "/oillamp/session");
         if (sessionDir.isEmpty()) return Optional.empty();
         try {
-            return java.nio.file.Files.readAllLines(sessionDir.get().resolve("runtime.env")).stream()
+            return Files.readAllLines(sessionDir.get().resolve("runtime.env")).stream()
                     .filter(line -> line.startsWith("OILLAMP_SESSION="))
                     // The host writes shell quoting, because the entrypoint sources this file.
                     .map(line -> line.substring("OILLAMP_SESSION=".length()).strip()
                                      .replaceAll("^['\"]|['\"]$", ""))
                     .filter(value -> !value.isEmpty())
                     .findFirst();
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return Optional.empty();
         }
     }
@@ -454,15 +475,15 @@ final class SimulatedMachine implements Machine {
     /// The agent's home of the lamp an ssh command reaches, found from the `ssh_config` it names,
     /// which is in the lamp's state directory.
     private static Optional<Path> agentHome(Command command) {
-        java.util.List<String> argv = command.argv().toList();
+        List<String> argv = command.argv().toList();
         int config = argv.indexOf("-F");
         if (config < 0 || config + 1 >= argv.size()) return Optional.empty();
         Path state = Path.of(argv.get(config + 1)).getParent();
         Path lamp = state == null ? null : state.getParent();
         if (lamp == null) return Optional.empty();
-        try (var entries = java.nio.file.Files.list(lamp)) {
+        try (var entries = Files.list(lamp)) {
             return entries.filter(entry -> entry.getFileName().toString().startsWith(LampLayout.AGENT_DIR_PREFIX)).findFirst();
-        } catch (java.io.IOException unreadable) {
+        } catch (IOException unreadable) {
             return Optional.empty();
         }
     }
@@ -478,7 +499,7 @@ final class SimulatedMachine implements Machine {
 
         private final SimulatedAgent agent;
         private final Optional<Path> home;
-        private final java.util.concurrent.BlockingQueue<Optional<String>> output = new java.util.concurrent.LinkedBlockingQueue<>();
+        private final BlockingQueue<Optional<String>> output = new LinkedBlockingQueue<>();
         private volatile Optional<Thread> working = Optional.empty();
         private volatile boolean closed;
         /// The conversation open now: its file, its id, and the entry it stands at.
@@ -492,8 +513,8 @@ final class SimulatedMachine implements Machine {
             this.home = home;
         }
 
-        @Override public synchronized void send(String line) throws java.io.IOException {
-            if (closed) throw new java.io.IOException("pi has ended");
+        @Override public synchronized void send(String line) throws IOException {
+            if (closed) throw new IOException("pi has ended");
             com.fasterxml.jackson.databind.JsonNode command = JSON.readTree(line);
             String type = command.path("type").asText();
             String id = command.path("id").asText("");
@@ -506,7 +527,7 @@ final class SimulatedMachine implements Machine {
                     String path = command.path("sessionPath").asText();
                     Optional<Path> opened = home.filter(h -> path.startsWith("/home/agent/"))
                             .map(h -> h.resolve(path.substring("/home/agent/".length())))
-                            .filter(java.nio.file.Files::isRegularFile);
+                            .filter(Files::isRegularFile);
                     if (opened.isEmpty()) {
                         say(response(id, type, false).put("error", "no such session: " + path));
                         return;
@@ -551,7 +572,7 @@ final class SimulatedMachine implements Machine {
 
         /// A new conversation, in a file of its own, as pi names them.
         private void start() {
-            sessionId = java.util.UUID.randomUUID().toString();
+            sessionId = UUID.randomUUID().toString();
             leaf = Optional.empty();
             file = home.map(h -> h.resolve(SESSIONS).resolve(Instant.now().toString().replace(':', '-') + "_" + sessionId + ".jsonl"));
             append(JSON.createObjectNode().put("type", "session").put("version", 3).put("id", sessionId)
@@ -559,10 +580,10 @@ final class SimulatedMachine implements Machine {
         }
 
         /// Opens a conversation, which stands at its last entry.
-        private void open(Path opened) throws java.io.IOException {
+        private void open(Path opened) throws IOException {
             file = Optional.of(opened);
             leaf = Optional.empty();
-            for (String line : java.nio.file.Files.readAllLines(opened)) {
+            for (String line : Files.readAllLines(opened)) {
                 com.fasterxml.jackson.databind.JsonNode record = JSON.readTree(line);
                 if (record.path("type").asText().equals("session")) sessionId = record.path("id").asText();
                 else if (record.path("id").isTextual()) leaf = Optional.of(record.path("id").asText());
@@ -570,10 +591,10 @@ final class SimulatedMachine implements Machine {
         }
 
         /// What oillamp's extension does: at a question, stand just before it; anywhere else, stand there.
-        private void moveTo(String entry) throws java.io.IOException {
+        private void moveTo(String entry) throws IOException {
             Optional<com.fasterxml.jackson.databind.JsonNode> target = Optional.empty();
             if (file.isPresent())
-                for (String line : java.nio.file.Files.readAllLines(file.get())) {
+                for (String line : Files.readAllLines(file.get())) {
                     com.fasterxml.jackson.databind.JsonNode record = JSON.readTree(line);
                     if (record.path("id").asText().equals(entry)) target = Optional.of(record);
                 }
@@ -589,7 +610,7 @@ final class SimulatedMachine implements Machine {
         }
 
         private void notify(String message) {
-            say(JSON.createObjectNode().put("type", "extension_ui_request").put("id", java.util.UUID.randomUUID().toString())
+            say(JSON.createObjectNode().put("type", "extension_ui_request").put("id", UUID.randomUUID().toString())
                     .put("method", "notify").put("message", message));
         }
 
@@ -608,7 +629,7 @@ final class SimulatedMachine implements Machine {
                 error = String.valueOf(failed.getMessage());
             }
             // A line `⚙ tool: what it does` at the start of the answer stands for a tool the agent ran.
-            java.util.List<String> lines = new java.util.ArrayList<>(text.lines().toList());
+            List<String> lines = new ArrayList<>(text.lines().toList());
             int calls = 0;
             while (!lines.isEmpty() && lines.getFirst().startsWith("⚙ ") && lines.getFirst().contains(": ")) {
                 String call = lines.removeFirst().substring(2);
@@ -674,11 +695,11 @@ final class SimulatedMachine implements Machine {
         private void append(com.fasterxml.jackson.databind.JsonNode record) {
             file.ifPresent(path -> {
                 try {
-                    java.nio.file.Files.createDirectories(path.getParent());
-                    java.nio.file.Files.writeString(path, record + "\n", java.nio.file.StandardOpenOption.CREATE,
-                            java.nio.file.StandardOpenOption.APPEND);
-                } catch (java.io.IOException e) {
-                    throw new java.io.UncheckedIOException(e);
+                    Files.createDirectories(path.getParent());
+                    Files.writeString(path, record + "\n", StandardOpenOption.CREATE,
+                            StandardOpenOption.APPEND);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
                 }
             });
         }
@@ -691,12 +712,12 @@ final class SimulatedMachine implements Machine {
 
         private void say(com.fasterxml.jackson.databind.JsonNode record) { output.add(Optional.of(record.toString())); }
 
-        @Override public Optional<String> receive(Duration limit) throws java.io.IOException, InterruptedException {
-            Optional<String> line = output.poll(limit.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        @Override public Optional<String> receive(Duration limit) throws IOException, InterruptedException {
+            Optional<String> line = output.poll(limit.toMillis(), TimeUnit.MILLISECONDS);
             if (line == null) return Optional.empty();
             if (line.isEmpty()) {
                 output.add(line);
-                throw new java.io.EOFException("pi has ended");
+                throw new EOFException("pi has ended");
             }
             return line;
         }
@@ -713,9 +734,9 @@ final class SimulatedMachine implements Machine {
 
         /// A pi that is not there.
         record Gone(String why) implements Conversation {
-            @Override public void send(String line) throws java.io.IOException { throw new java.io.IOException(why); }
-            @Override public Optional<String> receive(Duration limit) throws java.io.IOException {
-                throw new java.io.EOFException(why);
+            @Override public void send(String line) throws IOException { throw new IOException(why); }
+            @Override public Optional<String> receive(Duration limit) throws IOException {
+                throw new EOFException(why);
             }
             @Override public boolean isRunning() { return false; }
             @Override public String errorOutput() { return why; }
@@ -726,9 +747,9 @@ final class SimulatedMachine implements Machine {
     /// A window that is open for a while, holding a connection if it was given one to hold.
     private static final class SimulatedWindow implements Window {
 
-        private final java.util.concurrent.atomic.AtomicBoolean running =
-                new java.util.concurrent.atomic.AtomicBoolean(true);
-        private volatile Optional<java.nio.channels.SocketChannel> connection = Optional.empty();
+        private final AtomicBoolean running =
+                new AtomicBoolean(true);
+        private volatile Optional<SocketChannel> connection = Optional.empty();
 
         /// @param stopThrough the session's control socket, for the shell window oillamp opens: the
         ///                    simulated user asks it to stop `stopAfter` once they close the window
@@ -737,9 +758,9 @@ final class SimulatedMachine implements Machine {
             Thread.ofVirtual().name("simulated-window").start(() -> {
                 if (connectTo.isPresent()) {
                     try {
-                        connection = Optional.of(java.nio.channels.SocketChannel.open(
-                                java.net.UnixDomainSocketAddress.of(connectTo.get())));
-                    } catch (java.io.IOException refused) {
+                        connection = Optional.of(SocketChannel.open(
+                                UnixDomainSocketAddress.of(connectTo.get())));
+                    } catch (IOException refused) {
                         // A window that cannot reach the session is one the user sees open and
                         // close again, which is exactly what the supervisor has to notice.
                     }
@@ -782,7 +803,7 @@ final class SimulatedMachine implements Machine {
             connection.ifPresent(channel -> {
                 try {
                     channel.close();
-                } catch (java.io.IOException ignored) {
+                } catch (IOException ignored) {
                     // Already gone; the session sees the disconnection either way.
                 }
             });
@@ -835,11 +856,11 @@ final class SimulatedMachine implements Machine {
         /// How long the application that started an embedded session keeps it. Long enough for the
         /// session to come up and say so.
         private Duration applicationLeavesAfter = Duration.ofMillis(500);
-        private Optional<java.io.InputStream> standardInput = Optional.empty();
+        private Optional<InputStream> standardInput = Optional.empty();
         private Optional<SimulatedAgent> agent = Optional.empty();
 
         private Instant clock = Instant.parse("2026-09-22T14:15:03Z");
-        private java.time.ZoneId zone = java.time.ZoneOffset.UTC;
+        private ZoneId zone = ZoneOffset.UTC;
         private boolean clockRuns = false;
         private long clockSpeed = 1;
         // Valid base32: the alphabet has no 0, 1, 8 or 9.
@@ -925,7 +946,7 @@ final class SimulatedMachine implements Machine {
         public void clock(Instant instant) { this.clock = instant; }
         public void clockRuns() { this.clockRuns = true; }
         public void clockRunsFaster(long times) { this.clockRuns = true; this.clockSpeed = times; }
-        public void zone(java.time.ZoneId zone) { this.zone = zone; }
+        public void zone(ZoneId zone) { this.zone = zone; }
         public void agent(SimulatedAgent agent) { this.agent = Optional.of(agent); }
         public void randomToken(String token) { this.randomToken = token; }
         public void scriptCommand(String prefix, Outcome outcome) { scriptedCommands.put(prefix, outcome); }
@@ -944,7 +965,7 @@ final class SimulatedMachine implements Machine {
 
         public void sandboxDiesAfter(Duration duration) { this.sandboxDiesAfter = Optional.of(duration); }
         public void applicationLeavesAfter(Duration duration) { this.applicationLeavesAfter = duration; }
-        public void standardInput(java.io.InputStream input) { this.standardInput = Optional.of(input); }
+        public void standardInput(InputStream input) { this.standardInput = Optional.of(input); }
 
         public void passThrough(Tuple<String> executables) {
             for (String executable : executables) {
