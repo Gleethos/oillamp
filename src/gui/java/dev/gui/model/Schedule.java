@@ -48,7 +48,7 @@ public record Schedule(boolean read, boolean paused, ZoneId zone, Tuple<Job> job
         public String when(LocalDateTime now, ZoneId zone) {
             if (repeats.isPresent()) return repeats.get().describe();
             return at.map(time -> LocalDateTime.ofInstant(time, zone))
-                     .map(time -> "Once, " + Dates.dayInSentence(time.toLocalDate(), now.toLocalDate()) + " at "
+                     .map(time -> "Once, " + DateWordingUtil.dayInSentence(time.toLocalDate(), now.toLocalDate()) + " at "
                                 + Recurrence.clock(time.toLocalTime()))
                      .orElse("Once");
         }

@@ -136,7 +136,7 @@ public record Timeline(Tuple<Day> days, int hiddenRuns) {
             days.merge(each.at().toLocalDate(), Tuple.of(Moment.class, each.moment()), Tuple::addAll);
         Tuple<Day> laidOut = Tuple.of(Day.class);
         for (Map.Entry<LocalDate, Tuple<Moment>> day : days.entrySet())
-            laidOut = laidOut.add(new Day(day.getKey(), Dates.day(day.getKey(), today), day.getValue()));
+            laidOut = laidOut.add(new Day(day.getKey(), DateWordingUtil.day(day.getKey(), today), day.getValue()));
         return new Timeline(laidOut, week.size() - shown);
     }
 

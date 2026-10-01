@@ -6,9 +6,9 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /// Days and spans of time in the words the schedule page uses.
-public final class Dates {
+public final class DateWordingUtil {
 
-    private Dates() {}
+    private DateWordingUtil() {}
 
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.ENGLISH);
     private static final DateTimeFormatter SHORT_DAY = DateTimeFormatter.ofPattern("EEE d MMM", Locale.ENGLISH);

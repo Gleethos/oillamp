@@ -239,7 +239,7 @@ and the user watches with the Desktop button.
 
 | Package | What is in it | Touches the outside world |
 |---|---|---|
-| `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, and `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `Dates` for the schedule: records with withers, every change a pure method | no |
+| `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, and `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `DateWordingUtil` for the schedule: records with withers, every change a pure method | no |
 | `dev.gui.pi` | `PiEvent` (what the chat is told) | no |
 | `dev.gui.desktop` | `RfbConnection`, `Keysyms` | `RfbConnection` only |
 | `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `GenieFileTransferUtil` (files), `LampApiConversionUtil` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePiSetupUtil` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `Shelf` (what is kept on disk) | yes |
