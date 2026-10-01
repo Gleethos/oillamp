@@ -102,7 +102,7 @@ public final class RfbConnection implements AutoCloseable {
         send(new byte[] {5, (byte) buttons, (byte) (x >> 8), (byte) x, (byte) (y >> 8), (byte) y});
     }
 
-    /// Presses or releases the key `keysym`, an X11 key symbol (see [Keysyms]).
+    /// Presses or releases the key `keysym`, an X11 key symbol (see [X11KeysymUtil]).
     public void key(int keysym, boolean down) {
         send(new byte[] {4, (byte) (down ? 1 : 0), 0, 0,
                          (byte) (keysym >> 24), (byte) (keysym >> 16), (byte) (keysym >> 8), (byte) keysym});
