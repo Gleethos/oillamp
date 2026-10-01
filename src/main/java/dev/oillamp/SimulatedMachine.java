@@ -252,7 +252,7 @@ final class SimulatedMachine implements Machine {
 
     /// Starts listening where the container's server would.
     ///
-    /// A socket named by [Simulation#endpointRefusingConnections] is created as an
+    /// A socket named by [SimulationBuilder#endpointRefusingConnections] is created as an
     /// ordinary file instead, and nothing binds it, which is precisely the failure that got this
     /// simulation written: wayvnc could not take a path the previous session had left behind, so
     /// the file was there and no server was.
@@ -368,7 +368,7 @@ final class SimulatedMachine implements Machine {
     /// leftover file with the right name.
     ///
     /// In simulation a socket "answers" when the file is there, which is enough to catch the
-    /// host forgetting to create one or clean one up. [Simulation#endpointRefusingConnections]
+    /// host forgetting to create one or clean one up. [SimulationBuilder#endpointRefusingConnections]
     /// models the other case, where the file exists and nothing is listening, which once let a
     /// session with a dead VNC server report itself healthy.
     private Outcome simulatedConnect(Command command) {
@@ -822,8 +822,8 @@ final class SimulatedMachine implements Machine {
 
     // ───────────────────────────────────────────────────────────────────────────────────────
 
-    /// Assembles the canned answers. Driven by `Machine.Simulation`, which is the public face.
-    public static final class Builder {
+    /// Internally assembles the canned answers. Driven by `Machine.Simulation`, which is the public face.
+    static final class Builder {
 
         private String operatingSystemName = "Linux";
         private final Map<String, String> systemFiles = new TreeMap<>();

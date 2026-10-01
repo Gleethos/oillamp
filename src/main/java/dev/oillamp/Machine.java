@@ -37,7 +37,7 @@ public sealed interface Machine permits RealMachine, SimulatedMachine {
     ///
     /// The simulated machine answers commands with realistic output (real `podman info`
     /// JSON, real `dpkg-query` lines), so oillamp's real parsers are tested too.
-    static Simulation simulated() { return new Simulation(); }
+    static SimulationBuilder simulated() { return new SimulationBuilder(); }
 
     /// The current instant. Taken from here so that session ids and retention are testable.
     Instant now();
@@ -252,12 +252,8 @@ public sealed interface Machine permits RealMachine, SimulatedMachine {
 
     /// How a command ended. Sealed, so no caller can forget that "not found" is a real outcome.
     sealed interface Outcome {
-
-        record Finished(int exitCode, String standardOutput, String standardError, Duration took)
-                implements Outcome {}
-
+        record Finished(int exitCode, String standardOutput, String standardError, Duration took) implements Outcome {}
         record NotFound(String executable) implements Outcome {}
-
         record TimedOut(Duration after, String standardOutputSoFar) implements Outcome {}
 
         default boolean succeeded() {
@@ -290,91 +286,92 @@ public sealed interface Machine permits RealMachine, SimulatedMachine {
         }
     }
 
-    /// Describes a machine.
+    /// An API for describing a simulated machine and a [#build()] method create a [SimulatedMachine].
+    /// Instances of this can create any number of simulated machine instances.
     ///
     /// Start from [#ubuntuWithEverything()] when the host is not what a scenario is
     /// about, and take things away from it when it is.
-    final class Simulation {
+    final class SimulationBuilder {
 
         private final SimulatedMachine.Builder builder = new SimulatedMachine.Builder();
 
-        Simulation() {}
+        SimulationBuilder() {}
 
         // ─── the distribution ──────────────────────────────────────────────────────────────
 
-        public Simulation ubuntu(String versionId) {
+        public SimulationBuilder ubuntu(String versionId) {
             return distribution("ubuntu", "debian", versionId, "Ubuntu " + versionId + " LTS");
         }
 
-        public Simulation debian(String versionId) {
+        public SimulationBuilder debian(String versionId) {
             return distribution("debian", "", versionId, "Debian GNU/Linux " + versionId);
         }
 
-        public Simulation fedora(String versionId) {
+        public SimulationBuilder fedora(String versionId) {
             return distribution("fedora", "", versionId, "Fedora Linux " + versionId);
         }
 
-        public Simulation distribution(String id, String idLike, String versionId, String prettyName) {
+        public SimulationBuilder distribution(String id, String idLike, String versionId, String prettyName) {
             builder.osRelease(id, idLike, versionId, prettyName);
             return this;
         }
 
         /// Makes this machine claim not to be Linux, to test that oillamp refuses to run.
-        public Simulation notLinux(String osName) {
+        public SimulationBuilder notLinux(String osName) {
             builder.operatingSystemName(osName);
             return this;
         }
 
         // ─── the user and their directories ────────────────────────────────────────────────
 
-        public Simulation user(String name, int uid, int gid, Path home) {
+        public SimulationBuilder user(String name, int uid, int gid, Path home) {
             builder.user(name, uid, gid, home);
             return this;
         }
 
-        public Simulation memberOfGroups(String... groups) {
+        public SimulationBuilder memberOfGroups(String... groups) {
             builder.groups(Tuple.of(String.class, groups));
             return this;
         }
 
         /// Where `$XDG_RUNTIME_DIR` points. The short socket paths are under it.
-        public Simulation runtimeDirectory(Path path) {
+        public SimulationBuilder runtimeDirectory(Path path) {
             builder.runtimeDirectory(path);
             return this;
         }
 
         /// An environment variable set in the user's own environment, where oillamp starts.
-        public Simulation environmentVariable(String name, String value) {
+        public SimulationBuilder environmentVariable(String name, String value) {
             builder.environmentVariable(name, value);
             return this;
         }
 
-        public Simulation processors(int count) {
+        public SimulationBuilder processors(int count) {
             builder.processors(count);
             return this;
         }
 
         // ─── the desktop session ───────────────────────────────────────────────────────────
 
-        public Simulation waylandSession(String desktop) {
+        public SimulationBuilder waylandSession(String desktop) {
             builder.session("wayland-0", "", desktop);
             return this;
         }
 
-        public Simulation x11Session(String desktop) {
+        public SimulationBuilder x11Session(String desktop) {
             builder.session("", ":0", desktop);
             return this;
         }
 
         /// No display at all, as when oillamp is run over a plain SSH login.
-        public Simulation noGraphicalSession() {
+        public SimulationBuilder noGraphicalSession() {
             builder.session("", "", "");
             return this;
         }
 
         // ─── host packages ─────────────────────────────────────────────────────────────────
 
-        public Simulation withPackages(String... packages) {
+        public SimulationBuilder withPackages(String... packages) {
             builder.installPackages(Tuple.of(String.class, packages));
             return this;
         }
@@ -383,14 +380,14 @@ public sealed interface Machine permits RealMachine, SimulatedMachine {
         ///
         /// This happened for real: wayvnc could not bind because the previous session's socket
         /// file was still there, so the path existed with nothing listening behind it.
-        public Simulation endpointRefusingConnections(String socketFileName) {
+        public SimulationBuilder endpointRefusingConnections(String socketFileName) {
             builder.endpointRefusingConnections(socketFileName);
             return this;
         }
 
         /// A window program that cannot be started at all. A viewer failing this way is a warning;
         /// a terminal failing this way ends the session, because it did not start as asked.
-        public Simulation windowRefusing(String executable) {
+        public SimulationBuilder windowRefusing(String executable) {
             builder.windowRefusing(executable);
             return this;
         }
@@ -399,42 +396,42 @@ public sealed interface Machine permits RealMachine, SimulatedMachine {
         ///
         /// Closing the shell window does not end a session, so the simulated user then runs
         /// `oillamp stop`, 200 ms later unless [#userStopsTheSessionAfter] says otherwise.
-        public Simulation windowsStayOpenFor(Duration duration) {
+        public SimulationBuilder windowsStayOpenFor(Duration duration) {
             builder.terminalStaysOpen(duration);
             return this;
         }
 
         /// The simulated sandbox exits on its own, with the entrypoint's failure code 70, this long
         /// after it started, as it does when a critical process such as the compositor dies.
-        public Simulation sandboxDiesAfter(Duration duration) {
+        public SimulationBuilder sandboxDiesAfter(Duration duration) {
             builder.sandboxDiesAfter(duration);
             return this;
         }
 
         /// How long the simulated user leaves the session running after closing its shell window,
         /// before they end it with `oillamp stop`.
-        public Simulation userStopsTheSessionAfter(Duration duration) {
+        public SimulationBuilder userStopsTheSessionAfter(Duration duration) {
             builder.stopsAfterClosingTheShell(duration);
             return this;
         }
 
         /// The terminal window opens but its shell never connects to the sandbox, for example
         /// because the terminal rejected its arguments. oillamp reports `OIL-TERM-002`.
-        public Simulation terminalThatNeverConnects() {
+        public SimulationBuilder terminalThatNeverConnects() {
             builder.terminalNeverConnects();
             return this;
         }
 
         /// How long the application that started an embedded session keeps it, before it closes
         /// oillamp's standard input.
-        public Simulation applicationLeavesAfter(Duration duration) {
+        public SimulationBuilder applicationLeavesAfter(Duration duration) {
             builder.applicationLeavesAfter(duration);
             return this;
         }
 
         /// A real stream as the simulated machine's standard input, for a scenario in which a real
         /// application holds it, as `dev.lamp.Lamp` does.
-        public Simulation standardInput(InputStream input) {
+        public SimulationBuilder standardInput(InputStream input) {
             builder.standardInput(input);
             return this;
         }
@@ -442,13 +439,13 @@ public sealed interface Machine permits RealMachine, SimulatedMachine {
         /// A command, identified by the start of its command line, that always fails with the given
         /// exit code and error output. For example `podman stop` dying with exit 130 and no
         /// output, as it did when a second Ctrl-C reached it.
-        public Simulation commandFailing(String commandPrefix, int exitCode, String stderr) {
+        public SimulationBuilder commandFailing(String commandPrefix, int exitCode, String stderr) {
             builder.commandFailing(commandPrefix, exitCode, stderr);
             return this;
         }
 
         /// A command that succeeds with the given output. For example `podman container exists`, which the simulation otherwise answers with "no" for commands it does not model.
-        public Simulation commandSucceeding(String commandPrefix, String stdout) {
+        public SimulationBuilder commandSucceeding(String commandPrefix, String stdout) {
             builder.scriptCommand(commandPrefix,
                     new Outcome.Finished(0, stdout, "", Duration.ofMillis(1)));
             return this;
@@ -456,7 +453,7 @@ public sealed interface Machine permits RealMachine, SimulatedMachine {
 
         /// The user's own git identity, as `git config --global` reports it. Without this the
         /// machine has no git at all.
-        public Simulation gitIdentity(String name, String email) {
+        public SimulationBuilder gitIdentity(String name, String email) {
             builder.executables(Tuple.of(String.class, "git"));
             builder.scriptCommand("git config --global --includes --get user.name",
                     new Outcome.Finished(0, name + "\n", "", Duration.ofMillis(1)));
@@ -465,116 +462,116 @@ public sealed interface Machine permits RealMachine, SimulatedMachine {
             return this;
         }
 
-        public Simulation withoutPackages(String... packages) {
+        public SimulationBuilder withoutPackages(String... packages) {
             builder.removePackages(Tuple.of(String.class, packages));
             return this;
         }
 
         // ─── podman ────────────────────────────────────────────────────────────────────────
 
-        public Simulation podman(String version, String ociRuntime) {
+        public SimulationBuilder podman(String version, String ociRuntime) {
             builder.podman(version, ociRuntime, true);
             return this;
         }
 
         /// podman present but not rootless, which oillamp refuses.
-        public Simulation rootfulPodman(String version) {
+        public SimulationBuilder rootfulPodman(String version) {
             builder.podman(version, "runc", false);
             return this;
         }
 
-        public Simulation withoutPodman() {
+        public SimulationBuilder withoutPodman() {
             builder.noPodman();
             return this;
         }
 
         /// User namespaces blocked by AppArmor, as can happen on Ubuntu 23.10 and newer.
-        public Simulation userNamespacesBlockedByAppArmor() {
+        public SimulationBuilder userNamespacesBlockedByAppArmor() {
             builder.usernsFails(true);
             return this;
         }
 
-        public Simulation userNamespacesBroken() {
+        public SimulationBuilder userNamespacesBroken() {
             builder.usernsFails(false);
             return this;
         }
 
         // ─── subordinate ids ───────────────────────────────────────────────────────────────
 
-        public Simulation subordinateIds(int start, int count) {
+        public SimulationBuilder subordinateIds(int start, int count) {
             builder.subIds(start, count);
             return this;
         }
 
-        public Simulation withoutSubordinateIds() {
+        public SimulationBuilder withoutSubordinateIds() {
             builder.noSubIds();
             return this;
         }
 
         /// Ranges belonging to other users, which a new allocation has to step around.
-        public Simulation subordinateIdsTakenBy(String otherUser, int start, int count) {
+        public SimulationBuilder subordinateIdsTakenBy(String otherUser, int start, int count) {
             builder.foreignSubIds(otherUser, start, count);
             return this;
         }
 
         // ─── tools on PATH ─────────────────────────────────────────────────────────────────
 
-        public Simulation terminals(String... executables) {
+        public SimulationBuilder terminals(String... executables) {
             builder.executables(Tuple.of(String.class, executables));
             return this;
         }
 
-        public Simulation withoutTerminals() {
+        public SimulationBuilder withoutTerminals() {
             builder.clearTerminals();
             return this;
         }
 
-        public Simulation withoutVncViewer() {
+        public SimulationBuilder withoutVncViewer() {
             builder.removeExecutable("vncviewer");
             return this;
         }
 
         // ─── sudo ──────────────────────────────────────────────────────────────────────────
 
-        public Simulation passwordlessSudo() { builder.sudo(SimulatedMachine.Sudo.PASSWORDLESS); return this; }
-        public Simulation sudoNeedsPassword() { builder.sudo(SimulatedMachine.Sudo.NEEDS_PASSWORD); return this; }
-        public Simulation withoutSudo()       { builder.sudo(SimulatedMachine.Sudo.UNAVAILABLE); return this; }
+        public SimulationBuilder passwordlessSudo() { builder.sudo(SimulatedMachine.Sudo.PASSWORDLESS); return this; }
+        public SimulationBuilder sudoNeedsPassword() { builder.sudo(SimulatedMachine.Sudo.NEEDS_PASSWORD); return this; }
+        public SimulationBuilder withoutSudo()       { builder.sudo(SimulatedMachine.Sudo.UNAVAILABLE); return this; }
 
         /// Whether a person is at a terminal. Decides whether sudo may ask for a password and whether output is coloured.
-        public Simulation interactive(boolean interactive) {
+        public SimulationBuilder interactive(boolean interactive) {
             builder.interactive(interactive);
             return this;
         }
 
         // ─── graphics ──────────────────────────────────────────────────────────────────────
 
-        public Simulation renderNode(String path, String group, String driver) {
+        public SimulationBuilder renderNode(String path, String group, String driver) {
             builder.renderNode(path, group, driver);
             return this;
         }
 
-        public Simulation withoutRenderNodes() {
+        public SimulationBuilder withoutRenderNodes() {
             builder.clearRenderNodes();
             return this;
         }
 
         // ─── determinism ───────────────────────────────────────────────────────────────────
 
-        public Simulation clockAt(Instant instant) {
+        public SimulationBuilder clockAt(Instant instant) {
             builder.clock(instant);
             return this;
         }
 
         /// Lets the clock move. By default the simulated clock stands still, so session ids and
         /// retention decisions are the same on every run. Scenarios about timeouts need it to move.
-        public Simulation clockRuns() {
+        public SimulationBuilder clockRuns() {
             builder.clockRuns();
             return this;
         }
 
         /// An agent in the sandbox: pi, answering prompts the way `agent` does. Without one, the
         /// sandbox has no pi, and waking the agent fails as it would then.
-        public Simulation agent(SimulatedAgent agent) {
+        public SimulationBuilder agent(SimulatedAgent agent) {
             builder.agent(agent);
             return this;
         }
@@ -582,44 +579,44 @@ public sealed interface Machine permits RealMachine, SimulatedMachine {
         /// Lets the clock move `times` as fast as a real one, so that a scenario can wait for a
         /// minute to pass in a second. Only what oillamp measures with its clock is sped up, such as
         /// how long a run has taken; waiting itself takes real time.
-        public Simulation clockRunsFaster(long times) {
+        public SimulationBuilder clockRunsFaster(long times) {
             builder.clockRunsFaster(times);
             return this;
         }
 
         /// The time zone the machine's clock shows, such as `Europe/Berlin`. UTC unless set.
-        public Simulation timeZone(String zone) {
+        public SimulationBuilder timeZone(String zone) {
             builder.zone(ZoneId.of(zone));
             return this;
         }
 
         /// Fixes the generated `agentId`, so paths and names are predictable in a scenario.
-        public Simulation generatedAgentId(String agentId) {
+        public SimulationBuilder generatedAgentId(String agentId) {
             builder.randomToken(agentId);
             return this;
         }
 
         /// Lets these programs really run instead of being simulated. Needed when a scenario depends
         /// on what a command creates, such as the key files `ssh-keygen` writes.
-        public Simulation reallyRuns(String... executables) {
+        public SimulationBuilder reallyRuns(String... executables) {
             builder.passThrough(Tuple.of(String.class, executables));
             return this;
         }
 
         /// Overrides what one command does, for the rare scenario that is about a command failing.
-        public Simulation command(String commandLinePrefix, Outcome outcome) {
+        public SimulationBuilder command(String commandLinePrefix, Outcome outcome) {
             builder.scriptCommand(commandLinePrefix, outcome);
             return this;
         }
 
         /// The filesystem type the lamp is on, for example `nfs`, which oillamp refuses.
-        public Simulation lampFilesystemType(String type) {
+        public SimulationBuilder lampFilesystemType(String type) {
             builder.filesystemType(type);
             return this;
         }
 
         /// An Ubuntu 24.04 desktop with everything oillamp needs. Most scenarios start from this.
-        public Simulation ubuntuWithEverything() {
+        public SimulationBuilder ubuntuWithEverything() {
             return ubuntu("24.04")
                     .waylandSession("GNOME")
                     .withPackages("podman", "crun", "slirp4netns", "uidmap", "catatonit", "socat",

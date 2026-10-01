@@ -32,7 +32,7 @@ class EngineInThisProcess extends Process {
     /** What the lamp added to the engine's environment, such as a model key. */
     final Map<String, String> environment
 
-    EngineInThisProcess(Machine.Simulation simulation, List<String> arguments, Map<String, String> environment) {
+    EngineInThisProcess(Machine.SimulationBuilder simulation, List<String> arguments, Map<String, String> environment) {
         this.arguments = List.copyOf(arguments)
         this.environment = Map.copyOf(environment)
         environment.each { name, value -> simulation.environmentVariable(name, value) }

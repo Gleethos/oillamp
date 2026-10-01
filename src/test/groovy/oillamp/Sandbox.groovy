@@ -18,12 +18,13 @@ class Sandbox {
 
     final Path home
     final Path runtime
-    private Machine.Simulation simulation
+    private Machine.SimulationBuilder simulation
 
     Sandbox(Path temporaryDirectory) {
         home = Files.createDirectories(temporaryDirectory.resolve('home/dev'))
         runtime = shortRuntimeDirectory()
-        simulation = Machine.simulated()
+        simulation =
+                Machine.simulated()
                 .ubuntuWithEverything()
                 .user('dev', 1000, 1000, home)
                 .runtimeDirectory(runtime)
@@ -48,7 +49,7 @@ class Sandbox {
     }
 
     /** Adjusts the machine, e.g. {@code sandbox.machine { it.withoutPodman() }}. */
-    Sandbox machine(Closure<Machine.Simulation> change) {
+    Sandbox machine(Closure<Machine.SimulationBuilder> change) {
         simulation = change(simulation)
         this
     }
