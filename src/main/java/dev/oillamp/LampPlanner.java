@@ -93,9 +93,9 @@ final class LampPlanner {
 
         // ── the user's layer ───────────────────────────────────────────────────────────────
         steps = steps.add(new Step.CreateDirectory(layout.root(), PosixMode.PUBLIC_DIR));
-        steps = steps.add(new Step.WriteFile(layout.config(), Templates.defaultConfig(),
+        steps = steps.add(new Step.WriteFile(layout.config(), GeneratedFileTextUtil.defaultConfig(),
                 PosixMode.PRIVATE_FILE, Step.WritePolicy.IF_ABSENT));
-        steps = steps.add(new Step.WriteFile(layout.readme(), Templates.readme(layout),
+        steps = steps.add(new Step.WriteFile(layout.readme(), GeneratedFileTextUtil.readme(layout),
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.IF_ABSENT));
 
         // ── the state layer, mode 0700 so no other host user reaches the sockets inside ────
@@ -151,7 +151,7 @@ final class LampPlanner {
         steps = steps.add(new Step.CreateDirectory(layout.screenshots(), PosixMode.PUBLIC_DIR));
         // Written once and then left to the agent. Without it, `ssh <lamp> 'some command'` runs in
         // a shell that has read no profile, so it has no proxy settings, display or `sdk`.
-        steps = steps.add(new Step.WriteFile(layout.agentBashrc(), Templates.agentBashrc(),
+        steps = steps.add(new Step.WriteFile(layout.agentBashrc(), GeneratedFileTextUtil.agentBashrc(),
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.IF_ABSENT));
 
         // ── the short runtime directory, so socket paths stay under the 107-byte limit ─────

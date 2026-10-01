@@ -366,7 +366,7 @@ final class Invocation {
                 }
                 // Straight to stdout, with no banner: the output is meant to be evaluated by a
                 // shell, and anything else printed would be evaluated along with it.
-                console.plain(Templates.bashCompletion());
+                console.plain(GeneratedFileTextUtil.bashCompletion());
                 yield ExitStatus.SUCCESS;
             }
 

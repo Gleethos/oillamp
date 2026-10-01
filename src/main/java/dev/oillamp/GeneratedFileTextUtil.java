@@ -5,9 +5,9 @@ package dev.oillamp;
 ///
 /// They are Java text blocks rather than resource files, so no file needs to be read to produce
 /// them.
-final class Templates {
+final class GeneratedFileTextUtil {
 
-    private Templates() {}
+    private GeneratedFileTextUtil() {}
 
     /// The commented configuration written into a new lamp.
     ///

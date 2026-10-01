@@ -9,7 +9,7 @@ import sprouts.Tuple;
 /// oillamp's built-in configuration: the values a lamp gets for every setting its files do not
 /// mention.
 ///
-/// The commented `oillamp.toml` written into a new lamp ([Templates#defaultConfig])
+/// The commented `oillamp.toml` written into a new lamp ([GeneratedFileTextUtil#defaultConfig])
 /// must describe exactly these values. A scenario in `ConfiguringALampSpec` checks that.
 final class ConfigDefaults {
 
