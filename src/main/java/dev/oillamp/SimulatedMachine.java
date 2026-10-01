@@ -76,8 +76,7 @@ final class SimulatedMachine implements Machine {
     ///
     /// These are real sockets, not files, so that session scenarios really test [Relay],
     /// which binds sockets and copies bytes and has no pure part that could be tested otherwise.
-    private final Map<String, ServerSocketChannel> listening =
-            new ConcurrentHashMap<>();
+    private final Map<String, ServerSocketChannel> listening = new ConcurrentHashMap<>();
     private volatile boolean containerRunning;
     /// The exit code of a simulated container that exited on its own and has not been removed.
     private volatile Optional<Integer> containerExitedWith = Optional.empty();
@@ -265,8 +264,7 @@ final class SimulatedMachine implements Machine {
             Files.writeString(socket, "");
             return;
         }
-        ServerSocketChannel server =
-                ServerSocketChannel.open(StandardProtocolFamily.UNIX);
+        ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
         server.bind(UnixDomainSocketAddress.of(socket));
         listening.put(socket.toString(), server);
         Thread.ofVirtual().name("simulated-sandbox-" + name).start(() -> accept(server));
@@ -747,8 +745,7 @@ final class SimulatedMachine implements Machine {
     /// A window that is open for a while, holding a connection if it was given one to hold.
     private static final class SimulatedWindow implements Window {
 
-        private final AtomicBoolean running =
-                new AtomicBoolean(true);
+        private final AtomicBoolean running = new AtomicBoolean(true);
         private volatile Optional<SocketChannel> connection = Optional.empty();
 
         /// @param stopThrough the session's control socket, for the shell window oillamp opens: the
