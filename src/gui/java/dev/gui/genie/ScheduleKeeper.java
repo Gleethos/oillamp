@@ -117,9 +117,9 @@ public final class ScheduleKeeper {
         }, "The schedule could not be " + (paused ? "paused" : "resumed"));
     }
 
-    /// News from the genie's lamp while it is awake: a job's run begins or ends, or the genie
+    /// While the genie is awake. What matters here: a job's run begins or ends, or the genie
     /// changed its own jobs.
-    void heard(LampEvent event, Instant now) {
+    void onLampEvent(LampEvent event, Instant now) {
         switch (event) {
             case LampEvent.RunStarted started when started.run().job().isPresent() ->
                     change(it -> it.withRunning(Optional.of(new Schedule.Running(started.run().id(), started.run().job().get(), now))));

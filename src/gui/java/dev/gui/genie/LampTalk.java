@@ -45,9 +45,8 @@ final class LampTalk {
         return new PiEvent.History(lines, leaf);
     }
 
-    /// The chat's event for a step of a run; empty for [LampEvent.Progress.Opened], which the
-    /// runner handles itself.
-    static Optional<PiEvent> heard(LampEvent.Progress progress) {
+    /// Empty for [LampEvent.Progress.Opened], which the runner handles itself.
+    static Optional<PiEvent> chatEventFor(LampEvent.Progress progress) {
         return switch (progress) {
             case LampEvent.Progress.Opened ignored -> Optional.empty();
             case LampEvent.Progress.Said said -> Optional.of(new PiEvent.Said(said.text()));

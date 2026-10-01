@@ -380,7 +380,7 @@ public final class GenieRunner {
             }
             return;
         }
-        schedule.heard(event, Instant.now());
+        schedule.onLampEvent(event, Instant.now());
         switch (event) {
             case LampEvent.RunStarted started -> {
                 LampEvent.Run run = started.run();
@@ -389,7 +389,7 @@ public final class GenieRunner {
             }
             case LampEvent.RunProgress progress when runsOfThisChat.contains(progress.run()) -> {
                 if (progress.progress() instanceof LampEvent.Progress.Answered) runsThatAnswered.add(progress.run());
-                LampTalk.heard(progress.progress()).ifPresent(heard -> changes.accept(genie -> genie.hear(heard)));
+                LampTalk.chatEventFor(progress.progress()).ifPresent(heard -> changes.accept(genie -> genie.hear(heard)));
             }
             case LampEvent.RunFinished finished when runsOfThisChat.contains(finished.run().id()) -> chatRunFinished(finished);
             // Another run, such as a scheduled job's, may have added to the conversations.
