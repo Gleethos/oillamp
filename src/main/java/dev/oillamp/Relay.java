@@ -127,12 +127,12 @@ final class Relay implements AutoCloseable {
                 listener.trouble(Problems.extraPrimaryRejected(socket));
                 continue;
             }
-            Thread.ofVirtual().name("oillamp-relay-connection").start(() -> serve(client));
+            Thread.ofVirtual().name("oillamp-relay-connection").start(() -> relayOneConnection(client));
         }
     }
 
     /// One connection: open the far side, copy both ways, and report it when it ends.
-    private void serve(SocketChannel client) {
+    private void relayOneConnection(SocketChannel client) {
         SocketChannel sandbox;
         try {
             sandbox = SocketChannel.open(UnixDomainSocketAddress.of(target));

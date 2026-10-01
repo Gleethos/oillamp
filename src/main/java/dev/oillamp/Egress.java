@@ -140,7 +140,7 @@ final class Egress implements AutoCloseable {
             egress.close();   // stops the network log's writer thread
             return Result.err(failure.problems());
         }
-        egress.serve(((Result.Ok<ServerSocketChannel>) proxy).value(), egress::handleProxy, "proxy");
+        egress.acceptConnections(((Result.Ok<ServerSocketChannel>) proxy).value(), egress::handleProxy, "proxy");
 
         for (Forward forward : config.forwards()) {
             Result<ServerSocketChannel> bound = bindShared(layout.forwardSocket(forward.name()));
@@ -148,7 +148,7 @@ final class Egress implements AutoCloseable {
                 egress.close();
                 return Result.err(failure.problems());
             }
-            egress.serve(((Result.Ok<ServerSocketChannel>) bound).value(),
+            egress.acceptConnections(((Result.Ok<ServerSocketChannel>) bound).value(),
                     client -> egress.handleForward(client, forward), "fwd-" + forward.name());
         }
 
@@ -157,7 +157,7 @@ final class Egress implements AutoCloseable {
             egress.close();
             return Result.err(failure.problems());
         }
-        egress.serve(((Result.Ok<ServerSocketChannel>) relay).value(),
+        egress.acceptConnections(((Result.Ok<ServerSocketChannel>) relay).value(),
                 client -> egress.handleModel(client, model), "model");
         return Result.ok(egress);
     }
@@ -178,7 +178,7 @@ final class Egress implements AutoCloseable {
 
     private interface Handler { void handle(SocketChannel client); }
 
-    private void serve(ServerSocketChannel server, Handler handler, String name) {
+    private void acceptConnections(ServerSocketChannel server, Handler handler, String name) {
         servers.add(server);
         Thread.ofVirtual().name("oillamp-egress-" + name).start(() -> {
             while (server.isOpen()) {

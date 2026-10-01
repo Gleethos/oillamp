@@ -203,11 +203,11 @@ final class Control {
                     if (closing) return;
                     continue;
                 }
-                Thread.ofVirtual().name("oillamp-control-request").start(() -> serve(client, handler));
+                Thread.ofVirtual().name("oillamp-control-request").start(() -> answerOneRequest(client, handler));
             }
         }
 
-        private static void serve(SocketChannel client, Handler handler) {
+        private static void answerOneRequest(SocketChannel client, Handler handler) {
             try (client) {
                 String line = within(REQUEST_TIME, client, () -> readLine(client));
                 Reply reply = Request.parse(line)
