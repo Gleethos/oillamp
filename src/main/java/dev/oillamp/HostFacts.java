@@ -8,7 +8,7 @@ import sprouts.ValueSet;
 
 /// Everything oillamp learned about the host, gathered by [HostProbe].
 ///
-/// This is the only input to [HostPlanner]. A check that fails is recorded as a fact (an
+/// This is the only input to [HostPlanUtil]. A check that fails is recorded as a fact (an
 /// empty `Optional`, a `Fails` case) rather than thrown, so one broken check does not
 /// hide the others.
 record HostFacts(

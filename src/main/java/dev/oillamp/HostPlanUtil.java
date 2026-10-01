@@ -18,9 +18,9 @@ import sprouts.ValueSet;
 /// - **Podman is not checked while it is still to be installed.** After the fixes,
 ///   [HostPhase] probes again and plans with [Options#afterFixes()], which plans
 ///   nothing and reports anything still wrong.
-final class HostPlanner {
+final class HostPlanUtil {
 
-    private HostPlanner() {}
+    private HostPlanUtil() {}
 
     /// How much oillamp is allowed to do, and how strict this pass is.
     ///

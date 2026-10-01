@@ -46,10 +46,10 @@ final class HostPhase {
         HostFacts facts = HostProbe.probe(machine, requirements, lampPathHint);
         // A dry run is allowed to plan things it could not currently carry out: the user asked
         // what oillamp *would* do, and "I cannot sudo right now" is not an answer to that.
-        HostPlanner.Options options = new HostPlanner.Options(
+        HostPlanUtil.Options options = new HostPlanUtil.Options(
                 installing, requiresDisplay, false, !context.options().dryRun());
 
-        Result<Plan> planned = HostPlanner.plan(facts, requirements, options);
+        Result<Plan> planned = HostPlanUtil.plan(facts, requirements, options);
         if (planned instanceof Result.Err<Plan> failure)
             return new Outcome(facts, failure);
 
@@ -68,7 +68,7 @@ final class HostPhase {
 
         // Re-probe: the machine is not the one we planned against any more.
         HostFacts after = HostProbe.probe(machine, requirements, lampPathHint);
-        Result<Plan> verified = HostPlanner.plan(after, requirements, options.verifying());
+        Result<Plan> verified = HostPlanUtil.plan(after, requirements, options.verifying());
         if (verified instanceof Result.Err<Plan> failure)
             return new Outcome(after, Result.err(failure.problems()));
         describe(after);
