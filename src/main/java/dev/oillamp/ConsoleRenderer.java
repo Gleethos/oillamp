@@ -155,17 +155,17 @@ final class ConsoleRenderer {
     /// shell evaluates, so any decoration would be evaluated too.
     public void plain(String text) {
         if (jsonLines) return;
-        line(text.stripTrailing());
+        printLine(text.stripTrailing());
     }
 
     public void banner(String version, String lamp) {
         if (jsonLines) return;
-        line("🪔 oillamp " + version + (lamp.isEmpty() ? "" : " — " + lamp));
+        printLine("🪔 oillamp " + version + (lamp.isEmpty() ? "" : " — " + lamp));
     }
 
     public void render(LampEvent event) {
         if (jsonLines) {
-            line(event.toJson());
+            printLine(event.toJson());
             return;
         }
         switch (event) {
@@ -175,80 +175,80 @@ final class ConsoleRenderer {
         }
         switch (event) {
             case LampEvent.PhaseStarted started ->
-                    { if (verbose) line(area(started.phase().name().toLowerCase(Locale.ROOT))
+                    { if (verbose) printLine(area(started.phase().name().toLowerCase(Locale.ROOT))
                                         + dim("…")); }
             case LampEvent.PhaseFinished ignored -> { }
             case LampEvent.Ok ok ->
-                    line(area(ok.area()) + colour(GREEN, "✓ ") + ok.text());
+                    printLine(area(ok.area()) + colour(GREEN, "✓ ") + ok.text());
             case LampEvent.Info info ->
-                    line(area(info.area()) + dim("· " + info.text()));
+                    printLine(area(info.area()) + dim("· " + info.text()));
             case LampEvent.StepPlanned planned -> {
-                line(area("plan") + dim("→ ") + planned.step().describe());
+                printLine(area("plan") + dim("→ ") + planned.step().describe());
                 // The detail is normally for the session log, but a dry run writes no log, and
                 // the detail is exactly what someone dry-running wants to read: the podman
                 // arguments, the packages and why each one is being installed.
                 if (verbose && !planned.step().detail().equals(planned.step().describe()))
                     for (String detailLine : planned.step().detail().lines().toList())
-                        line(dim(" ".repeat(10) + "  " + detailLine));
+                        printLine(dim(" ".repeat(10) + "  " + detailLine));
             }
             case LampEvent.StepStarted started ->
-                    { if (verbose) line(area("step") + dim("→ " + started.step().describe())); }
+                    { if (verbose) printLine(area("step") + dim("→ " + started.step().describe())); }
             case LampEvent.StepSucceeded succeeded ->
-                    { if (verbose) line(area("step") + colour(GREEN, "✓ ") + succeeded.step().describe()); }
+                    { if (verbose) printLine(area("step") + colour(GREEN, "✓ ") + succeeded.step().describe()); }
             case LampEvent.StepSkipped skipped ->
-                    { if (verbose) line(area("step") + dim("· " + skipped.step().describe()
+                    { if (verbose) printLine(area("step") + dim("· " + skipped.step().describe()
                                                            + " — " + skipped.why())); }
             case LampEvent.Output output ->
-                    { if (verbose) line(area(output.sourceTag()) + dim(output.line())); }
-            case LampEvent.Answer answer -> line(answer.text());
+                    { if (verbose) printLine(area(output.sourceTag()) + dim(output.line())); }
+            case LampEvent.Answer answer -> printLine(answer.text());
             // The state machine already says the things worth saying out loud, as Ok and Info;
             // the state changes themselves are the log's account of how it got there.
             case LampEvent.SessionStateChanged changed ->
-                    { if (verbose) line(area("session") + dim("· " + changed.status().state()
+                    { if (verbose) printLine(area("session") + dim("· " + changed.status().state()
                                                               + " — " + changed.status().detail())); }
             // The briefing below says the same for a person; the command is for applications.
             case LampEvent.SessionOpened opened ->
-                    { if (verbose) line(area("session") + dim("· commands run in the sandbox with: "
+                    { if (verbose) printLine(area("session") + dim("· commands run in the sandbox with: "
                                                               + String.join(" ", opened.command()))); }
             case LampEvent.WindowOpened opened -> {
-                line(area("session") + colour(GREEN, "✓ ") + "opened " + opened.what());
+                printLine(area("session") + colour(GREEN, "✓ ") + "opened " + opened.what());
                 // The command matters when the window misbehaves, and by then it is too late to
                 // ask for it, so --verbose keeps it, and a failure quotes it in full.
-                if (verbose) line(dim(" ".repeat(10) + "  $ " + String.join(" ", opened.argv())));
+                if (verbose) printLine(dim(" ".repeat(10) + "  $ " + String.join(" ", opened.argv())));
             }
             case LampEvent.Summary summary -> {
-                line("");
-                line(dim("— ") + summary.title() + dim(" ———"));
-                for (String detail : summary.lines()) line("  " + dim(detail));
-                line("");
+                printLine("");
+                printLine(dim("— ") + summary.title() + dim(" ———"));
+                for (String detail : summary.lines()) printLine("  " + dim(detail));
+                printLine("");
             }
-            case LampEvent.Saved saved -> line(area("history") + colour(GREEN, "✓ ") + "saved "
+            case LampEvent.Saved saved -> printLine(area("history") + colour(GREEN, "✓ ") + "saved "
                     + saved.snapshot().shortId() + " — " + saved.snapshot().kind().label()
                     + (saved.files() > 0 ? ", " + saved.files() + " files" : ""));
-            case LampEvent.History history -> line(describe(history.snapshots()));
-            case LampEvent.Restored restored -> line(area("history") + colour(GREEN, "✓ ")
+            case LampEvent.History history -> printLine(describe(history.snapshots()));
+            case LampEvent.Restored restored -> printLine(area("history") + colour(GREEN, "✓ ")
                     + (restored.result().equals(restored.target())
                         ? "the lamp already is as " + restored.target().shortId() + " holds it, so nothing changed"
                         : "restored " + restored.target().shortId() + " (" + restored.target().kind().label()
                           + " of " + when(restored.target().at()) + " UTC), recorded as "
                           + restored.result().shortId()));
-            case LampEvent.Schedule schedule -> line(describe(schedule));
-            case LampEvent.JobAdded added -> line(area("schedule") + colour(GREEN, "✓ ") + "added "
+            case LampEvent.Schedule schedule -> printLine(describe(schedule));
+            case LampEvent.JobAdded added -> printLine(area("schedule") + colour(GREEN, "✓ ") + "added "
                     + added.job().id() + " — " + added.job().when()
                     + added.job().next().map(next -> ", first runs " + when(next) + " UTC").orElse(""));
-            case LampEvent.JobRemoved removed -> line(area("schedule") + dim("· " + removed.job().id()
+            case LampEvent.JobRemoved removed -> printLine(area("schedule") + dim("· " + removed.job().id()
                     + " is off the schedule — " + removed.why()));
-            case LampEvent.ScheduleChanged changed -> line(area("schedule") + colour(GREEN, "✓ ") + changed.what());
-            case LampEvent.RunQueued queued -> line(area("run") + dim("· " + queued.run().id() + " ("
+            case LampEvent.ScheduleChanged changed -> printLine(area("schedule") + colour(GREEN, "✓ ") + changed.what());
+            case LampEvent.RunQueued queued -> printLine(area("run") + dim("· " + queued.run().id() + " ("
                     + describe(queued.run()) + ") waits: the agent is busy, and "
                     + (queued.ahead() == 0 ? "no other run is" : queued.ahead() + " more "
                        + (queued.ahead() == 1 ? "run is" : "runs are")) + " ahead of it"));
-            case LampEvent.RunStarted started -> line(area("run") + dim("→ ") + "waking the agent for "
+            case LampEvent.RunStarted started -> printLine(area("run") + dim("→ ") + "waking the agent for "
                     + started.run().id() + " (" + describe(started.run()) + "): "
                     + shortened(started.run().prompt(), 100));
             case LampEvent.RunFinished finished -> {
                 boolean fine = finished.outcome() == LampEvent.RunOutcome.FINISHED;
-                line(area("run") + (fine ? colour(GREEN, "✓ ") : colour(YELLOW, "! ")) + finished.run().id() + " "
+                printLine(area("run") + (fine ? colour(GREEN, "✓ ") : colour(YELLOW, "! ")) + finished.run().id() + " "
                         + switch (finished.outcome()) {
                               case FINISHED -> "finished";
                               case FAILED -> "failed";
@@ -260,17 +260,17 @@ final class ConsoleRenderer {
                         + finished.snapshot().map(snapshot -> ", saved as " + snapshot.shortId()).orElse(""));
                 // The agent wrote this, so nothing in it may reach the terminal as a control sequence.
                 for (String answerLine : finished.answer().strip().lines().toList())
-                    line("  " + NOT_PRINTABLE.matcher(answerLine).replaceAll(" "));
+                    printLine("  " + NOT_PRINTABLE.matcher(answerLine).replaceAll(" "));
             }
-            case LampEvent.RunAccepted accepted -> line(area("run") + colour(GREEN, "✓ ") + "the agent answers this as "
+            case LampEvent.RunAccepted accepted -> printLine(area("run") + colour(GREEN, "✓ ") + "the agent answers this as "
                     + accepted.run().id() + "; `oillamp status` says how far it is");
             // What the agent writes, as it writes it, is for applications; the answer is printed
             // once it is complete. Its tools are printed as they run, which says what it is doing.
             case LampEvent.RunProgress progress -> {
                 switch (progress.progress()) {
-                    case LampEvent.Progress.ToolStarted tool -> line(area("run") + dim("· " + progress.run() + " "
+                    case LampEvent.Progress.ToolStarted tool -> printLine(area("run") + dim("· " + progress.run() + " "
                             + shortened(tool.tool(), 20) + ": " + shortened(tool.summary(), 100)));
-                    case LampEvent.Progress.Retrying retrying -> line(area("run") + dim("· " + progress.run()
+                    case LampEvent.Progress.Retrying retrying -> printLine(area("run") + dim("· " + progress.run()
                             + ": the model service failed (" + shortened(retrying.why(), 80) + "); trying again, "
                             + retrying.attempt() + " of " + retrying.most()));
                     case LampEvent.Progress.Opened ignored -> { }
@@ -282,8 +282,8 @@ final class ConsoleRenderer {
             }
             // `status` prints the same as text; this is its form for applications.
             case LampEvent.AgentStatus ignored -> { }
-            case LampEvent.Conversations listed -> line(listing(listed.conversations()));
-            case LampEvent.ConversationShown shown -> line(describe(shown.conversation()));
+            case LampEvent.Conversations listed -> printLine(listing(listed.conversations()));
+            case LampEvent.ConversationShown shown -> printLine(describe(shown.conversation()));
             case LampEvent.Warning warning -> problem(warning.problem());
             case LampEvent.Failure failure -> problem(failure.problem());
         }
@@ -405,11 +405,11 @@ final class ConsoleRenderer {
             case INFO    -> dim("·");
         };
         if (problem.severity() == Problem.Severity.INFO) {
-            line(area("note") + dim("· " + problem.whatHappened()));
+            printLine(area("note") + dim("· " + problem.whatHappened()));
             return;
         }
-        line("");
-        line(marker + "  " + problem.code() + "  " + problem.title());
+        printLine("");
+        printLine(marker + "  " + problem.code() + "  " + problem.title());
         field("What happened", problem.whatHappened());
         field("Why it matters", problem.whyItMatters());
 
@@ -426,7 +426,7 @@ final class ConsoleRenderer {
             index++;
         }
         problem.logFile().ifPresent(log -> field("Full log", log.toString()));
-        line("");
+        printLine("");
     }
 
     private static String describe(Problem.Evidence evidence) {
@@ -449,7 +449,7 @@ final class ConsoleRenderer {
         String[] lines = text.split("\n", -1);
         for (int i = 0; i < lines.length; i++) {
             String prefix = i == 0 ? pad(label) : pad("");
-            line("  " + dim(prefix) + lines[i]);
+            printLine("  " + dim(prefix) + lines[i]);
         }
     }
 
@@ -472,7 +472,7 @@ final class ConsoleRenderer {
 
     private String colour(String code, String text) { return colour ? code + text + RESET : text; }
 
-    private void line(String text) {
+    private void printLine(String text) {
         synchronized (terminal) {
             if (keepText) captured.append(text).append('\n');
             if (!echoToTerminal) return;
@@ -493,7 +493,7 @@ final class ConsoleRenderer {
             if (tickerStarted) return;
             tickerStarted = true;
         }
-        Thread.ofPlatform().daemon().name("oillamp-activity").start(this::tick);
+        Thread.ofPlatform().daemon().name("oillamp-activity").start(this::keepRedrawingTheActivityLine);
     }
 
     /// What the user is told a step is doing. Plainer than the step's own description.
@@ -513,8 +513,8 @@ final class ConsoleRenderer {
         synchronized (terminal) { clearActivityLine(); }
     }
 
-    /// Redraws the activity line until the process ends. Runs on a daemon thread.
-    private void tick() {
+    /// Until the process ends, on a daemon thread.
+    private void keepRedrawingTheActivityLine() {
         for (int frame = 0; ; frame++) {
             synchronized (terminal) {
                 Optional<Activity> now = activity;
