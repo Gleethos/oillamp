@@ -1,5 +1,7 @@
 package dev.lamp;
 
+import java.util.Optional;
+
 /// The process exit codes. Scripts depend on them, so a code's meaning never changes: `4`
 /// always means "that lamp is already running".
 ///
@@ -28,10 +30,10 @@ public enum ExitStatus {
 
     /// The status an oillamp process meant by exiting with `code`, or empty for a code oillamp
     /// never uses, such as a Java runtime that could not start.
-    public static java.util.Optional<ExitStatus> ofCode(int code) {
+    public static Optional<ExitStatus> ofCode(int code) {
         for (ExitStatus status : values())
-            if (status.code == code) return java.util.Optional.of(status);
-        return java.util.Optional.empty();
+            if (status.code == code) return Optional.of(status);
+        return Optional.empty();
     }
 
     public boolean isSuccess() { return this == SUCCESS; }

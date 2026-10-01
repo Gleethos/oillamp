@@ -1,6 +1,7 @@
 package dev.lamp;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
@@ -154,7 +155,7 @@ final class Wire {
         try {
             Constructor<?> constructor = type.getDeclaredConstructor(types);
             return constructor.newInstance(values);
-        } catch (java.lang.reflect.InvocationTargetException invalid) {
+        } catch (InvocationTargetException invalid) {
             // The record's own constructor refused the values, as it would any invalid ones.
             throw new IllegalArgumentException(invalid.getCause());
         } catch (ReflectiveOperationException e) {

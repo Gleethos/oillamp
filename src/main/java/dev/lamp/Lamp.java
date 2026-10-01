@@ -3,18 +3,29 @@ package dev.lamp;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import sprouts.Tuple;
 
 /// A running lamp, held by the application that started it.
 ///
@@ -202,7 +213,7 @@ public final class Lamp implements AutoCloseable {
         /// record a session keeps while it runs; a session whose engine was killed leaves that
         /// record behind, and [#join] then says it cannot reach it.
         public boolean isRunning() {
-            return java.nio.file.Files.exists(directory.resolve(".oillamp").resolve("session.json"));
+            return Files.exists(directory.resolve(".oillamp").resolve("session.json"));
         }
 
         /// Deletes this lamp for good: the agent's home with everything the agent made in it,
@@ -397,7 +408,7 @@ public final class Lamp implements AutoCloseable {
         return new Problem(new Problem.Code("OIL-INTERNAL-001"), Problem.Severity.ERROR,
                 "Unexpected internal error (please report)", what,
                 "this is a bug in oillamp, not something you did wrong",
-                sprouts.Tuple.of(Problem.Evidence.class), sprouts.Tuple.of(Problem.Fix.class), Optional.empty());
+                Tuple.of(Problem.Evidence.class), Tuple.of(Problem.Fix.class), Optional.empty());
     }
 
     /// Runs the engine for one command that ends by itself, passes each event to the listeners,
@@ -511,8 +522,8 @@ public final class Lamp implements AutoCloseable {
     /// @param file     where pi keeps it, relative to the agent's home
     /// @param modified when its last entry was written
     /// @param entries  every entry, in the order pi wrote them
-    public record Conversation(String id, String name, String file, java.time.Instant started,
-                               java.time.Instant modified, sprouts.Tuple<Entry> entries) {
+    public record Conversation(String id, String name, String file, Instant started,
+                               Instant modified, Tuple<Entry> entries) {
 
         /// One line of pi's session file.
         ///
@@ -528,8 +539,8 @@ public final class Lamp implements AutoCloseable {
         /// @param tool     for a tool's output, the tool's name; otherwise empty
         /// @param failed   for an answer, the model failed or was stopped; for a tool's output, the
         ///                 tool reported an error
-        public record Entry(String id, Optional<String> parent, java.time.Instant at, Kind kind, String text,
-                            String thinking, sprouts.Tuple<ToolCall> calls, Optional<String> tool, boolean failed) {}
+        public record Entry(String id, Optional<String> parent, Instant at, Kind kind, String text,
+                            String thinking, Tuple<ToolCall> calls, Optional<String> tool, boolean failed) {}
 
         public enum Kind {
             /// A message to the agent: a person's question, or a job's prompt.
@@ -562,13 +573,13 @@ public final class Lamp implements AutoCloseable {
         /// asked. The engine names a job's conversation after the run and the job, `run-12 (job-3)`,
         /// and pi's file keeps nothing else that says so.
         public Optional<String> job() {
-            java.util.regex.Matcher named = JOB_RUN_NAME.matcher(name);
+            Matcher named = JOB_RUN_NAME.matcher(name);
             return named.matches() ? Optional.of(named.group(1)) : Optional.empty();
         }
 
         /// How the engine names a job run's conversation. Written out, because this package must
         /// not depend on the engine.
-        private static final java.util.regex.Pattern JOB_RUN_NAME = java.util.regex.Pattern.compile("run-\\d+ \\((job-\\d+)\\)");
+        private static final Pattern JOB_RUN_NAME = Pattern.compile("run-\\d+ \\((job-\\d+)\\)");
 
         /// The entry it stands at: the last one written. Empty for a conversation with none.
         public Optional<String> leaf() {
@@ -580,23 +591,23 @@ public final class Lamp implements AutoCloseable {
         }
 
         /// The line the conversation stands on: every entry from the first to the leaf.
-        public sprouts.Tuple<Entry> line() {
-            return leaf().map(this::lineTo).orElse(sprouts.Tuple.of(Entry.class));
+        public Tuple<Entry> line() {
+            return leaf().map(this::lineTo).orElse(Tuple.of(Entry.class));
         }
 
         /// Every entry from the first up to and including `id`. Empty when there is no such entry.
-        public sprouts.Tuple<Entry> lineTo(String id) {
-            java.util.Map<String, Entry> byId = new java.util.HashMap<>();
+        public Tuple<Entry> lineTo(String id) {
+            Map<String, Entry> byId = new HashMap<>();
             for (Entry entry : entries) byId.put(entry.id(), entry);
-            java.util.List<Entry> line = new java.util.ArrayList<>();
-            java.util.Set<String> seen = new java.util.HashSet<>();
+            List<Entry> line = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
             for (Entry at = byId.get(id); at != null && seen.add(at.id()); at = at.parent().map(byId::get).orElse(null))
                 line.add(at);
-            return sprouts.Tuple.of(Entry.class, line.reversed());
+            return Tuple.of(Entry.class, line.reversed());
         }
 
         /// The entries that follow `id` directly: one, or several where the conversation forks.
-        public sprouts.Tuple<Entry> children(String id) {
+        public Tuple<Entry> children(String id) {
             return entries.retainIf(entry -> entry.parent().filter(id::equals).isPresent());
         }
 
@@ -628,21 +639,21 @@ public final class Lamp implements AutoCloseable {
         if (sessions.isEmpty()) return List.of();
         List<Conversation> found = new ArrayList<>();
         for (Path folder : listed(sessions.get())) {
-            if (!java.nio.file.Files.isDirectory(folder, java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue;
+            if (!Files.isDirectory(folder, LinkOption.NOFOLLOW_LINKS)) continue;
             for (Path file : listed(folder)) {
                 String name = file.getFileName().toString();
-                if (!name.endsWith(".jsonl") || !java.nio.file.Files.isRegularFile(file, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                if (!name.endsWith(".jsonl") || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
                     continue;
                 try {
-                    if (java.nio.file.Files.size(file) > LARGEST_CONVERSATION) continue;
-                    List<String> lines = java.nio.file.Files.readAllLines(file, StandardCharsets.UTF_8);
+                    if (Files.size(file) > LARGEST_CONVERSATION) continue;
+                    List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
                     PiSessionFile.parse(SESSIONS + "/" + folder.getFileName() + "/" + name, lines).ifPresent(found::add);
-                } catch (IOException | java.io.UncheckedIOException unreadable) {
+                } catch (IOException | UncheckedIOException unreadable) {
                     // Being written, or gone since it was listed: left out until the next look.
                 }
             }
         }
-        found.sort(java.util.Comparator.comparing(Conversation::modified).reversed());
+        found.sort(Comparator.comparing(Conversation::modified).reversed());
         return List.copyOf(found);
     }
 
@@ -666,20 +677,20 @@ public final class Lamp implements AutoCloseable {
         Path home = agentHome(directory).orElseThrow(() -> new IOException("the lamp has no agent home"));
         Path file = home.resolve(doomed.file());
         // Found by listing without following links, so it is a plain file where it should be.
-        java.nio.file.Files.delete(file);
+        Files.delete(file);
     }
 
     private static Optional<Path> directoryWithoutLinks(Path from, String relative) {
         Path at = from;
         for (Path part : Path.of(relative)) {
             at = at.resolve(part);
-            if (!java.nio.file.Files.isDirectory(at, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
+            if (!Files.isDirectory(at, LinkOption.NOFOLLOW_LINKS)) return Optional.empty();
         }
         return Optional.of(at);
     }
 
     private static List<Path> listed(Path directory) {
-        try (var entries = java.nio.file.Files.list(directory)) {
+        try (var entries = Files.list(directory)) {
             return entries.toList();
         } catch (IOException unreadable) {
             return List.of();
@@ -697,9 +708,9 @@ public final class Lamp implements AutoCloseable {
     /// conversations, while the sandbox runs or not. The agent writes it, so read it as the
     /// agent's work: never follow a link in it, and never trust a name in it to be a plain name.
     public static Optional<Path> agentHome(Path directory) {
-        try (var entries = java.nio.file.Files.list(directory)) {
+        try (var entries = Files.list(directory)) {
             List<Path> homes = entries.filter(entry -> entry.getFileName().toString().startsWith(AGENT_DIR_PREFIX))
-                    .filter(entry -> java.nio.file.Files.isDirectory(entry, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                    .filter(entry -> Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS))
                     .toList();
             return homes.size() == 1 ? Optional.of(homes.getFirst()) : Optional.empty();
         } catch (IOException notThere) {

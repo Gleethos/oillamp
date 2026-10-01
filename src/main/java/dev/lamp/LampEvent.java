@@ -1,6 +1,11 @@
 package dev.lamp;
 
+import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.Optional;
+
+import sprouts.Tuple;
 
 /// Everything oillamp reports, as values.
 ///
@@ -19,7 +24,7 @@ public sealed interface LampEvent {
     ///
     /// Empty for a line that is not an event this version of oillamp knows, such as one from a
     /// newer version, so that a reader can skip it rather than fail.
-    static java.util.Optional<LampEvent> fromJson(String line) { return Wire.read(line); }
+    static Optional<LampEvent> fromJson(String line) { return Wire.read(line); }
 
     /// The phases of `oillamp at`, in order.
     enum Phase {
@@ -82,17 +87,17 @@ public sealed interface LampEvent {
     ///                shell, and with no terminal. It counts as an extra shell while it runs
     /// @param desktop the Unix socket of the sandbox's desktop. It speaks VNC (RFB 3.8) with no
     ///                password, because only this user can open it
-    record SessionOpened(String session, sprouts.Tuple<String> command, java.nio.file.Path desktop)
+    record SessionOpened(String session, Tuple<String> command, Path desktop)
             implements LampEvent {}
 
     /// A window oillamp opened on the user's desktop: the terminal or a viewer.
     ///
     /// It carries the full command line, because when a window opens and closes again, the first
     /// question is what exactly was run.
-    record WindowOpened(String what, sprouts.Tuple<String> argv) implements LampEvent {}
+    record WindowOpened(String what, Tuple<String> argv) implements LampEvent {}
 
     /// A block of lines with a title, such as the briefing when a session starts or the summary when it ends.
-    record Summary(String title, sprouts.Tuple<String> lines) implements LampEvent {}
+    record Summary(String title, Tuple<String> lines) implements LampEvent {}
 
     /// One saved state of a lamp: the agent's home and the lamp's `oillamp.toml`, as they were
     /// at one moment. `oillamp restore` brings a lamp back to it.
@@ -109,10 +114,9 @@ public sealed interface LampEvent {
     /// @param outcome for a snapshot made as a run ended, how it ended
     /// @param conversation for a snapshot made as a run ended, the id of the conversation the run
     ///                had; empty when the agent did not get as far as opening one
-    record Snapshot(String id, java.time.Instant at, SaveKind kind, String message,
-                    java.util.Optional<String> session, java.util.Optional<String> run,
-                    java.util.Optional<String> job, java.util.Optional<RunOutcome> outcome,
-                    java.util.Optional<String> conversation) {
+    record Snapshot(String id, Instant at, SaveKind kind, String message, Optional<String> session,
+                    Optional<String> run, Optional<String> job, Optional<RunOutcome> outcome,
+                    Optional<String> conversation) {
 
         /// The first eight characters of [#id()], which is how oillamp shows a snapshot.
         public String shortId() { return id.substring(0, Math.min(8, id.length())); }
@@ -154,7 +158,7 @@ public sealed interface LampEvent {
     record Saved(Snapshot snapshot, int files)          implements LampEvent {}
 
     /// A lamp's snapshots, newest first. What `oillamp history` answers.
-    record History(sprouts.Tuple<Snapshot> snapshots)   implements LampEvent {}
+    record History(Tuple<Snapshot> snapshots) implements LampEvent {}
 
     /// The lamp was brought back to `target`, and `result` is the snapshot that records it.
     /// When the lamp already was as `target` holds it, nothing changed and `result` is `target`.
@@ -178,10 +182,8 @@ public sealed interface LampEvent {
     ///                of it, before it expires, earliest first; at most 200 times. Empty when it is
     ///                switched off. A `next` at or before that moment is not among them: the job
     ///                came due, and runs as soon as a session can run it
-    record Job(String id, String when, java.util.Optional<java.time.Instant> next, String prompt,
-               JobAuthor author, java.time.Instant created,
-               java.util.Optional<java.time.Instant> expires, boolean enabled,
-               sprouts.Tuple<java.time.Instant> upcoming) {}
+    record Job(String id, String when, Optional<Instant> next, String prompt, JobAuthor author,
+               Instant created, Optional<Instant> expires, boolean enabled, Tuple<Instant> upcoming) {}
 
     /// Who added a job. The user's jobs are theirs alone: the agent may read them but not change
     /// or remove them.
@@ -192,7 +194,7 @@ public sealed interface LampEvent {
     /// @param enabled whether `schedule.enabled` is on in `oillamp.toml`. When it is off, no job runs
     /// @param paused  whether the user paused the schedule with `oillamp schedule <dir> pause`
     /// @param zone    the time zone the jobs' times are read in, such as `Europe/Berlin`
-    record Schedule(boolean enabled, boolean paused, String zone, sprouts.Tuple<Job> jobs)
+    record Schedule(boolean enabled, boolean paused, String zone, Tuple<Job> jobs)
             implements LampEvent {}
 
     /// A job was added to the schedule, by the user or by the agent.
@@ -211,7 +213,7 @@ public sealed interface LampEvent {
     /// @param job          the job that woke the agent; empty when someone asked
     /// @param prompt       the job's prompt, or the question, as written
     /// @param conversation the conversation the run continues; empty for a new one
-    record Run(String id, java.util.Optional<String> job, String prompt, java.util.Optional<String> conversation) {}
+    record Run(String id, Optional<String> job, String prompt, Optional<String> conversation) {}
 
     /// A run waits, because the agent is busy.
     ///
@@ -226,8 +228,8 @@ public sealed interface LampEvent {
     /// @param conversation the conversation the run happened in; empty when pi failed before it
     ///                     opened one
     record RunFinished(Run run, RunOutcome outcome, String answer,
-                       java.util.Optional<Snapshot> snapshot, Duration took,
-                       java.util.Optional<String> conversation) implements LampEvent {}
+                       Optional<Snapshot> snapshot, Duration took,
+                       Optional<String> conversation) implements LampEvent {}
 
     /// The session queued a question as `run`. What `oillamp ask --no-wait` and [Lamp#send] report.
     record RunAccepted(Run run)                         implements LampEvent {}
@@ -274,7 +276,7 @@ public sealed interface LampEvent {
     ///
     /// @param current the run in progress; empty when the agent is idle
     /// @param waiting the runs waiting, in the order they will run
-    record AgentStatus(java.util.Optional<Run> current, sprouts.Tuple<Run> waiting) implements LampEvent {
+    record AgentStatus(Optional<Run> current, Tuple<Run> waiting) implements LampEvent {
         public boolean busy() { return current.isPresent() || !waiting.isEmpty(); }
     }
 
@@ -296,7 +298,7 @@ public sealed interface LampEvent {
 
     /// The conversations the agent had in a lamp, the most recent first. What
     /// `oillamp conversations <dir>` answers.
-    record Conversations(sprouts.Tuple<Lamp.Conversation> conversations) implements LampEvent {}
+    record Conversations(Tuple<Lamp.Conversation> conversations) implements LampEvent {}
 
     /// One conversation, in full. What `oillamp conversations <dir> <conversation>` answers.
     record ConversationShown(Lamp.Conversation conversation) implements LampEvent {}
