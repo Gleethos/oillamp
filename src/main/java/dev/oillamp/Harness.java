@@ -223,7 +223,7 @@ final class Harness implements AutoCloseable {
     private Machine.Conversation started() {
         if (pi.isPresent() && pi.get().isRunning()) return pi.get();
         close();
-        Machine.Conversation started = machine.converse(Machine.Command.of(Ssh.harnessArgv(layout))
+        Machine.Conversation started = machine.converse(Machine.Command.of(SandboxSshUtil.harnessArgv(layout))
                 .labelled("pi").shieldedFromSignals());
         pi = Optional.of(started);
         return started;

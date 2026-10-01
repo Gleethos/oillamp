@@ -299,7 +299,7 @@ final class Supervisor {
 
     /// The terminal emulator's command line, with the ssh command inside it.
     private Result<Tuple<String>> terminalCommand() {
-        Tuple<String> shell = Ssh.clientArgv(prepared.layout(), Ssh.SocketRole.PRIMARY);
+        Tuple<String> shell = SandboxSshUtil.clientArgv(prepared.layout(), SandboxSshUtil.SocketRole.PRIMARY);
         String title = TerminalEmulatorUtil.titleFor(prepared.layout().name());
         return switch (prepared.config().terminal()) {
             case LampConfig.Terminal.Custom custom ->
@@ -650,7 +650,7 @@ final class Supervisor {
         runs.begin();
         LampLayout layout = prepared.layout();
         LampConfig config = prepared.config();
-        context.emit(new LampEvent.SessionOpened(prepared.session().value(), Ssh.commandArgv(layout),
+        context.emit(new LampEvent.SessionOpened(prepared.session().value(), SandboxSshUtil.commandArgv(layout),
                 layout.vncSocket()));
         if (context.options().embedded()) {
             context.emit(new LampEvent.Summary("your session is up", Tuple.of(String.class,
@@ -859,7 +859,7 @@ final class Supervisor {
             // supervisor returns the ssh command instead of running it.
             case "shell" -> state.isLive()
                     ? Control.Reply.ok().withArgv(
-                            Ssh.clientArgv(prepared.layout(), Ssh.SocketRole.EXTRA))
+                            SandboxSshUtil.clientArgv(prepared.layout(), SandboxSshUtil.SocketRole.EXTRA))
                     : Control.Reply.failed("this session is already ending");
             // Answered once the run has ended, which is what `oillamp ask` waits for.
             case "ask" -> {

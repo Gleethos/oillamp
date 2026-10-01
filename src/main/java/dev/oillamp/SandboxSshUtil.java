@@ -9,9 +9,9 @@ import sprouts.Tuple;
 /// SSH runs over a Unix socket, never a TCP port, so the container can keep having no network.
 /// Each lamp has its own key pair and a pinned host key, so the user is never asked to accept a
 /// host key and their own SSH keys are never offered to the sandbox (`IdentitiesOnly yes`).
-final class Ssh {
+final class SandboxSshUtil {
 
-    private Ssh() {}
+    private SandboxSshUtil() {}
 
     /// Which host-side socket a shell connects through. Closing either ends nothing.
     public enum SocketRole {

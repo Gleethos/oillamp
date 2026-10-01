@@ -255,9 +255,9 @@ final class LampPlanUtil {
                 .orElseGet(() -> new Step.RemovePath(layout.scheduleTools(),
                         "the schedule is off, so the agent has no scheduling tools")));
 
-        steps = steps.add(new Step.WriteFile(layout.sshConfig(), Ssh.renderClientConfig(layout),
+        steps = steps.add(new Step.WriteFile(layout.sshConfig(), SandboxSshUtil.renderClientConfig(layout),
                 PosixMode.PRIVATE_FILE, Step.WritePolicy.ALWAYS));
-        steps = steps.add(new Step.WriteFile(layout.knownHosts(), Ssh.renderKnownHosts(layout, hostPublicKey),
+        steps = steps.add(new Step.WriteFile(layout.knownHosts(), SandboxSshUtil.renderKnownHosts(layout, hostPublicKey),
                 PosixMode.PUBLIC_FILE, Step.WritePolicy.ALWAYS));
 
         return Result.ok(Plan.of(LampEvent.Phase.LAMP, steps));
