@@ -86,9 +86,12 @@ record SessionMachine(Settings settings) {
             case SessionEvent.PrimaryConnected ignored
                     when state instanceof SessionState.AwaitingTerminal awaiting ->
                     Transition.to(new SessionState.Running(now, awaiting.ready(), true, 0),
-                            new SessionAction.Announce(new LampEvent.Ok("session",
-                                    "your shell is connected — closing its window leaves the "
-                                  + "session running")));
+                            new SessionAction.Announce(
+                                new LampEvent.Ok("session",
+                                    "your sandbox shell is connected — closing its window leaves the session running"
+                                )
+                            )
+                    );
 
             // The user closed the shell window. That is not the user saying they are finished: they
             // may only want a fresh shell, or none for a while. The session ends when they say so.
