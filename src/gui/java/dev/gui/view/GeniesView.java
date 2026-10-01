@@ -713,7 +713,7 @@ public final class GeniesView extends JPanel {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Give " + genie.get().name() + " a file");
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION)
-            actions.give(genie.get().id(), chooser.getSelectedFile().toPath());
+            actions.giveFile(genie.get().id(), chooser.getSelectedFile().toPath());
     }
 
     private void saveHandout(String file) {
@@ -722,7 +722,7 @@ public final class GeniesView extends JPanel {
         chooser.setSelectedFile(new File(chooser.getCurrentDirectory(), file));
         if (chooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
             Path target = chooser.getSelectedFile().toPath();
-            actions.save(genie.get().id(), file, target);
+            actions.saveOutboxFile(genie.get().id(), file, target);
         }
     }
 
