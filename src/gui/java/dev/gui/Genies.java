@@ -6,6 +6,10 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -14,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
-
+import javax.swing.Timer;
 
 import dev.gui.genie.GenieRunner;
 import dev.gui.genie.LampLighter;
@@ -37,6 +41,9 @@ import sprouts.Val;
 import sprouts.Var;
 import sprouts.Viewable;
 
+import swingtree.UI;
+import swingtree.dialogs.ConfirmAnswer;
+
 /// Genies: a chat app whose every conversation partner is an AI agent with a sandboxed Linux
 /// desktop of its own, a "genie" living in an oillamp lamp.
 ///
@@ -47,6 +54,9 @@ import sprouts.Viewable;
 /// asks for everything else through [Actions]; each genie's [GenieRunner] reports what happens
 /// as changes to its genie, which are applied here, on Swing's event thread, one at a time.
 public final class Genies implements Actions {
+
+    /// How long closing or deleting waits for a genie's lamp to go out or be let go.
+    private static final long SECONDS_TO_LET_GO_OF_A_LAMP = 180;
 
     private final Var<GeniesState> state;
     private final Shelf shelf;
@@ -112,7 +122,7 @@ public final class Genies implements Actions {
             app.rejoin(genie.id());
         });
         // The timeline, and anything else said relative to now, moves on with the clock.
-        new javax.swing.Timer(30_000, tick -> app.state.update(it -> it.withNow(java.time.Instant.now()))).start();
+        new Timer(30_000, tick -> app.state.update(it -> it.withNow(Instant.now()))).start();
         frame.pack();
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
@@ -121,13 +131,14 @@ public final class Genies implements Actions {
     /// What the user is asked on closing Genies with `awake`, the names of the genies awake. On two
     /// lines, since a dialog does not wrap its text.
     static String awakeQuestion(List<String> awake) {
-        String names = awake.size() == 1 ? awake.getFirst()
+        boolean one = awake.size() == 1;
+        String names = one ? awake.getFirst()
                 : String.join(", ", awake.subList(0, awake.size() - 1)) + " and " + awake.getLast();
-        return names + (awake.size() == 1 ? " is" : " are") + " awake. Put "
-                + (awake.size() == 1 ? "it" : "them") + " to sleep, or keep "
-                + (awake.size() == 1 ? "it" : "them") + " running in the background?\nKept running, "
-                + (awake.size() == 1 ? "it finishes what it is doing and keeps to its" : "they finish what they are doing and keep to their")
-                + " schedule, and Genies finds " + (awake.size() == 1 ? "it" : "them") + " again when it opens.";
+        String them = one ? "it" : "them";
+        return names + (one ? " is" : " are") + " awake. Put " + them + " to sleep, or keep " + them
+                + " running in the background?\nKept running, "
+                + (one ? "it finishes what it is doing and keeps to its" : "they finish what they are doing and keep to their")
+                + " schedule, and Genies finds " + them + " again when it opens.";
     }
 
     // ─── actions ───────────────────────────────────────────────────────────────────────────
@@ -149,10 +160,8 @@ public final class Genies implements Actions {
                                              .withPage(GeniesState.Page.SETTINGS));
             return;
         }
-        // Where the genie was, if the user moved since it last woke; otherwise its last conversation.
         now.find(id).ifPresent(genie -> runner(id).wake(genie.name(), now.settings(), key.get(),
-                genie.conversations().current().map(Conversation::file).orElse(""),
-                genie.conversations().current().isPresent() ? genie.conversations().here().leaf() : ""));
+                conversationShown(genie), leafShown(genie)));
     }
 
     @Override public void goTo(UUID id, String conversation, String leaf) {
@@ -223,7 +232,7 @@ public final class Genies implements Actions {
         Path lamp = shelf.lampOf(id);
         Thread.ofVirtual().name("delete genie").start(() -> {
             try {
-                if (runner != null) runner.sleepAndWait(180);
+                if (runner != null) runner.sleepAndWait(SECONDS_TO_LET_GO_OF_A_LAMP);
                 if (!Files.exists(lamp)) return;
                 StringBuilder why = new StringBuilder();
                 ExitStatus removed = Lamp.at(lamp).onEvent(event -> {
@@ -245,8 +254,8 @@ public final class Genies implements Actions {
 
     @Override public void saveJob(UUID id) {
         state.get().find(id).ifPresent(genie -> genie.schedule().draft().ifPresent(draft -> {
-            java.time.ZoneId zone = genie.schedule().zone();
-            runner(id).schedule().save(draft, java.time.LocalDateTime.now(zone), zone);
+            ZoneId zone = genie.schedule().zone();
+            runner(id).schedule().save(draft, LocalDateTime.now(zone), zone);
         }));
     }
 
@@ -324,21 +333,29 @@ public final class Genies implements Actions {
 
     /// Joins the genie's lamp if it was left running, and shows it where it was.
     private void rejoin(UUID id) {
-        state.get().find(id).ifPresent(genie -> runner(id).rejoin(
-                genie.conversations().current().map(Conversation::file).orElse(""),
-                genie.conversations().current().isPresent() ? genie.conversations().here().leaf() : ""));
+        state.get().find(id).ifPresent(genie -> runner(id).rejoin(conversationShown(genie), leafShown(genie)));
+    }
+
+    /// The file of the conversation the genie was last in, or empty for its most recent one.
+    private static String conversationShown(Genie genie) {
+        return genie.conversations().current().map(Conversation::file).orElse("");
+    }
+
+    /// The entry the genie's chat was last at, or empty for where its conversation stands.
+    private static String leafShown(Genie genie) {
+        return genie.conversations().current().isPresent() ? genie.conversations().here().leaf() : "";
     }
 
     /// Asks the user what becomes of the genies that are awake, then puts them to sleep or leaves
     /// them running, before the window goes. Without an answer, nothing closes. (If Genies is
     /// killed instead, the lamps end by themselves: each notices its application is gone.)
     private void quit(JFrame frame) {
-        List<String> awake = new java.util.ArrayList<>();
+        List<String> awake = new ArrayList<>();
         for (Genie genie : state.get().genies())
             if (genie.phase().isAwake() || genie.phase() == Genie.Phase.WAKING) awake.add(genie.name());
         boolean leaveRunning = false;
         if (!awake.isEmpty()) {
-            swingtree.dialogs.ConfirmAnswer answer = swingtree.UI.confirmation(awakeQuestion(awake))
+            ConfirmAnswer answer = UI.confirmation(awakeQuestion(awake))
                     .titled("Genies are awake").yesOption("Put to sleep").noOption("Keep running")
                     .cancelOption("Cancel").parent(frame).show();
             if (answer.isCancelOrClose()) return;
@@ -351,8 +368,8 @@ public final class Genies implements Actions {
         Thread.ofVirtual().name("quit").start(() -> {
             for (GenieRunner runner : runners.values()) {
                 try {
-                    if (keep) runner.leaveRunningAndWait(180);
-                    else runner.sleepAndWait(180);
+                    if (keep) runner.leaveRunningAndWait(SECONDS_TO_LET_GO_OF_A_LAMP);
+                    else runner.sleepAndWait(SECONDS_TO_LET_GO_OF_A_LAMP);
                 } catch (InterruptedException interrupted) {
                     Thread.currentThread().interrupt();
                 }
