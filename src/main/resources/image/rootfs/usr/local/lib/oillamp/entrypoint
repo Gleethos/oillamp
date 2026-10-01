@@ -244,6 +244,16 @@ else
     log "compositor up (${renderer})"
 fi
 
+# ── floating windows stay on the desktop when it changes size ────────────────────────────────
+# Not critical: if it stops, the desktop works on, and only a shrinking desktop can leave a
+# floating window out of reach. sway names its control socket after its user id and process id.
+HELPER_PIDS=()
+if [ "$OILLAMP_WINDOWS" = floating ]; then
+    drop lamp 077 windows env SWAYSOCK="/run/lamp/sway-ipc.$(id -u lamp).${SWAY_PID}.sock" \
+         /usr/local/lib/oillamp/keep-windows-on-screen
+    HELPER_PIDS+=("$LAST_PID")
+fi
+
 # ── the VNC server the human watches through ─────────────────────────────────────────────────
 # A viewer may ask wayvnc to give the desktop another size, and wayvnc then changes the size of
 # HEADLESS-1. While the desktop is recorded, it refuses: wf-recorder does not survive a change of
@@ -330,7 +340,7 @@ stop_all() {
         kill -INT "$REC_PID" 2>/dev/null || true
         timeout 10 tail --pid="$REC_PID" -f /dev/null || log "recorder did not finish in time"
     fi
-    kill -TERM "${CRITICAL[@]}" "${AGENT_PIDS[@]}" 2>/dev/null || true
+    kill -TERM "${CRITICAL[@]}" "${HELPER_PIDS[@]}" "${AGENT_PIDS[@]}" 2>/dev/null || true
     sleep 2
     exit "$1"
 }

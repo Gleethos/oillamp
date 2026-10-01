@@ -99,7 +99,8 @@ RUN groupadd -g 1000 agent && useradd -u 1000 -g 1000 -d /home/agent -M -s /bin/
  && chown lamp:lamp /var/lib/lamp
 
 COPY rootfs/ /
-RUN chmod 0755 /usr/local/lib/oillamp/entrypoint /usr/local/lib/oillamp/lamp-pointer /usr/local/bin/lamp
+RUN chmod 0755 /usr/local/lib/oillamp/entrypoint /usr/local/lib/oillamp/lamp-pointer \
+              /usr/local/lib/oillamp/keep-windows-on-screen /usr/local/bin/lamp
 
 # Nothing in this image should be setuid: the sandbox's guarantees come from the user namespace,
 # and a setuid binary inside it is a way for the agent to become `lamp`. Host keys are removed

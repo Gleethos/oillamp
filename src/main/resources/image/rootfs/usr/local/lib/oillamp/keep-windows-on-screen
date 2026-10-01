@@ -1,0 +1,125 @@
+#!/usr/bin/env python3
+"""Keeps floating windows on the desktop when the desktop changes size.
+
+A viewer can ask the desktop to take another size, such as the size of the panel it is shown in.
+sway then lays out tiled and fullscreen windows again, but leaves floating windows where they
+were: a window at 1200,600 on a desktop that shrank to 800x500 is off the screen, where neither
+the human nor the agent can reach its title bar.
+
+So this listens for sway's output events. When the desktop changed size, every floating window
+that no longer fits is made smaller and moved until it does, and remembered as it was. When the
+desktop grows again, a remembered window goes back to where it was, as far as the desktop allows.
+A window that someone moved or resized in the meantime is forgotten, and left where they put it.
+
+It runs as the infra user, which owns sway's control socket, and only in floating mode. Every
+command it sends is made of numbers it read from sway itself: a window's id and its position. No
+text the agent controls, such as a window title, is ever part of a command.
+
+Usage: keep-windows-on-screen   (started by the entrypoint; runs until sway ends)
+"""
+import json
+import os
+import select
+import subprocess
+import sys
+
+# A window whose box differs from the one it was given by at most this many pixels still has that
+# box: a terminal, for example, makes itself a whole number of character cells.
+SLACK = 24
+# Seconds without an event after which a change of the desktop's size is taken to be complete.
+QUIET = 0.3
+
+
+def swaymsg(*args):
+    return subprocess.run(["swaymsg", *args], capture_output=True, text=True, check=True).stdout
+
+
+def outer_box(window):
+    """A floating window's whole box, its title bar included: x, y, width, height."""
+    rect, title = window["rect"], window["deco_rect"]
+    return (rect["x"], rect["y"] - title["height"], rect["width"], rect["height"] + title["height"])
+
+
+def floating_windows(tree):
+    """Each output that is a screen, with the floating windows on its workspaces."""
+    for output in tree.get("nodes", []):
+        if output.get("type") != "output" or output.get("name", "").startswith("__"):
+            continue
+        windows = []
+        for workspace in output.get("nodes", []):
+            windows += [w for w in workspace.get("floating_nodes", []) if not w.get("fullscreen_mode")]
+        yield output["rect"], windows
+
+
+def fitted(box, screen):
+    """`box` made small enough for `screen`, and moved as little as possible to lie within it."""
+    x, y, width, height = box
+    width, height = min(width, screen["width"]), min(height, screen["height"])
+    x = max(screen["x"], min(x, screen["x"] + screen["width"] - width))
+    y = max(screen["y"], min(y, screen["y"] + screen["height"] - height))
+    return (x, y, width, height)
+
+
+def near(a, b):
+    return all(abs(p - q) <= SLACK for p, q in zip(a, b))
+
+
+def arrange(tree, remembered):
+    """The commands that bring every floating window onto its screen, and what to remember.
+
+    `remembered` maps a window's id to (the box it had before it was first moved, the box it was
+    moved to). Both are returned anew; nothing is changed in place.
+    """
+    commands, still = [], {}
+    for screen, windows in floating_windows(tree):
+        for window in windows:
+            now = outer_box(window)
+            original, placed = remembered.get(window["id"], (now, now))
+            if not near(now, placed):
+                original = now                      # moved by someone else since: theirs now
+            wanted = fitted(original, screen)
+            if wanted != original:
+                still[window["id"]] = (original, wanted)
+            if near(now, wanted):
+                continue
+            x, y, width, height = wanted
+            if (width, height) != now[2:]:
+                commands.append(f"[con_id={window['id']}] resize set width {width} px height {height} px")
+            commands.append(f"[con_id={window['id']}] move absolute position {x} {y}")
+    return commands, still
+
+
+def changes(stream):
+    """Yields once per change of the desktop: after an event, once no other came for QUIET seconds.
+
+    sway reports one change of size as two events, a viewer dragging its panel as many, and a
+    window takes its new size a moment after it was asked to. Arranging once things are quiet
+    sees each window as it really is.
+    """
+    while True:
+        select.select([stream], [], [])
+        if not os.read(stream.fileno(), 65536):
+            return
+        while select.select([stream], [], [], QUIET)[0]:
+            if not os.read(stream.fileno(), 65536):
+                return
+        yield
+
+
+def main():
+    remembered = {}
+    events = subprocess.Popen(["swaymsg", "-t", "subscribe", "-m", '["output"]'],
+                              stdout=subprocess.PIPE, bufsize=0)
+    for _ in changes(events.stdout):
+        try:
+            commands, remembered = arrange(json.loads(swaymsg("-t", "get_tree")), remembered)
+            if commands:
+                swaymsg("; ".join(commands))
+        except (subprocess.CalledProcessError, ValueError, KeyError) as failed:
+            # One bad moment is not a reason to stop: the next change of size is handled anew.
+            print(f"could not arrange the windows: {failed}", file=sys.stderr, flush=True)
+    sys.exit(events.wait())
+
+
+if __name__ == "__main__":
+    main()
