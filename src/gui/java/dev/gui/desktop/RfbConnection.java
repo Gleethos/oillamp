@@ -24,7 +24,8 @@ import java.util.Optional;
 /// compression, and it keeps this class small enough to read.
 ///
 /// One thread reads what the server sends into [#screen()] and tells the [Listener]; any thread
-/// may send the pointer and the keyboard. The protocol is described in RFC 6143.
+/// may send the pointer and the keyboard, and ask for another size. The protocol is described in
+/// RFC 6143; asking for a size is its ExtendedDesktopSize extension, which wayvnc speaks.
 public final class RfbConnection implements AutoCloseable {
 
     /// What a connection reports. Called on the connection's own reading thread.
@@ -37,11 +38,22 @@ public final class RfbConnection implements AutoCloseable {
 
         /// The connection ended, with the reason if it was not closed on purpose.
         void ended(Optional<String> reason);
+
+        /// The desktop said no to the size [RfbConnection#askForSize] asked for, and keeps the
+        /// size it has. A lamp's desktop does this while it is recorded.
+        default void keptItsSize() {}
     }
 
     static final String VERSION = "RFB 003.008\n";
     static final int SECURITY_NONE = 1;
-    static final int ENCODING_RAW = 0, ENCODING_COPY_RECT = 1, ENCODING_DESKTOP_SIZE = -223;
+    static final int ENCODING_RAW = 0, ENCODING_COPY_RECT = 1, ENCODING_DESKTOP_SIZE = -223,
+                     ENCODING_EXTENDED_DESKTOP_SIZE = -308;
+    /// Why the desktop sends a new size, in an extended-desktop-size rectangle's x: this viewer
+    /// asked for it. Its y then says how that went.
+    static final int ASKED_BY_THIS_VIEWER = 1;
+    /// How a request for another size went: done, or passed on to the compositor, which then
+    /// changes the size and says so like any change. Any other answer is a refusal.
+    static final int SIZE_DONE = 0, SIZE_PASSED_ON = 4;
 
     private final SocketChannel channel;
     private final DataInputStream in;
@@ -49,6 +61,8 @@ public final class RfbConnection implements AutoCloseable {
     private final Listener listener;
     private final String name;
     private volatile BufferedImage screen;
+    /// The desktop's one screen, as the server numbers it; a request for another size names it.
+    private volatile int screenId;
     private volatile boolean closing;
 
     private RfbConnection(SocketChannel channel, Listener listener) throws IOException {
@@ -108,6 +122,15 @@ public final class RfbConnection implements AutoCloseable {
                          (byte) (keysym >> 24), (byte) (keysym >> 16), (byte) (keysym >> 8), (byte) keysym});
     }
 
+    /// Asks the desktop to take this size, in its own pixels. It answers with
+    /// [Listener#resized] once it has it, or with [Listener#keptItsSize].
+    public void askForSize(int width, int height) {
+        int w = Math.clamp(width, 1, 0xffff), h = Math.clamp(height, 1, 0xffff), id = screenId;
+        send(new byte[] {(byte) 251, 0, (byte) (w >> 8), (byte) w, (byte) (h >> 8), (byte) h, 1, 0,
+                         (byte) (id >> 24), (byte) (id >> 16), (byte) (id >> 8), (byte) id, 0, 0, 0, 0,
+                         (byte) (w >> 8), (byte) w, (byte) (h >> 8), (byte) h, 0, 0, 0, 0});
+    }
+
     @Override public void close() {
         closing = true;
         try {
@@ -145,10 +168,11 @@ public final class RfbConnection implements AutoCloseable {
         synchronized (out) {
             out.write(new byte[] {0, 0, 0, 0,
                                   32, 24, 0, 1, 0, (byte) 255, 0, (byte) 255, 0, (byte) 255, 16, 8, 0, 0, 0, 0});
-            out.write(new byte[] {2, 0, 0, 3});
+            out.write(new byte[] {2, 0, 0, 4});
             out.writeInt(ENCODING_RAW);
             out.writeInt(ENCODING_COPY_RECT);
             out.writeInt(ENCODING_DESKTOP_SIZE);
+            out.writeInt(ENCODING_EXTENDED_DESKTOP_SIZE);
             requestUpdate(false);
         }
     }
@@ -202,6 +226,26 @@ public final class RfbConnection implements AutoCloseable {
                 case ENCODING_DESKTOP_SIZE -> {
                     screen = new BufferedImage(Math.max(1, width), Math.max(1, height), BufferedImage.TYPE_INT_RGB);
                     listener.resized(width, height);
+                    continue;
+                }
+                case ENCODING_EXTENDED_DESKTOP_SIZE -> {
+                    int screens = in.readUnsignedByte();
+                    in.skipNBytes(3);
+                    for (int s = 0; s < screens; s++) {
+                        int id = in.readInt();
+                        in.skipNBytes(12);                   // where it is, its size, its flags
+                        if (s == 0) screenId = id;
+                    }
+                    if (x == ASKED_BY_THIS_VIEWER && y != SIZE_DONE) {
+                        if (y != SIZE_PASSED_ON) listener.keptItsSize();
+                        continue;
+                    }
+                    // Also sent once, unasked, to say the server knows this extension; then the
+                    // size is the one the picture already has.
+                    if (width != screen.getWidth() || height != screen.getHeight()) {
+                        screen = new BufferedImage(Math.max(1, width), Math.max(1, height), BufferedImage.TYPE_INT_RGB);
+                        listener.resized(width, height);
+                    }
                     continue;
                 }
                 default -> throw new IOException("the desktop sent pixels in an encoding this viewer did not ask for (" + encoding + ")");
