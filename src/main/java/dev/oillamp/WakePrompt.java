@@ -72,12 +72,12 @@ final class WakePrompt {
     static String render(Reason reason, String task, Optional<String> notes, int notesMost,
                          Tuple<Described> recent, Instant now, ZoneId zone) {
         StringBuilder out = new StringBuilder();
-        out.append("[oillamp] It is ").append(Moments.show(now, zone)).append(" (").append(zone.getId()).append("). ");
+        out.append("[oillamp] It is ").append(TimeNotationUtil.show(now, zone)).append(" (").append(zone.getId()).append("). ");
         switch (reason) {
             case Reason.ByJob(ScheduledJob job) -> {
                 out.append("You were woken by ").append(job.id()).append(", a job ")
                    .append(job.author() == JobAuthor.AGENT ? "you added yourself" : "the user added")
-                   .append(" on ").append(Moments.show(job.created(), zone)).append(", which runs ");
+                   .append(" on ").append(TimeNotationUtil.show(job.created(), zone)).append(", which runs ");
                 out.append(job.when() instanceof ScheduledJob.When.Once
                         ? "only this once.\n" : "on the schedule \"" + job.describeWhen(zone) + "\".\n");
                 if (job.author() == JobAuthor.AGENT)
@@ -109,7 +109,7 @@ final class WakePrompt {
             out.append("Newest first. The run_history tool shows more about any run.\n");
             for (Described described : recent) {
                 Past past = described.past();
-                out.append("\n- ").append(past.run()).append(", ").append(Moments.show(past.at(), zone)).append(", ")
+                out.append("\n- ").append(past.run()).append(", ").append(TimeNotationUtil.show(past.at(), zone)).append(", ")
                    .append(past.job().map(job -> "for " + job).orElse("asked by the user")).append(": ")
                    .append(past.outcome()).append(". ");
                 if (described.changes().isEmpty()) {

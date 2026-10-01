@@ -15,9 +15,9 @@ import java.util.regex.Pattern;
 
 /// Reads and writes moments the way a person, or an agent, writes them: `2026-10-01 09:00` on
 /// this machine's clock, `2026-10-01T07:00Z` with a zone, or `in 2h` from now.
-final class Moments {
+final class TimeNotationUtil {
 
-    private Moments() {}
+    private TimeNotationUtil() {}
 
     private static final Pattern RELATIVE =
             Pattern.compile("(?:in\\s+|\\+)?(\\d{1,6})\\s*(m|min|mins|minutes?|h|hours?|d|days?|w|weeks?)");

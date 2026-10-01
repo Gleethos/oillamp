@@ -400,7 +400,7 @@ final class Runs {
         StringBuilder out = new StringBuilder();
         out.append(!config.enabled() ? "The schedule is switched off by the user: no job runs.\n"
                  : schedule.paused() ? "The user has paused the schedule: no job runs until they resume it.\n" : "");
-        out.append("Times are on the clock of ").append(zone.getId()).append("; it is now ").append(Moments.show(now, zone))
+        out.append("Times are on the clock of ").append(zone.getId()).append("; it is now ").append(TimeNotationUtil.show(now, zone))
            .append(". Your jobs: ").append(schedule.byAgent().size()).append(" of at most ").append(config.maxAgentJobs())
            .append(".\n");
         if (schedule.jobs().isEmpty()) return out.append("There are no jobs.").toString();
@@ -413,8 +413,8 @@ final class Runs {
     private static String describe(ScheduledJob job, ZoneId zone) {
         return "runs " + (job.when() instanceof ScheduledJob.When.Once ? "" : "on \"") + job.describeWhen(zone)
                 + (job.when() instanceof ScheduledJob.When.Once ? "" : "\"")
-                + (!job.enabled() ? ", switched off by the user" : job.next(zone).map(next -> ", next at " + Moments.show(next, zone)).orElse(""))
-                + job.expires().map(end -> ", until " + Moments.show(end, zone)).orElse("") + ".";
+                + (!job.enabled() ? ", switched off by the user" : job.next(zone).map(next -> ", next at " + TimeNotationUtil.show(next, zone)).orElse(""))
+                + job.expires().map(end -> ", until " + TimeNotationUtil.show(end, zone)).orElse("") + ".";
     }
 
     /// One run in full, or a list of the recent ones when `run` is empty.
@@ -429,7 +429,7 @@ final class Runs {
             if (runs.isEmpty()) return "There have been no runs yet.";
             StringBuilder out = new StringBuilder("The last runs, newest first:\n");
             for (WakePrompt.Past past : runs.stream().limit(20).toList())
-                out.append("\n- ").append(past.run()).append(", ").append(Moments.show(past.at(), zone)).append(", ")
+                out.append("\n- ").append(past.run()).append(", ").append(TimeNotationUtil.show(past.at(), zone)).append(", ")
                    .append(past.job().orElse("asked by the user")).append(": ").append(past.outcome());
             return out.append("\n\nGive a run's name for what it changed and what you said at its end.").toString();
         }
@@ -438,7 +438,7 @@ final class Runs {
         WakePrompt.Past past = found.get();
         WakePrompt.Described described = describe(history, all, past, 100);
         StringBuilder out = new StringBuilder();
-        out.append(past.run()).append(", ").append(Moments.show(past.at(), zone)).append(", ")
+        out.append(past.run()).append(", ").append(TimeNotationUtil.show(past.at(), zone)).append(", ")
            .append(past.job().map(job -> "for " + job).orElse("asked by the user")).append(": ").append(past.outcome()).append(".\n");
         out.append(described.changes().isEmpty() ? "\nIt changed no files.\n" : "\nIt changed:\n");
         for (History.Change change : described.changes())

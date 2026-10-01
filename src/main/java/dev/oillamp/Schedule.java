@@ -67,11 +67,11 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
         Instant longest = now.plus(limits.maxAgentLife());
         Optional<Instant> expires = Optional.empty();
         if (request.expires().isPresent()) {
-            Optional<Instant> read = Moments.parse(request.expires().get(), now, zone);
+            Optional<Instant> read = TimeNotationUtil.parse(request.expires().get(), now, zone);
             if (read.isEmpty())
                 return refused("\"" + request.expires().get() + "\" is not a time oillamp can read as the end of the job; "
-                             + "give " + Moments.FORMS);
-            if (!read.get().isAfter(now)) return refused("the job would end at " + Moments.show(read.get(), zone)
+                             + "give " + TimeNotationUtil.FORMS);
+            if (!read.get().isAfter(now)) return refused("the job would end at " + TimeNotationUtil.show(read.get(), zone)
                                                      + ", which has already passed");
             expires = read;
         }
@@ -80,14 +80,14 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
 
         ScheduledJob.When when;
         if (request.at().isPresent()) {
-            Optional<Instant> at = Moments.parse(request.at().get(), now, zone);
+            Optional<Instant> at = TimeNotationUtil.parse(request.at().get(), now, zone);
             if (at.isEmpty())
-                return refused("\"" + request.at().get() + "\" is not a time oillamp can read; give " + Moments.FORMS);
+                return refused("\"" + request.at().get() + "\" is not a time oillamp can read; give " + TimeNotationUtil.FORMS);
             if (!at.get().isAfter(now))
-                return refused(Moments.show(at.get(), zone) + " has already passed; a job runs in the future");
+                return refused(TimeNotationUtil.show(at.get(), zone) + " has already passed; a job runs in the future");
             if (agent && at.get().isAfter(longest))
                 return refused("the agent may schedule at most " + limits.maxAgentDays() + " days ahead, until "
-                             + Moments.show(longest, zone));
+                             + TimeNotationUtil.show(longest, zone));
             when = new ScheduledJob.When.Once(at.get());
         } else {
             Result<CronExpression> read = CronExpression.parse(request.cron().get());
@@ -105,8 +105,8 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
         ScheduledJob job = new ScheduledJob("job-" + nextJob, when, prompt, author, now, expires, true, Optional.empty());
         Optional<Instant> first = job.next(zone);
         if (expires.isPresent() && first.isPresent() && !first.get().isBefore(expires.get()))
-            return refused("the job would end at " + Moments.show(expires.get(), zone) + ", before it first runs at "
-                         + Moments.show(first.get(), zone));
+            return refused("the job would end at " + TimeNotationUtil.show(expires.get(), zone) + ", before it first runs at "
+                         + TimeNotationUtil.show(first.get(), zone));
         return Result.ok(new Changed(new Schedule(paused, nextJob + 1, nextRun, jobs.add(job)), job));
     }
 

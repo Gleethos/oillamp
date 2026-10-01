@@ -74,7 +74,7 @@ record ScheduledJob(String id, When when, String prompt, JobAuthor author, Insta
     /// How it is written: the cron expression, or `once at` and the time on this machine's clock.
     String describeWhen(ZoneId zone) {
         return switch (when) {
-            case When.Once once -> "once at " + Moments.show(once.at(), zone);
+            case When.Once once -> "once at " + TimeNotationUtil.show(once.at(), zone);
             case When.Repeating repeating -> repeating.cron().text();
         };
     }
