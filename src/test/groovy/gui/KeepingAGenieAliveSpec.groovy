@@ -161,7 +161,7 @@ class KeepingAGenieAliveSpec extends Specification {
             var firstAnswer = conversation.entries().find { it.text() == 'You said: hello' }
 
         when:
-            runner.goTo(conversation.file(), firstAnswer.id())
+            runner.goToConversation(conversation.file(), firstAnswer.id())
             waitUntil { said() == ['hello', 'You said: hello'] }
             say('something else')
 
@@ -207,8 +207,8 @@ class KeepingAGenieAliveSpec extends Specification {
             var other = Lamp.conversations(lamp).find { it.title() == 'from a terminal' }
 
         when:
-            runner.lookAtConversations()
-            runner.goTo(other.file(), '')
+            runner.reloadConversations()
+            runner.goToConversation(other.file(), '')
 
         then:
             waitUntil { said() == ['from a terminal', 'You said: from a terminal'] }
@@ -234,7 +234,7 @@ class KeepingAGenieAliveSpec extends Specification {
         when: 'the genie takes its time over the next question, and the user goes to the other'
             say('take your time')
             waitUntil { prompts.contains('take your time') }
-            runner.goTo(other.file(), '')
+            runner.goToConversation(other.file(), '')
 
         then: 'the chat shows the other, the genie still works, and nothing can be sent from here'
             waitUntil { said() == ['from a terminal', 'You said: from a terminal'] }
@@ -242,7 +242,7 @@ class KeepingAGenieAliveSpec extends Specification {
             !genie.withDraft('one more thing').canSend()
 
         when: 'the user goes back'
-            runner.goTo(mine.file(), '')
+            runner.goToConversation(mine.file(), '')
 
         then: 'the question is there, and the answer arrives in it'
             waitUntil { said() == ['hello', 'You said: hello', 'take your time'] }
@@ -272,7 +272,7 @@ class KeepingAGenieAliveSpec extends Specification {
             var other = Lamp.conversations(lamp).find { it.title() == 'from a terminal' }
             say('take your time')
             waitUntil { prompts.contains('take your time') }
-            runner.goTo(other.file(), '')
+            runner.goToConversation(other.file(), '')
             waitUntil { said() == ['from a terminal', 'You said: from a terminal'] }
 
         when:
@@ -284,7 +284,7 @@ class KeepingAGenieAliveSpec extends Specification {
             genie.conversations().here().file() == other.file()
 
         when: 'the user goes back'
-            runner.goTo(mine.file(), '')
+            runner.goToConversation(mine.file(), '')
 
         then: 'the answer is there'
             waitUntil { said() == ['hello', 'You said: hello', 'take your time', 'You said: take your time'] }
@@ -308,7 +308,7 @@ class KeepingAGenieAliveSpec extends Specification {
         when: 'the user asks in the new conversation, and goes back to the first one meanwhile'
             say('take your time')
             waitUntil { prompts.contains('take your time') }
-            runner.goTo(first.file(), '')
+            runner.goToConversation(first.file(), '')
             waitUntil { said() == ['hello', 'You said: hello'] }
 
         then: 'the new one has a row of its own at the top'
@@ -318,7 +318,7 @@ class KeepingAGenieAliveSpec extends Specification {
             genie.conversations().fileOf(Conversations.ASIDE) == Optional.of('')
 
         when: 'the user goes there'
-            runner.goTo(genie.conversations().fileOf(Conversations.ASIDE).orElseThrow(), '')
+            runner.goToConversation(genie.conversations().fileOf(Conversations.ASIDE).orElseThrow(), '')
 
         then:
             waitUntil { said() == ['take your time'] }
@@ -342,7 +342,7 @@ class KeepingAGenieAliveSpec extends Specification {
         when:
             say('take your time')
             waitUntil { prompts == ['take your time'] }
-            runner.stop()
+            runner.stopAnswering()
 
         then:
             waitUntil { genie.phase() == Genie.Phase.READY }
@@ -360,7 +360,7 @@ class KeepingAGenieAliveSpec extends Specification {
             var conversation = Lamp.conversations(lamp).first()
 
         when:
-            runner.forget(conversation.file())
+            runner.forgetConversation(conversation.file())
 
         then:
             waitUntil { genie.conversations().all().isEmpty() && genie.transcript().isEmpty() }
@@ -399,8 +399,8 @@ class KeepingAGenieAliveSpec extends Specification {
             var gift = Files.writeString(tmp.resolve('recipe.md'), '# soup')
 
         when:
-            runner.save('poem.txt', tmp.resolve('saved-poem.txt'))
-            runner.give(gift)
+            runner.saveOutboxFile('poem.txt', tmp.resolve('saved-poem.txt'))
+            runner.giveFile(gift)
 
         then:
             waitUntil { Files.exists(tmp.resolve('saved-poem.txt')) && Files.exists(home().resolve('inbox/recipe.md')) }
@@ -550,7 +550,7 @@ class KeepingAGenieAliveSpec extends Specification {
 
     private void say(String text) {
         synchronized (this) { genie = genie.withDraft(text).send() }
-        runner.say(text)
+        runner.sendMessage(text)
     }
 
     private Path home() { Lamp.agentHome(lamp).orElseThrow() }
