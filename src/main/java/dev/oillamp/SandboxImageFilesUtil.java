@@ -21,12 +21,12 @@ import java.util.SortedMap;
 ///
 /// The mode matters: an entrypoint extracted without its executable bit makes the container die
 /// at once with "permission denied".
-final class ImageResources {
+final class SandboxImageFilesUtil {
 
     private static final String ROOT = "/image/";
     private static final String MANIFEST = ROOT + "MANIFEST";
 
-    private ImageResources() {}
+    private SandboxImageFilesUtil() {}
 
     /// One file of the image: where it goes, and whether it must be executable.
     record Entry(String path, PosixMode mode) {}
@@ -53,7 +53,7 @@ final class ImageResources {
 
     /// The bytes of one image file, by its manifest path.
     public static byte[] read(String path) {
-        try (InputStream in = ImageResources.class.getResourceAsStream(ROOT + path)) {
+        try (InputStream in = SandboxImageFilesUtil.class.getResourceAsStream(ROOT + path)) {
             if (in == null)
                 throw new IllegalStateException("the image manifest lists '" + path
                         + "', but this build of oillamp does not contain it");
@@ -90,7 +90,7 @@ final class ImageResources {
     }
 
     private static Optional<String> readText(String resource) {
-        try (InputStream in = ImageResources.class.getResourceAsStream(resource)) {
+        try (InputStream in = SandboxImageFilesUtil.class.getResourceAsStream(resource)) {
             if (in == null) return Optional.empty();
             return Optional.of(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException e) {

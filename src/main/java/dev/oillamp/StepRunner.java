@@ -137,11 +137,11 @@ final class StepRunner {
     /// with the modes from the manifest. Without its executable bit the entrypoint could not start.
     private Result<Step> extractImageContext(Step.ExtractImageContext step) throws IOException {
         FilesystemUtil.createDirectories(step.targetDir(), PosixMode.PUBLIC_DIR);
-        for (ImageResources.Entry entry : ImageResources.entries()) {
+        for (SandboxImageFilesUtil.Entry entry : SandboxImageFilesUtil.entries()) {
             Path target = step.targetDir().resolve(entry.path());
             Path parent = target.getParent();
             if (parent != null) FilesystemUtil.createDirectories(parent, PosixMode.PUBLIC_DIR);
-            FilesystemUtil.writeBytes(target, ImageResources.read(entry.path()), entry.mode());
+            FilesystemUtil.writeBytes(target, SandboxImageFilesUtil.read(entry.path()), entry.mode());
         }
         return Result.ok(step);
     }

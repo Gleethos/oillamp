@@ -33,7 +33,7 @@ final class SandboxPhase {
         LampLayout layout = prepared.layout();
         ContainerName container = ContainerName.of(layout.agentId());
         SortedMap<String, String> buildArguments = buildArgumentsFor(prepared.config());
-        ImageTag image = ImageTag.ofHash(ImageResources.hashOf(buildArguments));
+        ImageTag image = ImageTag.ofHash(SandboxImageFilesUtil.hashOf(buildArguments));
 
         Tuple<Step> steps = Tuple.of(Step.class);
 

@@ -161,7 +161,7 @@ known lifetime:
 | `<lamp>/.oillamp/session.json` | `Supervisor`, after its sockets are bound | `Commands.at` on a busy lamp | deleted at shutdown; a killed supervisor leaves it |
 | `<lamp>/.oillamp/keys/`, `ssh_config`, `known_hosts` | `LampPlanUtil` (keys once, the rest every start) | the shell window, `oillamp shell` | until `oillamp remove` |
 | `<lamp>/.oillamp/session/` | `LampPlanUtil.planSession`, every start | the entrypoint, sshd, every shell | rewritten each session |
-| `<lamp>/.oillamp/image/context/` | `ImageResources`, before a build | `podman build` | overwritten at the next build |
+| `<lamp>/.oillamp/image/context/` | `SandboxImageFilesUtil`, before a build | `podman build` | overwritten at the next build |
 | `<lamp>/.oillamp/sockets/*/` | the proxy (host); wayvnc and the ssh listener (container) | relays, viewer, socat | files outlive their servers; deleted before the next session |
 | `<lamp>/.oillamp/recordings/` | wf-recorder | you, the agent (read only) | until retention deletes them |
 | `<lamp>/.oillamp/logs/network-<session>.jsonl` | the egress proxy | you | until you delete them |
@@ -544,10 +544,10 @@ Everything that goes into the image is under `src/main/resources/image/`:
 | `rootfs/usr/share/oillamp/wallpaper.svg`, `.png` | image | The desktop background. After editing the SVG, render it with `inkscape wallpaper.svg --export-type=png --export-filename=wallpaper.png`. |
 
 At build time Gradle writes a `MANIFEST` listing every file with its mode (`755` or `644`), so that
-`ImageResources` can find the files inside the jar and extract them with the right permissions. An
+`SandboxImageFilesUtil` can find the files inside the jar and extract them with the right permissions. An
 entrypoint extracted without its executable bit would make the container die at once.
 
-**The image tag is a hash of its inputs.** `ImageResources.hashOf` computes SHA-256 over every
+**The image tag is a hash of its inputs.** `SandboxImageFilesUtil.hashOf` computes SHA-256 over every
 image file (path, mode and contents) and every build argument (`BASE_IMAGE`, `JDK_PACKAGE`,
 `NODE_MAJOR`, `EXTRA_APT_PACKAGES`, `AGENT_TOOLS`). The tag is
 `localhost/oillamp/sandbox:<first 16 hex digits>`. Lamps with identical inputs share an image.
@@ -1323,7 +1323,7 @@ removed.
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
 | Shared | `JsonUtil` (every JSON file, message and answer goes through it) |
-| Image and container | `SandboxPhase`, `ImageResources`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuide`, `Gpu` |
+| Image and container | `SandboxPhase`, `SandboxImageFilesUtil`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuide`, `Gpu` |
 | Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `Ssh`, `TerminalEmulatorUtil`, `Viewers` |
 | Network | `Egress`, `Policy`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |
 
