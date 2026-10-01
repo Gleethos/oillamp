@@ -73,7 +73,7 @@ final class Control {
         public boolean flag(String key) { return arguments.get(key).orElse("false").equals("true"); }
 
         public String render() {
-            ObjectNode node = Json.object();
+            ObjectNode node = JsonUtil.object();
             node.put("op", op);
             for (Pair<String, String> argument : arguments)
                 node.put(argument.first(), argument.second());
@@ -82,7 +82,7 @@ final class Control {
 
         public static Optional<Request> parse(String line) {
             try {
-                JsonNode node = Json.READER.readTree(line);
+                JsonNode node = JsonUtil.READER.readTree(line);
                 JsonNode op = node.get("op");
                 if (op == null || !op.isTextual()) return Optional.empty();
                 Association<String, String> arguments = Association.between(String.class, String.class);
@@ -124,7 +124,7 @@ final class Control {
         public String error() { return values.get("error").orElse("the session did not say why"); }
 
         public String render() {
-            ObjectNode node = Json.object();
+            ObjectNode node = JsonUtil.object();
             node.put("ok", succeeded);
             for (Pair<String, String> value : values)
                 node.put(value.first(), value.second());
@@ -137,7 +137,7 @@ final class Control {
 
         public static Reply parse(String line) {
             try {
-                JsonNode node = Json.READER.readTree(line);
+                JsonNode node = JsonUtil.READER.readTree(line);
                 Association<String, String> values = Association.between(String.class, String.class);
                 for (var field : node.properties())
                     if (!field.getKey().equals("ok") && !field.getKey().equals("argv"))

@@ -386,7 +386,7 @@ final class Supervisor {
 
     /// The session's own record, read by `oillamp at` on a busy lamp and by `status`.
     private String sessionJson() {
-        return Json.readable(Json.object()
+        return JsonUtil.readable(JsonUtil.object()
                 .put("session", prepared.session().toString())
                 .put("agentId", prepared.layout().agentId().toString())
                 .put("container", sandbox.container().toString())

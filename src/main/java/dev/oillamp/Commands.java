@@ -400,13 +400,13 @@ final class Commands {
     private static Tuple<RunningSandbox> runningSandboxesIn(String json) {
         Tuple<RunningSandbox> found = Tuple.of(RunningSandbox.class);
         com.fasterxml.jackson.databind.JsonNode listing =
-                Json.parse(json).orElse(com.fasterxml.jackson.databind.node.NullNode.getInstance());
+                JsonUtil.parse(json).orElse(com.fasterxml.jackson.databind.node.NullNode.getInstance());
         if (!listing.isArray()) return found;
         for (com.fasterxml.jackson.databind.JsonNode container : listing) {
             // podman 4 and 5 give the names as a list; older versions as one string.
             com.fasterxml.jackson.databind.JsonNode names = container.path("Names");
             String name = names.isArray() && !names.isEmpty() ? names.get(0).asText() : names.asText("");
-            found = found.add(new RunningSandbox(name, Json.text(container, "State"),
+            found = found.add(new RunningSandbox(name, JsonUtil.text(container, "State"),
                     container.path("Labels").path("oillamp.lamp").asText("")));
         }
         return found;
@@ -512,8 +512,8 @@ final class Commands {
         }
         try {
             Optional<SessionId> session = idle.isPresent() ? Optional.empty()
-                    : Filesystem.readString(layout.sessionMeta()).flatMap(Json::parse)
-                                .flatMap(json -> SessionId.parse(Json.text(json, "session")));
+                    : Filesystem.readString(layout.sessionMeta()).flatMap(JsonUtil::parse)
+                                .flatMap(json -> SessionId.parse(JsonUtil.text(json, "session")));
             if (idle.isEmpty())
                 context.info("history", "a session is running, so programs in the sandbox may be "
                         + "writing while this saves; the snapshot is marked as a running save");
@@ -1110,10 +1110,10 @@ final class Commands {
     /// Says who holds the lamp, from the `session.json` the running session wrote.
     private Problem busyProblem(LampPhase.Prepared prepared) {
         Optional<com.fasterxml.jackson.databind.JsonNode> session =
-                Filesystem.readString(prepared.layout().sessionMeta()).flatMap(Json::parse);
+                Filesystem.readString(prepared.layout().sessionMeta()).flatMap(JsonUtil::parse);
         return Problems.lockBusy(prepared.layout().root(),
                 session.map(json -> json.path("supervisorPid").asLong(0)).orElse(0L),
-                session.map(json -> Json.text(json, "startedAt")).filter(when -> !when.isEmpty())
+                session.map(json -> JsonUtil.text(json, "startedAt")).filter(when -> !when.isEmpty())
                        .orElse("an earlier time"));
     }
 

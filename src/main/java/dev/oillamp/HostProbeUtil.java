@@ -179,9 +179,9 @@ final class HostProbeUtil {
         Machine.Outcome info = machine.run(
                 Machine.Command.of("podman", "info", "--format", "json").withTimeout(QUICK));
         try {
-            JsonNode versionNode = Json.READER.readTree(version.output());
+            JsonNode versionNode = JsonUtil.READER.readTree(version.output());
             String versionText = versionNode.path("Client").path("Version").asText("0");
-            JsonNode infoNode = info.succeeded() ? Json.READER.readTree(info.output()) : Json.object();
+            JsonNode infoNode = info.succeeded() ? JsonUtil.READER.readTree(info.output()) : JsonUtil.object();
             JsonNode host = infoNode.path("host");
             return Optional.of(new PodmanFacts(
                     versionText,

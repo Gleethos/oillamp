@@ -16,9 +16,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 ///
 /// Always through Jackson, never by joining strings: a value with a quote, a backslash or a
 /// control character in it would otherwise produce a file no reader accepts.
-final class Json {
+final class JsonUtil {
 
-    private Json() {}
+    private JsonUtil() {}
 
     /// Shared by every thread. Jackson's mapper is safe for that as long as nobody changes its
     /// configuration once it is in use, so it is private here and callers get [#READER], which

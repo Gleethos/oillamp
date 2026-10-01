@@ -92,7 +92,7 @@ final class Egress implements AutoCloseable {
                   long bytesUp, long bytesDown, Duration took) {
 
         String toJson() {
-            ObjectNode line = Json.object()
+            ObjectNode line = JsonUtil.object()
                 .put("ts", at.toString()).put("channel", channel).put("method", method)
                 .put("host", host).put("port", port)
                 .put("address", address.map(IpAddress::text).orElse(null))
@@ -809,7 +809,7 @@ final class Egress implements AutoCloseable {
         void write(Journey journey) { lines.offer(journey.toJson()); }
 
         void write(String note) {
-            lines.offer(Json.object().put("ts", Instant.now().toString())
+            lines.offer(JsonUtil.object().put("ts", Instant.now().toString())
                             .put("channel", "proxy").put("note", note).toString());
         }
 

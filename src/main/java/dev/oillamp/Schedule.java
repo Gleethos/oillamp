@@ -175,7 +175,7 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
     // ─── the file ──────────────────────────────────────────────────────────────────────────
 
     String render() {
-        ObjectNode root = Json.object();
+        ObjectNode root = JsonUtil.object();
         root.put("paused", paused);
         root.put("next_job", nextJob);
         root.put("next_run", nextRun);
@@ -194,12 +194,12 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
             node.put("enabled", job.enabled());
             job.lastRun().ifPresent(last -> node.put("last_run", last.toString()));
         }
-        return Json.readable(root) + "\n";
+        return JsonUtil.readable(root) + "\n";
     }
 
     /// Reads the file [#render] wrote.
     static Result<Schedule> parse(String text, Path file) {
-        Optional<JsonNode> parsed = Json.parse(text);
+        Optional<JsonNode> parsed = JsonUtil.parse(text);
         if (parsed.isEmpty() || !parsed.get().isObject())
             return Result.err(Problems.scheduleDamaged(file, "it is not a JSON object"));
         JsonNode root = parsed.get();

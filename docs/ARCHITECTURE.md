@@ -1322,7 +1322,7 @@ removed.
 | Configuration | `ConfigLoadingUtil`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaultsUtil`, `LampConfig`, `GeneratedFileTextUtil`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
-| Shared | `Json` (every JSON file, message and answer goes through it) |
+| Shared | `JsonUtil` (every JSON file, message and answer goes through it) |
 | Image and container | `SandboxPhase`, `ImageResources`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuide`, `Gpu` |
 | Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `Ssh`, `TerminalEmulatorUtil`, `Viewers` |
 | Network | `Egress`, `Policy`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |

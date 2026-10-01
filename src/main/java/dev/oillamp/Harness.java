@@ -136,7 +136,7 @@ final class Harness implements AutoCloseable {
             }
             Optional<String> line = agent.receive(Duration.ofSeconds(1));
             if (line.isEmpty()) continue;
-            Optional<JsonNode> record = Json.parse(line.get());
+            Optional<JsonNode> record = JsonUtil.parse(line.get());
             if (record.isEmpty()) continue;
             JsonNode event = record.get();
             switch (event.path("type").asText()) {
@@ -191,7 +191,7 @@ final class Harness implements AutoCloseable {
     private void declineDialog(Machine.Conversation agent, JsonNode request) throws IOException {
         String method = request.path("method").asText();
         if (!Set.of("select", "confirm", "input", "editor").contains(method)) return;
-        send(agent, Json.object().put("type", "extension_ui_response")
+        send(agent, JsonUtil.object().put("type", "extension_ui_response")
                 .put("id", request.path("id").asText()).put("cancelled", true));
     }
 
@@ -231,7 +231,7 @@ final class Harness implements AutoCloseable {
 
     private ObjectNode command(String type) {
         commands++;
-        return Json.object().put("id", "oillamp-" + commands).put("type", type);
+        return JsonUtil.object().put("id", "oillamp-" + commands).put("type", type);
     }
 
     private static void send(Machine.Conversation agent, ObjectNode command) throws IOException {
@@ -248,7 +248,7 @@ final class Harness implements AutoCloseable {
         while (machine.now().isBefore(deadline) && !stopping) {
             Optional<String> line = agent.receive(Duration.ofSeconds(1));
             if (line.isEmpty()) continue;
-            Optional<JsonNode> record = Json.parse(line.get());
+            Optional<JsonNode> record = JsonUtil.parse(line.get());
             if (record.isEmpty()) continue;
             if (record.get().path("type").asText().equals("extension_ui_request")) declineDialog(agent, record.get());
             if (record.get().path("type").asText().equals("response") && record.get().path("id").asText().equals(id))
@@ -273,7 +273,7 @@ final class Harness implements AutoCloseable {
     private Optional<String> moveTo(Machine.Conversation agent, String entry) throws IOException, InterruptedException {
         Optional<JsonNode> commands = answer(agent, command("get_commands"));
         boolean known = false;
-        for (JsonNode command : commands.map(reply -> reply.path("data").path("commands")).orElse(Json.object()))
+        for (JsonNode command : commands.map(reply -> reply.path("data").path("commands")).orElse(JsonUtil.object()))
             known |= command.path("name").asText().equals(MOVE);
         if (!known) return Optional.of("pi does not have oillamp's extension; start the session again to add it");
         send(agent, command("prompt").put("message", "/" + MOVE + " " + entry));
@@ -281,7 +281,7 @@ final class Harness implements AutoCloseable {
         while (machine.now().isBefore(deadline) && !stopping) {
             Optional<String> line = agent.receive(Duration.ofSeconds(1));
             if (line.isEmpty()) continue;
-            Optional<JsonNode> record = Json.parse(line.get());
+            Optional<JsonNode> record = JsonUtil.parse(line.get());
             if (record.isEmpty() || !record.get().path("type").asText().equals("extension_ui_request")) continue;
             String message = record.get().path("message").asText();
             if (message.equals("oillamp: moved")) return Optional.empty();

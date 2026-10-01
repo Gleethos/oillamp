@@ -466,7 +466,7 @@ all; absence is `Optional`. NullAway failures stop the build.
 ### Jackson
 
 A JSON library, with a module that reads TOML. oillamp uses it for every JSON file and message
-(through one class, `Json`) and for reading `oillamp.toml`.
+(through one class, `JsonUtil`) and for reading `oillamp.toml`.
 
 ### Sprouts
 

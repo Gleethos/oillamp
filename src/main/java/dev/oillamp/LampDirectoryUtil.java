@@ -51,7 +51,7 @@ final class LampDirectoryUtil {
     }
 
     private static LampMeta parse(String json) throws JacksonException {
-        JsonNode node = Json.READER.readTree(json);
+        JsonNode node = JsonUtil.READER.readTree(json);
         JsonNode version = node.get("schemaVersion");
         JsonNode agentId = node.get("agentId");
         JsonNode createdAt = node.get("createdAt");
@@ -71,12 +71,12 @@ final class LampDirectoryUtil {
 
     /// Writes `lamp.json` as text; the reverse of [#parse].
     public static String render(LampMeta meta) {
-        var node = Json.object()
+        var node = JsonUtil.object()
                 .put("schemaVersion", meta.schemaVersion())
                 .put("agentId", meta.agentId().value())
                 .put("createdAt", meta.createdAt().toString())
                 .put("createdBy", meta.createdBy());
         meta.lastSessionAt().ifPresent(when -> node.put("lastSessionAt", when.toString()));
-        return Json.readable(node);
+        return JsonUtil.readable(node);
     }
 }
