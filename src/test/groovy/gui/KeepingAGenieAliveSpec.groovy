@@ -550,7 +550,7 @@ class KeepingAGenieAliveSpec extends Specification {
 
     private void say(String text) {
         synchronized (this) { genie = genie.withDraft(text).send() }
-        runner.say(text, false)
+        runner.say(text)
     }
 
     private Path home() { Lamp.agentHome(lamp).orElseThrow() }
