@@ -925,6 +925,15 @@ public final class Lamp implements AutoCloseable {
                 .orElseThrow(() -> new IllegalStateException("the lamp at " + directory + " is not running"));
     }
 
+    /// What the session said when it opened: how to reach its sandbox, its desktop, and the
+    /// desktop's own size.
+    ///
+    /// @throws IllegalStateException when the session is not running
+    public LampEvent.SessionOpened session() {
+        return opened.filter(ignored -> exit.isEmpty())
+                .orElseThrow(() -> new IllegalStateException("the lamp at " + directory + " is not running"));
+    }
+
     /// How the engine ended, once it has. For a joined lamp, how following ended:
     /// [ExitStatus#SUCCESS] when the session ended, or when this lamp was closed.
     public Optional<ExitStatus> exitStatus() { return exit; }

@@ -48,6 +48,8 @@ final class Supervisor {
     /// How often the container is checked. A dead sandbox should be noticed in seconds, not minutes.
     private static final Duration CONTAINER_POLL = Duration.ofSeconds(2);
 
+    /// The most characters of what the agent says it shows that are passed on.
+    private static final int LOOK_WORDS_MOST = 200;
     /// How often a health line is printed in the terminal oillamp was started from. Changes, such as
     /// a socket that stops answering, are reported immediately, not at the next health line.
     private static final Duration HEARTBEAT = Duration.ofSeconds(30);
@@ -88,6 +90,8 @@ final class Supervisor {
     /// The socket through which the agent reads and changes the schedule. Open only while
     /// `schedule.enabled` is on.
     private volatile Optional<Control.Server> scheduleDesk = Optional.empty();
+    /// The socket through which the agent asks the user to look at its desktop.
+    private volatile Optional<Control.Server> desktopDesk = Optional.empty();
     /// Every time the agent is woken, by a job or by `oillamp ask`.
     private final Runs runs;
     /// Everyone following the session with `oillamp follow`. Every event passes through it.
@@ -375,6 +379,12 @@ final class Supervisor {
         }
 
         Tuple<Problem> warnings = Tuple.of(Problem.class);
+        // The agent's way to ask the user to look at its desktop. Without it, the session works
+        // as before, and the agent is told so when it asks; so failing to open it is a warning.
+        Result<Control.Server> look = Control.Server.open(layout.desktopSocket(), this::answerAboutTheDesktop);
+        if (look instanceof Result.Err<Control.Server>(Tuple<Problem> problems)) warnings = warnings.addAll(problems);
+        else desktopDesk = Optional.of(((Result.Ok<Control.Server>) look).value());
+
         try {
             FilesystemUtil.writeFile(layout.sessionMeta(), sessionJson(), PosixMode.PRIVATE_FILE);
         } catch (IOException e) {
@@ -415,6 +425,7 @@ final class Supervisor {
         // 0. Stop the agent's run, if one is going, and save it, while the sandbox still runs.
         if (runs.busy()) context.info("run", "stopping the agent's run and saving what it did");
         scheduleDesk.ifPresent(Control.Server::close);
+        desktopDesk.ifPresent(Control.Server::close);
         runs.stop();
 
         // 1. Stop accepting shells, and drop the ones that are open.
@@ -651,7 +662,7 @@ final class Supervisor {
         LampLayout layout = prepared.layout();
         LampConfig config = prepared.config();
         context.emit(new LampEvent.SessionOpened(prepared.session().value(), SandboxSshUtil.commandArgv(layout),
-                layout.vncSocket()));
+                layout.vncSocket(), config.display().width(), config.display().height()));
         if (context.options().embedded()) {
             context.emit(new LampEvent.Summary("your session is up", Tuple.of(String.class,
                     "started by      an application, which ends it when it is done",
@@ -830,6 +841,20 @@ final class Supervisor {
     /// and the event loop shuts the session down as it would for Ctrl-C. `view` opens a viewer
     /// directly. `shell` opens nothing: it returns the ssh command, and the asking process runs it
     /// in its own terminal.
+    /// Answers the agent, which asks through the desktop socket in the sandbox. It can ask for one
+    /// thing: that the user look at its desktop. What it says it shows is passed on as text to
+    /// read, never acted on.
+    private Control.Reply answerAboutTheDesktop(Control.Request request) {
+        if (!request.op().equals("show"))
+            return Control.Reply.failed("unknown request: " + request.op() + ". The one request here is show.");
+        String said = ConsoleRenderer.NOT_PRINTABLE.matcher(request.arguments().get("what").orElse("")).replaceAll(" ").strip();
+        String what = said.codePointCount(0, said.length()) <= LOOK_WORDS_MOST ? said
+                : said.substring(0, said.offsetByCodePoints(0, LOOK_WORDS_MOST - 1)) + "…";
+        context.emit(new LampEvent.LookAtDesktop(what));
+        return Control.Reply.ok().with("text", "The user was asked to look at your desktop. Whether and when they"
+                + " look is up to them.");
+    }
+
     private Control.Reply answer(Control.Request request) {
         return switch (request.op()) {
             case "status" -> Control.Reply.ok()

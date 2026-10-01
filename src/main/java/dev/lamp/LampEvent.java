@@ -87,8 +87,20 @@ public sealed interface LampEvent {
     ///                shell, and with no terminal. It counts as an extra shell while it runs
     /// @param desktop the Unix socket of the sandbox's desktop. It speaks VNC (RFB 3.8) with no
     ///                password, because only this user can open it
-    record SessionOpened(String session, Tuple<String> command, Path desktop)
+    /// @param desktopWidth  the desktop's own width in pixels, `display.width`. A viewer may give
+    ///                the desktop another size for a while, such as the size of a panel it shows
+    ///                it in; this is the size to give it back
+    /// @param desktopHeight the desktop's own height in pixels, `display.height`
+    record SessionOpened(String session, Tuple<String> command, Path desktop, int desktopWidth, int desktopHeight)
             implements LampEvent {}
+
+    /// The agent asks the user to look at its desktop, because it shows them something there.
+    /// An application that shows the desktop can open it now.
+    ///
+    /// @param what what the agent shows, in its own words, such as "the chart you asked for".
+    ///             Control characters are removed, and it is at most 200 characters long. Empty
+    ///             when the agent did not say
+    record LookAtDesktop(String what) implements LampEvent {}
 
     /// A window oillamp opened on the user's desktop: the terminal or a viewer.
     ///

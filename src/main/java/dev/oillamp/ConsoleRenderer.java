@@ -67,7 +67,7 @@ final class ConsoleRenderer {
     /// With wrapping off, a line that is too long is cut off at the right edge instead.
     private static final String WRAP_OFF = "\u001B[?7l", WRAP_ON = "\u001B[?7h";
     /// Colour codes and other terminal escape sequences, and control characters such as tabs.
-    private static final Pattern NOT_PRINTABLE =
+    static final Pattern NOT_PRINTABLE =
             Pattern.compile("\u001B\\[[0-9;?]*[ -/]*[@-~]|\u001B.|\\p{Cntrl}");
 
     /// What is happening right now, if anything.
@@ -209,6 +209,8 @@ final class ConsoleRenderer {
             case LampEvent.SessionOpened opened ->
                     { if (verbose) printLine(area("session") + dim("· commands run in the sandbox with: "
                                                               + String.join(" ", opened.command()))); }
+            case LampEvent.LookAtDesktop look -> printLine(area("desktop") + colour(GREEN, "◉ ")
+                    + "the agent asks you to look at its desktop" + (look.what().isEmpty() ? "" : ": " + look.what()));
             case LampEvent.WindowOpened opened -> {
                 printLine(area("session") + colour(GREEN, "✓ ") + "opened " + opened.what());
                 // The command matters when the window misbehaves, and by then it is too late to

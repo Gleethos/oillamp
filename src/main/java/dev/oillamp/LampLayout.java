@@ -151,6 +151,8 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path modelSocket()       { return shortSockets().resolve("host").resolve("model.sock"); }
     /// Where the agent reads and changes the lamp's schedule, through the session.
     public Path scheduleSocket()    { return shortSockets().resolve("host").resolve("schedule.sock"); }
+    /// Where the agent asks the user to look at its desktop, through the session.
+    public Path desktopSocket()     { return shortSockets().resolve("host").resolve("desktop.sock"); }
     public Path forwardSocket(String name) {
         return shortSockets().resolve("host").resolve("fwd-" + name + ".sock");
     }

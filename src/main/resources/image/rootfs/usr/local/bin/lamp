@@ -22,6 +22,8 @@ set -Eeuo pipefail
 
 SCREENSHOT_DIR="${HOME}/screenshots"
 POINTER="${LAMP_POINTER:-/usr/local/lib/oillamp/lamp-pointer}"
+# Where the session on the host listens for `lamp show`.
+DESKTOP_SOCKET="${LAMP_DESKTOP_SOCKET:-/oillamp/sockets/host/desktop.sock}"
 # Milliseconds wtype waits before the first key; see the comment at the top.
 KEY_SETTLE_MS=150
 
@@ -125,6 +127,29 @@ cmd_wait_stable() {
     return 1
 }
 
+# Asks the user to look at the desktop. The session passes it on to whatever the user watches the
+# sandbox from: the app that shows this desktop opens it, the terminal says so. One JSON line goes
+# to the session, one comes back; Python writes the JSON, so any text arrives as it was typed.
+cmd_show() {
+    need python3
+    python3 - "$DESKTOP_SOCKET" "$*" <<'PY'
+import json, socket, sys
+path, what = sys.argv[1], sys.argv[2]
+try:
+    with socket.socket(socket.AF_UNIX) as connection:
+        connection.settimeout(10)
+        connection.connect(path)
+        connection.sendall((json.dumps({"op": "show", "what": what}) + "\n").encode())
+        connection.shutdown(socket.SHUT_WR)
+        reply = json.loads(connection.makefile(encoding="utf-8").readline())
+except (OSError, ValueError) as failed:
+    sys.exit(f"lamp: the session did not answer at {path} ({failed}). The user was not told.")
+if not reply.get("ok"):
+    sys.exit("lamp: " + reply.get("error", "the session said no, without saying why"))
+print(reply.get("text", ""))
+PY
+}
+
 cmd_info() {
     # The size now, from the desktop itself: the user's viewer may have given the desktop the size
     # of the panel they watch it in. It goes back to its own size when they close that panel.
@@ -155,6 +180,7 @@ lamp — drive this sandbox's desktop.
   lamp key ctrl+shift+t                             press a key combination
   lamp wait-stable [SECONDS]                        block until the screen stops changing
   lamp info                                         size, renderer, screenshot directory
+  lamp show "what you show"                         ask the user to look at this desktop
 
 Coordinates are screen pixels, as in a screenshot; 0,0 is the top-left corner. This works for
 Wayland and X11 applications (including Java Swing) alike. A click reports no result: take a
@@ -190,6 +216,7 @@ case "$subcommand" in
     key)          cmd_key "$@" ;;
     wait-stable)  cmd_wait_stable "$@" ;;
     info)         cmd_info "$@" ;;
+    show)         cmd_show "$@" ;;
     -h|--help|help) usage ;;
     *)            die "unknown command '$subcommand'. Run 'lamp help'." ;;
 esac
