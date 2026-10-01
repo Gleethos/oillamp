@@ -11,7 +11,7 @@ final class GeneratedFileTextUtil {
 
     /// The commented configuration written into a new lamp.
     ///
-    /// Every value here must match [ConfigDefaults#lampConfig()]. A scenario in
+    /// Every value here must match [ConfigDefaultsUtil#lampConfig()]. A scenario in
     /// `ConfiguringALampSpec` checks this, because many users read this file as the
     /// documentation of the settings.
     public static String defaultConfig() {

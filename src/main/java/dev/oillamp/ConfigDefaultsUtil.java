@@ -11,9 +11,9 @@ import sprouts.Tuple;
 ///
 /// The commented `oillamp.toml` written into a new lamp ([GeneratedFileTextUtil#defaultConfig])
 /// must describe exactly these values. A scenario in `ConfiguringALampSpec` checks that.
-final class ConfigDefaults {
+final class ConfigDefaultsUtil {
 
-    private ConfigDefaults() {}
+    private ConfigDefaultsUtil() {}
 
     public static LampConfig lampConfig() {
         return new LampConfig(

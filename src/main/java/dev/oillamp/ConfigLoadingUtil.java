@@ -81,7 +81,7 @@ final class ConfigLoadingUtil {
     // ─── the schema ────────────────────────────────────────────────────────────────────────
 
     private static LampConfig read(ConfigSection root) {
-        LampConfig defaults = ConfigDefaults.lampConfig();
+        LampConfig defaults = ConfigDefaultsUtil.lampConfig();
         root.allowOnly("schema_version", "display", "viewer", "terminal", "recording",
                        "limits", "network", "llm", "model", "git", "agent_tools", "image", "host", "timeouts",
                        "schedule");
