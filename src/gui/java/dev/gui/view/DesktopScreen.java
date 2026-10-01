@@ -27,8 +27,8 @@ import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
-import dev.gui.desktop.Keysyms;
 import dev.gui.desktop.RfbConnection;
+import dev.gui.desktop.X11KeysymUtil;
 
 import swingtree.UI;
 
@@ -92,7 +92,7 @@ final class DesktopScreen extends JComponent implements Scrollable {
         addMouseWheelListener(mouse);
         addKeyListener(new KeyAdapter() {
             @Override public void keyPressed(KeyEvent event) {
-                Keysyms.of(event.getKeyCode(), event.getKeyChar()).ifPresent(keysym -> {
+                X11KeysymUtil.of(event.getKeyCode(), event.getKeyChar()).ifPresent(keysym -> {
                     pressed.put(event.getKeyCode(), keysym);
                     connection.ifPresent(desktop -> desktop.key(keysym, true));
                 });

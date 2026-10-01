@@ -226,7 +226,7 @@ The desktop is served by wayvnc inside the sandbox, on a Unix socket that `Lamp.
 Only the user can open that socket, so it asks for no password. Genies draws it with a VNC client
 of its own, `RfbConnection` (RFB 3.8, about 250 lines), because the protocol is simple for a local
 socket: raw 32-bit pixels in exactly the layout of a Java image, copy-rect, and desktop resizes.
-The pointer and keys go back as RFB events, keys as X11 key symbols (`Keysyms`).
+The pointer and keys go back as RFB events, keys as X11 key symbols (`X11KeysymUtil`).
 
 The desktop is fitted into the room next to the chat, or shown at a scale from 50% to 300% in a
 scroll pane (the buttons above it, or Control and the mouse wheel on it). Clicking it gives it the
@@ -241,7 +241,7 @@ and the user watches with the Desktop button.
 |---|---|---|
 | `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, and `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `DateWordingUtil` for the schedule: records with withers, every change a pure method | no |
 | `dev.gui.pi` | `PiEvent` (what the chat is told) | no |
-| `dev.gui.desktop` | `RfbConnection`, `Keysyms` | `RfbConnection` only |
+| `dev.gui.desktop` | `RfbConnection`, `X11KeysymUtil` | `RfbConnection` only |
 | `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `GenieFileTransferUtil` (files), `LampApiConversionUtil` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePiSetupUtil` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `Shelf` (what is kept on disk) | yes |
 | `dev.gui.view` | `GeniesView` (the window, bound to `Var<GeniesState>` through lenses), `SchedulePage`, `SettingsPage`, `DesktopScreen`, the look | Swing only |
 | `dev.gui` | `Genies`: the entry point, and the `Actions` the window calls | ties it together |

@@ -1,7 +1,7 @@
 package gui
 
-import dev.gui.desktop.Keysyms
 import dev.gui.desktop.RfbConnection
+import dev.gui.desktop.X11KeysymUtil
 import spock.lang.Specification
 import spock.lang.Timeout
 
@@ -185,7 +185,7 @@ class WatchingAGeniesDesktopSpec extends Specification {
             is sent and the desktop, which saw Control go down, makes the shortcut of it.
         """
         expect:
-            Keysyms.of(code, character as char).orElse(-1) == keysym
+            X11KeysymUtil.of(code, character as char).orElse(-1) == keysym
 
         where:
             code                  | character                 || keysym

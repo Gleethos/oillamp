@@ -10,9 +10,9 @@ import java.util.OptionalInt;
 /// own keyboard layout produced. Keys that do not, such as the arrows, have symbols of their own.
 /// A letter or digit typed with Control held reaches Java as a control character, so it is
 /// sent as the plain letter or digit, with the Control key the desktop already saw held down.
-public final class Keysyms {
+public final class X11KeysymUtil {
 
-    private Keysyms() {}
+    private X11KeysymUtil() {}
 
     private static final Map<Integer, Integer> SPECIAL = Map.ofEntries(
             Map.entry(KeyEvent.VK_BACK_SPACE, 0xff08), Map.entry(KeyEvent.VK_TAB, 0xff09),
