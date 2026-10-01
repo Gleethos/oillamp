@@ -118,7 +118,7 @@ public final class Genies implements Actions {
         // The tree of conversations under each genie is there before any genie wakes, and a genie
         // left running when Genies last closed is awake again.
         app.state.get().genies().forEach(genie -> {
-            app.runner(genie.id()).lookAtConversations();
+            app.runner(genie.id()).reloadConversations();
             app.rejoin(genie.id());
         });
         // The timeline, and anything else said relative to now, moves on with the clock.
@@ -171,7 +171,7 @@ public final class Genies implements Actions {
         switch (genie.get().phase()) {
             // Conversations are read from the lamp, so a sleeping genie's can be read too, and a
             // working genie's answer is kept aside while the user reads another.
-            case READY, WORKING, ASLEEP, BROKEN -> runner(id).goTo(conversation, leaf);
+            case READY, WORKING, ASLEEP, BROKEN -> runner(id).goToConversation(conversation, leaf);
             case WAKING -> { }   // The tree does not move while the genie wakes.
         }
     }
@@ -191,7 +191,7 @@ public final class Genies implements Actions {
         if (!genie.get().phase().isAwake() && genie.get().conversations().here().file().equals(conversation))
             state.update(From.VIEW, it -> it.update(id, sleeping -> sleeping.withConversations(
                     sleeping.conversations().withHere(Conversations.Here.UNKNOWN))));
-        runner(id).forget(conversation);
+        runner(id).forgetConversation(conversation);
     }
 
     @Override public void askInstead(String question, String text) {
@@ -217,11 +217,11 @@ public final class Genies implements Actions {
         if (!genie.canSend()) return;
         String text = genie.draft().strip();
         state.update(From.VIEW, it -> it.update(genie.id(), Genie::send));
-        runner(genie.id()).say(text);
+        runner(genie.id()).sendMessage(text);
     }
 
     @Override public void stop(UUID id) {
-        Optional.ofNullable(runners.get(id)).ifPresent(GenieRunner::stop);
+        Optional.ofNullable(runners.get(id)).ifPresent(GenieRunner::stopAnswering);
     }
 
     /// The genie leaves the window at once; its lamp is put out and removed in the background.
@@ -245,9 +245,9 @@ public final class Genies implements Actions {
         });
     }
 
-    @Override public void give(UUID id, Path file) { runner(id).give(file); }
+    @Override public void give(UUID id, Path file) { runner(id).giveFile(file); }
 
-    @Override public void save(UUID id, String name, Path target) { runner(id).save(name, target); }
+    @Override public void save(UUID id, String name, Path target) { runner(id).saveOutboxFile(name, target); }
 
     // ─── the schedule ──────────────────────────────────────────────────────────────────────
 
@@ -265,7 +265,7 @@ public final class Genies implements Actions {
     @Override public void pauseSchedule(UUID id, boolean paused) { runner(id).schedule().pause(paused); }
 
     @Override public void stopRun(UUID id, String run) {
-        Optional.ofNullable(runners.get(id)).ifPresent(runner -> runner.stop(run));
+        Optional.ofNullable(runners.get(id)).ifPresent(runner -> runner.stopRun(run));
     }
 
     /// While the genie wakes, the chat stays where it is, as the tree does.
@@ -273,7 +273,7 @@ public final class Genies implements Actions {
         Optional<Genie> genie = state.get().find(id);
         if (genie.isEmpty()) return;
         state.update(From.VIEW, it -> it.select(id).withPage(GeniesState.Page.CHAT));
-        if (genie.get().phase() != Genie.Phase.WAKING) runner(id).open(conversation);
+        if (genie.get().phase() != Genie.Phase.WAKING) runner(id).openConversation(conversation);
     }
 
     /// Leaving the page keeps the settings.

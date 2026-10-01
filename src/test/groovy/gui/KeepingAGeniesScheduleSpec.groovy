@@ -202,7 +202,7 @@ class KeepingAGeniesScheduleSpec extends Specification {
             genie.conversations().chatCount() == 0
 
         when: 'the user opens the run\'s conversation'
-            runner.open(genie.schedule().runs().first().conversation().get())
+            runner.openConversation(genie.schedule().runs().first().conversation().get())
 
         then:
             waitUntil { genie.transcript().entries().any { it.kind() == Entry.Kind.GENIE && it.text() == 'I tidied the downloads folder.' } }

@@ -110,7 +110,7 @@ class RunningARealGenieSpec extends Specification {
             var gift = Files.writeString(Files.createTempFile('genie-gift', '.txt'), 'a gift for the genie')
 
         when:
-            runner.give(gift)
+            runner.giveFile(gift)
 
         then:
             RealLamps.eventually(Duration.ofSeconds(30)) {
@@ -140,9 +140,9 @@ class RunningARealGenieSpec extends Specification {
             var file = Conversations.DIRECTORY + '/forked.jsonl'
 
         when:
-            runner.lookAtConversations()
+            runner.reloadConversations()
             RealLamps.eventually(Duration.ofSeconds(20)) { genie.conversations().find('forked').isPresent() }
-            runner.goTo(file, 'a2')
+            runner.goToConversation(file, 'a2')
 
         then: 'the chat shows the train branch'
             RealLamps.eventually(Duration.ofSeconds(30)) {
@@ -151,7 +151,7 @@ class RunningARealGenieSpec extends Specification {
             genie.conversations().here() == new Conversations.Here(file, 'a2')
 
         when:
-            runner.goTo(file, 'a2b')
+            runner.goToConversation(file, 'a2b')
 
         then: 'and then the bike branch, which the tree marks'
             RealLamps.eventually(Duration.ofSeconds(30)) {
@@ -185,7 +185,7 @@ class RunningARealGenieSpec extends Specification {
         """
         when:
             synchronized (RunningARealGenieSpec) { genie = genie.withDraft('x').send() }
-            runner.say('Use your bash tool to run exactly this command: echo hello > ~/outbox/hello.txt ' +
+            runner.sendMessage('Use your bash tool to run exactly this command: echo hello > ~/outbox/hello.txt ' +
                        '— then reply with the single word done.')
 
         then:
@@ -207,7 +207,7 @@ class RunningARealGenieSpec extends Specification {
             var target = Files.createTempDirectory('genie-saved').resolve('hello.txt')
 
         when:
-            runner.save('hello.txt', target)
+            runner.saveOutboxFile('hello.txt', target)
 
         then:
             RealLamps.eventually(Duration.ofSeconds(30)) { Files.exists(target) }
