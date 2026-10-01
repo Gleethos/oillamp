@@ -1,5 +1,6 @@
 package dev.gui.model;
 
+import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,7 +48,7 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
 
     public static Genie asleep(UUID id, String name) {
         return new Genie(id, name, Phase.ASLEEP, "asleep", Transcript.empty(), "", 0,
-                         Tuple.of(Handout.class), false, Conversations.NONE, Schedule.unread(java.time.ZoneId.systemDefault()));
+                         Tuple.of(Handout.class), false, Conversations.NONE, Schedule.unread(ZoneId.systemDefault()));
     }
 
     public Genie withName(String name)             { return new Genie(id, name, phase, activity, transcript, draft, tokens, handouts, desktopShown, conversations, schedule); }

@@ -6,8 +6,10 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
+import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -55,10 +57,10 @@ public final class RfbConnection implements AutoCloseable {
         // Written to the channel directly, not through Channels.newOutputStream: a stream from
         // there may wait for the reading thread's lock, so a key press would wait for the next
         // picture from the desktop.
-        this.out = new DataOutputStream(new java.io.OutputStream() {
+        this.out = new DataOutputStream(new OutputStream() {
             @Override public void write(int b) throws IOException { write(new byte[] {(byte) b}, 0, 1); }
             @Override public void write(byte[] bytes, int offset, int length) throws IOException {
-                java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(bytes, offset, length);
+                ByteBuffer buffer = ByteBuffer.wrap(bytes, offset, length);
                 while (buffer.hasRemaining()) channel.write(buffer);
             }
         });

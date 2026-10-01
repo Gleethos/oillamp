@@ -1,6 +1,7 @@
 package dev.gui.model;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Optional;
 
@@ -44,9 +45,9 @@ public record Schedule(boolean read, boolean paused, ZoneId zone, Tuple<Job> job
         public String title() { return firstLine(prompt, 90); }
 
         /// When it runs, in words, such as "Every weekday at 09:00" or "Once, tomorrow at 09:00".
-        public String when(java.time.LocalDateTime now, ZoneId zone) {
+        public String when(LocalDateTime now, ZoneId zone) {
             if (repeats.isPresent()) return repeats.get().describe();
-            return at.map(time -> java.time.LocalDateTime.ofInstant(time, zone))
+            return at.map(time -> LocalDateTime.ofInstant(time, zone))
                      .map(time -> "Once, " + Dates.dayInSentence(time.toLocalDate(), now.toLocalDate()) + " at "
                                 + Recurrence.clock(time.toLocalTime()))
                      .orElse("Once");
@@ -101,12 +102,12 @@ public record Schedule(boolean read, boolean paused, ZoneId zone, Tuple<Job> job
     }
 
     /// Opens the editor on a new job.
-    public Schedule writeNew(java.time.LocalDateTime now) {
+    public Schedule writeNew(LocalDateTime now) {
         return withDraft(Optional.of(JobDraft.fresh(now))).withProblem("");
     }
 
     /// Opens the editor on job `id`, to change it.
-    public Schedule change(String id, java.time.LocalDateTime now) {
+    public Schedule change(String id, LocalDateTime now) {
         return job(id).map(job -> withDraft(Optional.of(JobDraft.of(job, zone, now))).withProblem("")).orElse(this);
     }
 

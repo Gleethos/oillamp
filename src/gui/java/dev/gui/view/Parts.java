@@ -1,5 +1,10 @@
 package dev.gui.view;
 
+import java.awt.Color;
+import java.awt.Component;
+
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.JTextArea;
 
 import dev.gui.model.Genie;
@@ -7,6 +12,7 @@ import dev.gui.model.Genie;
 import sprouts.Val;
 import swingtree.UI;
 import swingtree.UIForAnySwing;
+import swingtree.style.StyledString;
 
 import static dev.gui.view.Palette.*;
 import static swingtree.UI.*;
@@ -28,16 +34,16 @@ final class Parts {
                 // Some padding, on purpose: text painted by the style engine sets its component's
                 // height when it is painted, and a component of no height is never painted.
                 .withStyle(it -> it.padding(2, 0, 2, 0).text(t -> t
-                        .content(swingtree.style.StyledString.of(f -> f.family(FONT).size(11).color(SUBTEXT), text))
+                        .content(StyledString.of(f -> f.family(FONT).size(11).color(SUBTEXT), text))
                         .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true)));
     }
 
     /// Text that changes, such as a problem, wrapped to the width it is given rather than cut
     /// short: the end of a message is often the part that says what to do.
-    static UIForAnySwing<?, ?> wrapped(Val<String> text, java.awt.Color colour, Val<Boolean> shown) {
+    static UIForAnySwing<?, ?> wrapped(Val<String> text, Color colour, Val<Boolean> shown) {
         return box().withMinSize(0, 0).isVisibleIf(shown)
                 .withStyle(text, (words, it) -> it.padding(2, 0, 2, 0).text(t -> t
-                        .content(swingtree.style.StyledString.of(f -> f.family(FONT).size(12).color(colour), words))
+                        .content(StyledString.of(f -> f.family(FONT).size(12).color(colour), words))
                         .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true)));
     }
 
@@ -50,12 +56,12 @@ final class Parts {
 
     /// Opens `menu` under `button`, its right edge on the button's: such a button is near the
     /// window's right edge, and a menu opening rightwards would leave the window.
-    static void below(javax.swing.JPopupMenu menu, java.awt.Component button) {
+    static void below(JPopupMenu menu, Component button) {
         menu.show(button, button.getWidth() - menu.getPreferredSize().width, button.getHeight());
     }
 
-    static javax.swing.JMenuItem item(String text, boolean enabled, Runnable action) {
-        javax.swing.JMenuItem item = new javax.swing.JMenuItem(text);
+    static JMenuItem item(String text, boolean enabled, Runnable action) {
+        JMenuItem item = new JMenuItem(text);
         item.setEnabled(enabled);
         item.addActionListener(event -> action.run());
         return item;
