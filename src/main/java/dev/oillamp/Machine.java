@@ -28,7 +28,7 @@ import sprouts.Tuple;
 /// [Control], [Egress]) are also real.
 ///
 /// Public because callers supply it: `main` passes the real machine, tests a simulated one.
-public interface Machine {
+public sealed interface Machine permits RealMachine, SimulatedMachine {
 
     /// A machine that really is this computer.
     static Machine real() { return new RealMachine(); }
