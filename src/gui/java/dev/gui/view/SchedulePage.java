@@ -186,8 +186,8 @@ final class SchedulePage {
                 .add("growx, wmin 0",
                     box("fill, ins 0, gap 8", "[10!][grow]")
                     .add("top, gaptop 5", dot(status.viewAs(Color.class, Status::colour), 8))
-                    .add("growx, wmin 0", Parts.wrapped(status.viewAsString(Status::words), SUBTEXT, Val.of(true))))
-                .add("growx, wmin 0", Parts.wrapped(problem, TROUBLE, problem.viewAs(Boolean.class, it -> !it.isEmpty()))))
+                    .add("growx, wmin 0", ViewPartsUtil.wrapped(status.viewAsString(Status::words), SUBTEXT, Val.of(true))))
+                .add("growx, wmin 0", ViewPartsUtil.wrapped(problem, TROUBLE, problem.viewAs(Boolean.class, it -> !it.isEmpty()))))
             .add(BUTTONS,
                 // Right, beside what is said; left, under it, when there is no room beside it.
                 panel(wide.viewAs(Layout.class, isWide -> Layout.flow(isWide ? UI.HorizontalAlignment.RIGHT : UI.HorizontalAlignment.LEFT, 8, 4)))
@@ -395,9 +395,9 @@ final class SchedulePage {
             .add("growx, wmin 0",
                 panel("fill, wrap 1, ins 22 18 22 18, gap 8", "[grow, center]").group(Skin.TILE)
                 .isVisibleIf(none)
-                .add(Parts.lamp(Val.of(Genie.Phase.ASLEEP), 56))
+                .add(ViewPartsUtil.lamp(Val.of(Genie.Phase.ASLEEP), 56))
                 .add("growx, wmin 0", words("Nothing on the schedule yet", 15, 2f, TEXT).withStyle(it -> it.text(t -> t.placement(UI.Placement.TOP))))
-                .add("growx, wmin 0", Parts.wrapped(genie.viewAsString(it -> "Give " + it.name() + " a task and a time, "
+                .add("growx, wmin 0", ViewPartsUtil.wrapped(genie.viewAsString(it -> "Give " + it.name() + " a task and a time, "
                         + "once or again and again: a morning check of the build, a weekly report, a reminder "
                         + "to tidy up. It works on it in a conversation of its own, and you can read it here afterwards."),
                         SUBTEXT, Val.of(true)))
@@ -431,8 +431,8 @@ final class SchedulePage {
                 .add("top, gaptop 1", onOff(on, () -> actions.switchJob(selected(), id, !job.get().enabled())))
                 .add("growx, wmin 0", words(Viewable.of(Words.class, when, on, (text, isOn) -> new Words(text, isOn ? TEXT : SUBTEXT)), 13, 2f))
                 .add("top", button("⋯").group(Skin.ICON_BUTTON).withTooltip("Change, switch off or remove this job")
-                     .onClick(it -> Parts.below(menu(id), it.getComponent()))))
-            .add("growx, wmin 0", Parts.wrapped(job.viewAsString(it -> shortened(it.prompt(), 280)), SUBTEXT, Val.of(true)))
+                     .onClick(it -> ViewPartsUtil.below(menu(id), it.getComponent()))))
+            .add("growx, wmin 0", ViewPartsUtil.wrapped(job.viewAsString(it -> shortened(it.prompt(), 280)), SUBTEXT, Val.of(true)))
             .add("growx, wmin 0",
                 box("ins 0, gap 6, hidemode 3")
                 .add(tag(next).isVisibleIf(next.viewAs(Boolean.class, it -> !it.isEmpty())))
@@ -460,10 +460,10 @@ final class SchedulePage {
     private JPopupMenu menu(String id) {
         JPopupMenu menu = new JPopupMenu();
         schedule.get().job(id).ifPresent(job -> {
-            menu.add(Parts.item("Change…", true, () -> schedule.update(From.VIEW, s -> s.change(id, state.get().localNow()))));
-            menu.add(Parts.item(job.enabled() ? "Switch off" : "Switch on", true, () -> actions.switchJob(selected(), id, !job.enabled())));
+            menu.add(ViewPartsUtil.item("Change…", true, () -> schedule.update(From.VIEW, s -> s.change(id, state.get().localNow()))));
+            menu.add(ViewPartsUtil.item(job.enabled() ? "Switch off" : "Switch on", true, () -> actions.switchJob(selected(), id, !job.enabled())));
             menu.addSeparator();
-            JMenuItem remove = Parts.item("Remove…", true, () -> confirmRemove(job));
+            JMenuItem remove = ViewPartsUtil.item("Remove…", true, () -> confirmRemove(job));
             remove.setForeground(TROUBLE);
             menu.add(remove);
         });
@@ -495,7 +495,7 @@ final class SchedulePage {
                     box("fill, wrap 1, ins 0, gap 4")
                     .add("growx, wmin 0", label(Viewable.of(String.class, changing, genie, (isChange, it) ->
                             isChange ? "Change a job" : "A new job for " + it.name())).group(Skin.EMPTY_TITLE))
-                    .add("growx, wmin 0", Parts.note("It gets the task at the time you choose, in a conversation of its own, "
+                    .add("growx, wmin 0", ViewPartsUtil.note("It gets the task at the time you choose, in a conversation of its own, "
                             + "and while it is awake: a job whose time came while it slept runs as soon as it wakes.", Val.of(true))))
                 .add("top", button("✕").group(Skin.ICON_BUTTON).withTooltip("Close without saving")
                      .onClick(it -> schedule.update(From.VIEW, Schedule::closeEditor))))
@@ -503,7 +503,7 @@ final class SchedulePage {
             .add(NARROW_SIDE, when())
             .add(WHOLE,
                 box("fill, ins 0, gap 12, hidemode 3", "[grow][][]")
-                .add("growx, wmin 0", Parts.wrapped(refused, TROUBLE, refused.viewAs(Boolean.class, it -> !it.isEmpty())))
+                .add("growx, wmin 0", ViewPartsUtil.wrapped(refused, TROUBLE, refused.viewAs(Boolean.class, it -> !it.isEmpty())))
                 .add("skip 0", button("Cancel").group(Skin.QUIET_BUTTON)
                      .onClick(it -> schedule.update(From.VIEW, Schedule::closeEditor)))
                 .add(button(Viewable.of(String.class, changing, busy, (isChange, isBusy) ->
@@ -527,7 +527,7 @@ final class SchedulePage {
                 .withHorizontalScrollBarPolicy(UI.Active.NEVER)
                 .withStyle(it -> it.backgroundColor(RAISED).border(1, BORDER).borderRadius(12))
                 .add(
-                    textArea(prompt).group(Skin.INPUT).peek(Parts::softWrap)
+                    textArea(prompt).group(Skin.INPUT).peek(ViewPartsUtil::softWrap)
                     .withStyle(it -> it.backgroundColor(TRANSPARENT).border(0, TRANSPARENT).padding(10, 12, 10, 12)
                         .componentFont(f -> f.family(FONT).size(14).color(TEXT)))
                     .onKeyPress(it -> {
@@ -539,7 +539,7 @@ final class SchedulePage {
                     })))
             .add("growx, wmin 0",
                 box("fill, ins 0, gap 12", "[grow][]")
-                .add("growx, wmin 0", Parts.note("Brief it as you would a colleague: what to do, where things are, and "
+                .add("growx, wmin 0", ViewPartsUtil.note("Brief it as you would a colleague: what to do, where things are, and "
                         + "what done looks like. Each run starts a fresh conversation; between runs, the genie "
                         + "keeps notes in ~/workspace/NOTES.md.", Val.of(true)))
                 .add("top", label(length.viewAsString(it -> String.format("%,d / %,d", it, JobDraft.MOST_PROMPT))).group(Skin.META)
@@ -593,7 +593,7 @@ final class SchedulePage {
                 .isVisibleIf(Viewable.of(Boolean.class, repeats, repeat, (isRepeating, how) -> isRepeating && how == JobDraft.Repeat.CUSTOM))
                 .add("growx, wmin 0", textField(cron).group(Skin.INPUT)
                      .withStyle(it -> it.componentFont(f -> f.family(MONO).size(13).color(TEXT))))
-                .add("growx, wmin 0", Parts.note("Five fields, as cron has them: minute, hour, day of the month, month, "
+                .add("growx, wmin 0", ViewPartsUtil.note("Five fields, as cron has them: minute, hour, day of the month, month, "
                         + "day of the week. 0 9 1 * * is nine on the first of each month; */30 * * * * every half hour.", Val.of(true))))
 
             // ── the time of day ──
@@ -628,8 +628,8 @@ final class SchedulePage {
             .add("growx, wmin 0",
                 panel("fill, wrap 1, ins 10 12 10 12, gap 4, hidemode 3", "[grow]")
                 .withStyle(it -> it.backgroundColor(SMOKE).border(1, BORDER).borderRadius(12))
-                .add("growx, wmin 0", Parts.wrapped(summary, TEXT, summary.viewAs(Boolean.class, it -> !it.isEmpty())))
-                .add("growx, wmin 0", Parts.wrapped(timing, TROUBLE, timing.viewAs(Boolean.class, it -> !it.isEmpty()))));
+                .add("growx, wmin 0", ViewPartsUtil.wrapped(summary, TEXT, summary.viewAs(Boolean.class, it -> !it.isEmpty())))
+                .add("growx, wmin 0", ViewPartsUtil.wrapped(timing, TROUBLE, timing.viewAs(Boolean.class, it -> !it.isEmpty()))));
     }
 
     /// What the calendar shows: a month, the day picked in it, and from which day on days can be
