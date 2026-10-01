@@ -108,7 +108,7 @@ public final class GenieRunner {
                 lamp = Optional.of(lit);
                 changes.accept(genie -> genie.lampSays("waking the genie"));
                 Handouts.makeDirectories(lit);
-                GeniePrompt.prepare(home().orElseThrow(() -> new IOException("the genie's lamp has no home")),
+                GeniePiSetupUtil.prepare(home().orElseThrow(() -> new IOException("the genie's lamp has no home")),
                         name, settings.model());
                 List<Lamp.Conversation> all = Lamp.conversations(directory);
                 String file = !conversation.isEmpty() ? conversation : all.isEmpty() ? "" : all.getFirst().file();
