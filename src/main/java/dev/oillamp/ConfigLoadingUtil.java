@@ -40,7 +40,7 @@ final class ConfigLoadingUtil {
                 parsed = TOML.readTree(source.text());
             } catch (JacksonException e) {
                 parseProblems = parseProblems.add(
-                        Problems.configUnparseable(source.origin(), firstLineOf(e.getOriginalMessage())));
+                        ProblemCatalogUtil.configUnparseable(source.origin(), firstLineOf(e.getOriginalMessage())));
                 continue;
             }
             if (source.kind() == ConfigSource.Kind.LAMP)
@@ -66,13 +66,13 @@ final class ConfigLoadingUtil {
     private static Tuple<Problem> checkSchemaVersion(ConfigSource source, JsonNode parsed) {
         JsonNode version = parsed.get("schema_version");
         if (version == null || version.isNull())
-            return Tuple.of(Problem.class, Problems.configInvalidValue(source.origin(), "schema_version",
+            return Tuple.of(Problem.class, ProblemCatalogUtil.configInvalidValue(source.origin(), "schema_version",
                     "(missing)", "every lamp config declares schema_version = " + LampConfig.SCHEMA_VERSION));
         if (!version.isIntegralNumber())
-            return Tuple.of(Problem.class, Problems.configWrongType(source.origin(), "schema_version",
+            return Tuple.of(Problem.class, ProblemCatalogUtil.configWrongType(source.origin(), "schema_version",
                     version.asText(), "a whole number"));
         if (version.asInt() > LampConfig.SCHEMA_VERSION)
-            return Tuple.of(Problem.class, Problems.configInvalidValue(source.origin(), "schema_version",
+            return Tuple.of(Problem.class, ProblemCatalogUtil.configInvalidValue(source.origin(), "schema_version",
                     version.asText(), "this oillamp understands up to " + LampConfig.SCHEMA_VERSION
                             + " — upgrade oillamp to read this lamp"));
         return Tuple.of(Problem.class);

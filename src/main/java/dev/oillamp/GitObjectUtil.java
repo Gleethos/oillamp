@@ -317,14 +317,14 @@ final class GitObjectUtil {
         String wanted = prefix.strip().toLowerCase(Locale.ROOT);
         if (wanted.length() < 4 || wanted.length() > 40
                 || !wanted.chars().allMatch(c -> (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
-            return Result.err(Problems.noSuchSnapshot(prefix, lamp,
+            return Result.err(ProblemCatalogUtil.noSuchSnapshot(prefix, lamp,
                     "a snapshot is named by at least the first four characters of its id, "
                   + "such as the eight `oillamp history` shows"));
         Tuple<Snapshot> matching = snapshots.retainIf(s -> s.id().startsWith(wanted));
         if (matching.isEmpty())
-            return Result.err(Problems.noSuchSnapshot(prefix, lamp, "no snapshot of this lamp has an id starting with it"));
+            return Result.err(ProblemCatalogUtil.noSuchSnapshot(prefix, lamp, "no snapshot of this lamp has an id starting with it"));
         if (matching.size() > 1)
-            return Result.err(Problems.noSuchSnapshot(prefix, lamp,
+            return Result.err(ProblemCatalogUtil.noSuchSnapshot(prefix, lamp,
                     matching.size() + " snapshots have an id starting with it; give more of the id"));
         return Result.ok(matching.first());
     }

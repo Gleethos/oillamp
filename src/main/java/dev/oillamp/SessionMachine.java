@@ -148,7 +148,7 @@ record SessionMachine(Settings settings) {
     private Transition containerExited(SessionState state, SessionEvent.ContainerExited exited, Instant now) {
         if (state instanceof SessionState.Starting)
             return shutDown(state, now, new SessionState.ShutdownReason.StartupFailed(
-                    Problems.sandboxDied("the sandbox", "(exit code " + exited.exitCode() + ")")));
+                    ProblemCatalogUtil.sandboxDied("the sandbox", "(exit code " + exited.exitCode() + ")")));
         return shutDown(state, now, new SessionState.ShutdownReason.ContainerDied(exited.exitCode()));
     }
 
@@ -168,7 +168,7 @@ record SessionMachine(Settings settings) {
         if (state instanceof SessionState.AwaitingTerminal awaiting
                 && !now.isBefore(awaiting.since().plus(settings.terminalTimeout())))
             return shutDown(state, now, new SessionState.ShutdownReason.StartupFailed(
-                    Problems.terminalDidNotConnect(settings.terminalTimeout())));
+                    ProblemCatalogUtil.terminalDidNotConnect(settings.terminalTimeout())));
         return Transition.stay(state);
     }
 

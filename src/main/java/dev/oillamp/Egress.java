@@ -169,7 +169,7 @@ final class Egress implements AutoCloseable {
                 // infra user, a different uid, so it needs 0666 to connect.
                 FilesystemUtil.setMode(socket, PosixMode.SHARED_SOCKET);
             } catch (IOException e) {
-                return Result.err(Problems.cannotListen(socket, Problems.reason(e)));
+                return Result.err(ProblemCatalogUtil.cannotListen(socket, ProblemCatalogUtil.reason(e)));
             }
         }
         return bound;
@@ -185,7 +185,7 @@ final class Egress implements AutoCloseable {
                 try {
                     client = server.accept();
                 } catch (IOException e) {
-                    if (!closing) listener.trouble(Problems.cannotListen(Path.of(name), Problems.reason(e)));
+                    if (!closing) listener.trouble(ProblemCatalogUtil.cannotListen(Path.of(name), ProblemCatalogUtil.reason(e)));
                     return;
                 }
                 // 512 open connections is far more than any build needs; a sandbox opening more is
@@ -257,7 +257,7 @@ final class Egress implements AutoCloseable {
             upstream = connect(resolution.pick(verdict), head.port());
         } catch (IOException e) {
             respond(out, 504, "oillamp: cannot reach " + head.host() + ":" + head.port()
-                            + " — " + Problems.reason(e));
+                            + " — " + ProblemCatalogUtil.reason(e));
             record(new Journey(Instant.now(), "proxy", "CONNECT", head.host(), head.port(),
                     verdict.address(), verdict.decision(), verdict.rule(), 0, 0,
                     Duration.between(started, Instant.now())));
@@ -366,7 +366,7 @@ final class Egress implements AutoCloseable {
                 upstream = connectToService(model.service());
             } catch (IOException e) {
                 respond(out, 502, "oillamp: cannot reach the model service at " + host + " — "
-                        + Problems.reason(e));
+                        + ProblemCatalogUtil.reason(e));
                 return;
             }
             live.add(upstream);
@@ -527,7 +527,7 @@ final class Egress implements AutoCloseable {
             pipeBothWays(Channels.newInputStream(client), Channels.newOutputStream(client),
                          upstream, up, down);
         } catch (IOException e) {
-            listener.trouble(Problems.forwardUnreachable(forward, Problems.reason(e)));
+            listener.trouble(ProblemCatalogUtil.forwardUnreachable(forward, ProblemCatalogUtil.reason(e)));
         } finally {
             if (upstream != null) {
                 live.remove(upstream);
@@ -645,7 +645,7 @@ final class Egress implements AutoCloseable {
     }
 
     private void noteTrouble(IOException e) {
-        if (!closing) journal.write(Problems.reason(e));
+        if (!closing) journal.write(ProblemCatalogUtil.reason(e));
     }
 
     private static void respond(OutputStream out, int status, String body) throws IOException {

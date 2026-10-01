@@ -80,7 +80,7 @@ public final class OilLamp {
         } catch (RuntimeException | StackOverflowError failure) {
             // A bug in oillamp is reported as problem OIL-INTERNAL-001, with the start of the
             // stack trace as evidence, rather than as a raw stack trace on the console.
-            sink.accept(new LampEvent.Failure(Problems.crash(failure)));
+            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.crash(failure)));
             status = ExitStatus.ERROR;
         }
         synchronized (recorded) {

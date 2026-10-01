@@ -61,12 +61,12 @@ final class LampPlanUtil {
         Optional<Problem> refusal = switch (inputs.state()) {
             case LampState.Foreign foreign -> inputs.initRequested()
                     ? Optional.<Problem>empty()
-                    : Optional.of(Problems.lampNotEmpty(foreign.root(), foreign.sampleEntries()));
+                    : Optional.of(ProblemCatalogUtil.lampNotEmpty(foreign.root(), foreign.sampleEntries()));
             case LampState.Unreadable unreadable ->
-                    Optional.of(Problems.lampNotWritable(unreadable.root(), unreadable.reason()));
+                    Optional.of(ProblemCatalogUtil.lampNotWritable(unreadable.root(), unreadable.reason()));
             case LampState.Existing existing ->
                     existing.meta().schemaVersion() > LampMeta.CURRENT_SCHEMA_VERSION
-                        ? Optional.of(Problems.lampNewerSchema(existing.root(),
+                        ? Optional.of(ProblemCatalogUtil.lampNewerSchema(existing.root(),
                                 existing.meta().schemaVersion(), LampMeta.CURRENT_SCHEMA_VERSION))
                         : Optional.<Problem>empty();
             case LampState.Missing ignored -> Optional.<Problem>empty();
@@ -81,13 +81,13 @@ final class LampPlanUtil {
         if (inputs.leftoverContainer().isPresent()) {
             steps = steps.add(new Step.RemoveContainer(inputs.leftoverContainer().get(),
                     "left over from a session that did not shut down"));
-            warnings = warnings.add(Problems.lockRecovered(layout.root(),
+            warnings = warnings.add(ProblemCatalogUtil.lockRecovered(layout.root(),
                     "the container " + inputs.leftoverContainer().get() + " was still running"));
         }
         if (inputs.sessionMetaExists()) {
             steps = steps.add(new Step.RemovePath(layout.sessionMeta(), "stale session state"));
             if (inputs.leftoverContainer().isEmpty())
-                warnings = warnings.add(Problems.lockRecovered(layout.root(),
+                warnings = warnings.add(ProblemCatalogUtil.lockRecovered(layout.root(),
                         "a session.json was left behind by a previous run"));
         }
 

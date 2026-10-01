@@ -121,7 +121,7 @@ final class DesktopRendererUtil {
         return switch (decision) {
             case Decision.Hardware ignored -> Optional.empty();
             case Decision.Software software ->
-                    Optional.of(Problems.gpuSoftware(software.reason(), software.remedy()));
+                    Optional.of(ProblemCatalogUtil.gpuSoftware(software.reason(), software.remedy()));
             case Decision.Refused refused   -> Optional.of(refused.problem());
         };
     }

@@ -105,7 +105,7 @@ final class Harness implements AutoCloseable {
         } catch (EOFException ended) {
             return failed("pi ended" + pi.map(p -> p.errorOutput().isBlank() ? "" : ": " + p.errorOutput().strip()).orElse(""));
         } catch (IOException e) {
-            return failed("pi could not be reached: " + Problems.reason(e));
+            return failed("pi could not be reached: " + ProblemCatalogUtil.reason(e));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new Answer(RunOutcome.INTERRUPTED, "");

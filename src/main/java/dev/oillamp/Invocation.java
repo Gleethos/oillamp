@@ -133,7 +133,7 @@ final class Invocation {
                 default -> {
                     if (argument.startsWith("-")) {
                         console.banner(version, "");
-                        sink.accept(new LampEvent.Failure(Problems.usage(
+                        sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                                 "'" + argument + "' is not an option oillamp knows", usage())));
                         return ExitStatus.USAGE;
                     } else {
@@ -145,14 +145,14 @@ final class Invocation {
 
         if (pending.isPresent() && pending.get().equals("--message")) {
             console.banner(version, "");
-            sink.accept(new LampEvent.Failure(Problems.usage(
+            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                     "--message needs the text to save with, for example --message \"before the upgrade\"",
                     usageOf("save"))));
             return ExitStatus.USAGE;
         }
         if (pending.isPresent() && Set.of("--in", "--after", "--instead-of").contains(pending.get())) {
             console.banner(version, "");
-            sink.accept(new LampEvent.Failure(Problems.usage(pending.get() + " needs "
+            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(pending.get() + " needs "
                     + (pending.get().equals("--in") ? "a conversation, as `oillamp conversations` lists them"
                                                     : "an entry, as `oillamp conversations <dir> <conversation>` shows them"),
                     usageOf("ask"))));
@@ -160,7 +160,7 @@ final class Invocation {
         }
         if (pending.isPresent() && Set.of("--cron", "--at", "--expires").contains(pending.get())) {
             console.banner(version, "");
-            sink.accept(new LampEvent.Failure(Problems.usage(
+            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                     pending.get() + " needs a value, for example " + switch (pending.get()) {
                         case "--cron" -> "--cron \"0 9 * * 1-5\"";
                         case "--at"   -> "--at \"2026-10-01 09:00\"";
@@ -170,7 +170,7 @@ final class Invocation {
         }
         if (pending.isPresent() && !pending.get().equals("--open")) {
             console.banner(version, "");
-            sink.accept(new LampEvent.Failure(Problems.usage(
+            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                     pending.get() + " needs a value, for example " + pending.get()
                   + (pending.get().equals("--model-service") ? " https://api.eu.edenai.run" : " MY_MODEL_KEY"),
                     usageOf("at"))));
@@ -178,7 +178,7 @@ final class Invocation {
         }
         if (pending.isPresent()) {
             console.banner(version, "");
-            sink.accept(new LampEvent.Failure(Problems.usage(
+            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                     "--open needs the session to play, for example --open 20260101-120000",
                     "oillamp recordings <dir> [--open <session>] [--prune]")));
             return ExitStatus.USAGE;
@@ -188,14 +188,14 @@ final class Invocation {
             Optional<String> wrong = ConfigLoadingUtil.serviceProblem(modelService.get());
             if (wrong.isPresent()) {
                 console.banner(version, "");
-                sink.accept(new LampEvent.Failure(Problems.usage(
+                sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                         "--model-service \"" + modelService.get() + "\": " + wrong.get(), usageOf("at"))));
                 return ExitStatus.USAGE;
             }
         }
         if (modelKeyEnv.isPresent() && !ConfigLoadingUtil.isVariableName(modelKeyEnv.get())) {
             console.banner(version, "");
-            sink.accept(new LampEvent.Failure(Problems.usage(
+            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                     "--model-key-env \"" + modelKeyEnv.get() + "\": expected the name of an "
                   + "environment variable, such as EDENAI_API_KEY", usageOf("at"))));
             return ExitStatus.USAGE;
@@ -277,7 +277,7 @@ final class Invocation {
                         yield ExitStatus.SUCCESS;
                     }
                     default -> {
-                        sink.accept(new LampEvent.Failure(Problems.usage(
+                        sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                                 "'" + action + "' is not a config action",
                                 "oillamp config <dir> (check | show-effective | path)")));
                         yield ExitStatus.USAGE;
@@ -359,7 +359,7 @@ final class Invocation {
                 String shell = rest.isEmpty() ? "bash" : rest.get(0);
                 if (!shell.equals("bash")) {
                     console.banner(version, "");
-                    sink.accept(new LampEvent.Failure(Problems.usage(
+                    sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                             "oillamp only ships a completion script for bash, not '" + shell + "'",
                             "oillamp completion bash")));
                     yield ExitStatus.USAGE;
@@ -374,7 +374,7 @@ final class Invocation {
             // inputs change, so there is nothing to manage by hand. Explain that instead of
             // answering "unknown command".
             case "image" -> {
-                sink.accept(new LampEvent.Failure(Problems.usage(
+                sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                         "there is no 'image' command: oillamp rebuilds the sandbox image by itself "
                       + "whenever anything that goes into it changes",
                         usage())));
@@ -382,7 +382,7 @@ final class Invocation {
             }
             default -> {
                 console.banner(version, "");
-                sink.accept(new LampEvent.Failure(Problems.usage(
+                sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                         "'" + command + "' is not an oillamp command", usage())));
                 yield ExitStatus.USAGE;
             }
@@ -444,7 +444,7 @@ final class Invocation {
     private static ExitStatus misused(ConsoleRenderer console, Consumer<LampEvent> sink,
                                       String version, String command, String what) {
         console.banner(version, "");
-        sink.accept(new LampEvent.Failure(Problems.usage(what, usageOf(command))));
+        sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(what, usageOf(command))));
         return ExitStatus.USAGE;
     }
 
@@ -458,7 +458,7 @@ final class Invocation {
     private static ExitStatus missingDirectory(ConsoleRenderer console, Consumer<LampEvent> sink,
                                                String version, String command) {
         console.banner(version, "");
-        sink.accept(new LampEvent.Failure(Problems.usage(
+        sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                 "`oillamp " + command + "` needs the path of a lamp directory",
                 "oillamp " + command + " <dir>")));
         return ExitStatus.USAGE;
@@ -470,7 +470,7 @@ final class Invocation {
     private static ExitStatus oneLampOnly(ConsoleRenderer console, Consumer<LampEvent> sink,
                                           String version, String command, List<String> given) {
         console.banner(version, "");
-        sink.accept(new LampEvent.Failure(Problems.usage(
+        sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
                 "`oillamp " + command + "` works on one lamp, but was given " + given.size()
               + " directories (" + String.join(", ", given) + "); run it once for each",
                 "oillamp " + command + " <dir>")));

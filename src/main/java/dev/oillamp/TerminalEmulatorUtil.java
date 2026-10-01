@@ -68,7 +68,7 @@ final class TerminalEmulatorUtil {
             for (TerminalCandidate candidate : available)
                 if (candidate.id() == wanted)
                     return Result.ok(profileOf(wanted).orElseThrow());
-            Problem problem = Problems.noTerminal(supportedNames())
+            Problem problem = ProblemCatalogUtil.noTerminal(supportedNames())
                     .withEvidence(new Problem.Evidence.Config(
                             Path.of("oillamp.toml"), "terminal.profile",
                             wanted.configName(), "a terminal that is installed"));
@@ -82,7 +82,7 @@ final class TerminalEmulatorUtil {
             for (TerminalCandidate candidate : available)
                 if (candidate.id() == profile.id())
                     return Result.ok(profile);
-        return Result.err(Problems.noTerminal(supportedNames()));
+        return Result.err(ProblemCatalogUtil.noTerminal(supportedNames()));
     }
 
     private static Tuple<TerminalProfileId> preferredFor(GraphicalSession session) {

@@ -26,10 +26,10 @@ final class RuntimeEnvFileUtil {
             String key = entry.first();
             String value = entry.second();
             if (!key.matches("[A-Z][A-Z0-9_]*"))
-                return Result.err(Problems.internal("runtime.env",
+                return Result.err(ProblemCatalogUtil.internal("runtime.env",
                         "'" + key + "' is not a shell-safe environment variable name"));
             if (value.indexOf('\n') >= 0 || value.indexOf('\r') >= 0)
-                return Result.err(Problems.internal("runtime.env",
+                return Result.err(ProblemCatalogUtil.internal("runtime.env",
                         "the value of " + key + " contains a line break, which would split the "
                       + "assignment when the entrypoint sources this file"));
             lines = lines.add(key + "=" + quote(value));

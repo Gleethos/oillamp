@@ -112,7 +112,7 @@ final class History {
             try {
                 return Result.ok(saveUnlocked(kind, message, session, trailers, always, now));
             } catch (IOException | RuntimeException e) {
-                return Result.err(Problems.saveFailed(layout.root(), Problems.reason(e)));
+                return Result.err(ProblemCatalogUtil.saveFailed(layout.root(), ProblemCatalogUtil.reason(e)));
             }
         });
     }
@@ -122,7 +122,7 @@ final class History {
         try {
             return Result.ok(commits());
         } catch (IOException | RuntimeException e) {
-            return Result.err(Problems.historyDamaged(repository, Problems.reason(e)));
+            return Result.err(ProblemCatalogUtil.historyDamaged(repository, ProblemCatalogUtil.reason(e)));
         }
     }
 
@@ -145,7 +145,7 @@ final class History {
             boolean more = compare(before, Optional.of(after), "", found, limit, true);
             return Result.ok(new Changes(Tuple.of(Change.class, found), more));
         } catch (IOException | RuntimeException e) {
-            return Result.err(Problems.historyDamaged(repository, Problems.reason(e)));
+            return Result.err(ProblemCatalogUtil.historyDamaged(repository, ProblemCatalogUtil.reason(e)));
         }
     }
 
@@ -187,7 +187,7 @@ final class History {
             for (GitObjectUtil.Commit commit : commits()) found = found.add(commit.snapshot());
             return Result.ok(found);
         } catch (IOException | RuntimeException e) {
-            return Result.err(Problems.historyDamaged(repository, Problems.reason(e)));
+            return Result.err(ProblemCatalogUtil.historyDamaged(repository, ProblemCatalogUtil.reason(e)));
         }
     }
 
@@ -201,7 +201,7 @@ final class History {
             try {
                 commits = commits();
             } catch (IOException | RuntimeException e) {
-                return Result.err(Problems.historyDamaged(repository, Problems.reason(e)));
+                return Result.err(ProblemCatalogUtil.historyDamaged(repository, ProblemCatalogUtil.reason(e)));
             }
             Tuple<Snapshot> snapshots = Tuple.of(Snapshot.class);
             for (GitObjectUtil.Commit commit : commits) snapshots = snapshots.add(commit.snapshot());
@@ -215,18 +215,18 @@ final class History {
                 safety = saveUnlocked(SaveKind.BEFORE_RESTORE, "before restoring " + target.shortId(),
                                       Optional.empty(), now);
             } catch (IOException | RuntimeException e) {
-                return Result.err(Problems.saveFailed(layout.root(),
-                        "the save before the restore failed, so nothing was restored: " + Problems.reason(e)));
+                return Result.err(ProblemCatalogUtil.saveFailed(layout.root(),
+                        "the save before the restore failed, so nothing was restored: " + ProblemCatalogUtil.reason(e)));
             }
             // The newest snapshot now holds exactly what is on disk, apart from any skipped files.
             GitObjectUtil.Commit current;
             try {
                 current = commits().first();
             } catch (IOException | RuntimeException e) {
-                return Result.err(Problems.historyDamaged(repository, Problems.reason(e)));
+                return Result.err(ProblemCatalogUtil.historyDamaged(repository, ProblemCatalogUtil.reason(e)));
             }
             Tuple<Problem> warnings = safety.skipped().isEmpty() ? Tuple.of(Problem.class)
-                    : Tuple.of(Problem.class, Problems.filesNotSaved(layout.root(), safety.skipped()));
+                    : Tuple.of(Problem.class, ProblemCatalogUtil.filesNotSaved(layout.root(), safety.skipped()));
             if (current.tree().equals(wanted.tree()))
                 return Result.ok(new Restoring(target, safety.made(), Optional.empty(), safety.skipped()), warnings);
             try {
@@ -236,7 +236,7 @@ final class History {
                 Snapshot result = commit(wanted.tree(), Optional.of(current.id()), now, message);
                 return Result.ok(new Restoring(target, safety.made(), Optional.of(result), safety.skipped()), warnings);
             } catch (IOException | RuntimeException e) {
-                return Result.err(Problems.restoreFailed(layout.root(), Problems.reason(e),
+                return Result.err(ProblemCatalogUtil.restoreFailed(layout.root(), ProblemCatalogUtil.reason(e),
                         current.snapshot().shortId()));
             }
         });
@@ -717,14 +717,14 @@ final class History {
                     }
                 }
                 if (pause.multipliedBy(waited).compareTo(LOCK_WAIT) > 0)
-                    return Result.err(Problems.historyBusy(layout.root(), LOCK_WAIT));
+                    return Result.err(ProblemCatalogUtil.historyBusy(layout.root(), LOCK_WAIT));
                 Thread.sleep(pause);
             }
         } catch (IOException e) {
-            return Result.err(Problems.saveFailed(layout.root(), Problems.reason(e)));
+            return Result.err(ProblemCatalogUtil.saveFailed(layout.root(), ProblemCatalogUtil.reason(e)));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return Result.err(Problems.saveFailed(layout.root(), "interrupted while waiting for another save"));
+            return Result.err(ProblemCatalogUtil.saveFailed(layout.root(), "interrupted while waiting for another save"));
         }
     }
 

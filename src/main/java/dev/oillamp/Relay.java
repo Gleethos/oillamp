@@ -83,7 +83,7 @@ final class Relay implements AutoCloseable {
     static Result<ServerSocketChannel> bind(Path socket) {
         int length = socket.toString().getBytes(StandardCharsets.UTF_8).length;
         if (length > MAX_SOCKET_PATH)
-            return Result.err(Problems.socketPathTooLong(socket, MAX_SOCKET_PATH));
+            return Result.err(ProblemCatalogUtil.socketPathTooLong(socket, MAX_SOCKET_PATH));
         try {
             Path parent = socket.getParent();
             if (parent != null) Files.createDirectories(parent);
@@ -94,7 +94,7 @@ final class Relay implements AutoCloseable {
             FilesystemUtil.setMode(socket, PosixMode.PRIVATE_FILE);
             return Result.ok(server);
         } catch (IOException e) {
-            return Result.err(Problems.cannotListen(socket, Problems.reason(e)));
+            return Result.err(ProblemCatalogUtil.cannotListen(socket, ProblemCatalogUtil.reason(e)));
         }
     }
 
@@ -117,14 +117,14 @@ final class Relay implements AutoCloseable {
             try {
                 client = server.accept();
             } catch (IOException e) {
-                if (!closing) listener.trouble(Problems.cannotListen(socket, Problems.reason(e)));
+                if (!closing) listener.trouble(ProblemCatalogUtil.cannotListen(socket, ProblemCatalogUtil.reason(e)));
                 return;
             }
             if (accepted.incrementAndGet() > maxConnections) {
                 // The primary relay belongs to the terminal window oillamp opened. A second
                 // connection is a mistake, so it is refused and `oillamp shell` suggested.
                 closeQuietly(client);
-                listener.trouble(Problems.extraPrimaryRejected(socket));
+                listener.trouble(ProblemCatalogUtil.extraPrimaryRejected(socket));
                 continue;
             }
             Thread.ofVirtual().name("oillamp-relay-connection").start(() -> relayOneConnection(client));
@@ -139,8 +139,8 @@ final class Relay implements AutoCloseable {
         } catch (IOException e) {
             // The sandbox's SSH socket is gone or refusing. The user only sees a terminal window
             // that opens and closes, so this is reported in the supervisor's terminal.
-            listener.trouble(Problems.sandboxEndpointDead("the shell (SSH)", target,
-                    "the sandbox", "connecting for a shell: " + Problems.reason(e)));
+            listener.trouble(ProblemCatalogUtil.sandboxEndpointDead("the shell (SSH)", target,
+                    "the sandbox", "connecting for a shell: " + ProblemCatalogUtil.reason(e)));
             closeQuietly(client);
             return;
         }

@@ -44,7 +44,7 @@ final class LampPhase {
         Path root = ((Result.Ok<Path>) validated).value();
 
         if (UNUSABLE_FILESYSTEMS.contains(host.fileSystemTypeOfLamp()))
-            return Result.err(Problems.lampBadFilesystem(root, host.fileSystemTypeOfLamp()));
+            return Result.err(ProblemCatalogUtil.lampBadFilesystem(root, host.fileSystemTypeOfLamp()));
 
         LampState state = LampDirectoryUtil.classify(root, FilesystemUtil.list(root),
                 FilesystemUtil.readString(root.resolve(".oillamp").resolve("lamp.json")));
@@ -137,7 +137,7 @@ final class LampPhase {
         Optional<String> clientKey = FilesystemUtil.readString(layout.clientKeyPub());
         Optional<String> hostKey = FilesystemUtil.readString(layout.hostKeyPub());
         if (clientKey.isEmpty() || hostKey.isEmpty())
-            return Result.err(Problems.sshKeygenFailed(new Problem.Evidence.Command(
+            return Result.err(ProblemCatalogUtil.sshKeygenFailed(new Problem.Evidence.Command(
                     Tuple.of(String.class, "ssh-keygen"), 0,
                     "the generated public key could not be read back from " + layout.keysDir(),
                     Duration.ZERO)));
@@ -247,9 +247,9 @@ final class LampPhase {
             try {
                 target = Files.readSymbolicLink(directory).toString();
             } catch (IOException e) {
-                target = "somewhere that cannot be read (" + Problems.reason(e) + ")";
+                target = "somewhere that cannot be read (" + ProblemCatalogUtil.reason(e) + ")";
             }
-            return Optional.of(Problems.lampSocketDirReplaced(directory, target));
+            return Optional.of(ProblemCatalogUtil.lampSocketDirReplaced(directory, target));
         }
         return Optional.empty();
     }

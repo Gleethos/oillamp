@@ -253,7 +253,7 @@ final class Supervisor {
         Tuple<String> argv = VncViewerUtil.argv(prepared.layout(), prepared.config(), viewOnly);
         if (host.vncViewer().isEmpty()) {
             post(new SessionEvent.ActionFailed(new SessionAction.LaunchViewer(viewOnly),
-                    Problems.viewerDiedImmediately(argv, 127,
+                    ProblemCatalogUtil.viewerDiedImmediately(argv, 127,
                             "vncviewer is not installed — `sudo apt-get install -y tigervnc-viewer`")));
             return;
         }
@@ -261,14 +261,14 @@ final class Supervisor {
                                                Machine.Window.Stdio.DETACHED);
         if (window.failure().isPresent()) {
             post(new SessionEvent.ActionFailed(new SessionAction.LaunchViewer(viewOnly),
-                    Problems.viewerDiedImmediately(argv, 127, window.failure().get())));
+                    ProblemCatalogUtil.viewerDiedImmediately(argv, 127, window.failure().get())));
             return;
         }
         viewers.add(window);
         context.emit(new LampEvent.WindowOpened("the desktop viewer", argv));
         watchBriefly(window, argv, exitCode -> new SessionEvent.ActionFailed(
                 new SessionAction.LaunchViewer(viewOnly),
-                Problems.viewerDiedImmediately(argv, exitCode, window.output())));
+                ProblemCatalogUtil.viewerDiedImmediately(argv, exitCode, window.output())));
     }
 
     /// Opens the sandbox shell in a _new_ terminal window.
@@ -287,14 +287,14 @@ final class Supervisor {
                                                Machine.Window.Stdio.DETACHED);
         if (window.failure().isPresent()) {
             post(new SessionEvent.ActionFailed(new SessionAction.LaunchTerminal(),
-                    Problems.terminalNotStarted(argv, window.failure().get(), window.output())));
+                    ProblemCatalogUtil.terminalNotStarted(argv, window.failure().get(), window.output())));
             return;
         }
         terminal = Optional.of(window);
         context.emit(new LampEvent.WindowOpened("your shell, in a new terminal window", argv));
         watchBriefly(window, argv, exitCode -> new SessionEvent.ActionFailed(
                 new SessionAction.LaunchTerminal(),
-                Problems.terminalNotStarted(argv, "it exited with code " + exitCode, window.output())));
+                ProblemCatalogUtil.terminalNotStarted(argv, "it exited with code " + exitCode, window.output())));
     }
 
     /// The terminal emulator's command line, with the ssh command inside it.
@@ -379,7 +379,7 @@ final class Supervisor {
             FilesystemUtil.writeFile(layout.sessionMeta(), sessionJson(), PosixMode.PRIVATE_FILE);
         } catch (IOException e) {
             // session.json is only informational (the lock decides), so this is a warning.
-            warnings = warnings.add(Problems.internal("session.json", Problems.reason(e)));
+            warnings = warnings.add(ProblemCatalogUtil.internal("session.json", ProblemCatalogUtil.reason(e)));
         }
         return Result.ok(warnings);
     }
@@ -441,7 +441,7 @@ final class Supervisor {
         // What matters is whether the container is gone. `podman stop` failing and then
         // `podman rm -f` succeeding is a complete shutdown, not an error.
         if (!stopped.succeeded() && !removed.succeeded())
-            problems = problems.add(Problems.containerNotRemoved(sandbox.container().value(),
+            problems = problems.add(ProblemCatalogUtil.containerNotRemoved(sandbox.container().value(),
                     stopped.errorOutput().strip(), removed.errorOutput().strip()));
         else if (!stopped.succeeded())
             context.info("session", "the container had to be forced — "
@@ -459,7 +459,7 @@ final class Supervisor {
         try {
             FilesystemUtil.deleteIfPresent(prepared.layout().sessionMeta());
         } catch (IOException e) {
-            problems = problems.add(Problems.internal("session.json", Problems.reason(e)));
+            problems = problems.add(ProblemCatalogUtil.internal("session.json", ProblemCatalogUtil.reason(e)));
         }
         problems = problems.addAll(recordLastSession());
 
@@ -501,7 +501,7 @@ final class Supervisor {
                     PosixMode.PUBLIC_FILE);
             return Tuple.of(Problem.class);
         } catch (IOException e) {
-            return Tuple.of(Problem.class, Problems.internal("lamp.json", Problems.reason(e)));
+            return Tuple.of(Problem.class, ProblemCatalogUtil.internal("lamp.json", ProblemCatalogUtil.reason(e)));
         }
     }
 
@@ -601,13 +601,13 @@ final class Supervisor {
         if (desktop != desktopAnswering)
             context.emit(desktop
                     ? new LampEvent.Ok("health", "the desktop is answering again")
-                    : new LampEvent.Warning(Problems.sandboxEndpointDead("the desktop (VNC)",
+                    : new LampEvent.Warning(ProblemCatalogUtil.sandboxEndpointDead("the desktop (VNC)",
                             prepared.layout().vncSocket(), sandbox.container().value(),
                             lastLinesOfTheSandboxLog())));
         if (shell != shellAnswering)
             context.emit(shell
                     ? new LampEvent.Ok("health", "the shell is answering again")
-                    : new LampEvent.Warning(Problems.sandboxEndpointDead("the shell (SSH)",
+                    : new LampEvent.Warning(ProblemCatalogUtil.sandboxEndpointDead("the shell (SSH)",
                             prepared.layout().agentSshSocket(), sandbox.container().value(),
                             lastLinesOfTheSandboxLog())));
         desktopAnswering = desktop;
@@ -744,7 +744,7 @@ final class Supervisor {
             case Machine.Outcome ignored -> Optional.empty();
         };
         if (answer.isEmpty() && !podmanSilent)
-            context.emit(new LampEvent.Warning(Problems.sandboxStateUnknown(
+            context.emit(new LampEvent.Warning(ProblemCatalogUtil.sandboxStateUnknown(
                     sandbox.container().value(), describeFailure(outcome))));
         podmanSilent = answer.isEmpty();
         return answer;
@@ -869,7 +869,7 @@ final class Supervisor {
                     where = request.arguments().get("file").map(file -> new Harness.Target(file,
                             request.arguments().get("move_to").filter(entry -> !entry.isBlank())));
                 } catch (IllegalArgumentException wrong) {
-                    yield Control.Reply.failed(Problems.reason(wrong));
+                    yield Control.Reply.failed(ProblemCatalogUtil.reason(wrong));
                 }
                 Result<Runs.Asked> asked = runs.ask(request.arguments().get("prompt").orElse(""),
                         request.arguments().get("conversation"), where);
@@ -888,7 +888,7 @@ final class Supervisor {
                     Control.Reply withConversation = finished.conversation().map(id -> reply.with("conversation", id)).orElse(reply);
                     yield finished.snapshot().map(snapshot -> withConversation.with("snapshot", snapshot.id())).orElse(withConversation);
                 } catch (ExecutionException failed) {
-                    yield Control.Reply.failed(Problems.reason(failed.getCause() == null ? failed : failed.getCause()));
+                    yield Control.Reply.failed(ProblemCatalogUtil.reason(failed.getCause() == null ? failed : failed.getCause()));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     yield Control.Reply.failed("the session is ending");

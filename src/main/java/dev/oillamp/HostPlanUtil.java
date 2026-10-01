@@ -42,16 +42,16 @@ final class HostPlanUtil {
 
     public static Result<Plan> plan(HostFacts facts, HostRequirements requirements, Options options) {
         if (!facts.isLinux())
-            return Result.err(Problems.hostNotLinux(facts.os().osName()));
+            return Result.err(ProblemCatalogUtil.hostNotLinux(facts.os().osName()));
 
         Tuple<Problem> problems = Tuple.of(Problem.class);
         Tuple<Step> steps = Tuple.of(Step.class);
 
         if (!facts.isAptBased())
-            problems = problems.add(Problems.hostNotApt(facts.os().id(), requirements.packages()));
+            problems = problems.add(ProblemCatalogUtil.hostNotApt(facts.os().id(), requirements.packages()));
 
         if (options.requiresGraphicalSession() && !facts.hasGraphicalSession())
-            problems = problems.add(Problems.hostNoGraphics());
+            problems = problems.add(ProblemCatalogUtil.hostNoGraphics());
 
         // ── packages ───────────────────────────────────────────────────────────────────────
         Tuple<String> missing = requirements.missingFrom(facts.installedPackages());
@@ -60,11 +60,11 @@ final class HostPlanUtil {
         boolean podmanIsAbsent = missing.contains("podman");
         if (!missing.isEmpty()) {
             if (!options.mayInstall() || options.afterFixes()) {
-                problems = problems.add(Problems.packagesMissing(
+                problems = problems.add(ProblemCatalogUtil.packagesMissing(
                         missing, requirements.installCommand(missing), options.installing()));
             } else if (options.willExecute() && !facts.sudo().canInstall()) {
-                problems = problems.add(Problems.noSudo(sudoReason(facts.sudo())));
-                problems = problems.add(Problems.packagesMissing(
+                problems = problems.add(ProblemCatalogUtil.noSudo(sudoReason(facts.sudo())));
+                problems = problems.add(ProblemCatalogUtil.packagesMissing(
                         missing, requirements.installCommand(missing), options.installing()));
             } else {
                 steps = steps.add(installStep(requirements, missing));
@@ -74,11 +74,11 @@ final class HostPlanUtil {
         // ── subordinate id range ───────────────────────────────────────────────────────────
         if (facts.subIds() instanceof SubIdFacts.Missing gap) {
             if (!options.mayInstall() || options.afterFixes()) {
-                problems = problems.add(Problems.hostNoSubIds(facts.user().name()));
+                problems = problems.add(ProblemCatalogUtil.hostNoSubIds(facts.user().name()));
             } else if (options.willExecute() && !facts.sudo().canInstall()) {
-                if (problems.none(p -> p.code().equals(Problems.PKG_NO_SUDO)))
-                    problems = problems.add(Problems.noSudo(sudoReason(facts.sudo())));
-                problems = problems.add(Problems.hostNoSubIds(facts.user().name()));
+                if (problems.none(p -> p.code().equals(ProblemCatalogUtil.PKG_NO_SUDO)))
+                    problems = problems.add(ProblemCatalogUtil.noSudo(sudoReason(facts.sudo())));
+                problems = problems.add(ProblemCatalogUtil.hostNoSubIds(facts.user().name()));
             } else {
                 IdRange range = SubIdRangeUtil.allocate(
                         gap.allocatedUidRanges().addAll(gap.allocatedGidRanges()), SubIdFacts.REQUIRED_SIZE);
@@ -95,7 +95,7 @@ final class HostPlanUtil {
 
         // ── a terminal to put the shell in ─────────────────────────────────────────────────
         if (options.requiresGraphicalSession() && facts.terminals().isEmpty())
-            problems = problems.add(Problems.noTerminal(TerminalEmulatorUtil.supportedNames()));
+            problems = problems.add(ProblemCatalogUtil.noTerminal(TerminalEmulatorUtil.supportedNames()));
 
         Tuple<Problem> errors = problems.retainIf(Problem::isError);
         if (!errors.isEmpty())
@@ -106,20 +106,20 @@ final class HostPlanUtil {
     private static Tuple<Problem> podmanProblems(HostFacts facts) {
         Tuple<Problem> problems = Tuple.of(Problem.class);
         if (facts.podman().isEmpty())
-            return problems.add(Problems.podmanUnusable(
+            return problems.add(ProblemCatalogUtil.podmanUnusable(
                     "`podman version --format json` did not produce a usable answer"));
 
         PodmanFacts podman = facts.podman().get();
         if (!podman.isAtLeastMinimum())
-            problems = problems.add(Problems.podmanTooOld(podman.version(), PodmanFacts.MINIMUM_VERSION));
+            problems = problems.add(ProblemCatalogUtil.podmanTooOld(podman.version(), PodmanFacts.MINIMUM_VERSION));
         if (!podman.rootless())
-            problems = problems.add(Problems.podmanNotRootless(
+            problems = problems.add(ProblemCatalogUtil.podmanNotRootless(
                     "podman info reports host.security.rootless = false"));
 
         if (facts.userns() instanceof UserNameSpaceFacts.Fails failure) {
             problems = problems.add(failure.apparmorRestricted()
-                    ? Problems.apparmorBlocked(failure.evidence())
-                    : Problems.usernsBroken(failure.evidence()));
+                    ? ProblemCatalogUtil.apparmorBlocked(failure.evidence())
+                    : ProblemCatalogUtil.usernsBroken(failure.evidence()));
         }
         return problems;
     }

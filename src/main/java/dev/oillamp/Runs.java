@@ -92,7 +92,7 @@ final class Runs {
     /// @param where        where in that conversation the question goes
     /// @return the queued run; an error when the session is ending or the schedule file cannot be written
     Result<Asked> ask(String prompt, Optional<String> conversation, Optional<Harness.Target> where) {
-        if (stopping) return Result.err(Problems.runRefused("the session is ending"));
+        if (stopping) return Result.err(ProblemCatalogUtil.runRefused("the session is ending"));
         Result<Schedule.Numbered> numbered = book.update(schedule -> Result.ok(schedule.numberRun()), Schedule.Numbered::schedule);
         if (!(numbered instanceof Result.Ok<Schedule.Numbered>(Schedule.Numbered number, var _)))
             return Result.err(numbered.problems());
@@ -112,7 +112,7 @@ final class Runs {
             harness.cancel();
             return Result.ok(working.get().run().id());
         }
-        if (run.isEmpty()) return Result.err(Problems.runRefused("the agent is not working on anything"));
+        if (run.isEmpty()) return Result.err(ProblemCatalogUtil.runRefused("the agent is not working on anything"));
         for (Pending waiting : queue)
             if (waiting.run().id().equals(run.get()) && queue.remove(waiting)) {
                 LampEvent.RunFinished finished = new LampEvent.RunFinished(waiting.run(), RunOutcome.CANCELLED,
@@ -121,7 +121,7 @@ final class Runs {
                 waiting.done().complete(finished);
                 return Result.ok(run.get());
             }
-        return Result.err(Problems.runRefused("no run called " + run.get() + " is in progress or waiting"));
+        return Result.err(ProblemCatalogUtil.runRefused("no run called " + run.get() + " is in progress or waiting"));
     }
 
     /// The run in progress and those waiting, for `oillamp status`.
@@ -183,7 +183,7 @@ final class Runs {
         ZoneId zone = machine.zone();
         Result<Schedule> read = book.read();
         if (!(read instanceof Result.Ok<Schedule>(Schedule schedule, var _))) {
-            context.report(read.problems().map(Problems::asWarning));
+            context.report(read.problems().map(ProblemCatalogUtil::asWarning));
             return;
         }
         for (ScheduledJob finished : schedule.finished(now, zone))
@@ -247,7 +247,7 @@ final class Runs {
             try {
                 next.done().complete(perform(next));
             } catch (RuntimeException bug) {
-                context.emit(new LampEvent.Warning(Problems.runFailed(next.run().id(), Problems.reason(bug))));
+                context.emit(new LampEvent.Warning(ProblemCatalogUtil.runFailed(next.run().id(), ProblemCatalogUtil.reason(bug))));
                 next.done().completeExceptionally(bug);
             } finally {
                 current = Optional.empty();
@@ -272,7 +272,7 @@ final class Runs {
             saving.made().ifPresent(made -> context.emit(new LampEvent.Saved(made, saving.files())));
             base = saving.latest().map(LampEvent.Snapshot::id);
         } else {
-            context.report(before.problems().map(Problems::asWarning));
+            context.report(before.problems().map(ProblemCatalogUtil::asWarning));
         }
 
         // A job wakes an agent that knows nothing of why, so its prompt carries the agent's notes
@@ -285,7 +285,7 @@ final class Runs {
         Harness.Answer answer = harness.run(name, prompt, config.maxRun(), pending.where(),
                 progress -> context.emit(new LampEvent.RunProgress(run.id(), progress)));
         if (answer.outcome() == RunOutcome.FAILED && !answer.text().isBlank() && answer.text().startsWith("pi "))
-            context.emit(new LampEvent.Warning(Problems.runFailed(run.id(), answer.text())));
+            context.emit(new LampEvent.Warning(ProblemCatalogUtil.runFailed(run.id(), answer.text())));
         Instant ended = machine.now();
 
         String outcome = answer.outcome().name().toLowerCase(Locale.ROOT).replace('_', ' ');
@@ -305,9 +305,9 @@ final class Runs {
         if (saved instanceof Result.Ok<History.Saving>(History.Saving saving, var _)) {
             snapshot = saving.made();
             if (!saving.skipped().isEmpty())
-                context.emit(new LampEvent.Warning(Problems.filesNotSaved(layout.root(), saving.skipped())));
+                context.emit(new LampEvent.Warning(ProblemCatalogUtil.filesNotSaved(layout.root(), saving.skipped())));
         } else {
-            context.report(saved.problems().map(Problems::asWarning));
+            context.report(saved.problems().map(ProblemCatalogUtil::asWarning));
         }
         LampEvent.RunFinished finished = new LampEvent.RunFinished(run, answer.outcome(), answer.text().strip(),
                 snapshot, Duration.between(started, ended), conversation);

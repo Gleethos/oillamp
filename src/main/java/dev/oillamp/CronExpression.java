@@ -99,7 +99,7 @@ final class CronExpression {
     }
 
     private static Result<CronExpression> failed(String written, String why) {
-        return Result.err(Problems.scheduleRefused("\"" + written + "\" is not a schedule oillamp can read: " + why));
+        return Result.err(ProblemCatalogUtil.scheduleRefused("\"" + written + "\" is not a schedule oillamp can read: " + why));
     }
 
     /// One field: a comma-separated list of `*`, `n` or `a-b`, each with an optional `/step`.

@@ -113,7 +113,7 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
     /// Takes a job off the schedule. The agent may only remove its own.
     Result<Changed> remove(String id, JobAuthor by, Path lamp) {
         Optional<ScheduledJob> found = job(id);
-        if (found.isEmpty()) return Result.err(Problems.noSuchJob(id, lamp));
+        if (found.isEmpty()) return Result.err(ProblemCatalogUtil.noSuchJob(id, lamp));
         if (by == JobAuthor.AGENT && found.get().author() == JobAuthor.USER)
             return refused(found.get().id() + " is one of the user's jobs; only the user can remove it");
         return Result.ok(new Changed(without(found.get().id()), found.get()));
@@ -122,7 +122,7 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
     /// Switches a job on or off. Only the user does this.
     Result<Changed> enable(String id, boolean on, Instant now, Path lamp) {
         Optional<ScheduledJob> found = job(id);
-        if (found.isEmpty()) return Result.err(Problems.noSuchJob(id, lamp));
+        if (found.isEmpty()) return Result.err(ProblemCatalogUtil.noSuchJob(id, lamp));
         ScheduledJob changed = found.get().enabled(on, now);
         return Result.ok(new Changed(replace(changed), changed));
     }
@@ -164,7 +164,7 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
     }
 
     private static <T> Result<T> refused(String why) {
-        return Result.err(Problems.scheduleRefused(why));
+        return Result.err(ProblemCatalogUtil.scheduleRefused(why));
     }
 
     private static String describe(Duration gap) {
@@ -201,7 +201,7 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
     static Result<Schedule> parse(String text, Path file) {
         Optional<JsonNode> parsed = JsonUtil.parse(text);
         if (parsed.isEmpty() || !parsed.get().isObject())
-            return Result.err(Problems.scheduleDamaged(file, "it is not a JSON object"));
+            return Result.err(ProblemCatalogUtil.scheduleDamaged(file, "it is not a JSON object"));
         JsonNode root = parsed.get();
         try {
             Tuple<ScheduledJob> jobs = Tuple.of(ScheduledJob.class);
@@ -224,7 +224,7 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
             return Result.ok(new Schedule(root.path("paused").asBoolean(false),
                     Math.max(1, root.path("next_job").asInt(1)), Math.max(1, root.path("next_run").asInt(1)), jobs));
         } catch (RuntimeException unreadable) {
-            return Result.err(Problems.scheduleDamaged(file, Problems.reason(unreadable)));
+            return Result.err(ProblemCatalogUtil.scheduleDamaged(file, ProblemCatalogUtil.reason(unreadable)));
         }
     }
 

@@ -100,7 +100,7 @@ final class Commands {
             lock = LampLock.tryAcquire(prepared.layout().lockFile());
         } catch (IOException e) {
             context.report(Tuple.of(Problem.class,
-                    Problems.lampNotWritable(prepared.layout().root(), Problems.reason(e))));
+                    ProblemCatalogUtil.lampNotWritable(prepared.layout().root(), ProblemCatalogUtil.reason(e))));
             return ExitStatus.ERROR;
         }
         if (lock.isEmpty()) {
@@ -159,7 +159,7 @@ final class Commands {
                 held.close();
             } catch (IOException e) {
                 context.report(Tuple.of(Problem.class,
-                        Problems.internal("lock release", Problems.reason(e))));
+                        ProblemCatalogUtil.internal("lock release", ProblemCatalogUtil.reason(e))));
             }
         }
     }
@@ -225,7 +225,7 @@ final class Commands {
         Tuple<String> argv = ((Result.Ok<Control.Reply>) reply).value().argv();
         if (argv.isEmpty()) {
             context.report(Tuple.of(Problem.class,
-                    Problems.internal("shell", "the session did not say how to reach it")));
+                    ProblemCatalogUtil.internal("shell", "the session did not say how to reach it")));
             return ExitStatus.ERROR;
         }
         context.info("shell", "connecting — closing this shell does not end the session");
@@ -274,7 +274,7 @@ final class Commands {
             Result<LampPlanUtil.Removal> examined = examineForRemoval(root);
             if (examined instanceof Result.Ok<LampPlanUtil.Removal> ok) removals = removals.add(ok.value());
             else refusals = refusals.addAll(examined.problems());
-            anyInUse |= examined.problems().stream().anyMatch(p -> p.code().equals(Problems.LAMP_STILL_RUNNING));
+            anyInUse |= examined.problems().stream().anyMatch(p -> p.code().equals(ProblemCatalogUtil.LAMP_STILL_RUNNING));
         }
         if (!refusals.isEmpty()) {
             context.report(refusals);
@@ -335,7 +335,7 @@ final class Commands {
                 || FilesystemUtil.exists(LampLayout.stateDirOf(root))
                 || FilesystemUtil.exists(LampLayout.configOf(root));
         if (!anythingOfOurs)
-            return Result.err(Problems.lampNotWritable(root,
+            return Result.err(ProblemCatalogUtil.lampNotWritable(root,
                     "this is not an oillamp lamp — there is nothing of oillamp's in " + root));
 
         // A lamp half-deleted by hand may have lost lamp.json, and with it the agent id that names
@@ -346,7 +346,7 @@ final class Commands {
 
         Optional<String> inUse = whatIsStillRunning(root, layout);
         if (inUse.isPresent())
-            return Result.err(Problems.lampStillRunning(root, inUse.get()));
+            return Result.err(ProblemCatalogUtil.lampStillRunning(root, inUse.get()));
 
         return Result.ok(new LampPlanUtil.Removal(root, agentDirs, layout.map(LampLayout::runtimeDir)));
     }
@@ -446,7 +446,7 @@ final class Commands {
             FilesystemUtil.deleteIfPresent(root);
             return ", and " + root + " with it: oillamp was all that was in it";
         } catch (IOException e) {
-            return " — " + root + " is empty now, but could not be removed: " + Problems.reason(e);
+            return " — " + root + " is empty now, but could not be removed: " + ProblemCatalogUtil.reason(e);
         }
     }
 
@@ -473,7 +473,7 @@ final class Commands {
     public ExitStatus list() {
         Machine.Outcome outcome = listRunningSandboxes();
         if (!outcome.succeeded()) {
-            context.report(Tuple.of(Problem.class, Problems.podmanFailed(
+            context.report(Tuple.of(Problem.class, ProblemCatalogUtil.podmanFailed(
                     "podman ps", outcome.exitCode(), outcome.errorOutput().strip())));
             return ExitStatus.ERROR;
         }
@@ -507,7 +507,7 @@ final class Commands {
         try {
             idle = LampLock.tryAcquire(layout.lockFile());
         } catch (IOException e) {
-            context.report(Tuple.of(Problem.class, Problems.lampNotWritable(layout.root(), Problems.reason(e))));
+            context.report(Tuple.of(Problem.class, ProblemCatalogUtil.lampNotWritable(layout.root(), ProblemCatalogUtil.reason(e))));
             return ExitStatus.ERROR;
         }
         try {
@@ -557,11 +557,11 @@ final class Commands {
         try {
             lock = LampLock.tryAcquire(layout.lockFile());
         } catch (IOException e) {
-            context.report(Tuple.of(Problem.class, Problems.lampNotWritable(layout.root(), Problems.reason(e))));
+            context.report(Tuple.of(Problem.class, ProblemCatalogUtil.lampNotWritable(layout.root(), ProblemCatalogUtil.reason(e))));
             return ExitStatus.ERROR;
         }
         if (lock.isEmpty()) {
-            Tuple<Problem> refused = Tuple.of(Problem.class, Problems.restoreWhileRunning(layout.root()));
+            Tuple<Problem> refused = Tuple.of(Problem.class, ProblemCatalogUtil.restoreWhileRunning(layout.root()));
             context.report(refused);
             return exitStatusFor(refused);
         }
@@ -599,7 +599,7 @@ final class Commands {
                                  + "), so there was nothing to save")
                     .orElse("nothing to save yet"));
         return saving.skipped().isEmpty() ? Tuple.of(Problem.class)
-                : Tuple.of(Problem.class, Problems.filesNotSaved(layout.root(), saving.skipped()));
+                : Tuple.of(Problem.class, ProblemCatalogUtil.filesNotSaved(layout.root(), saving.skipped()));
     }
 
     // ─── the schedule, and asking the agent ────────────────────────────────────────────────
@@ -650,7 +650,7 @@ final class Commands {
                     .map(changed -> new LampEvent.ScheduleChanged(changed.paused()
                             ? "the schedule is paused: no job runs until `oillamp schedule " + layout.root() + " resume`"
                             : "the schedule runs again"));
-            default -> Result.err(Problems.usage("'" + action + "' is not something `oillamp schedule` does",
+            default -> Result.err(ProblemCatalogUtil.usage("'" + action + "' is not something `oillamp schedule` does",
                     Invocation.usageOf("schedule")));
         };
         if (done instanceof Result.Err<LampEvent> failure) {
@@ -659,7 +659,7 @@ final class Commands {
         }
         context.emit(((Result.Ok<LampEvent>) done).value());
         if (!action.equals("list")) {
-            if (!limits.enabled()) context.report(Tuple.of(Problem.class, Problems.scheduleOff(layout.config())));
+            if (!limits.enabled()) context.report(Tuple.of(Problem.class, ProblemCatalogUtil.scheduleOff(layout.config())));
             // A running session looks at the schedule every half minute; this makes it look now.
             // Without a session there is nothing to tell, and that is fine.
             if (FilesystemUtil.exists(layout.controlSocket()))
@@ -702,7 +702,7 @@ final class Commands {
         }
         Optional<dev.lamp.Lamp.Conversation> conversation = dev.lamp.Lamp.conversation(root, which.get());
         if (conversation.isEmpty()) {
-            Tuple<Problem> missing = Tuple.of(Problem.class, Problems.noSuchConversation(which.get(), root));
+            Tuple<Problem> missing = Tuple.of(Problem.class, ProblemCatalogUtil.noSuchConversation(which.get(), root));
             context.report(missing);
             return exitStatusFor(missing);
         }
@@ -720,7 +720,7 @@ final class Commands {
     ///              the answer comes on the session's own events
     public ExitStatus ask(Path lampPath, String prompt, AskPlace place, boolean wait) {
         if (prompt.isBlank()) {
-            Tuple<Problem> refused = Tuple.of(Problem.class, Problems.usage(
+            Tuple<Problem> refused = Tuple.of(Problem.class, ProblemCatalogUtil.usage(
                     "`oillamp ask` needs something to ask the agent", Invocation.usageOf("ask")));
             context.report(refused);
             return ExitStatus.USAGE;
@@ -819,19 +819,19 @@ final class Commands {
             Control.Request request = Control.Request.of("ask").with("prompt", prompt);
             if (conversation.isEmpty()) return Result.ok(request);
             Optional<dev.lamp.Lamp.Conversation> found = dev.lamp.Lamp.conversation(lamp, conversation.get());
-            if (found.isEmpty()) return Result.err(Problems.noSuchConversation(conversation.get(), lamp));
+            if (found.isEmpty()) return Result.err(ProblemCatalogUtil.noSuchConversation(conversation.get(), lamp));
             request = request.with("conversation", found.get().id()).with("file", found.get().file());
             Optional<String> entry = after.or(() -> insteadOf);
             if (entry.isEmpty()) return Result.ok(request);
             Optional<dev.lamp.Lamp.Conversation.Entry> at = found.get().entry(entry.get());
             boolean question = at.filter(e -> e.kind() == dev.lamp.Lamp.Conversation.Kind.MESSAGE_TO_AGENT).isPresent();
             if (at.isEmpty())
-                return Result.err(Problems.noSuchConversation(entry.get(), lamp));
+                return Result.err(ProblemCatalogUtil.noSuchConversation(entry.get(), lamp));
             if (after.isPresent() && question)
-                return Result.err(Problems.usage("--after " + entry.get() + " names a question; to ask something "
+                return Result.err(ProblemCatalogUtil.usage("--after " + entry.get() + " names a question; to ask something "
                         + "instead of it, give --instead-of " + entry.get(), Invocation.usageOf("ask")));
             if (insteadOf.isPresent() && !question)
-                return Result.err(Problems.usage("--instead-of " + entry.get() + " does not name a question; to "
+                return Result.err(ProblemCatalogUtil.usage("--instead-of " + entry.get() + " does not name a question; to "
                         + "continue after it, give --after " + entry.get(), Invocation.usageOf("ask")));
             return Result.ok(request.with("move_to", entry.get()));
         }
@@ -918,14 +918,14 @@ final class Commands {
                         Machine.Window.Stdio.DETACHED);
                 if (window.failure().isPresent()) {
                     context.report(Tuple.of(Problem.class,
-                            Problems.recordingNotOpened(file.path(), window.failure().get())));
+                            ProblemCatalogUtil.recordingNotOpened(file.path(), window.failure().get())));
                     return ExitStatus.ERROR;
                 }
                 context.ok("recordings", "opened " + file.path());
                 return ExitStatus.SUCCESS;
             }
         context.report(Tuple.of(Problem.class,
-                Problems.noSuchRecording(session, layout.root(), layout.recordingsDir(), existing)));
+                ProblemCatalogUtil.noSuchRecording(session, layout.root(), layout.recordingsDir(), existing)));
         return ExitStatus.USAGE;
     }
 
@@ -983,7 +983,7 @@ final class Commands {
         LampState state = LampDirectoryUtil.classify(root, FilesystemUtil.list(root),
                 FilesystemUtil.readString(root.resolve(".oillamp").resolve("lamp.json")));
         if (!(state instanceof LampState.Existing existing))
-            return Result.err(Problems.lampNotWritable(root,
+            return Result.err(ProblemCatalogUtil.lampNotWritable(root,
                     "this is not an oillamp lamp — run `oillamp at " + lampPath + "` to make one"));
         return Result.ok(new LampLayout(root, existing.meta().agentId(), HostProbeUtil.runtimeDirectory(machine)));
     }
@@ -1021,7 +1021,7 @@ final class Commands {
                     .of("podman", "rm", "-f", container.value())
                     .withTimeout(Duration.ofSeconds(30)).labelled("podman rm"));
             if (!removed.succeeded()) {
-                context.report(Tuple.of(Problem.class, Problems.podmanFailed(
+                context.report(Tuple.of(Problem.class, ProblemCatalogUtil.podmanFailed(
                         "podman rm", removed.exitCode(), removed.errorOutput().strip())));
                 return ExitStatus.ERROR;
             }
@@ -1031,7 +1031,7 @@ final class Commands {
             try {
                 FilesystemUtil.deleteIfPresent(leftover);
             } catch (IOException e) {
-                context.report(Tuple.of(Problem.class, Problems.internal("cleanup", Problems.reason(e))));
+                context.report(Tuple.of(Problem.class, ProblemCatalogUtil.internal("cleanup", ProblemCatalogUtil.reason(e))));
             }
         }
         context.ok("stop", containerLeft
@@ -1080,7 +1080,7 @@ final class Commands {
     private Result<LampConfig> loadConfig(Path lampPath) {
         Path lampConfig = lampPath.resolve("oillamp.toml");
         if (!FilesystemUtil.exists(lampConfig))
-            return Result.err(Problems.lampNotWritable(lampPath,
+            return Result.err(ProblemCatalogUtil.lampNotWritable(lampPath,
                     "there is no oillamp.toml here — run `oillamp at " + lampPath + "` to create one"));
         return ConfigLoadingUtil.load(LampPhase.configurationFiles(home(), lampConfig));
     }
@@ -1111,7 +1111,7 @@ final class Commands {
     private Problem busyProblem(LampPhase.Prepared prepared) {
         Optional<com.fasterxml.jackson.databind.JsonNode> session =
                 FilesystemUtil.readString(prepared.layout().sessionMeta()).flatMap(JsonUtil::parse);
-        return Problems.lockBusy(prepared.layout().root(),
+        return ProblemCatalogUtil.lockBusy(prepared.layout().root(),
                 session.map(json -> json.path("supervisorPid").asLong(0)).orElse(0L),
                 session.map(json -> JsonUtil.text(json, "startedAt")).filter(when -> !when.isEmpty())
                        .orElse("an earlier time"));

@@ -20,9 +20,9 @@ import sprouts.Tuple;
 /// and easy to review. The codes must never change meaning, because users and scripts match on
 /// them; the wording can be improved freely. The codes are also listed in
 /// `docs/ARCHITECTURE.md`.
-final class Problems {
+final class ProblemCatalogUtil {
 
-    private Problems() {}
+    private ProblemCatalogUtil() {}
 
     // ─── codes ─────────────────────────────────────────────────────────────────────────────
 

@@ -126,8 +126,8 @@ final class StepRunner {
                 case Step.CheckEndpoints s -> checkEndpoints(s);
             };
         } catch (IOException e) {
-            return Result.err(Problems.internal("StepRunner." + step.kind(),
-                    step.describe() + " failed: " + Problems.reason(e)));
+            return Result.err(ProblemCatalogUtil.internal("StepRunner." + step.kind(),
+                    step.describe() + " failed: " + ProblemCatalogUtil.reason(e)));
         }
     }
 
@@ -183,17 +183,17 @@ final class StepRunner {
         while (machine.now().isBefore(deadline)) {
             if (readyForThisSession(step)) return Result.ok(step);
             if (!containerIsRunning(step.name())) {
-                return Result.err(Problems.sandboxDied(step.name().value(),
+                return Result.err(ProblemCatalogUtil.sandboxDied(step.name().value(),
                         lastLinesOfContainerLog(step.name())));
             }
             try {
                 Thread.sleep(250);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return Result.err(Problems.internal("AwaitReady", "interrupted while waiting"));
+                return Result.err(ProblemCatalogUtil.internal("AwaitReady", "interrupted while waiting"));
             }
         }
-        return Result.err(Problems.sandboxNotReady(step.name().value(), step.timeout(),
+        return Result.err(ProblemCatalogUtil.sandboxNotReady(step.name().value(), step.timeout(),
                 lastLinesOfContainerLog(step.name())));
     }
 
@@ -221,7 +221,7 @@ final class StepRunner {
                     Tuple.of(String.class, "socat", "-u", "/dev/null",
                              "UNIX-CONNECT:" + endpoint.socket()));
             if (!outcome.succeeded())
-                return Result.err(Problems.sandboxEndpointDead(endpoint.what(), endpoint.socket(),
+                return Result.err(ProblemCatalogUtil.sandboxEndpointDead(endpoint.what(), endpoint.socket(),
                         step.name().value(), lastLinesOfContainerLog(step.name())));
         }
         return Result.ok(step);
@@ -246,15 +246,15 @@ final class StepRunner {
     private Result<Step> outcomeToResult(Step step, Machine.Outcome outcome, String what) {
         return switch (outcome) {
             case Machine.Outcome.Finished finished when finished.exitCode() == 0 -> Result.ok(step);
-            case Machine.Outcome.Finished finished -> Result.err(Problems.podmanFailed(
+            case Machine.Outcome.Finished finished -> Result.err(ProblemCatalogUtil.podmanFailed(
                     what, finished.exitCode(),
                     // Only the end, with the error output last: podman prints the reason for a
                     // failure there, and a whole image build's output is hundreds of kilobytes.
                     tail((finished.standardOutput() + "\n" + finished.standardError()).strip(), 40)));
             case Machine.Outcome.NotFound notFound ->
-                    Result.err(Problems.commandNotFound(notFound.executable()));
+                    Result.err(ProblemCatalogUtil.commandNotFound(notFound.executable()));
             case Machine.Outcome.TimedOut timedOut ->
-                    Result.err(Problems.podmanFailed(what, -1,
+                    Result.err(ProblemCatalogUtil.podmanFailed(what, -1,
                             "timed out after " + timedOut.after()));
         };
     }
@@ -266,7 +266,7 @@ final class StepRunner {
                 "ssh-keygen", "-t", "ed25519", "-N", "", "-C", step.comment(),
                 "-f", step.privateKey().toString());
         if (outcome.succeeded()) return Result.ok(step);
-        return Result.err(Problems.sshKeygenFailed(evidenceOf(outcome,
+        return Result.err(ProblemCatalogUtil.sshKeygenFailed(evidenceOf(outcome,
                 "ssh-keygen", "-t", "ed25519", "-N", "", "-C", step.comment(),
                 "-f", step.privateKey().toString())));
     }
@@ -277,7 +277,7 @@ final class StepRunner {
         for (String pkg : step.packages()) argv = argv.add(pkg);
         Machine.Outcome outcome = run("apt-get", Duration.ofMinutes(10), argv);
         if (outcome.succeeded()) return Result.ok(step);
-        return Result.err(Problems.installFailed(
+        return Result.err(ProblemCatalogUtil.installFailed(
                 evidenceOf(outcome, argv), context.installLog().orElse(Path.of("(no log)"))));
     }
 
@@ -287,7 +287,7 @@ final class StepRunner {
                 "--add-subuids", range, "--add-subgids", range, step.user());
         Machine.Outcome outcome = run("usermod", Duration.ofSeconds(60), argv);
         if (outcome.succeeded()) return Result.ok(step);
-        return Result.err(Problems.hostNoSubIds(step.user())
+        return Result.err(ProblemCatalogUtil.hostNoSubIds(step.user())
                 .withEvidence(evidenceOf(outcome, argv)));
     }
 
@@ -300,7 +300,7 @@ final class StepRunner {
                 step.containerUid() + ":" + step.containerGid(), step.path().toString());
         Machine.Outcome outcome = run("podman", Duration.ofSeconds(30), argv);
         if (!outcome.succeeded())
-            return Result.err(Problems.lampNotWritable(step.path(),
+            return Result.err(ProblemCatalogUtil.lampNotWritable(step.path(),
                     "could not hand " + step.path() + " to the sandbox's infra user")
                     .withEvidence(evidenceOf(outcome, argv)));
         return Result.ok(step);
@@ -314,7 +314,7 @@ final class StepRunner {
         // Not fatal: the entrypoint deletes these files too, and checking that the sandbox's
         // sockets answer catches the case where neither worked.
         return Result.ok(step, Tuple.of(Problem.class,
-                Problems.internal("cleanup", "could not delete files " + step.reason() + ": "
+                ProblemCatalogUtil.internal("cleanup", "could not delete files " + step.reason() + ": "
                         + outcome.errorOutput().trim())));
     }
 
@@ -334,7 +334,7 @@ final class StepRunner {
 
         Tuple<Path> survivors = FilesystemUtil.deleteTree(step.path());
         if (survivors.isEmpty()) return Result.ok(step);
-        return Result.err(Problems.lampNotRemoved(survivors.first(), outcome instanceof Machine.Outcome.NotFound
+        return Result.err(ProblemCatalogUtil.lampNotRemoved(survivors.first(), outcome instanceof Machine.Outcome.NotFound
                 ? "podman is not installed, so the files owned by the sandbox's own users are out of reach"
                 : outcome.errorOutput().strip().isBlank()
                     ? "it is owned by another user"
@@ -349,7 +349,7 @@ final class StepRunner {
         Machine.Outcome outcome = machine.run(Machine.Command.of(argv).withTimeout(Duration.ofMinutes(2))
                 .labelled("podman").shieldedFromSignals());
         if (outcome.succeeded()) return Result.ok(step);
-        return Result.err(Problems.internal("podman rm -f " + step.name().value(),
+        return Result.err(ProblemCatalogUtil.internal("podman rm -f " + step.name().value(),
                 outcome.errorOutput().trim()).withEvidence(evidenceOf(outcome, argv)));
     }
 
@@ -357,7 +357,7 @@ final class StepRunner {
         Tuple<String> argv = Tuple.of(String.class, "podman").addAll(arguments);
         Machine.Outcome outcome = run("podman", Duration.ofMinutes(2), argv);
         if (outcome.succeeded()) return Result.ok(step);
-        return Result.err(Problems.internal("podman " + String.join(" ", arguments),
+        return Result.err(ProblemCatalogUtil.internal("podman " + String.join(" ", arguments),
                 outcome.errorOutput().trim()).withEvidence(evidenceOf(outcome, argv)));
     }
 

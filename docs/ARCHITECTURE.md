@@ -1290,7 +1290,7 @@ Expected failures are values, not exceptions.
 - `Problem` has a code (`OIL-AREA-NNN`), a severity (`INFO`, `WARNING`, `ERROR`), a title, what
   happened, why it matters, evidence (a command and its output, a file, a value, a config location)
   and fixes (a description and, optionally, a command to paste).
-- `Problems.java` is the catalogue: one factory method per problem, with its fixed wording.
+- `ProblemCatalogUtil.java` is the catalogue: one factory method per problem, with its fixed wording.
 - `Result<T>` is either `Ok(value, warnings)` or `Err(problems)`. `Result.combine` and `Result.all`
   collect problems from independent checks, so a user with three mistakes sees all three at once.
 
@@ -1321,7 +1321,7 @@ removed.
 | Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `TimeNotationUtil` (times as people write them), `WakePromptUtil` (a run's prompt, pure); in `dev.lamp`, `PiSessionFile` (pi's session files as `Lamp.Conversation`, pure) |
 | Configuration | `ConfigLoadingUtil`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaultsUtil`, `LampConfig`, `GeneratedFileTextUtil`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
-| Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
+| Errors and events | `Problem`, `ProblemCatalogUtil`, `Result`, `LampEvent`, `ExitStatus` |
 | Shared | `JsonUtil` (every JSON file, message and answer goes through it) |
 | Image and container | `SandboxPhase`, `SandboxImageFilesUtil`, `ImageTag`, `ContainerName`, `RuntimeEnvFileUtil`, `ReadyInfo`, `AgentGuideUtil`, `DesktopRendererUtil` |
 | Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `SandboxSshUtil`, `TerminalEmulatorUtil`, `VncViewerUtil` |

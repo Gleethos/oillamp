@@ -37,10 +37,10 @@ final class ScheduleBook {
         try {
             lock = LampLock.acquireWithin(layout.scheduleLock(), PATIENCE);
         } catch (IOException e) {
-            return Result.err(Problems.scheduleDamaged(layout.scheduleFile(), Problems.reason(e)));
+            return Result.err(ProblemCatalogUtil.scheduleDamaged(layout.scheduleFile(), ProblemCatalogUtil.reason(e)));
         }
         if (lock.isEmpty())
-            return Result.err(Problems.scheduleDamaged(layout.scheduleFile(),
+            return Result.err(ProblemCatalogUtil.scheduleDamaged(layout.scheduleFile(),
                     "another oillamp process has held the schedule for over " + PATIENCE.toSeconds() + " seconds"));
         try {
             Result<Schedule> current = read();
@@ -50,7 +50,7 @@ final class ScheduleBook {
             FilesystemUtil.writeFile(layout.scheduleFile(), stored.apply(value).render(), PosixMode.PRIVATE_FILE);
             return changed;
         } catch (IOException e) {
-            return Result.err(Problems.scheduleDamaged(layout.scheduleFile(), Problems.reason(e)));
+            return Result.err(ProblemCatalogUtil.scheduleDamaged(layout.scheduleFile(), ProblemCatalogUtil.reason(e)));
         } finally {
             try {
                 lock.get().close();

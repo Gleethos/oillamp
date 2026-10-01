@@ -385,7 +385,7 @@ final class SimulatedMachine implements Machine {
         } catch (IOException refused) {
             return new Outcome.Finished(1, "",
                     "socat: E connect(, AF=1 \"" + socket.get() + "\"): "
-                  + Problems.reason(refused) + "\n",
+                  + ProblemCatalogUtil.reason(refused) + "\n",
                     Duration.ofMillis(5));
         }
     }

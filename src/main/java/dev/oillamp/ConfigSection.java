@@ -57,7 +57,7 @@ final class ConfigSection {
         if (child == null || child.isNull())
             return new ConfigSection(tree, path, emptyObject(), problems);
         if (!child.isObject()) {
-            report(Problems.configWrongType(fileOf(path), path, describe(child), "a table"));
+            report(ProblemCatalogUtil.configWrongType(fileOf(path), path, describe(child), "a table"));
             return new ConfigSection(tree, path, emptyObject(), problems);
         }
         return new ConfigSection(tree, path, child, problems);
@@ -70,14 +70,14 @@ final class ConfigSection {
         Tuple<ConfigSection> sections = Tuple.of(ConfigSection.class);
         if (child == null || child.isNull()) return sections;
         if (!child.isArray()) {
-            report(Problems.configWrongType(fileOf(path), path, describe(child), "an array of tables"));
+            report(ProblemCatalogUtil.configWrongType(fileOf(path), path, describe(child), "an array of tables"));
             return sections;
         }
         for (int i = 0; i < child.size(); i++) {
             JsonNode element = child.get(i);
             String elementPath = path + "[" + i + "]";
             if (!element.isObject()) {
-                report(Problems.configWrongType(fileOf(elementPath), elementPath, describe(element), "a table"));
+                report(ProblemCatalogUtil.configWrongType(fileOf(elementPath), elementPath, describe(element), "a table"));
                 continue;
             }
             sections = sections.add(new ConfigSection(tree, elementPath, element, problems));
@@ -129,7 +129,7 @@ final class ConfigSection {
             JsonNode element = value.get(i);
             if (!element.isTextual()) {
                 String path = child(key) + "[" + i + "]";
-                report(Problems.configWrongType(fileOf(path), path, describe(element), "a string"));
+                report(ProblemCatalogUtil.configWrongType(fileOf(path), path, describe(element), "a string"));
                 continue;
             }
             out = out.add(element.asText());
@@ -147,7 +147,7 @@ final class ConfigSection {
             JsonNode element = value.get(i);
             if (element.isObject() || element.isArray()) {
                 String path = child(key) + "[" + i + "]";
-                report(Problems.configWrongType(fileOf(path), path, describe(element), "a number or a string"));
+                report(ProblemCatalogUtil.configWrongType(fileOf(path), path, describe(element), "a number or a string"));
                 continue;
             }
             out = out.add(element.asText());
@@ -164,7 +164,7 @@ final class ConfigSection {
         for (Map.Entry<String, JsonNode> field : ((ObjectNode) value).properties()) {
             if (!field.getValue().isTextual()) {
                 String path = child(key) + "." + field.getKey();
-                report(Problems.configWrongType(fileOf(path), path, describe(field.getValue()), "a string"));
+                report(ProblemCatalogUtil.configWrongType(fileOf(path), path, describe(field.getValue()), "a string"));
                 continue;
             }
             out = out.put(field.getKey(), field.getValue().asText());
@@ -196,7 +196,7 @@ final class ConfigSection {
         }
         if (!value.isTextual()) {
             String path = child(key);
-            report(Problems.configWrongType(fileOf(path), path, describe(value), expected));
+            report(ProblemCatalogUtil.configWrongType(fileOf(path), path, describe(value), expected));
             return Optional.empty();
         }
         Optional<E> parsed = parse.apply(value.asText());
@@ -218,7 +218,7 @@ final class ConfigSection {
             for (String candidate : knownKeys) if (candidate.equals(key)) { known = true; break; }
             if (known) continue;
             String path = child(key);
-            report(Problems.configUnknownKey(fileOf(path), path, suggestionFor(key, knownKeys)));
+            report(ProblemCatalogUtil.configUnknownKey(fileOf(path), path, suggestionFor(key, knownKeys)));
         }
         return this;
     }
@@ -228,12 +228,12 @@ final class ConfigSection {
     /// Reports a value that parsed but cannot work, e.g. a width outside the supported range.
     public void invalid(String key, String value, String expectation) {
         String path = child(key);
-        report(Problems.configInvalidValue(fileOf(path), path, value, expectation));
+        report(ProblemCatalogUtil.configInvalidValue(fileOf(path), path, value, expectation));
     }
 
     /// Reports a problem about this table as a whole, e.g. two forwards sharing a port.
     public void invalidHere(String value, String expectation) {
-        report(Problems.configInvalidValue(fileOf(keyPath), keyPath, value, expectation));
+        report(ProblemCatalogUtil.configInvalidValue(fileOf(keyPath), keyPath, value, expectation));
     }
 
     public void report(Problem problem) { problems.add(problem); }
@@ -242,7 +242,7 @@ final class ConfigSection {
 
     private <T> T wrongType(String key, JsonNode value, String expected, T fallback) {
         String path = child(key);
-        report(Problems.configWrongType(fileOf(path), path, describe(value), expected));
+        report(ProblemCatalogUtil.configWrongType(fileOf(path), path, describe(value), expected));
         return fallback;
     }
 

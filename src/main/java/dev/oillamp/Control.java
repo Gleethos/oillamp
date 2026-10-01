@@ -249,15 +249,15 @@ final class Control {
     /// The same, for a request whose answer takes longer, such as `ask`, which is answered once
     /// the agent is done.
     static Result<Reply> ask(Path socket, Path lamp, Request request, String command, Duration patience) {
-        if (!Files.exists(socket)) return Result.err(Problems.noSessionRunning(lamp, command));
+        if (!Files.exists(socket)) return Result.err(ProblemCatalogUtil.noSessionRunning(lamp, command));
         try (SocketChannel channel = SocketChannel.open(UnixDomainSocketAddress.of(socket))) {
             write(channel, request.render() + "\n");
             channel.shutdownOutput();
             Reply reply = Reply.parse(within(patience, channel, () -> readLine(channel)));
             return reply.succeeded() ? Result.ok(reply)
-                              : Result.err(Problems.sessionRefused(lamp, command, reply.error()));
+                              : Result.err(ProblemCatalogUtil.sessionRefused(lamp, command, reply.error()));
         } catch (IOException e) {
-            return Result.err(Problems.supervisorUnreachable(socket, Problems.reason(e)));
+            return Result.err(ProblemCatalogUtil.supervisorUnreachable(socket, ProblemCatalogUtil.reason(e)));
         }
     }
 
@@ -271,7 +271,7 @@ final class Control {
     static Result<Reply> follow(Path socket, Path lamp, Request request, String command,
                                 Consumer<String> eachLine,
                                 Optional<InputStream> until) {
-        if (!Files.exists(socket)) return Result.err(Problems.noSessionRunning(lamp, command));
+        if (!Files.exists(socket)) return Result.err(ProblemCatalogUtil.noSessionRunning(lamp, command));
         try (SocketChannel channel = SocketChannel.open(UnixDomainSocketAddress.of(socket))) {
             until.ifPresent(input -> Thread.ofVirtual().name("oillamp-follow-until").start(() -> {
                 try (input) {
@@ -287,7 +287,7 @@ final class Control {
                     Channels.newInputStream(channel), StandardCharsets.UTF_8));
             String first = within(ANSWER_TIME, channel, lines::readLine);
             Reply reply = Reply.parse(first == null ? "" : first);
-            if (!reply.succeeded()) return Result.err(Problems.sessionRefused(lamp, command, reply.error()));
+            if (!reply.succeeded()) return Result.err(ProblemCatalogUtil.sessionRefused(lamp, command, reply.error()));
             try {
                 String line;
                 while ((line = lines.readLine()) != null) eachLine.accept(line);
@@ -296,7 +296,7 @@ final class Control {
             }
             return Result.ok(reply);
         } catch (IOException e) {
-            return Result.err(Problems.supervisorUnreachable(socket, Problems.reason(e)));
+            return Result.err(ProblemCatalogUtil.supervisorUnreachable(socket, ProblemCatalogUtil.reason(e)));
         }
     }
 
