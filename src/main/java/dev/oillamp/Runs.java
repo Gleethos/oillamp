@@ -26,7 +26,7 @@ import sprouts.Tuple;
 ///
 /// 1. saves the lamp, if anything changed, so that what the user did before and what the agent
 ///    does now are two separate snapshots;
-/// 2. writes the prompt ([WakePrompt]): the task, the agent's notes, and what recent runs did;
+/// 2. writes the prompt ([WakePromptUtil]): the task, the agent's notes, and what recent runs did;
 /// 3. gives it to pi ([Harness]) in a new conversation, and waits until pi is done, or until
 ///    `schedule.max_run_minutes` have passed;
 /// 4. saves the lamp again, always, with the agent's last message and the run's name in the
@@ -220,7 +220,7 @@ final class Runs {
         if (commits instanceof Result.Ok<Tuple<GitObjectUtil.Commit>>(Tuple<GitObjectUtil.Commit> all, var _))
             for (GitObjectUtil.Commit commit : all) {
                 if (commit.snapshot().at().isBefore(now.minus(Duration.ofDays(1)))) break;
-                Optional<WakePrompt.Past> past = WakePrompt.Past.of(commit);
+                Optional<WakePromptUtil.Past> past = WakePromptUtil.Past.of(commit);
                 if (past.isPresent() && past.get().author() == JobAuthor.AGENT) counted++;
             }
         return counted;
@@ -324,33 +324,33 @@ final class Runs {
 
     private String wakePrompt(Pending pending, History history, Instant now, ZoneId zone) {
         Optional<String> notes = FilesystemUtil.readString(layout.workspace().resolve("NOTES.md"));
-        Tuple<WakePrompt.Described> recent = recentRuns(history, WakePrompt.RECENT_RUNS);
-        WakePrompt.Reason reason = pending.job().<WakePrompt.Reason>map(WakePrompt.Reason.ByJob::new)
-                .orElseGet(WakePrompt.Reason.Asked::new);
-        return WakePrompt.render(reason, pending.run().prompt(), notes, config.notesMaxKb() * 1024, recent, now, zone);
+        Tuple<WakePromptUtil.Described> recent = recentRuns(history, WakePromptUtil.RECENT_RUNS);
+        WakePromptUtil.Reason reason = pending.job().<WakePromptUtil.Reason>map(WakePromptUtil.Reason.ByJob::new)
+                .orElseGet(WakePromptUtil.Reason.Asked::new);
+        return WakePromptUtil.render(reason, pending.run().prompt(), notes, config.notesMaxKb() * 1024, recent, now, zone);
     }
 
     /// The last `count` runs, newest first, with what each changed.
-    private static Tuple<WakePrompt.Described> recentRuns(History history, int count) {
-        Tuple<WakePrompt.Described> found = Tuple.of(WakePrompt.Described.class);
+    private static Tuple<WakePromptUtil.Described> recentRuns(History history, int count) {
+        Tuple<WakePromptUtil.Described> found = Tuple.of(WakePromptUtil.Described.class);
         Result<Tuple<GitObjectUtil.Commit>> commits = history.commitList();
         if (!(commits instanceof Result.Ok<Tuple<GitObjectUtil.Commit>>(Tuple<GitObjectUtil.Commit> all, var _))) return found;
         for (GitObjectUtil.Commit commit : all) {
             if (found.size() >= count) break;
-            Optional<WakePrompt.Past> past = WakePrompt.Past.of(commit);
+            Optional<WakePromptUtil.Past> past = WakePromptUtil.Past.of(commit);
             if (past.isEmpty()) continue;
-            found = found.add(describe(history, all, past.get(), WakePrompt.CHANGES_SHOWN));
+            found = found.add(describe(history, all, past.get(), WakePromptUtil.CHANGES_SHOWN));
         }
         return found;
     }
 
-    private static WakePrompt.Described describe(History history, Tuple<GitObjectUtil.Commit> all, WakePrompt.Past past, int most) {
+    private static WakePromptUtil.Described describe(History history, Tuple<GitObjectUtil.Commit> all, WakePromptUtil.Past past, int most) {
         Optional<String> baseTree = past.base().flatMap(id ->
                 all.stream().filter(commit -> commit.id().equals(id)).findFirst().map(GitObjectUtil.Commit::tree));
         Result<History.Changes> changes = history.changes(baseTree, past.tree(), most);
         return changes instanceof Result.Ok<History.Changes>(History.Changes found, var _)
-                ? new WakePrompt.Described(past, found.shown(), found.more())
-                : new WakePrompt.Described(past, Tuple.of(History.Change.class), false);
+                ? new WakePromptUtil.Described(past, found.shown(), found.more())
+                : new WakePromptUtil.Described(past, Tuple.of(History.Change.class), false);
     }
 
     // ─── the agent's requests ──────────────────────────────────────────────────────────────
@@ -423,20 +423,20 @@ final class Runs {
         Result<Tuple<GitObjectUtil.Commit>> commits = history.commitList();
         if (!(commits instanceof Result.Ok<Tuple<GitObjectUtil.Commit>>(Tuple<GitObjectUtil.Commit> all, var _)))
             return "The lamp's history cannot be read: " + commits.problems().first().whatHappened();
-        Tuple<WakePrompt.Past> runs = Tuple.of(WakePrompt.Past.class);
-        for (GitObjectUtil.Commit commit : all) runs = WakePrompt.Past.of(commit).map(runs::add).orElse(runs);
+        Tuple<WakePromptUtil.Past> runs = Tuple.of(WakePromptUtil.Past.class);
+        for (GitObjectUtil.Commit commit : all) runs = WakePromptUtil.Past.of(commit).map(runs::add).orElse(runs);
         if (run.isEmpty()) {
             if (runs.isEmpty()) return "There have been no runs yet.";
             StringBuilder out = new StringBuilder("The last runs, newest first:\n");
-            for (WakePrompt.Past past : runs.stream().limit(20).toList())
+            for (WakePromptUtil.Past past : runs.stream().limit(20).toList())
                 out.append("\n- ").append(past.run()).append(", ").append(TimeNotationUtil.show(past.at(), zone)).append(", ")
                    .append(past.job().orElse("asked by the user")).append(": ").append(past.outcome());
             return out.append("\n\nGive a run's name for what it changed and what you said at its end.").toString();
         }
-        Optional<WakePrompt.Past> found = runs.stream().filter(past -> past.run().equals(run)).findFirst();
+        Optional<WakePromptUtil.Past> found = runs.stream().filter(past -> past.run().equals(run)).findFirst();
         if (found.isEmpty()) return "There is no run called '" + run + "'. Leave the run out to list the recent ones.";
-        WakePrompt.Past past = found.get();
-        WakePrompt.Described described = describe(history, all, past, 100);
+        WakePromptUtil.Past past = found.get();
+        WakePromptUtil.Described described = describe(history, all, past, 100);
         StringBuilder out = new StringBuilder();
         out.append(past.run()).append(", ").append(TimeNotationUtil.show(past.at(), zone)).append(", ")
            .append(past.job().map(job -> "for " + job).orElse("asked by the user")).append(": ").append(past.outcome()).append(".\n");

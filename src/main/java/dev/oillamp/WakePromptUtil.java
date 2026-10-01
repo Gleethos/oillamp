@@ -19,9 +19,9 @@ import sprouts.Tuple;
 /// It is then asked to leave its notes up to date for the next run.
 ///
 /// Pure: the caller reads the notes and the history, and this only writes the text.
-final class WakePrompt {
+final class WakePromptUtil {
 
-    private WakePrompt() {}
+    private WakePromptUtil() {}
 
     /// Where the agent keeps its notes between runs, as the agent sees it.
     static final String NOTES = "~/workspace/NOTES.md";

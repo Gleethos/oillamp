@@ -142,7 +142,7 @@ class TheShapeOfTheCodeSpec extends Specification {
                            'History',
                            // The agent the session holds, and the runs that wake it: a process
                            // in the sandbox, and threads that wait for it. What a run's
-                           // prompt says is decided by WakePrompt, and the rules of the
+                           // prompt says is decided by WakePromptUtil, and the rules of the
                            // schedule by Schedule, which are both pure.
                            'Harness', 'Runs',
                            // An application's handle on a lamp: starts the engine's process
