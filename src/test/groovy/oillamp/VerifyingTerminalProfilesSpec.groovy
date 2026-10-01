@@ -7,7 +7,7 @@ import spock.lang.Tag
 import java.time.Duration
 
 /**
- * Checks the terminal table in {@code Terminals.java}, and why a session is tied to the SSH
+ * Checks the terminal table in {@code TerminalEmulatorUtil.java}, and why a session is tied to the SSH
  * connection rather than to the terminal program.
  *
  * <p>Runs on the host, not in a container. It can only check the terminals installed on this
@@ -16,7 +16,7 @@ import java.time.Duration
 @Tag('spike')
 class VerifyingTerminalProfilesSpec extends Specification {
 
-    /** The option each terminal in {@code Terminals.java} is given to set the window title. */
+    /** The option each terminal in {@code TerminalEmulatorUtil.java} is given to set the window title. */
     static final Map<String, String> TITLE_OPTION = [
             'ptyxis'        : null,          // uses --new-window, no title option
             'gnome-terminal': '--title',

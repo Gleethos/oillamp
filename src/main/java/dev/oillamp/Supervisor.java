@@ -300,16 +300,16 @@ final class Supervisor {
     /// The terminal emulator's command line, with the ssh command inside it.
     private Result<Tuple<String>> terminalCommand() {
         Tuple<String> shell = Ssh.clientArgv(prepared.layout(), Ssh.SocketRole.PRIMARY);
-        String title = Terminals.titleFor(prepared.layout().name());
+        String title = TerminalEmulatorUtil.titleFor(prepared.layout().name());
         return switch (prepared.config().terminal()) {
             case LampConfig.Terminal.Custom custom ->
-                    Result.ok(Terminals.render(custom.template(), title, shell));
+                    Result.ok(TerminalEmulatorUtil.render(custom.template(), title, shell));
             case LampConfig.Terminal.Profile profile ->
-                    Terminals.choose(Optional.of(profile.id()), host.terminals(), host.session())
-                             .map(chosen -> Terminals.render(chosen.template(), title, shell));
+                    TerminalEmulatorUtil.choose(Optional.of(profile.id()), host.terminals(), host.session())
+                             .map(chosen -> TerminalEmulatorUtil.render(chosen.template(), title, shell));
             case LampConfig.Terminal.Auto ignored ->
-                    Terminals.choose(Optional.empty(), host.terminals(), host.session())
-                             .map(chosen -> Terminals.render(chosen.template(), title, shell));
+                    TerminalEmulatorUtil.choose(Optional.empty(), host.terminals(), host.session())
+                             .map(chosen -> TerminalEmulatorUtil.render(chosen.template(), title, shell));
         };
     }
 

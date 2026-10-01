@@ -95,7 +95,7 @@ final class HostPlanner {
 
         // ── a terminal to put the shell in ─────────────────────────────────────────────────
         if (options.requiresGraphicalSession() && facts.terminals().isEmpty())
-            problems = problems.add(Problems.noTerminal(Terminals.supportedNames()));
+            problems = problems.add(Problems.noTerminal(TerminalEmulatorUtil.supportedNames()));
 
         Tuple<Problem> errors = problems.retainIf(Problem::isError);
         if (!errors.isEmpty())

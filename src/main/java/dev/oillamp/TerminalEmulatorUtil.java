@@ -14,9 +14,9 @@ import sprouts.Tuple;
 /// (`--` or `-e`). The differences are kept in a table, so supporting another terminal
 /// means adding a row. `VerifyingTerminalProfilesSpec` checks the rows against the terminals
 /// installed on the machine it runs on.
-final class Terminals {
+final class TerminalEmulatorUtil {
 
-    private Terminals() {}
+    private TerminalEmulatorUtil() {}
 
     /// Expands to the full ssh argv; must stand alone as a template token.
     public static final String COMMAND_PLACEHOLDER = "{cmd}";

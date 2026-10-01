@@ -140,7 +140,7 @@ final class ConfigLoader {
         Tuple<String> command = s.strings("command", Tuple.of(String.class));
         if (!command.isEmpty()) {
             // A custom command replaces the profile entirely, so it must contain {cmd}.
-            if (!command.any(token -> token.contains(Terminals.COMMAND_PLACEHOLDER)))
+            if (!command.any(token -> token.contains(TerminalEmulatorUtil.COMMAND_PLACEHOLDER)))
                 s.invalid("command", String.join(" ", command),
                           "the template must contain {cmd}, which expands to the ssh command line");
             return new LampConfig.Terminal.Custom(command);
@@ -151,7 +151,7 @@ final class ConfigLoader {
             if (id.configName().equals(profile)) return new LampConfig.Terminal.Profile(id);
         s.invalid("profile", "\"" + profile + "\"",
                   "expected \"auto\" or one of: "
-                  + String.join(", ", Terminals.supportedNames()));
+                  + String.join(", ", TerminalEmulatorUtil.supportedNames()));
         return fallback;
     }
 

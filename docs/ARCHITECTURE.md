@@ -902,7 +902,7 @@ printed with escape sequences and control characters removed.
 
 ### The windows
 
-- **Terminal.** `Terminals.choose` picks the emulator: `terminal.command` if set, else
+- **Terminal.** `TerminalEmulatorUtil.choose` picks the emulator: `terminal.command` if set, else
   `terminal.profile` if set, else the desktop's own (GNOME: Ptyxis, GNOME Terminal, Console; KDE:
   Konsole), else the first installed of `ptyxis`, `gnome-terminal`, `kgx`, `konsole`, `kitty`,
   `foot`, `alacritty`, `wezterm`, `xterm`. The command inside is
@@ -1199,7 +1199,7 @@ line** by the entrypoint or the supervisor.
 | SDKMAN | `~/.sdkman/etc/config` (questions off) | installed in the image, copied into the home by the entrypoint once |
 | the agent | `~/AGENTS.md` | every start, `AgentGuide`, from the live configuration |
 | ssh on the host | `.oillamp/ssh_config`, `.oillamp/known_hosts` | every start, `LampPlanner` |
-| the terminal emulator | its argument template in `Terminals` | chosen each session from `terminal.*` |
+| the terminal emulator | its argument template in `TerminalEmulatorUtil` | chosen each session from `terminal.*` |
 | vncviewer | command-line flags | each time a viewer opens, `Viewers`, from `viewer.*` |
 | the egress proxy | the `[network]` table | read at start into a `Policy` value |
 
@@ -1324,7 +1324,7 @@ removed.
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
 | Shared | `Json` (every JSON file, message and answer goes through it) |
 | Image and container | `SandboxPhase`, `ImageResources`, `ImageTag`, `ContainerName`, `RuntimeEnv`, `ReadyInfo`, `AgentGuide`, `Gpu` |
-| Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `Ssh`, `Terminals`, `Viewers` |
+| Session | `Supervisor`, `SessionMachine`, `SessionState`, `SessionEvent`, `SessionAction`, `Relay`, `Control`, `Ssh`, `TerminalEmulatorUtil`, `Viewers` |
 | Network | `Egress`, `Policy`, `NetworkPolicy`, `Rule`, `Decision`, `HostPattern`, `Cidr`, `IpAddress`, `PortRange`, `HostAndPort`, `Forward` |
 
 ---

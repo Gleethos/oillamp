@@ -1,6 +1,6 @@
 package dev.oillamp;
 
-/// The terminal emulators oillamp knows how to open a window in. See [Terminals] for the
+/// The terminal emulators oillamp knows how to open a window in. See [TerminalEmulatorUtil] for the
 /// command line each one needs.
 ///
 /// The order of the constants is the fallback order when neither the configuration nor the
