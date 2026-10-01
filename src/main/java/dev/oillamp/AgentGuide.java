@@ -19,7 +19,7 @@ final class AgentGuide {
 
     private AgentGuide() {}
 
-    public static String render(LampConfig config, LampLayout layout) {
+    public static String render(LampConfig config) {
         StringBuilder out = new StringBuilder();
         out.append("""
             # This machine

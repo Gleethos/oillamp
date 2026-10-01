@@ -147,7 +147,7 @@ final class LampPhase {
         if (environment instanceof Result.Err<String> failure) return Result.err(failure.problems());
 
         return LampPlanner.planSession(layout, clientKey.get(), hostKey.get(),
-                ((Result.Ok<String>) environment).value(), AgentGuide.render(config, layout),
+                ((Result.Ok<String>) environment).value(), AgentGuide.render(config),
                 GitConfig.render(gitAuthor(config.git(), layout)),
                 config.schedule().enabled() ? Optional.of(AgentGuide.scheduleTools()) : Optional.empty());
     }
