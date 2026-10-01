@@ -260,7 +260,7 @@ it belongs to the infra user, which the host user cannot even read.
 two reasons. `git add` stores a directory that contains its own `.git` as a bare pointer to a
 commit and leaves out its files. `git checkout` and `git archive` refuse any path through `.git`.
 The agent clones projects into its home, so with git's own commands a restore would lose exactly
-the work it is for. The object format is simple, and `GitFormat` holds all of it as pure functions:
+the work it is for. The object format is simple, and `GitObjectUtil` holds all of it as pure functions:
 
 - a **blob** is one file's content, and is compressed with zlib into
   `objects/<first 2 hex digits>/<other 38>`, named by the SHA-1 of its content;
@@ -1317,7 +1317,7 @@ removed.
 | The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `FilesystemUtil`, `LampLock` |
 | Host phase | `HostPhase`, `HostProbeUtil`, `HostPlanUtil`, `HostFacts`, `HostRequirements`, `SubIdRangeUtil`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
 | Lamp phase | `LampPhase`, `LampPlanUtil`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
-| History | `History` (reads the agent directory, writes and reads the repository), `GitFormat` (git's object format and the commit messages, pure) |
+| History | `History` (reads the agent directory, writes and reads the repository), `GitObjectUtil` (git's object format and the commit messages, pure) |
 | Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `TimeNotationUtil` (times as people write them), `WakePrompt` (a run's prompt, pure); in `dev.lamp`, `PiSessionFile` (pi's session files as `Lamp.Conversation`, pure) |
 | Configuration | `ConfigLoadingUtil`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaultsUtil`, `LampConfig`, `GeneratedFileTextUtil`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |

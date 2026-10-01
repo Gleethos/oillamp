@@ -46,17 +46,17 @@ final class WakePrompt {
                 Optional<String> base, String tree, String answer) {
 
         /// Reads a run's last snapshot, or empty for any other commit.
-        static Optional<Past> of(GitFormat.Commit commit) {
+        static Optional<Past> of(GitObjectUtil.Commit commit) {
             if (commit.snapshot().kind() != SaveKind.RUN) return Optional.empty();
             Association<String, String> trailers = commit.trailers();
-            Optional<String> run = trailers.get(GitFormat.RUN_TRAILER);
+            Optional<String> run = trailers.get(GitObjectUtil.RUN_TRAILER);
             if (run.isEmpty()) return Optional.empty();
             String message = commit.snapshot().message();
             int blank = message.indexOf("\n\n");
-            return Optional.of(new Past(run.get(), trailers.get(GitFormat.JOB_TRAILER),
-                    trailers.get(GitFormat.AUTHOR_TRAILER).filter("agent"::equals).isPresent() ? JobAuthor.AGENT : JobAuthor.USER,
-                    commit.snapshot().at(), trailers.get(GitFormat.OUTCOME_TRAILER).orElse("finished"),
-                    trailers.get(GitFormat.BASE_TRAILER), commit.tree(),
+            return Optional.of(new Past(run.get(), trailers.get(GitObjectUtil.JOB_TRAILER),
+                    trailers.get(GitObjectUtil.AUTHOR_TRAILER).filter("agent"::equals).isPresent() ? JobAuthor.AGENT : JobAuthor.USER,
+                    commit.snapshot().at(), trailers.get(GitObjectUtil.OUTCOME_TRAILER).orElse("finished"),
+                    trailers.get(GitObjectUtil.BASE_TRAILER), commit.tree(),
                     blank < 0 ? "" : message.substring(blank + 2).strip()));
         }
     }

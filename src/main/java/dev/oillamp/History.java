@@ -50,7 +50,7 @@ import sprouts.Tuple;
 /// removes a commit: it adds one whose tree is the older snapshot's.
 ///
 /// Everything here is written in git's own format by this class, not by running `git`; why is
-/// explained in [GitFormat]. Objects are only ever added, each written to a temporary file and
+/// explained in [GitObjectUtil]. Objects are only ever added, each written to a temporary file and
 /// then renamed, and the branch is moved last. A save that is interrupted, even by a power cut,
 /// leaves the history as it was, plus some objects nothing refers to.
 ///
@@ -118,7 +118,7 @@ final class History {
     }
 
     /// Every commit, newest first, with the trailers that say what made each one.
-    Result<Tuple<GitFormat.Commit>> commitList() {
+    Result<Tuple<GitObjectUtil.Commit>> commitList() {
         try {
             return Result.ok(commits());
         } catch (IOException | RuntimeException e) {
@@ -152,23 +152,23 @@ final class History {
     /// Adds what differs between two trees to `found`. True once there were more than `limit`.
     private boolean compare(Optional<String> before, Optional<String> after, String prefix,
                             List<Change> found, int limit, boolean top) throws IOException {
-        Association<String, GitFormat.Entry> old = entriesOf(before);
-        Association<String, GitFormat.Entry> now = entriesOf(after);
+        Association<String, GitObjectUtil.Entry> old = entriesOf(before);
+        Association<String, GitObjectUtil.Entry> now = entriesOf(after);
         SortedSet<String> names = new TreeSet<>();
-        for (GitFormat.Entry entry : old.values()) names.add(entry.name());
-        for (GitFormat.Entry entry : now.values()) names.add(entry.name());
+        for (GitObjectUtil.Entry entry : old.values()) names.add(entry.name());
+        for (GitObjectUtil.Entry entry : now.values()) names.add(entry.name());
         for (String name : names) {
             if (top && name.equals(MODES_FILE)) continue;
             // The agent's home, whatever its name in the lamp, is `~` to the agent.
             String path = top && name.startsWith(LampLayout.AGENT_DIR_PREFIX) ? "~"
                         : top ? name : prefix + "/" + name;
-            Optional<GitFormat.Entry> was = old.get(name);
-            Optional<GitFormat.Entry> is = now.get(name);
+            Optional<GitObjectUtil.Entry> was = old.get(name);
+            Optional<GitObjectUtil.Entry> is = now.get(name);
             if (was.equals(is)) continue;
-            boolean wasDirectory = was.filter(GitFormat.Entry::isDirectory).isPresent();
-            boolean isDirectory = is.filter(GitFormat.Entry::isDirectory).isPresent();
+            boolean wasDirectory = was.filter(GitObjectUtil.Entry::isDirectory).isPresent();
+            boolean isDirectory = is.filter(GitObjectUtil.Entry::isDirectory).isPresent();
             if (wasDirectory && isDirectory) {
-                if (compare(was.map(GitFormat.Entry::id), is.map(GitFormat.Entry::id), path, found, limit, false))
+                if (compare(was.map(GitObjectUtil.Entry::id), is.map(GitObjectUtil.Entry::id), path, found, limit, false))
                     return true;
                 continue;
             }
@@ -184,7 +184,7 @@ final class History {
     Result<Tuple<Snapshot>> snapshots() {
         try {
             Tuple<Snapshot> found = Tuple.of(Snapshot.class);
-            for (GitFormat.Commit commit : commits()) found = found.add(commit.snapshot());
+            for (GitObjectUtil.Commit commit : commits()) found = found.add(commit.snapshot());
             return Result.ok(found);
         } catch (IOException | RuntimeException e) {
             return Result.err(Problems.historyDamaged(repository, Problems.reason(e)));
@@ -197,18 +197,18 @@ final class History {
     /// runs: the caller holds the lamp's lock.
     Result<Restoring> restore(String prefix, Instant now) {
         return locked(() -> {
-            Tuple<GitFormat.Commit> commits;
+            Tuple<GitObjectUtil.Commit> commits;
             try {
                 commits = commits();
             } catch (IOException | RuntimeException e) {
                 return Result.err(Problems.historyDamaged(repository, Problems.reason(e)));
             }
             Tuple<Snapshot> snapshots = Tuple.of(Snapshot.class);
-            for (GitFormat.Commit commit : commits) snapshots = snapshots.add(commit.snapshot());
-            Result<Snapshot> found = GitFormat.find(snapshots, prefix, layout.root());
+            for (GitObjectUtil.Commit commit : commits) snapshots = snapshots.add(commit.snapshot());
+            Result<Snapshot> found = GitObjectUtil.find(snapshots, prefix, layout.root());
             if (!(found instanceof Result.Ok<Snapshot> ok)) return Result.err(found.problems());
             Snapshot target = ok.value();
-            GitFormat.Commit wanted = commits.stream().filter(c -> c.id().equals(target.id())).findFirst().orElseThrow();
+            GitObjectUtil.Commit wanted = commits.stream().filter(c -> c.id().equals(target.id())).findFirst().orElseThrow();
 
             Saving safety;
             try {
@@ -219,7 +219,7 @@ final class History {
                         "the save before the restore failed, so nothing was restored: " + Problems.reason(e)));
             }
             // The newest snapshot now holds exactly what is on disk, apart from any skipped files.
-            GitFormat.Commit current;
+            GitObjectUtil.Commit current;
             try {
                 current = commits().first();
             } catch (IOException | RuntimeException e) {
@@ -231,7 +231,7 @@ final class History {
                 return Result.ok(new Restoring(target, safety.made(), Optional.empty(), safety.skipped()), warnings);
             try {
                 bringBack(wanted.tree(), current.tree());
-                String message = GitFormat.message(SaveKind.RESTORE, "back to " + target.shortId()
+                String message = GitObjectUtil.message(SaveKind.RESTORE, "back to " + target.shortId()
                         + " (" + target.kind().label() + ", " + target.at() + ")", Optional.empty());
                 Snapshot result = commit(wanted.tree(), Optional.of(current.id()), now, message);
                 return Result.ok(new Restoring(target, safety.made(), Optional.of(result), safety.skipped()), warnings);
@@ -263,24 +263,24 @@ final class History {
             throws IOException {
         ensureRepository();
         Tally tally = new Tally();
-        Tuple<GitFormat.Entry> top = Tuple.of(GitFormat.Entry.class);
+        Tuple<GitObjectUtil.Entry> top = Tuple.of(GitObjectUtil.Entry.class);
         Path agent = layout.agentDir();
         String agentName = fileName(agent);
         if (Files.isDirectory(agent, LinkOption.NOFOLLOW_LINKS))
-            top = top.add(new GitFormat.Entry(agentName, GitFormat.EntryMode.DIRECTORY,
+            top = top.add(new GitObjectUtil.Entry(agentName, GitObjectUtil.EntryMode.DIRECTORY,
                     storeDirectory(agent, agentName, tally)));
         if (Files.isRegularFile(layout.config(), LinkOption.NOFOLLOW_LINKS))
-            top = top.add(new GitFormat.Entry(CONFIG_FILE, GitFormat.EntryMode.FILE,
+            top = top.add(new GitObjectUtil.Entry(CONFIG_FILE, GitObjectUtil.EntryMode.FILE,
                     storeSmall("blob", Files.readAllBytes(layout.config()))));
-        top = top.add(new GitFormat.Entry(MODES_FILE, GitFormat.EntryMode.FILE,
+        top = top.add(new GitObjectUtil.Entry(MODES_FILE, GitObjectUtil.EntryMode.FILE,
                 storeSmall("blob", tally.modes.toString().getBytes(StandardCharsets.UTF_8))));
-        String tree = storeSmall("tree", GitFormat.tree(top));
+        String tree = storeSmall("tree", GitObjectUtil.tree(top));
 
-        Optional<GitFormat.Commit> head = headCommit();
+        Optional<GitObjectUtil.Commit> head = headCommit();
         if (!always && head.isPresent() && head.get().tree().equals(tree))
-            return new Saving(Optional.empty(), head.map(GitFormat.Commit::snapshot), tally.files, tally.skipped);
-        Snapshot made = commit(tree, head.map(GitFormat.Commit::id), now,
-                GitFormat.message(kind, message, session, trailers));
+            return new Saving(Optional.empty(), head.map(GitObjectUtil.Commit::snapshot), tally.files, tally.skipped);
+        Snapshot made = commit(tree, head.map(GitObjectUtil.Commit::id), now,
+                GitObjectUtil.message(kind, message, session, trailers));
         return new Saving(Optional.of(made), Optional.of(made), tally.files, tally.skipped);
     }
 
@@ -289,7 +289,7 @@ final class History {
     /// Links are stored as links and never followed. Sockets, pipes and devices are not files
     /// anyone restores, so they are passed over without a word.
     private String storeDirectory(Path directory, String relative, Tally tally) throws IOException {
-        Tuple<GitFormat.Entry> entries = Tuple.of(GitFormat.Entry.class);
+        Tuple<GitObjectUtil.Entry> entries = Tuple.of(GitObjectUtil.Entry.class);
         List<Path> children = new ArrayList<>();
         try (DirectoryStream<Path> listing = Files.newDirectoryStream(directory)) {
             for (Path child : listing) children.add(child);
@@ -307,13 +307,13 @@ final class History {
             try {
                 if (attributes.isSymbolicLink()) {
                     byte[] target = Files.readSymbolicLink(child).toString().getBytes(StandardCharsets.UTF_8);
-                    entries = entries.add(new GitFormat.Entry(name, GitFormat.EntryMode.SYMLINK, storeSmall("blob", target)));
+                    entries = entries.add(new GitObjectUtil.Entry(name, GitObjectUtil.EntryMode.SYMLINK, storeSmall("blob", target)));
                 } else if (attributes.isDirectory()) {
                     if (!Files.isReadable(child) || !Files.isExecutable(child)) {
                         tally.skipped = tally.skipped.add(path + "/ (cannot be read)");
                         continue;
                     }
-                    entries = entries.add(new GitFormat.Entry(name, GitFormat.EntryMode.DIRECTORY,
+                    entries = entries.add(new GitObjectUtil.Entry(name, GitObjectUtil.EntryMode.DIRECTORY,
                             storeDirectory(child, path, tally)));
                     if (permissions != 0755) tally.modes.append(octal(permissions)).append(' ').append(path).append('\0');
                 } else if (attributes.isRegularFile()) {
@@ -323,8 +323,8 @@ final class History {
                         continue;
                     }
                     boolean executable = (permissions & 0100) != 0;
-                    entries = entries.add(new GitFormat.Entry(name,
-                            executable ? GitFormat.EntryMode.EXECUTABLE : GitFormat.EntryMode.FILE, blob.get()));
+                    entries = entries.add(new GitObjectUtil.Entry(name,
+                            executable ? GitObjectUtil.EntryMode.EXECUTABLE : GitObjectUtil.EntryMode.FILE, blob.get()));
                     tally.files++;
                     if (permissions != (executable ? 0755 : 0644))
                         tally.modes.append(octal(permissions)).append(' ').append(path).append('\0');
@@ -335,7 +335,7 @@ final class History {
                 // deleted while the save ran
             }
         }
-        return storeSmall("tree", GitFormat.tree(entries));
+        return storeSmall("tree", GitObjectUtil.tree(entries));
     }
 
     /// Stores one file's content, and returns the name of its blob. Empty when the file kept
@@ -357,8 +357,8 @@ final class History {
 
     /// The name a file of `size` bytes would have as a blob. Empty when it is no longer that size.
     private static Optional<String> hashFile(Path file, long size) throws IOException {
-        MessageDigest sha = GitFormat.sha1();
-        sha.update(GitFormat.header("blob", size));
+        MessageDigest sha = GitObjectUtil.sha1();
+        sha.update(GitObjectUtil.header("blob", size));
         long read = 0;
         byte[] buffer = new byte[1 << 16];
         try (InputStream in = Files.newInputStream(file)) {
@@ -372,12 +372,12 @@ final class History {
     private boolean writeLarge(Path file, long size, String id) throws IOException {
         Path temporary = Files.createTempFile(repository.resolve("objects"), "incoming-", ".tmp");
         try {
-            MessageDigest sha = GitFormat.sha1();
+            MessageDigest sha = GitObjectUtil.sha1();
             long read = 0;
             Deflater deflater = new Deflater(Deflater.BEST_SPEED);
             try (InputStream in = Files.newInputStream(file);
                  OutputStream out = new DeflaterOutputStream(Files.newOutputStream(temporary), deflater, 1 << 16)) {
-                byte[] header = GitFormat.header("blob", size);
+                byte[] header = GitObjectUtil.header("blob", size);
                 sha.update(header);
                 out.write(header);
                 byte[] buffer = new byte[1 << 16];
@@ -398,7 +398,7 @@ final class History {
 
     /// Stores an object held in memory, unless it is there already, and returns its name.
     private String storeSmall(String type, byte[] content) throws IOException {
-        String id = GitFormat.idOf(type, content);
+        String id = GitObjectUtil.idOf(type, content);
         if (Files.exists(objectPath(id))) return id;
         Path temporary = Files.createTempFile(repository.resolve("objects"), "incoming-", ".tmp");
         // A stream given its own Deflater does not release it, so it is released here, rather
@@ -406,7 +406,7 @@ final class History {
         Deflater deflater = new Deflater(Deflater.BEST_SPEED);
         try {
             try (OutputStream out = new DeflaterOutputStream(Files.newOutputStream(temporary), deflater)) {
-                out.write(GitFormat.header(type, content.length));
+                out.write(GitObjectUtil.header(type, content.length));
                 out.write(content);
             }
             place(temporary, id);
@@ -426,9 +426,9 @@ final class History {
     }
 
     private Snapshot commit(String tree, Optional<String> parent, Instant now, String message) throws IOException {
-        String id = storeSmall("commit", GitFormat.commit(tree, parent, now, message));
+        String id = storeSmall("commit", GitObjectUtil.commit(tree, parent, now, message));
         moveBranch(parent, id);
-        return GitFormat.parseCommit(id, readObject(id, "commit")).snapshot();
+        return GitObjectUtil.parseCommit(id, readObject(id, "commit")).snapshot();
     }
 
     /// Points the branch at `id`, the last step of every save.
@@ -477,23 +477,23 @@ final class History {
     }
 
     private static String checkedId(String id) throws IOException {
-        if (!GitFormat.isObjectId(id)) throw new IOException("the branch names '" + id + "', not a commit");
+        if (!GitObjectUtil.isObjectId(id)) throw new IOException("the branch names '" + id + "', not a commit");
         return id;
     }
 
-    private Optional<GitFormat.Commit> headCommit() throws IOException {
+    private Optional<GitObjectUtil.Commit> headCommit() throws IOException {
         Optional<String> id = branch();
-        return id.isEmpty() ? Optional.empty() : Optional.of(GitFormat.parseCommit(id.get(), readObject(id.get(), "commit")));
+        return id.isEmpty() ? Optional.empty() : Optional.of(GitObjectUtil.parseCommit(id.get(), readObject(id.get(), "commit")));
     }
 
     /// Every commit, newest first, following each one's parent.
-    private Tuple<GitFormat.Commit> commits() throws IOException {
-        if (!Files.isRegularFile(repository.resolve("HEAD"))) return Tuple.of(GitFormat.Commit.class);
-        Tuple<GitFormat.Commit> found = Tuple.of(GitFormat.Commit.class);
+    private Tuple<GitObjectUtil.Commit> commits() throws IOException {
+        if (!Files.isRegularFile(repository.resolve("HEAD"))) return Tuple.of(GitObjectUtil.Commit.class);
+        Tuple<GitObjectUtil.Commit> found = Tuple.of(GitObjectUtil.Commit.class);
         Optional<String> next = branch();
         Set<String> seen = new HashSet<>();
         while (next.isPresent() && seen.add(next.get())) {
-            GitFormat.Commit commit = GitFormat.parseCommit(next.get(), readObject(next.get(), "commit"));
+            GitObjectUtil.Commit commit = GitObjectUtil.parseCommit(next.get(), readObject(next.get(), "commit"));
             found = found.add(commit);
             next = commit.parent();
         }
@@ -528,10 +528,10 @@ final class History {
         return in;
     }
 
-    private Association<String, GitFormat.Entry> entriesOf(Optional<String> tree) throws IOException {
-        Association<String, GitFormat.Entry> byName = Association.between(String.class, GitFormat.Entry.class);
+    private Association<String, GitObjectUtil.Entry> entriesOf(Optional<String> tree) throws IOException {
+        Association<String, GitObjectUtil.Entry> byName = Association.between(String.class, GitObjectUtil.Entry.class);
         if (tree.isEmpty()) return byName;
-        for (GitFormat.Entry entry : GitFormat.parseTree(readObject(tree.get(), "tree")))
+        for (GitObjectUtil.Entry entry : GitObjectUtil.parseTree(readObject(tree.get(), "tree")))
             byName = byName.put(entry.name(), entry);
         return byName;
     }
@@ -542,33 +542,33 @@ final class History {
     /// holds. Only what differs is touched: a directory whose tree has not changed is skipped
     /// whole, which is what makes restoring a large home quick.
     private void bringBack(String target, String current) throws IOException {
-        Association<String, GitFormat.Entry> wanted = entriesOf(Optional.of(target));
-        Association<String, GitFormat.Entry> now = entriesOf(Optional.of(current));
+        Association<String, GitObjectUtil.Entry> wanted = entriesOf(Optional.of(target));
+        Association<String, GitObjectUtil.Entry> now = entriesOf(Optional.of(current));
         String agentName = fileName(layout.agentDir());
         // A snapshot holds the agent directory under the name it had when it was saved. That is
         // the same name unless the lamp was made again with a new agent id; then take its one
         // agent directory, whatever it was called.
-        Optional<GitFormat.Entry> agentThen = wanted.get(agentName).or(() -> {
-            for (GitFormat.Entry entry : wanted.values())
+        Optional<GitObjectUtil.Entry> agentThen = wanted.get(agentName).or(() -> {
+            for (GitObjectUtil.Entry entry : wanted.values())
                 if (entry.name().startsWith(LampLayout.AGENT_DIR_PREFIX) && entry.isDirectory())
                     return Optional.of(entry);
             return Optional.empty();
         });
-        Optional<GitFormat.Entry> agentNow = now.get(agentName);
+        Optional<GitObjectUtil.Entry> agentNow = now.get(agentName);
         if (agentThen.isPresent()) {
             if (!agentNow.equals(agentThen))
                 restoreDirectory(layout.agentDir(), agentThen.get().id(),
-                        agentNow.filter(GitFormat.Entry::isDirectory).map(GitFormat.Entry::id));
+                        agentNow.filter(GitObjectUtil.Entry::isDirectory).map(GitObjectUtil.Entry::id));
         } else {
             deleteAnything(layout.agentDir());
         }
 
-        Optional<GitFormat.Entry> configThen = wanted.get(CONFIG_FILE);
+        Optional<GitObjectUtil.Entry> configThen = wanted.get(CONFIG_FILE);
         if (configThen.isPresent() && !configThen.equals(now.get(CONFIG_FILE)))
             FilesystemUtil.writeBytes(layout.config(), readObject(configThen.get().id(), "blob"), PosixMode.PRIVATE_FILE);
 
         applyModes(modesIn(now.get(MODES_FILE)), modesIn(wanted.get(MODES_FILE)),
-                   agentThen.map(GitFormat.Entry::name).orElse(agentName));
+                   agentThen.map(GitObjectUtil.Entry::name).orElse(agentName));
     }
 
     private void restoreDirectory(Path directory, String target, Optional<String> current) throws IOException {
@@ -578,24 +578,24 @@ final class History {
             current = Optional.empty();
         }
         makeWritable(directory);
-        Association<String, GitFormat.Entry> wanted = entriesOf(Optional.of(target));
-        Association<String, GitFormat.Entry> now = entriesOf(current);
-        for (GitFormat.Entry old : now.values())
+        Association<String, GitObjectUtil.Entry> wanted = entriesOf(Optional.of(target));
+        Association<String, GitObjectUtil.Entry> now = entriesOf(current);
+        for (GitObjectUtil.Entry old : now.values())
             if (!wanted.containsKey(old.name())) deleteAnything(directory.resolve(old.name()));
-        for (GitFormat.Entry entry : wanted.values()) {
-            Optional<GitFormat.Entry> was = now.get(entry.name());
+        for (GitObjectUtil.Entry entry : wanted.values()) {
+            Optional<GitObjectUtil.Entry> was = now.get(entry.name());
             if (was.isPresent() && was.get().equals(entry)) continue;
             Path path = directory.resolve(entry.name());
             switch (entry.mode()) {
                 case DIRECTORY -> restoreDirectory(path, entry.id(),
-                        was.filter(GitFormat.Entry::isDirectory).map(GitFormat.Entry::id));
+                        was.filter(GitObjectUtil.Entry::isDirectory).map(GitObjectUtil.Entry::id));
                 case SYMLINK -> {
                     deleteAnything(path);
                     Files.createSymbolicLink(path, Path.of(new String(readObject(entry.id(), "blob"), StandardCharsets.UTF_8)));
                 }
                 case FILE, EXECUTABLE -> {
                     deleteAnything(path);
-                    writeBlob(entry.id(), path, entry.mode() == GitFormat.EntryMode.EXECUTABLE ? 0755 : 0644);
+                    writeBlob(entry.id(), path, entry.mode() == GitObjectUtil.EntryMode.EXECUTABLE ? 0755 : 0644);
                 }
             }
         }
@@ -642,7 +642,7 @@ final class History {
 
     // ─── exact permissions ─────────────────────────────────────────────────────────────────
 
-    private Association<String, Integer> modesIn(Optional<GitFormat.Entry> file) throws IOException {
+    private Association<String, Integer> modesIn(Optional<GitObjectUtil.Entry> file) throws IOException {
         Association<String, Integer> modes = Association.between(String.class, Integer.class);
         if (file.isEmpty()) return modes;
         String text = new String(readObject(file.get().id(), "blob"), StandardCharsets.UTF_8);
@@ -696,7 +696,7 @@ final class History {
     private Optional<Path> resolveInLamp(String listed, String savedAs, String agentName) {
         if (!listed.startsWith(savedAs + "/")) return Optional.empty();
         String rest = listed.substring(savedAs.length() + 1);
-        for (String part : rest.split("/", -1)) if (!GitFormat.isPlainName(part)) return Optional.empty();
+        for (String part : rest.split("/", -1)) if (!GitObjectUtil.isPlainName(part)) return Optional.empty();
         return Optional.of(layout.root().resolve(agentName).resolve(rest));
     }
 

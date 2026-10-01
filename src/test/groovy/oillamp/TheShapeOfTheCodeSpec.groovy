@@ -138,7 +138,7 @@ class TheShapeOfTheCodeSpec extends Specification {
                            'Egress',
                            // The lamp's history: reads the agent's home and writes git
                            // objects, as FilesystemUtil does the lamp's other files. What a
-                           // snapshot looks like is decided by GitFormat, which is pure.
+                           // snapshot looks like is decided by GitObjectUtil, which is pure.
                            'History',
                            // The agent the session holds, and the runs that wake it: a process
                            // in the sandbox, and threads that wait for it. What a run's

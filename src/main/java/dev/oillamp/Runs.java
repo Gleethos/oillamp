@@ -216,9 +216,9 @@ final class Runs {
     private int agentRunsInADay(Instant now) {
         int counted = (int) queue.stream().filter(pending -> pending.job().filter(job -> job.author() == JobAuthor.AGENT).isPresent()).count()
                 + (current.flatMap(Pending::job).filter(job -> job.author() == JobAuthor.AGENT).isPresent() ? 1 : 0);
-        Result<Tuple<GitFormat.Commit>> commits = new History(layout).commitList();
-        if (commits instanceof Result.Ok<Tuple<GitFormat.Commit>>(Tuple<GitFormat.Commit> all, var _))
-            for (GitFormat.Commit commit : all) {
+        Result<Tuple<GitObjectUtil.Commit>> commits = new History(layout).commitList();
+        if (commits instanceof Result.Ok<Tuple<GitObjectUtil.Commit>>(Tuple<GitObjectUtil.Commit> all, var _))
+            for (GitObjectUtil.Commit commit : all) {
                 if (commit.snapshot().at().isBefore(now.minus(Duration.ofDays(1)))) break;
                 Optional<WakePrompt.Past> past = WakePrompt.Past.of(commit);
                 if (past.isPresent() && past.get().author() == JobAuthor.AGENT) counted++;
@@ -264,7 +264,7 @@ final class Runs {
 
         History history = new History(layout);
         Association<String, String> trailers = Association.between(String.class, String.class)
-                .put(GitFormat.RUN_TRAILER, run.id());
+                .put(GitObjectUtil.RUN_TRAILER, run.id());
         Result<History.Saving> before = history.save(SaveKind.BEFORE_RUN, "before " + run.id(), Optional.of(session),
                 trailers, false, started);
         Optional<String> base = Optional.empty();
@@ -292,12 +292,12 @@ final class Runs {
         String said = answer.text().strip();
         if (said.length() > ANSWER_KEPT) said = said.substring(0, ANSWER_KEPT) + "\n[…]";
         Association<String, String> after = trailers
-                .put(GitFormat.AUTHOR_TRAILER, pending.job().map(job -> job.author() == JobAuthor.AGENT ? "agent" : "user").orElse("user"))
-                .put(GitFormat.OUTCOME_TRAILER, outcome);
-        if (pending.job().isPresent()) after = after.put(GitFormat.JOB_TRAILER, pending.job().get().id());
-        if (base.isPresent()) after = after.put(GitFormat.BASE_TRAILER, base.get());
+                .put(GitObjectUtil.AUTHOR_TRAILER, pending.job().map(job -> job.author() == JobAuthor.AGENT ? "agent" : "user").orElse("user"))
+                .put(GitObjectUtil.OUTCOME_TRAILER, outcome);
+        if (pending.job().isPresent()) after = after.put(GitObjectUtil.JOB_TRAILER, pending.job().get().id());
+        if (base.isPresent()) after = after.put(GitObjectUtil.BASE_TRAILER, base.get());
         Optional<String> conversation = answer.conversation().or(run::conversation);
-        if (conversation.isPresent()) after = after.put(GitFormat.CONVERSATION_TRAILER, conversation.get());
+        if (conversation.isPresent()) after = after.put(GitObjectUtil.CONVERSATION_TRAILER, conversation.get());
         String message = run.id() + " (" + run.job().map(job -> "job " + job).orElse("asked") + ") " + outcome
                 + (said.isEmpty() ? "" : "\n\n" + said);
         Result<History.Saving> saved = history.save(SaveKind.RUN, message, Optional.of(session), after, true, ended);
@@ -333,9 +333,9 @@ final class Runs {
     /// The last `count` runs, newest first, with what each changed.
     private static Tuple<WakePrompt.Described> recentRuns(History history, int count) {
         Tuple<WakePrompt.Described> found = Tuple.of(WakePrompt.Described.class);
-        Result<Tuple<GitFormat.Commit>> commits = history.commitList();
-        if (!(commits instanceof Result.Ok<Tuple<GitFormat.Commit>>(Tuple<GitFormat.Commit> all, var _))) return found;
-        for (GitFormat.Commit commit : all) {
+        Result<Tuple<GitObjectUtil.Commit>> commits = history.commitList();
+        if (!(commits instanceof Result.Ok<Tuple<GitObjectUtil.Commit>>(Tuple<GitObjectUtil.Commit> all, var _))) return found;
+        for (GitObjectUtil.Commit commit : all) {
             if (found.size() >= count) break;
             Optional<WakePrompt.Past> past = WakePrompt.Past.of(commit);
             if (past.isEmpty()) continue;
@@ -344,9 +344,9 @@ final class Runs {
         return found;
     }
 
-    private static WakePrompt.Described describe(History history, Tuple<GitFormat.Commit> all, WakePrompt.Past past, int most) {
+    private static WakePrompt.Described describe(History history, Tuple<GitObjectUtil.Commit> all, WakePrompt.Past past, int most) {
         Optional<String> baseTree = past.base().flatMap(id ->
-                all.stream().filter(commit -> commit.id().equals(id)).findFirst().map(GitFormat.Commit::tree));
+                all.stream().filter(commit -> commit.id().equals(id)).findFirst().map(GitObjectUtil.Commit::tree));
         Result<History.Changes> changes = history.changes(baseTree, past.tree(), most);
         return changes instanceof Result.Ok<History.Changes>(History.Changes found, var _)
                 ? new WakePrompt.Described(past, found.shown(), found.more())
@@ -420,11 +420,11 @@ final class Runs {
     /// One run in full, or a list of the recent ones when `run` is empty.
     private String history(String run, ZoneId zone) {
         History history = new History(layout);
-        Result<Tuple<GitFormat.Commit>> commits = history.commitList();
-        if (!(commits instanceof Result.Ok<Tuple<GitFormat.Commit>>(Tuple<GitFormat.Commit> all, var _)))
+        Result<Tuple<GitObjectUtil.Commit>> commits = history.commitList();
+        if (!(commits instanceof Result.Ok<Tuple<GitObjectUtil.Commit>>(Tuple<GitObjectUtil.Commit> all, var _)))
             return "The lamp's history cannot be read: " + commits.problems().first().whatHappened();
         Tuple<WakePrompt.Past> runs = Tuple.of(WakePrompt.Past.class);
-        for (GitFormat.Commit commit : all) runs = WakePrompt.Past.of(commit).map(runs::add).orElse(runs);
+        for (GitObjectUtil.Commit commit : all) runs = WakePrompt.Past.of(commit).map(runs::add).orElse(runs);
         if (run.isEmpty()) {
             if (runs.isEmpty()) return "There have been no runs yet.";
             StringBuilder out = new StringBuilder("The last runs, newest first:\n");

@@ -36,9 +36,9 @@ import sprouts.Tuple;
 ///   file in it. No `git` is needed on the host.
 ///
 /// The result is an ordinary repository: `git log` and `git show` read it.
-final class GitFormat {
+final class GitObjectUtil {
 
-    private GitFormat() {}
+    private GitObjectUtil() {}
 
     /// The mode git writes for each kind of tree entry. git knows no other permissions than
     /// "executable or not"; [History] keeps the exact ones in a list of its own.
@@ -236,13 +236,13 @@ final class GitFormat {
             else if (header.startsWith("committer ")) at = Optional.of(timeOf(header));
         }
         String message = text.substring(blank + 2);
-        String treeId = tree.filter(GitFormat::isObjectId)
+        String treeId = tree.filter(GitObjectUtil::isObjectId)
                 .orElseThrow(() -> new IllegalArgumentException("a commit names no tree"));
         Split split = split(message);
         return new Commit(id, treeId, parent,
                 new Snapshot(id, at.orElse(Instant.EPOCH), kindIn(split.trailers()), writtenIn(split.text()),
                         split.trailers().get(SESSION_TRAILER), split.trailers().get(RUN_TRAILER),
-                        split.trailers().get(JOB_TRAILER), split.trailers().get(OUTCOME_TRAILER).flatMap(GitFormat::outcome),
+                        split.trailers().get(JOB_TRAILER), split.trailers().get(OUTCOME_TRAILER).flatMap(GitObjectUtil::outcome),
                         split.trailers().get(CONVERSATION_TRAILER)),
                 split.trailers());
     }
