@@ -1,6 +1,8 @@
 package dev.oillamp;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Optional;
 
 import dev.lamp.Problem;
@@ -480,7 +482,7 @@ final class Problems {
     }
 
     /// Another save or restore held the history for longer than oillamp waited.
-    public static Problem historyBusy(Path lamp, java.time.Duration waited) {
+    public static Problem historyBusy(Path lamp, Duration waited) {
         return error(HISTORY_BUSY, "Another save is still running",
                 "another oillamp process has been saving or restoring " + lamp + " for over "
               + waited.toSeconds() + " seconds",
@@ -594,7 +596,7 @@ final class Problems {
 
     public static Problem socketPathTooLong(Path path, int limit) {
         return error(NET_SOCKET_PATH_LONG, "Socket path too long",
-                path + " is " + path.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+                path + " is " + path.toString().getBytes(StandardCharsets.UTF_8).length
                         + " bytes, the kernel limit is " + limit,
                 "Unix socket paths are capped by the kernel; oillamp routes them through a short "
               + "directory under XDG_RUNTIME_DIR for exactly this reason")
@@ -617,7 +619,7 @@ final class Problems {
     ///
     /// Without a timeout, the session would wait for a shell that is never coming. The cause is
     /// usually the terminal's arguments, so the fix suggests running the command by hand.
-    public static Problem terminalDidNotConnect(java.time.Duration waited) {
+    public static Problem terminalDidNotConnect(Duration waited) {
         return error(TERM_NO_CONNECT, "The terminal window did not connect",
                 "the terminal was started but no shell reached the sandbox within "
                         + waited.toSeconds() + "s",
@@ -633,7 +635,7 @@ final class Problems {
                 "starting " + argv.first() + " failed: " + reason,
                 "the terminal setting is most likely wrong, and would be wrong in every session, "
               + "so oillamp stops here and says so")
-            .withEvidence(new Evidence.Command(argv, 127, output, java.time.Duration.ZERO))
+            .withEvidence(new Evidence.Command(argv, 127, output, Duration.ZERO))
             .withFix(Fix.of("check that " + argv.first() + " starts from this terminal"))
             .withFix(Fix.of("or name another one with terminal.profile in oillamp.toml"));
         return output.isBlank() ? problem : problem.withEvidence(
@@ -647,7 +649,7 @@ final class Problems {
                 argv.first() + " exited with code " + exitCode + " a moment after it was started",
                 "the session is running and you can still reach it; you simply cannot see the "
               + "desktop until a viewer stays open")
-            .withEvidence(new Evidence.Command(argv, exitCode, output, java.time.Duration.ZERO))
+            .withEvidence(new Evidence.Command(argv, exitCode, output, Duration.ZERO))
             .withFix(Fix.of("run the command above by hand to see what the viewer objects to"))
             .withFix(Fix.of("open another one with `oillamp view <dir>` once it is fixed"));
     }
@@ -756,7 +758,7 @@ final class Problems {
                              "podman system migrate"));
     }
 
-    public static Problem sandboxNotReady(String container, java.time.Duration waited, String log) {
+    public static Problem sandboxNotReady(String container, Duration waited, String log) {
         return error(SANDBOX_NOT_READY, "The sandbox did not become ready in time",
                 "container " + container + " was still starting after " + waited.toSeconds() + "s",
                 "oillamp waits for the sandbox to say it is ready rather than guessing, so that a "
@@ -772,7 +774,7 @@ final class Problems {
     /// A server can die after `ready.json` is written, or fail to start and leave the
     /// previous session's socket file in place. Either way the sandbox looks healthy until
     /// something connects, which is why oillamp connects before saying the session is ready.
-    public static Problem sandboxEndpointDead(String what, java.nio.file.Path socket,
+    public static Problem sandboxEndpointDead(String what, Path socket,
                                               String container, String log) {
         return error(SANDBOX_ENDPOINT_DEAD, "The sandbox is not answering on " + what,
                 socket + " refused the connection, although the sandbox reported itself ready",

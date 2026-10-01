@@ -1,5 +1,7 @@
 package dev.oillamp;
 
+import java.util.Locale;
+
 /// The `git.identity` setting: whose name and email the agent's commits carry.
 ///
 /// [#GENIE], the default, is oillamp's own: `genie agent <genie@<lamp id>>`. Nothing about the
@@ -11,5 +13,5 @@ package dev.oillamp;
 enum GitIdentity {
     GENIE, HOST, CUSTOM, NONE;
 
-    public String configName() { return name().toLowerCase(java.util.Locale.ROOT); }
+    public String configName() { return name().toLowerCase(Locale.ROOT); }
 }

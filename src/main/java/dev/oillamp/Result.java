@@ -1,5 +1,6 @@
 package dev.oillamp;
 
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -84,7 +85,7 @@ sealed interface Result<T> {
 
     /// Combines two _independent_ results, collecting the problems of both.
     /// This is what makes "all your config errors at once" possible.
-    static <A, B, C> Result<C> combine(Result<A> a, Result<B> b, java.util.function.BiFunction<A, B, C> f) {
+    static <A, B, C> Result<C> combine(Result<A> a, Result<B> b, BiFunction<A, B, C> f) {
         if (a instanceof Ok<A> okA && b instanceof Ok<B> okB)
             return new Ok<>(f.apply(okA.value(), okB.value()), okA.warnings().addAll(okB.warnings()));
         return new Err<>(a.problems().addAll(b.problems()).retainIf(Problem::isError));

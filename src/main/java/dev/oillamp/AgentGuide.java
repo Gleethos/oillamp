@@ -1,5 +1,10 @@
 package dev.oillamp;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+
 
 /// Writes `~/AGENTS.md`, the guide that tells the agent what kind of machine it is on.
 ///
@@ -286,11 +291,11 @@ final class AgentGuide {
     static String conversationTools() { return resource("oillamp-conversations.js"); }
 
     private static String resource(String name) {
-        try (java.io.InputStream in = AgentGuide.class.getResourceAsStream("/agent/" + name)) {
+        try (InputStream in = AgentGuide.class.getResourceAsStream("/agent/" + name)) {
             if (in == null) throw new IllegalStateException(name + " is missing from this build of oillamp");
-            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-        } catch (java.io.IOException e) {
-            throw new java.io.UncheckedIOException(e);
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

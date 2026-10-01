@@ -1,11 +1,14 @@
 package dev.oillamp;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Consumer;
 
 import dev.lamp.LampEvent;
 import dev.lamp.Problem;
+
+import sprouts.Tuple;
 
 
 /// What every command needs: where to send events, and the options from the command line.
@@ -95,7 +98,7 @@ final class Context {
     /// The model settings given on the command line. Each one that is present replaces the
     /// lamp's own, for this session only. The key itself is never on the command line, which
     /// other users of the machine can read: only the name of the variable that holds it.
-    public record ModelOverride(Optional<java.net.URI> service, Optional<String> keyEnv) {
+    public record ModelOverride(Optional<URI> service, Optional<String> keyEnv) {
 
         static final ModelOverride NONE = new ModelOverride(Optional.empty(), Optional.empty());
 
@@ -123,7 +126,7 @@ final class Context {
     public void info(String area, String text) { emit(new LampEvent.Info(area, text)); }
 
     /// Reports problems, routing warnings and errors to the right event.
-    public void report(sprouts.Tuple<Problem> problems) {
+    public void report(Tuple<Problem> problems) {
         for (Problem problem : problems)
             emit(problem.isError() ? new LampEvent.Failure(problem) : new LampEvent.Warning(problem));
     }

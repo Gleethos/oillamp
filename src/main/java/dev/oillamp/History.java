@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -16,10 +17,18 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
+import java.util.function.Supplier;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
@@ -132,7 +141,7 @@ final class History {
     /// Lists what differs from the tree `before` (or from nothing) to the tree `after`.
     Result<Changes> changes(Optional<String> before, String after, int limit) {
         try {
-            java.util.List<Change> found = new java.util.ArrayList<>();
+            List<Change> found = new ArrayList<>();
             boolean more = compare(before, Optional.of(after), "", found, limit, true);
             return Result.ok(new Changes(Tuple.of(Change.class, found), more));
         } catch (IOException | RuntimeException e) {
@@ -142,10 +151,10 @@ final class History {
 
     /// Adds what differs between two trees to `found`. True once there were more than `limit`.
     private boolean compare(Optional<String> before, Optional<String> after, String prefix,
-                            java.util.List<Change> found, int limit, boolean top) throws IOException {
+                            List<Change> found, int limit, boolean top) throws IOException {
         Association<String, GitFormat.Entry> old = entriesOf(before);
         Association<String, GitFormat.Entry> now = entriesOf(after);
-        java.util.SortedSet<String> names = new java.util.TreeSet<>();
+        SortedSet<String> names = new TreeSet<>();
         for (GitFormat.Entry entry : old.values()) names.add(entry.name());
         for (GitFormat.Entry entry : now.values()) names.add(entry.name());
         for (String name : names) {
@@ -281,7 +290,7 @@ final class History {
     /// anyone restores, so they are passed over without a word.
     private String storeDirectory(Path directory, String relative, Tally tally) throws IOException {
         Tuple<GitFormat.Entry> entries = Tuple.of(GitFormat.Entry.class);
-        java.util.List<Path> children = new java.util.ArrayList<>();
+        List<Path> children = new ArrayList<>();
         try (DirectoryStream<Path> listing = Files.newDirectoryStream(directory)) {
             for (Path child : listing) children.add(child);
         }
@@ -320,7 +329,7 @@ final class History {
                     if (permissions != (executable ? 0755 : 0644))
                         tally.modes.append(octal(permissions)).append(' ').append(path).append('\0');
                 }
-            } catch (java.nio.file.AccessDeniedException unreadable) {
+            } catch (AccessDeniedException unreadable) {
                 tally.skipped = tally.skipped.add(path + " (cannot be read)");
             } catch (NoSuchFileException gone) {
                 // deleted while the save ran
@@ -482,7 +491,7 @@ final class History {
         if (!Files.isRegularFile(repository.resolve("HEAD"))) return Tuple.of(GitFormat.Commit.class);
         Tuple<GitFormat.Commit> found = Tuple.of(GitFormat.Commit.class);
         Optional<String> next = branch();
-        java.util.Set<String> seen = new java.util.HashSet<>();
+        Set<String> seen = new HashSet<>();
         while (next.isPresent() && seen.add(next.get())) {
             GitFormat.Commit commit = GitFormat.parseCommit(next.get(), readObject(next.get(), "commit"));
             found = found.add(commit);
@@ -613,7 +622,7 @@ final class History {
         if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return;
         if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
             makeWritable(path);
-            java.util.List<Path> children = new java.util.ArrayList<>();
+            List<Path> children = new ArrayList<>();
             try (DirectoryStream<Path> listing = Files.newDirectoryStream(path)) {
                 for (Path child : listing) children.add(child);
             }
@@ -660,8 +669,8 @@ final class History {
     private void applyModes(Association<String, Integer> before, Association<String, Integer> after,
                             String savedAs) throws IOException {
         String agentName = fileName(layout.agentDir());
-        java.util.List<Path> directories = new java.util.ArrayList<>();
-        java.util.Map<Path, Integer> wanted = new java.util.HashMap<>();
+        List<Path> directories = new ArrayList<>();
+        Map<Path, Integer> wanted = new HashMap<>();
         for (var pair : after)
             resolveInLamp(pair.first(), savedAs, agentName).ifPresent(path -> wanted.put(path, pair.second()));
         // -1: the path had its own permissions before, and should get git's default back.
@@ -695,7 +704,7 @@ final class History {
 
     /// Runs `work` while holding the history lock, waiting for another save or restore of this
     /// lamp to finish first.
-    private <T> Result<T> locked(java.util.function.Supplier<Result<T>> work) {
+    private <T> Result<T> locked(Supplier<Result<T>> work) {
         Duration pause = Duration.ofMillis(200);
         try {
             for (long waited = 0; ; waited++) {

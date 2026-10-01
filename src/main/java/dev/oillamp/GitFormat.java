@@ -2,10 +2,15 @@ package dev.oillamp;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 import dev.lamp.LampEvent.RunOutcome;
@@ -107,9 +112,9 @@ final class GitFormat {
     /// A tree's content. git requires the entries sorted by name, with a directory sorting as if
     /// its name ended in `/`, so `a.txt` comes before the directory `a` but `a-b` after it.
     static byte[] tree(Tuple<Entry> entries) {
-        java.util.List<Entry> sorted = new java.util.ArrayList<>();
+        List<Entry> sorted = new ArrayList<>();
         for (Entry entry : entries) sorted.add(entry);
-        sorted.sort((a, b) -> java.util.Arrays.compareUnsigned(sortKey(a), sortKey(b)));
+        sorted.sort((a, b) -> Arrays.compareUnsigned(sortKey(a), sortKey(b)));
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         for (Entry entry : sorted) {
             out.writeBytes((entry.mode().octal() + " ").getBytes(StandardCharsets.US_ASCII));
@@ -198,7 +203,7 @@ final class GitFormat {
         StringBuilder text = new StringBuilder(subject).append("\n\n");
         if (written.strip().contains("\n")) text.append(written.strip()).append("\n\n");
         text.append(KIND_TRAILER).append(": ")
-            .append(kind.name().toLowerCase(java.util.Locale.ROOT).replace('_', '-')).append('\n');
+            .append(kind.name().toLowerCase(Locale.ROOT).replace('_', '-')).append('\n');
         session.ifPresent(id -> text.append(SESSION_TRAILER).append(": ").append(id.value()).append('\n'));
         for (var trailer : more)
             text.append(trailer.first()).append(": ").append(firstLine(trailer.second())).append('\n');
@@ -246,7 +251,7 @@ final class GitFormat {
     /// [RunOutcome#TIMED_OUT]. Empty for anything else.
     private static Optional<RunOutcome> outcome(String written) {
         for (RunOutcome outcome : RunOutcome.values())
-            if (outcome.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ').equals(written.strip())) return Optional.of(outcome);
+            if (outcome.name().toLowerCase(Locale.ROOT).replace('_', ' ').equals(written.strip())) return Optional.of(outcome);
         return Optional.empty();
     }
 
@@ -282,7 +287,7 @@ final class GitFormat {
     /// A commit made by hand with git, without the trailer, counts as a save made while no session ran.
     private static SaveKind kindIn(Association<String, String> trailers) {
         String name = trailers.get(KIND_TRAILER).orElse("")
-                .toUpperCase(java.util.Locale.ROOT).replace('-', '_');
+                .toUpperCase(Locale.ROOT).replace('-', '_');
         for (SaveKind kind : SaveKind.values()) if (kind.name().equals(name)) return kind;
         return SaveKind.IDLE;
     }
@@ -308,8 +313,8 @@ final class GitFormat {
     ///
     /// @return the snapshot, or why there is none: too short, not hexadecimal, no match, or
     ///         several matches
-    static Result<Snapshot> find(Tuple<Snapshot> snapshots, String prefix, java.nio.file.Path lamp) {
-        String wanted = prefix.strip().toLowerCase(java.util.Locale.ROOT);
+    static Result<Snapshot> find(Tuple<Snapshot> snapshots, String prefix, Path lamp) {
+        String wanted = prefix.strip().toLowerCase(Locale.ROOT);
         if (wanted.length() < 4 || wanted.length() > 40
                 || !wanted.chars().allMatch(c -> (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
             return Result.err(Problems.noSuchSnapshot(prefix, lamp,

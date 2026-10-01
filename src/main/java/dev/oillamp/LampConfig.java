@@ -1,5 +1,7 @@
 package dev.oillamp;
 
+import java.net.URI;
+import java.time.Duration;
 import java.util.Optional;
 
 import sprouts.Association;
@@ -105,7 +107,7 @@ record LampConfig(
     ///                `http://127.0.0.1:11434/v1`. Plain `http` only for a service on this
     ///                machine's loopback, so the key never crosses a network unencrypted
     /// @param keyEnv  the host environment variable holding the key, read when a session starts
-    public record Model(java.net.URI service, String keyEnv) {
+    public record Model(URI service, String keyEnv) {
         public Model {
             if (!keyEnv.matches("[A-Za-z_][A-Za-z0-9_]*"))
                 throw new IllegalArgumentException("model.key_env is not a variable name: " + keyEnv);
@@ -116,7 +118,7 @@ record LampConfig(
         /// choice, and its model list says nothing about regions, so filtering it by region
         /// would leave no model at all.
         public boolean euOnly() {
-            String host = java.util.Optional.ofNullable(service.getHost()).orElse("");
+            String host = Optional.ofNullable(service.getHost()).orElse("");
             return host.equals("edenai.run") || host.endsWith(".edenai.run");
         }
     }
@@ -150,9 +152,9 @@ record LampConfig(
             if (terminalConnectSeconds < 1) throw new IllegalArgumentException("timeouts.terminal_connect_seconds");
             if (stopSeconds            < 1) throw new IllegalArgumentException("timeouts.stop_seconds");
         }
-        public java.time.Duration containerReady()  { return java.time.Duration.ofSeconds(containerReadySeconds); }
-        public java.time.Duration terminalConnect() { return java.time.Duration.ofSeconds(terminalConnectSeconds); }
-        public java.time.Duration stop()            { return java.time.Duration.ofSeconds(stopSeconds); }
+        public Duration containerReady()  { return Duration.ofSeconds(containerReadySeconds); }
+        public Duration terminalConnect() { return Duration.ofSeconds(terminalConnectSeconds); }
+        public Duration stop()            { return Duration.ofSeconds(stopSeconds); }
     }
 
     /// `[schedule]`: whether jobs may wake the agent while a session runs, and the limits on the
@@ -179,9 +181,9 @@ record LampConfig(
             return new Schedule(true, maxAgentJobs, minAgentIntervalMinutes, maxAgentDays,
                                 maxAgentRunsPerDay, maxRunMinutes, notesMaxKb);
         }
-        public java.time.Duration minAgentInterval() { return java.time.Duration.ofMinutes(minAgentIntervalMinutes); }
-        public java.time.Duration maxAgentLife()     { return java.time.Duration.ofDays(maxAgentDays); }
-        public java.time.Duration maxRun()           { return java.time.Duration.ofMinutes(maxRunMinutes); }
+        public Duration minAgentInterval() { return Duration.ofMinutes(minAgentIntervalMinutes); }
+        public Duration maxAgentLife()     { return Duration.ofDays(maxAgentDays); }
+        public Duration maxRun()           { return Duration.ofMinutes(maxRunMinutes); }
     }
 
     public Optional<Forward> forwardNamed(String name) {

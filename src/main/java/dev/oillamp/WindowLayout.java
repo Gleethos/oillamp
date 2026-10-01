@@ -1,5 +1,7 @@
 package dev.oillamp;
 
+import java.util.Locale;
+
 /// The `display.windows` setting: how the sandbox desktop arranges windows.
 ///
 /// [#FLOATING], the default, is what most people's desktops do: a window opens at the size the
@@ -12,5 +14,5 @@ package dev.oillamp;
 enum WindowLayout {
     FLOATING, TILING;
 
-    public String configName() { return name().toLowerCase(java.util.Locale.ROOT); }
+    public String configName() { return name().toLowerCase(Locale.ROOT); }
 }

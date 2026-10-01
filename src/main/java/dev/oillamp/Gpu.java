@@ -61,9 +61,9 @@ final class Gpu {
                     reason,
                     "display.gpu is set to \"on\", which means you would rather be told than "
                   + "silently get software rendering",
-                    sprouts.Tuple.of(Evidence.class, new Evidence.Value("render nodes",
+                    Tuple.of(Evidence.class, new Evidence.Value("render nodes",
                             gpu.renderNodes().isEmpty() ? "none" : describeNodes(gpu))),
-                    sprouts.Tuple.of(Problem.Fix.class,
+                    Tuple.of(Problem.Fix.class,
                             Problem.Fix.of("set display.gpu = \"auto\" to fall back to software rendering"),
                             Problem.Fix.of("or fix the underlying cause named above")),
                     Optional.empty()));

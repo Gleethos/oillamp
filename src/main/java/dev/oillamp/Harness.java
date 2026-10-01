@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -76,7 +78,7 @@ final class Harness implements AutoCloseable {
     ///             to leave it to be known by its first question
     /// @param progress told what the agent does, as it does it
     Answer run(Optional<String> name, String prompt, Duration limit, Optional<Target> target,
-               java.util.function.Consumer<LampEvent.Progress> progress) {
+               Consumer<LampEvent.Progress> progress) {
         cancelled = false;
         if (stopping) return new Answer(RunOutcome.INTERRUPTED, "the session was ending, so the agent was not woken");
         try {
@@ -113,7 +115,7 @@ final class Harness implements AutoCloseable {
     /// Reads what pi reports until it has settled: it has finished, including any retries and
     /// follow-ups of its own. Tells it to stop when the time is up or the session is ending.
     private Answer follow(Machine.Conversation agent, Instant deadline,
-                          java.util.function.Consumer<LampEvent.Progress> progress) throws IOException, InterruptedException {
+                          Consumer<LampEvent.Progress> progress) throws IOException, InterruptedException {
         String said = "";
         String stopReason = "";
         String error = "";
@@ -188,7 +190,7 @@ final class Harness implements AutoCloseable {
     /// there to answer during a run, and pi would wait for the answer forever, so it is declined.
     private void declineDialog(Machine.Conversation agent, JsonNode request) throws IOException {
         String method = request.path("method").asText();
-        if (!java.util.Set.of("select", "confirm", "input", "editor").contains(method)) return;
+        if (!Set.of("select", "confirm", "input", "editor").contains(method)) return;
         send(agent, Json.object().put("type", "extension_ui_response")
                 .put("id", request.path("id").asText()).put("cancelled", true));
     }

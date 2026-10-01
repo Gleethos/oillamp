@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import sprouts.Tuple;
 
@@ -35,9 +36,9 @@ final class Retention {
         List<RecordingFile> doomed = new ArrayList<>();
         long keptBytes = 0L;
         long budget = policy.maxTotalGb() <= 0 ? Long.MAX_VALUE : policy.maxTotalGb() * BYTES_PER_GB;
-        java.util.Optional<Duration> maxAge = policy.maxAgeDays() <= 0
-                ? java.util.Optional.empty()
-                : java.util.Optional.of(Duration.ofDays(policy.maxAgeDays()));
+        Optional<Duration> maxAge = policy.maxAgeDays() <= 0
+                ? Optional.empty()
+                : Optional.of(Duration.ofDays(policy.maxAgeDays()));
 
         for (RecordingFile file : newestFirst) {
             boolean tooOld = maxAge.isPresent()

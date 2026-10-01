@@ -9,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Optional;
+import java.util.SortedMap;
 
 /// The files the sandbox image is built from, stored inside the oillamp jar under `/image/`.
 ///
@@ -68,7 +70,7 @@ final class ImageResources {
     /// such as a package in `extra_apt_packages` or a line in the entrypoint, gives a new tag,
     /// so an outdated image is never reused. Paths are included so that moving a file counts as a
     /// change.
-    public static String hashOf(java.util.SortedMap<String, String> buildArguments) {
+    public static String hashOf(SortedMap<String, String> buildArguments) {
         MessageDigest digest = sha256();
         for (Entry entry : entries()) {
             digest.update(entry.path().getBytes(StandardCharsets.UTF_8));
@@ -87,10 +89,10 @@ final class ImageResources {
         return HexFormat.of().formatHex(digest.digest());
     }
 
-    private static java.util.Optional<String> readText(String resource) {
+    private static Optional<String> readText(String resource) {
         try (InputStream in = ImageResources.class.getResourceAsStream(resource)) {
-            if (in == null) return java.util.Optional.empty();
-            return java.util.Optional.of(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+            if (in == null) return Optional.empty();
+            return Optional.of(new String(in.readAllBytes(), StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

@@ -1,5 +1,6 @@
 package dev.oillamp;
 
+import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -69,7 +70,7 @@ final class Terminals {
                     return Result.ok(profileOf(wanted).orElseThrow());
             Problem problem = Problems.noTerminal(supportedNames())
                     .withEvidence(new Problem.Evidence.Config(
-                            java.nio.file.Path.of("oillamp.toml"), "terminal.profile",
+                            Path.of("oillamp.toml"), "terminal.profile",
                             wanted.configName(), "a terminal that is installed"));
             return Result.err(problem);
         }

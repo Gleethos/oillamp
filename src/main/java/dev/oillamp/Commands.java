@@ -1,7 +1,16 @@
 package dev.oillamp;
 
+import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashSet;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 import dev.lamp.ExitStatus;
 import dev.lamp.LampEvent;
@@ -89,7 +98,7 @@ final class Commands {
         Optional<LampLock> lock;
         try {
             lock = LampLock.tryAcquire(prepared.layout().lockFile());
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             context.report(Tuple.of(Problem.class,
                     Problems.lampNotWritable(prepared.layout().root(), Problems.reason(e))));
             return ExitStatus.ERROR;
@@ -109,7 +118,7 @@ final class Commands {
         // Until the supervisor takes over, nothing else would remove a container this run started:
         // not a failed start, and not a Ctrl-C while the image builds or the desktop comes up.
         ContainerName container = prepared.layout().containerName();
-        java.util.concurrent.atomic.AtomicBoolean interrupted = new java.util.concurrent.atomic.AtomicBoolean();
+        AtomicBoolean interrupted = new AtomicBoolean();
         Thread abandon = new Thread(() -> {
             interrupted.set(true);
             context.info("session", "interrupted while the sandbox was starting — removing it");
@@ -148,7 +157,7 @@ final class Commands {
             stopWatching(abandon);
             try {
                 held.close();
-            } catch (java.io.IOException e) {
+            } catch (IOException e) {
                 context.report(Tuple.of(Problem.class,
                         Problems.internal("lock release", Problems.reason(e))));
             }
@@ -159,7 +168,7 @@ final class Commands {
     /// and from a shutdown hook when the user pressed Ctrl-C before the supervisor took over.
     private void removeUnfinishedSandbox(ContainerName container, String why) {
         boolean exists = machine.run(Machine.Command.of("podman", "container", "exists", container.value())
-                .withTimeout(java.time.Duration.ofSeconds(20)).labelled("podman container exists")
+                .withTimeout(Duration.ofSeconds(20)).labelled("podman container exists")
                 .shieldedFromSignals()).succeeded();
         if (!exists) return;
         Result<Plan> removed = new StepRunner(machine, context).run(Plan.of(LampEvent.Phase.SESSION,
@@ -255,7 +264,7 @@ final class Commands {
     /// than the user meant. So every one is checked before anything is deleted: if any of them is
     /// not a lamp, or is still running, nothing is removed and each problem is reported.
     public ExitStatus remove(Tuple<Path> lampPaths, boolean confirmed) {
-        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
         for (Path lampPath : lampPaths) roots.add(LampPhase.resolve(machine, lampPath));
 
         Tuple<LampPlanner.Removal> removals = Tuple.of(LampPlanner.Removal.class);
@@ -383,7 +392,7 @@ final class Commands {
     private Machine.Outcome listRunningSandboxes() {
         return machine.run(Machine.Command
                 .of("podman", "ps", "--filter", "label=oillamp.agent-id", "--format", "json")
-                .withTimeout(java.time.Duration.ofSeconds(20)).labelled("podman ps"));
+                .withTimeout(Duration.ofSeconds(20)).labelled("podman ps"));
     }
 
     /// Reads the output of [#listRunningSandboxes]. Output that is not the expected JSON counts
@@ -436,7 +445,7 @@ final class Commands {
         try {
             Filesystem.deleteIfPresent(root);
             return ", and " + root + " with it: oillamp was all that was in it";
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return " — " + root + " is empty now, but could not be removed: " + Problems.reason(e);
         }
     }
@@ -498,7 +507,7 @@ final class Commands {
         Optional<LampLock> idle;
         try {
             idle = LampLock.tryAcquire(layout.lockFile());
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             context.report(Tuple.of(Problem.class, Problems.lampNotWritable(layout.root(), Problems.reason(e))));
             return ExitStatus.ERROR;
         }
@@ -548,7 +557,7 @@ final class Commands {
         Optional<LampLock> lock;
         try {
             lock = LampLock.tryAcquire(layout.lockFile());
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             context.report(Tuple.of(Problem.class, Problems.lampNotWritable(layout.root(), Problems.reason(e))));
             return ExitStatus.ERROR;
         }
@@ -579,7 +588,7 @@ final class Commands {
     /// Saves a lamp, reports the snapshot or that nothing changed, and returns the problems to
     /// report. Also used by `at` as a session starts and by the supervisor as it ends.
     static Tuple<Problem> saveLamp(Context context, LampLayout layout, SaveKind kind, String message,
-                                   Optional<SessionId> session, java.time.Instant now) {
+                                   Optional<SessionId> session, Instant now) {
         Result<History.Saving> saved = new History(layout).save(kind, message, session, now);
         if (saved instanceof Result.Err<History.Saving> failure) return failure.problems();
         History.Saving saving = ((Result.Ok<History.Saving>) saved).value();
@@ -621,8 +630,8 @@ final class Commands {
         }
         LampConfig.Schedule limits = scheduleInForce(layout, ((Result.Ok<LampConfig>) config).value().schedule());
         ScheduleBook book = new ScheduleBook(layout);
-        java.time.ZoneId zone = machine.zone();
-        java.time.Instant now = machine.now();
+        ZoneId zone = machine.zone();
+        Instant now = machine.now();
         String action = request.action();
         Result<LampEvent> done = switch (action) {
             case "list" -> book.read().map(schedule -> describe(schedule, limits, zone, now));
@@ -638,7 +647,7 @@ final class Commands {
                     .map(changed -> new LampEvent.ScheduleChanged(changed.job().id() + " is switched "
                             + (changed.job().enabled() ? "on" : "off")));
             case "pause", "resume" -> book.update(schedule -> Result.ok(schedule.paused(action.equals("pause"))),
-                            java.util.function.Function.<Schedule>identity())
+                            Function.<Schedule>identity())
                     .map(changed -> new LampEvent.ScheduleChanged(changed.paused()
                             ? "the schedule is paused: no job runs until `oillamp schedule " + layout.root() + " resume`"
                             : "the schedule runs again"));
@@ -670,8 +679,8 @@ final class Commands {
         return on ? configured.switchedOn() : configured;
     }
 
-    private static LampEvent describe(Schedule schedule, LampConfig.Schedule limits, java.time.ZoneId zone,
-                                      java.time.Instant now) {
+    private static LampEvent describe(Schedule schedule, LampConfig.Schedule limits, ZoneId zone,
+                                      Instant now) {
         Tuple<LampEvent.Job> jobs = Tuple.of(LampEvent.Job.class);
         for (ScheduledJob job : schedule.jobs()) jobs = jobs.add(job.describe(zone, now));
         return new LampEvent.Schedule(limits.enabled(), schedule.paused(), zone.getId(), jobs);
@@ -757,7 +766,7 @@ final class Commands {
         context.emit(new LampEvent.RunFinished(
                 new LampEvent.Run(answer.values().get("run").orElse("run"), Optional.empty(), prompt, place.conversation()),
                 outcome, answer.values().get("answer").orElse(""), snapshot,
-                java.time.Duration.ofSeconds(Long.parseLong(answer.values().get("seconds").orElse("0"))),
+                Duration.ofSeconds(Long.parseLong(answer.values().get("seconds").orElse("0"))),
                 answer.values().get("conversation")));
         return outcome == LampEvent.RunOutcome.FINISHED ? ExitStatus.SUCCESS : ExitStatus.ERROR;
     }
@@ -832,12 +841,12 @@ final class Commands {
     /// How long `oillamp ask` waits for its answer. The agent may be busy with other runs first,
     /// each of which may take up to `schedule.max_run_minutes`. If the session ends meanwhile,
     /// the connection closes, and the wait ends with it.
-    private static final java.time.Duration ASK_PATIENCE = java.time.Duration.ofDays(1);
+    private static final Duration ASK_PATIENCE = Duration.ofDays(1);
 
     private static void release(LampLock lock) {
         try {
             lock.close();
-        } catch (java.io.IOException ignored) {
+        } catch (IOException ignored) {
             // The kernel releases it when this process ends, moments from now.
         }
     }
@@ -845,7 +854,7 @@ final class Commands {
     // ─── reaching the supervisor ───────────────────────────────────────────────────────────
 
     private ExitStatus askTheSession(Path lampPath, String command, Control.Request request,
-                                     java.util.function.Consumer<Control.Reply> onSuccess) {
+                                     Consumer<Control.Reply> onSuccess) {
         Result<Control.Reply> reply = askTheSession(lampPath, command, request);
         if (reply instanceof Result.Err<Control.Reply> failure) {
             context.report(failure.problems());
@@ -933,7 +942,7 @@ final class Commands {
             out.append("  ").append(name == null ? file.path().toString() : name.toString())
                .append("  ").append(pad(describeDuration(file), 9))
                .append("  ").append(pad(describeSize(file.sizeBytes()), 8))
-               .append("  ").append(file.recordedAt().truncatedTo(java.time.temporal.ChronoUnit.SECONDS))
+               .append("  ").append(file.recordedAt().truncatedTo(ChronoUnit.SECONDS))
                .append('\n');
         }
         return out.append("\n  ").append(existing.size()).append(" recording(s), ")
@@ -1012,7 +1021,7 @@ final class Commands {
         if (containerLeft) {
             Machine.Outcome removed = machine.run(Machine.Command
                     .of("podman", "rm", "-f", container.value())
-                    .withTimeout(java.time.Duration.ofSeconds(30)).labelled("podman rm"));
+                    .withTimeout(Duration.ofSeconds(30)).labelled("podman rm"));
             if (!removed.succeeded()) {
                 context.report(Tuple.of(Problem.class, Problems.podmanFailed(
                         "podman rm", removed.exitCode(), removed.errorOutput().strip())));
@@ -1023,7 +1032,7 @@ final class Commands {
                                                 layout.extraSshSocket(), layout.sessionMeta())) {
             try {
                 Filesystem.deleteIfPresent(leftover);
-            } catch (java.io.IOException e) {
+            } catch (IOException e) {
                 context.report(Tuple.of(Problem.class, Problems.internal("cleanup", Problems.reason(e))));
             }
         }

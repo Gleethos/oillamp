@@ -1,5 +1,6 @@
 package dev.oillamp;
 
+import java.net.URI;
 import java.util.Optional;
 
 import sprouts.Association;
@@ -24,7 +25,7 @@ final class ConfigDefaults {
             NetworkPolicy.shippedDefault(),
             Tuple.of(Forward.class),
             Optional.empty(),
-            new LampConfig.Model(java.net.URI.create("https://api.eu.edenai.run"), "EDENAI_API_KEY"),
+            new LampConfig.Model(URI.create("https://api.eu.edenai.run"), "EDENAI_API_KEY"),
             new LampConfig.Git(GitIdentity.GENIE, "", ""),
             new LampConfig.AgentTools(
                     Tuple.of(String.class, "opencode", "pi"),

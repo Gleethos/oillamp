@@ -1,5 +1,7 @@
 package dev.oillamp;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
@@ -321,11 +323,11 @@ final class ConfigLoader {
 
     private static LampConfig.Model readModel(ConfigSection s, LampConfig.Model fallback) {
         s.allowOnly("service", "key_env");
-        java.net.URI service = fallback.service();
+        URI service = fallback.service();
         String text = s.string("service", fallback.service().toString());
         Optional<String> wrong = serviceProblem(text);
         if (wrong.isPresent()) s.invalid("service", "\"" + text + "\"", wrong.get());
-        else service = java.net.URI.create(text);
+        else service = URI.create(text);
         String keyEnv = s.string("key_env", fallback.keyEnv());
         if (!isVariableName(keyEnv)) {
             s.invalid("key_env", "\"" + keyEnv + "\"", "expected the name of an environment variable, "
@@ -342,10 +344,10 @@ final class ConfigLoader {
     /// no user, query or fragment. The key travels to it, so it must be `https`, except for a
     /// service on this machine's own loopback.
     static Optional<String> serviceProblem(String text) {
-        java.net.URI uri;
+        URI uri;
         try {
-            uri = new java.net.URI(text);
-        } catch (java.net.URISyntaxException e) {
+            uri = new URI(text);
+        } catch (URISyntaxException e) {
             return Optional.of("expected an address such as \"https://api.eu.edenai.run\"");
         }
         String host = Optional.ofNullable(uri.getHost()).orElse("");

@@ -1,9 +1,21 @@
 package dev.oillamp;
 
+import java.io.Console;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import dev.lamp.LampEvent;
 import dev.lamp.Problem;
+
+import sprouts.Tuple;
 
 
 /// Prints events as text for a person to read.
@@ -47,7 +59,7 @@ final class ConsoleRenderer {
     // above it. It is never part of text(): it is only drawn on a real terminal.
 
     /// Steps that may run sudo, which asks for a password. A redrawn line would overwrite the prompt.
-    private static final java.util.Set<String> STEPS_THAT_PROMPT = java.util.Set.of("InstallPackages", "AddSubIds");
+    private static final Set<String> STEPS_THAT_PROMPT = Set.of("InstallPackages", "AddSubIds");
     private static final String[] SPINNER = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
     private static final String CLEAR_LINE = "\r\u001B[2K";
     /// Turns the terminal's automatic line wrapping off while the activity line is drawn, and on
@@ -56,8 +68,8 @@ final class ConsoleRenderer {
     /// With wrapping off, a line that is too long is cut off at the right edge instead.
     private static final String WRAP_OFF = "\u001B[?7l", WRAP_ON = "\u001B[?7h";
     /// Colour codes and other terminal escape sequences, and control characters such as tabs.
-    private static final java.util.regex.Pattern NOT_PRINTABLE =
-            java.util.regex.Pattern.compile("\u001B\\[[0-9;?]*[ -/]*[@-~]|\u001B.|\\p{Cntrl}");
+    private static final Pattern NOT_PRINTABLE =
+            Pattern.compile("\u001B\\[[0-9;?]*[ -/]*[@-~]|\u001B.|\\p{Cntrl}");
 
     /// What is happening right now, if anything.
     private record Activity(String text, long startedNanos, String latestOutput) {
@@ -86,7 +98,7 @@ final class ConsoleRenderer {
     public static ConsoleRenderer forMachine(Machine machine) {
         boolean colour = machine.isInteractive() && machine.environmentVariable("NO_COLOR").isEmpty();
         boolean live = machine.isInteractive()
-                && Optional.ofNullable(System.console()).filter(java.io.Console::isTerminal).isPresent();
+                && Optional.ofNullable(System.console()).filter(Console::isTerminal).isPresent();
         int width = machine.environmentVariable("COLUMNS").flatMap(ConsoleRenderer::number)
                            .or(() -> live ? terminalWidth(machine) : Optional.empty())
                            .orElse(80);
@@ -97,8 +109,8 @@ final class ConsoleRenderer {
     /// pass it on to programs, so it is rarely available. `stty size` prints "rows columns".
     private static Optional<Integer> terminalWidth(Machine machine) {
         Machine.Outcome outcome = machine.run(Machine.Command.of("sh", "-c", "stty size < /dev/tty")
-                                                             .withTimeout(java.time.Duration.ofSeconds(2)));
-        java.util.regex.Matcher size = java.util.regex.Pattern.compile("\\d+\\s+(\\d+)").matcher(outcome.output().trim());
+                                                             .withTimeout(Duration.ofSeconds(2)));
+        Matcher size = Pattern.compile("\\d+\\s+(\\d+)").matcher(outcome.output().trim());
         return outcome.succeeded() && size.matches() ? number(size.group(1)).filter(n -> n > 0) : Optional.empty();
     }
 
@@ -163,7 +175,7 @@ final class ConsoleRenderer {
         }
         switch (event) {
             case LampEvent.PhaseStarted started ->
-                    { if (verbose) line(area(started.phase().name().toLowerCase(java.util.Locale.ROOT))
+                    { if (verbose) line(area(started.phase().name().toLowerCase(Locale.ROOT))
                                         + dim("…")); }
             case LampEvent.PhaseFinished ignored -> { }
             case LampEvent.Ok ok ->
@@ -278,7 +290,7 @@ final class ConsoleRenderer {
     }
 
     /// The conversations `oillamp conversations` lists, the most recent first.
-    private static String listing(sprouts.Tuple<dev.lamp.Lamp.Conversation> conversations) {
+    private static String listing(Tuple<dev.lamp.Lamp.Conversation> conversations) {
         if (conversations.isEmpty())
             return "no conversations yet — they appear once the agent is asked something";
         StringBuilder out = new StringBuilder(String.format("%-20s %-19s %-9s %s", "CONVERSATION", "LAST (UTC)", "QUESTIONS", "TITLE"));
@@ -333,14 +345,14 @@ final class ConsoleRenderer {
         return line.length() <= most ? line : line.substring(0, most - 1) + "…";
     }
 
-    private static String seconds(java.time.Duration took) {
+    private static String seconds(Duration took) {
         long seconds = Math.max(0, took.toSeconds());
         return seconds < 60 ? seconds + "s" : seconds / 60 + "m " + seconds % 60 + "s";
     }
 
     /// The jobs `oillamp schedule` lists, as a table, with a line saying whether they run.
     private static String describe(LampEvent.Schedule schedule) {
-        java.time.ZoneId zone = java.time.ZoneId.of(schedule.zone());
+        ZoneId zone = ZoneId.of(schedule.zone());
         StringBuilder out = new StringBuilder();
         out.append(!schedule.enabled() ? "the schedule is off: start the session with --enable-scheduling, or set "
                                          + "`enabled = true` under [schedule] in oillamp.toml, for these jobs to run"
@@ -349,7 +361,7 @@ final class ConsoleRenderer {
         if (schedule.jobs().isEmpty())
             return out.append("\nno jobs yet — add one with `oillamp schedule <dir> add`").toString();
         out.append("\n\n").append(String.format("%-8s %-18s %-17s %-6s %s", "JOB", "WHEN", "NEXT", "BY", "PROMPT"));
-        java.time.format.DateTimeFormatter shown = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+        DateTimeFormatter shown = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                 .withZone(zone);
         for (LampEvent.Job job : schedule.jobs()) {
             String when = job.when().startsWith("once at ") ? "once" : job.when();
@@ -363,7 +375,7 @@ final class ConsoleRenderer {
     }
 
     /// The snapshots `oillamp history` lists, as a table, newest first.
-    private static String describe(sprouts.Tuple<LampEvent.Snapshot> snapshots) {
+    private static String describe(Tuple<LampEvent.Snapshot> snapshots) {
         if (snapshots.isEmpty())
             return "no snapshots yet — oillamp saves when a session starts and ends, "
                  + "or run `oillamp save <dir>`";
@@ -379,9 +391,9 @@ final class ConsoleRenderer {
         return out.toString().stripTrailing();
     }
 
-    private static String when(java.time.Instant at) {
-        return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-                .withZone(java.time.ZoneOffset.UTC).format(at);
+    private static String when(Instant at) {
+        return DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                .withZone(ZoneOffset.UTC).format(at);
     }
 
     /// A problem, in full. Errors and warnings share the layout so that a user learns to read it

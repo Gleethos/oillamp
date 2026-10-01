@@ -7,6 +7,7 @@ import java.util.Optional;
 import dev.lamp.Problem;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import sprouts.Association;
 import sprouts.Tuple;
 import sprouts.ValueSet;
 
@@ -119,7 +120,7 @@ final class HostProbe {
         Tuple<String> argv = Tuple.of(String.class, "dpkg-query", "-W", "-f=${Package} ${Status}\n");
         argv = argv.addAll(requirements.packages());
         Machine.Outcome outcome = machine.run(new Machine.Command(argv,
-                sprouts.Association.between(String.class, String.class),
+                Association.between(String.class, String.class),
                 Optional.empty(), QUICK, "dpkg-query", false));
         ValueSet<String> installed = ValueSet.of(String.class);
         for (String line : outcome.output().split("\n", -1)) {

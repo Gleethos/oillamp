@@ -11,6 +11,8 @@ import java.util.function.Consumer;
 
 import dev.lamp.LampEvent;
 
+import sprouts.Tuple;
+
 /// Everyone following a session through `oillamp follow`, and what one who joins late needs to
 /// catch up.
 ///
@@ -69,7 +71,7 @@ final class Followers implements Consumer<LampEvent> {
             for (LampEvent.Run run : waiting.values()) queue.add(new LampEvent.RunQueued(run, ahead++));
             Optional<LampEvent.Run> current = running.isEmpty() ? Optional.empty()
                     : Optional.of(((LampEvent.RunStarted) running.getFirst()).run());
-            queue.add(new LampEvent.AgentStatus(current, sprouts.Tuple.of(LampEvent.Run.class, List.copyOf(waiting.values()))));
+            queue.add(new LampEvent.AgentStatus(current, Tuple.of(LampEvent.Run.class, List.copyOf(waiting.values()))));
             if (ended) queue.add(END);
             else following.add(queue);
             return new Feed(this, queue);

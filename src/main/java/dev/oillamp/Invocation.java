@@ -1,8 +1,10 @@
 package dev.oillamp;
 
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -199,7 +201,7 @@ final class Invocation {
             return ExitStatus.USAGE;
         }
         options = options.withModel(new Context.ModelOverride(
-                modelService.map(java.net.URI::create), modelKeyEnv));
+                modelService.map(URI::create), modelKeyEnv));
 
         // The renderer was created before the options were known, so tell it now.
         console.verbose(options.verbose());
@@ -390,54 +392,54 @@ final class Invocation {
     /// The options each command takes, besides `--verbose`, `--debug` and `--no-color`, which
     /// every command takes. `doctor` and `config` change nothing anyway, so they accept the two
     /// options that promise that.
-    private static final java.util.Map<String, java.util.Set<String>> OPTIONS_OF = java.util.Map.ofEntries(
-            java.util.Map.entry("at",         java.util.Set.of("--init", "--dry-run", "--no-install", "--no-viewer", "--no-windows",
+    private static final Map<String, Set<String>> OPTIONS_OF = Map.ofEntries(
+            Map.entry("at",         Set.of("--init", "--dry-run", "--no-install", "--no-viewer", "--no-windows",
                                                         "--embedded", "--model-service", "--model-key-env",
                                                         "--enable-scheduling")),
-            java.util.Map.entry("view",       java.util.Set.of("--view-only")),
-            java.util.Map.entry("remove",     java.util.Set.of("--yes", "--dry-run", "--embedded")),
-            java.util.Map.entry("recordings", java.util.Set.of("--open", "--prune", "--dry-run")),
-            java.util.Map.entry("doctor",     java.util.Set.of("--dry-run", "--no-install")),
-            java.util.Map.entry("config",     java.util.Set.of("--dry-run", "--no-install")),
-            java.util.Map.entry("save",       java.util.Set.of("--message", "--embedded")),
-            java.util.Map.entry("history",    java.util.Set.of("--embedded")),
-            java.util.Map.entry("schedule",   java.util.Set.of("--cron", "--at", "--expires", "--embedded")),
-            java.util.Map.entry("ask",        java.util.Set.of("--in", "--after", "--instead-of", "--no-wait", "--embedded")),
-            java.util.Map.entry("cancel",     java.util.Set.of("--embedded")),
-            java.util.Map.entry("conversations", java.util.Set.of("--embedded")),
-            java.util.Map.entry("restore",    java.util.Set.of("--embedded")),
-            java.util.Map.entry("shell",      java.util.Set.of()),
-            java.util.Map.entry("stop",       java.util.Set.of("--embedded")),
-            java.util.Map.entry("status",     java.util.Set.of("--embedded")),
-            java.util.Map.entry("follow",     java.util.Set.of("--embedded")),
-            java.util.Map.entry("list",       java.util.Set.of()),
-            java.util.Map.entry("completion", java.util.Set.of()),
-            java.util.Map.entry("version",    java.util.Set.of()),
-            java.util.Map.entry("help",       java.util.Set.of()),
-            java.util.Map.entry("about",      java.util.Set.of()),
-            java.util.Map.entry("guide",      java.util.Set.of()));
+            Map.entry("view",       Set.of("--view-only")),
+            Map.entry("remove",     Set.of("--yes", "--dry-run", "--embedded")),
+            Map.entry("recordings", Set.of("--open", "--prune", "--dry-run")),
+            Map.entry("doctor",     Set.of("--dry-run", "--no-install")),
+            Map.entry("config",     Set.of("--dry-run", "--no-install")),
+            Map.entry("save",       Set.of("--message", "--embedded")),
+            Map.entry("history",    Set.of("--embedded")),
+            Map.entry("schedule",   Set.of("--cron", "--at", "--expires", "--embedded")),
+            Map.entry("ask",        Set.of("--in", "--after", "--instead-of", "--no-wait", "--embedded")),
+            Map.entry("cancel",     Set.of("--embedded")),
+            Map.entry("conversations", Set.of("--embedded")),
+            Map.entry("restore",    Set.of("--embedded")),
+            Map.entry("shell",      Set.of()),
+            Map.entry("stop",       Set.of("--embedded")),
+            Map.entry("status",     Set.of("--embedded")),
+            Map.entry("follow",     Set.of("--embedded")),
+            Map.entry("list",       Set.of()),
+            Map.entry("completion", Set.of()),
+            Map.entry("version",    Set.of()),
+            Map.entry("help",       Set.of()),
+            Map.entry("about",      Set.of()),
+            Map.entry("guide",      Set.of()));
 
     /// The options that take a value.
-    private static final java.util.Set<String> VALUE_OPTIONS = java.util.Set.of(
+    private static final Set<String> VALUE_OPTIONS = Set.of(
             "--open", "--model-service", "--model-key-env", "--message", "--cron", "--at", "--expires",
             "--in", "--after", "--instead-of");
 
     /// The commands that take a lamp directory and cannot do without it.
-    private static final java.util.Set<String> NEEDS_A_LAMP = java.util.Set.of(
+    private static final Set<String> NEEDS_A_LAMP = Set.of(
             "at", "view", "shell", "stop", "status", "follow", "recordings", "config", "remove",
             "save", "history", "restore", "schedule", "ask", "conversations", "cancel");
 
     /// The commands that work on one lamp. `remove` takes several, since a pattern such as
     /// `test*` is the natural way to clean up after experiments.
-    private static final java.util.Set<String> ONE_LAMP_ONLY = java.util.Set.of(
+    private static final Set<String> ONE_LAMP_ONLY = Set.of(
             "at", "view", "shell", "stop", "status", "follow", "recordings", "doctor", "save", "history");
 
     /// How many arguments may follow the other commands.
-    private static final java.util.Map<String, Integer> MOST_ARGUMENTS = java.util.Map.ofEntries(
-            java.util.Map.entry("config", 2), java.util.Map.entry("completion", 1), java.util.Map.entry("restore", 2),
-            java.util.Map.entry("schedule", 3), java.util.Map.entry("ask", 2), java.util.Map.entry("conversations", 2), java.util.Map.entry("cancel", 2),
-            java.util.Map.entry("list", 0), java.util.Map.entry("version", 0), java.util.Map.entry("help", 0),
-            java.util.Map.entry("about", 0), java.util.Map.entry("guide", 0));
+    private static final Map<String, Integer> MOST_ARGUMENTS = Map.ofEntries(
+            Map.entry("config", 2), Map.entry("completion", 1), Map.entry("restore", 2),
+            Map.entry("schedule", 3), Map.entry("ask", 2), Map.entry("conversations", 2), Map.entry("cancel", 2),
+            Map.entry("list", 0), Map.entry("version", 0), Map.entry("help", 0),
+            Map.entry("about", 0), Map.entry("guide", 0));
 
     private static ExitStatus misused(ConsoleRenderer console, Consumer<LampEvent> sink,
                                       String version, String command, String what) {

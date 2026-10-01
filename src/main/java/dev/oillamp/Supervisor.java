@@ -1,13 +1,22 @@
 package dev.oillamp;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.IntFunction;
 
 import dev.lamp.ExitStatus;
 import dev.lamp.LampEvent;
@@ -94,7 +103,7 @@ final class Supervisor {
     /// Whether the last question to podman about the container went unanswered, so that a podman
     /// that stops answering is reported once, not every two seconds.
     private boolean podmanSilent;
-    private final java.util.List<Machine.Window> viewers = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<Machine.Window> viewers = new CopyOnWriteArrayList<>();
 
     /// An event and when it happened. [SessionMachine] gets the time from here rather than asking the clock.
     private record Timed(SessionEvent event, Instant at) {}
@@ -310,7 +319,7 @@ final class Supervisor {
     /// non-zero code is reported, with its own output, so "the window flashed and disappeared" comes
     /// with an explanation.
     private void watchBriefly(Machine.Window window, Tuple<String> argv,
-                              java.util.function.IntFunction<SessionEvent> onEarlyExit) {
+                              IntFunction<SessionEvent> onEarlyExit) {
         Thread.ofVirtual().name("oillamp-window-" + argv.first()).start(() -> {
             Instant deadline = Instant.now().plus(VIEWER_GRACE);
             while (Instant.now().isBefore(deadline)) {
@@ -368,7 +377,7 @@ final class Supervisor {
         Tuple<Problem> warnings = Tuple.of(Problem.class);
         try {
             Filesystem.writeFile(layout.sessionMeta(), sessionJson(), PosixMode.PRIVATE_FILE);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             // session.json is only informational (the lock decides), so this is a warning.
             warnings = warnings.add(Problems.internal("session.json", Problems.reason(e)));
         }
@@ -449,7 +458,7 @@ final class Supervisor {
         //    session is running.
         try {
             Filesystem.deleteIfPresent(prepared.layout().sessionMeta());
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             problems = problems.add(Problems.internal("session.json", Problems.reason(e)));
         }
         problems = problems.addAll(recordLastSession());
@@ -491,7 +500,7 @@ final class Supervisor {
                     LampClassifier.render(existing.meta().usedAt(machine.now())),
                     PosixMode.PUBLIC_FILE);
             return Tuple.of(Problem.class);
-        } catch (java.io.IOException e) {
+        } catch (IOException e) {
             return Tuple.of(Problem.class, Problems.internal("lamp.json", Problems.reason(e)));
         }
     }
@@ -532,8 +541,8 @@ final class Supervisor {
     /// once.
     private void watchTheApplication() {
         Thread.ofVirtual().name("oillamp-application-watch").start(() -> {
-            try (var input = new java.io.BufferedReader(new java.io.InputStreamReader(
-                    machine.standardInput(), java.nio.charset.StandardCharsets.UTF_8))) {
+            try (var input = new BufferedReader(new InputStreamReader(
+                    machine.standardInput(), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = input.readLine()) != null) {
                     if (!line.strip().equals(LEAVE_RUNNING)) continue;
@@ -543,7 +552,7 @@ final class Supervisor {
                     announceState();
                     return;
                 }
-            } catch (java.io.IOException closed) {
+            } catch (IOException closed) {
                 // A broken pipe means the same as a closed one: the application is gone.
             }
             post(new SessionEvent.StopRequested("the application that started it"));
@@ -730,7 +739,7 @@ final class Supervisor {
             case Machine.Outcome.Finished finished when finished.exitCode() == 0 ->
                     Optional.of(finished.standardOutput().strip().equals("true"));
             case Machine.Outcome.Finished finished
-                    when finished.standardError().toLowerCase(java.util.Locale.ROOT).contains("no such container") ->
+                    when finished.standardError().toLowerCase(Locale.ROOT).contains("no such container") ->
                     Optional.of(false);
             case Machine.Outcome ignored -> Optional.empty();
         };
@@ -878,7 +887,7 @@ final class Supervisor {
                             .with("seconds", String.valueOf(finished.took().toSeconds()));
                     Control.Reply withConversation = finished.conversation().map(id -> reply.with("conversation", id)).orElse(reply);
                     yield finished.snapshot().map(snapshot -> withConversation.with("snapshot", snapshot.id())).orElse(withConversation);
-                } catch (java.util.concurrent.ExecutionException failed) {
+                } catch (ExecutionException failed) {
                     yield Control.Reply.failed(Problems.reason(failed.getCause() == null ? failed : failed.getCause()));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

@@ -3,6 +3,7 @@ package dev.oillamp;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Optional;
 
 import dev.lamp.LampEvent;
@@ -139,7 +140,7 @@ final class LampPhase {
             return Result.err(Problems.sshKeygenFailed(new Problem.Evidence.Command(
                     Tuple.of(String.class, "ssh-keygen"), 0,
                     "the generated public key could not be read back from " + layout.keysDir(),
-                    java.time.Duration.ZERO)));
+                    Duration.ZERO)));
 
         Result<String> environment = RuntimeEnv.render(
                 RuntimeEnv.variables(config, layout, session, gpu.renderer(), inheritedFromHost()));

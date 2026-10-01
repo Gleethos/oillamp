@@ -12,6 +12,7 @@ import dev.lamp.Problem;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import sprouts.Association;
 import sprouts.Tuple;
 
 /// Reads one table of the merged configuration, collecting mistakes instead of stopping at the
@@ -155,9 +156,8 @@ final class ConfigSection {
     }
 
     /// A key/value table of strings, as `agent_tools.versions` is.
-    public sprouts.Association<String, String> stringTable(String key) {
-        sprouts.Association<String, String> out =
-                sprouts.Association.betweenSorted(String.class, String.class);
+    public Association<String, String> stringTable(String key) {
+        Association<String, String> out = Association.betweenSorted(String.class, String.class);
         JsonNode value = node.get(key);
         if (value == null || value.isNull()) return out;
         if (!value.isObject()) return wrongType(key, value, "a table of strings", out);

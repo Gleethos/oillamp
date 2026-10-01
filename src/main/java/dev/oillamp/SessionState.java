@@ -1,6 +1,7 @@
 package dev.oillamp;
 
 import java.time.Instant;
+import java.util.Optional;
 
 import dev.lamp.ExitStatus;
 import dev.lamp.LampEvent;
@@ -112,13 +113,13 @@ sealed interface SessionState {
     /// The terminal timeout counts from here: "not connected for 60 seconds" means 60 seconds
     /// since the terminal was asked to open. The session's own start time is kept by the supervisor
     /// and used for the uptime.
-    default java.util.Optional<Instant> enteredAt() {
+    default Optional<Instant> enteredAt() {
         return switch (this) {
-            case Starting s         -> java.util.Optional.of(s.since());
-            case AwaitingTerminal s -> java.util.Optional.of(s.since());
-            case Running s          -> java.util.Optional.of(s.since());
-            case ShuttingDown s     -> java.util.Optional.of(s.since());
-            case Stopped ignored    -> java.util.Optional.empty();
+            case Starting s         -> Optional.of(s.since());
+            case AwaitingTerminal s -> Optional.of(s.since());
+            case Running s          -> Optional.of(s.since());
+            case ShuttingDown s     -> Optional.of(s.since());
+            case Stopped ignored    -> Optional.empty();
         };
     }
 }

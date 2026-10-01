@@ -1,8 +1,10 @@
 package dev.oillamp;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 
 /// Identifies one session by its UTC start time, as `yyyyMMdd-HHmmss`, for example
 /// `20260923-085055`.
@@ -25,15 +27,15 @@ record SessionId(String value) {
 
     /// Reads a session id from a name such as a recording's file name, or returns empty if the
     /// name is not a session id.
-    public static java.util.Optional<SessionId> parse(String name) {
+    public static Optional<SessionId> parse(String name) {
         return name.matches("\\d{8}-\\d{6}")
-                ? java.util.Optional.of(new SessionId(name))
-                : java.util.Optional.empty();
+                ? Optional.of(new SessionId(name))
+                : Optional.empty();
     }
 
     /// When this session started, which is what its id encodes.
     public Instant startedAt() {
-        return java.time.LocalDateTime.parse(value, FORMAT).toInstant(ZoneOffset.UTC);
+        return LocalDateTime.parse(value, FORMAT).toInstant(ZoneOffset.UTC);
     }
 
     @Override public String toString() { return value; }

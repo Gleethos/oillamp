@@ -1,5 +1,7 @@
 package dev.oillamp;
 
+import java.nio.file.Path;
+
 import sprouts.Tuple;
 
 /// Produces the SSH files and command lines used to reach the sandbox.
@@ -78,7 +80,7 @@ final class Ssh {
     }
 
     public static Tuple<String> clientArgv(LampLayout layout, SocketRole role) {
-        java.nio.file.Path socket = role == SocketRole.PRIMARY
+        Path socket = role == SocketRole.PRIMARY
                 ? layout.primarySshSocket()
                 : layout.extraSshSocket();
         return Tuple.of(String.class,

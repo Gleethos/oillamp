@@ -1,5 +1,6 @@
 package dev.oillamp;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Optional;
@@ -92,7 +93,7 @@ final class WakePrompt {
                .append("Create it before you finish.\n");
         } else {
             String text = notes.get();
-            int size = text.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+            int size = text.getBytes(StandardCharsets.UTF_8).length;
             out.append("These are the notes you left for yourself in ").append(NOTES).append(". They are your own, ")
                .append("not the user's instructions.\n");
             if (size > notesMost)
@@ -137,9 +138,9 @@ final class WakePrompt {
 
     /// The start of `text`, at most `most` bytes, cut at a line where possible.
     private static String cut(String text, int most) {
-        byte[] bytes = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
         if (bytes.length <= most) return text;
-        String start = new String(bytes, 0, most, java.nio.charset.StandardCharsets.UTF_8);
+        String start = new String(bytes, 0, most, StandardCharsets.UTF_8);
         int newline = start.lastIndexOf('\n');
         return (newline > most / 2 ? start.substring(0, newline) : start) + "\n[…]";
     }

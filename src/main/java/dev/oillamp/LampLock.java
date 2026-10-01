@@ -7,6 +7,7 @@ import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.util.Optional;
 
 /// The exclusive lock on a lamp, held by the supervisor for the whole session, so that only one
@@ -61,7 +62,7 @@ final class LampLock implements AutoCloseable {
     /// threads of one process asking for the same file lock is an error, not a wait.
     ///
     /// @return the held lock, or empty if it was still taken after `patience`
-    public static Optional<LampLock> acquireWithin(Path lockFile, java.time.Duration patience) throws IOException {
+    public static Optional<LampLock> acquireWithin(Path lockFile, Duration patience) throws IOException {
         long deadline = System.nanoTime() + patience.toNanos();
         while (true) {
             Optional<LampLock> lock = tryAcquire(lockFile);

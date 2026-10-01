@@ -1,5 +1,7 @@
 package dev.oillamp;
 
+import java.nio.file.Path;
+
 import dev.lamp.ExitStatus;
 import dev.lamp.Problem;
 
@@ -35,7 +37,7 @@ final class HostPhase {
     ///                   `config check` pass [Installing#NEVER], which is not the same
     ///                   as a user declining with `--no-install`: it changes what the user is
     ///                   told to do about missing packages.
-    public Outcome prepare(java.nio.file.Path lampPathHint, boolean requiresDisplay,
+    public Outcome prepare(Path lampPathHint, boolean requiresDisplay,
                            Installing installing) {
         // The package names are the same for every family oillamp knows, so one probe suffices;
         // the planner refuses a non-APT distribution afterwards, with the list to install by hand.

@@ -1,8 +1,12 @@
 package dev.oillamp;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.UnixDomainSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
@@ -10,6 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -264,8 +270,8 @@ final class Control {
     ///              follow for as long as the session runs
     /// @return the reply, once the stream has ended; failing as [#ask] does
     static Result<Reply> follow(Path socket, Path lamp, Request request, String command,
-                                java.util.function.Consumer<String> eachLine,
-                                Optional<java.io.InputStream> until) {
+                                Consumer<String> eachLine,
+                                Optional<InputStream> until) {
         if (!Files.exists(socket)) return Result.err(Problems.noSessionRunning(lamp, command));
         try (SocketChannel channel = SocketChannel.open(UnixDomainSocketAddress.of(socket))) {
             until.ifPresent(input -> Thread.ofVirtual().name("oillamp-follow-until").start(() -> {
@@ -278,8 +284,8 @@ final class Control {
                 closeQuietly(channel);
             }));
             write(channel, request.render() + "\n");
-            var lines = new java.io.BufferedReader(new java.io.InputStreamReader(
-                    java.nio.channels.Channels.newInputStream(channel), StandardCharsets.UTF_8));
+            var lines = new BufferedReader(new InputStreamReader(
+                    Channels.newInputStream(channel), StandardCharsets.UTF_8));
             String first = within(ANSWER_TIME, channel, lines::readLine);
             Reply reply = Reply.parse(first == null ? "" : first);
             if (!reply.succeeded()) return Result.err(Problems.sessionRefused(lamp, command, reply.error()));
@@ -320,7 +326,7 @@ final class Control {
     /// channel has no timeout of its own; closing the channel ends it with an exception.
     private static <T> T within(Duration limit, SocketChannel channel, Exchange<T> exchange)
             throws IOException {
-        var expired = new java.util.concurrent.atomic.AtomicBoolean();
+        var expired = new AtomicBoolean();
         Thread deadline = Thread.ofVirtual().name("oillamp-control-deadline").start(() -> {
             try {
                 Thread.sleep(limit);

@@ -1,5 +1,7 @@
 package dev.oillamp;
 
+import java.util.Locale;
+
 /// The `display.gpu` setting: whether the sandbox desktop may use the host's graphics card.
 enum GpuMode {
     /// Use the GPU if every condition is met; otherwise draw in software and say why.
@@ -9,5 +11,5 @@ enum GpuMode {
     /// Never touch the GPU: pixman renderer and software GL.
     OFF;
 
-    public String configName() { return name().toLowerCase(java.util.Locale.ROOT); }
+    public String configName() { return name().toLowerCase(Locale.ROOT); }
 }

@@ -1,6 +1,10 @@
 package dev.oillamp;
 
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import dev.lamp.LampEvent;
 
@@ -67,7 +71,7 @@ sealed interface Step {
     ///
     /// If the container exits while starting, the problem reported includes its log.
     record AwaitReady(ContainerName name, Path readyFile, SessionId session,
-                      java.time.Duration timeout) implements Step {}
+                      Duration timeout) implements Step {}
 
     /// One socket the sandbox is expected to be answering on, and what it is for.
     record Endpoint(String what, Path socket) {}
@@ -198,10 +202,10 @@ sealed interface Step {
         return String.join(" ", sorted(values));
     }
 
-    private static java.util.List<String> sorted(ValueSet<String> values) {
-        java.util.List<String> out = new java.util.ArrayList<>();
+    private static List<String> sorted(ValueSet<String> values) {
+        List<String> out = new ArrayList<>();
         for (String value : values) out.add(value);
-        java.util.Collections.sort(out);
+        Collections.sort(out);
         return out;
     }
 

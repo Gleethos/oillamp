@@ -4,11 +4,15 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 import dev.lamp.LampEvent;
 import dev.lamp.Problem;
 
+import sprouts.Association;
 import sprouts.Pair;
 import sprouts.Tuple;
 
@@ -143,8 +147,8 @@ final class StepRunner {
     }
 
     private Result<Step> buildImage(Step.BuildImage step) {
-        java.util.List<String> argv = new java.util.ArrayList<>(
-                java.util.List.of("podman", "build", "--tag", step.tag().value()));
+        List<String> argv = new ArrayList<>(
+                List.of("podman", "build", "--tag", step.tag().value()));
         if (step.noCache()) argv.add("--no-cache");
         for (var argument : step.buildArgs()) {
             argv.add("--build-arg");
@@ -160,7 +164,7 @@ final class StepRunner {
     }
 
     private Result<Step> runContainer(Step.RunContainer step) {
-        java.util.List<String> argv = new java.util.ArrayList<>(java.util.List.of("podman", "run"));
+        List<String> argv = new ArrayList<>(List.of("podman", "run"));
         for (String argument : step.argv()) argv.add(argument);
         Machine.Outcome outcome = run("podman run", Duration.ofMinutes(2),
                                       argv.toArray(String[]::new));
@@ -175,7 +179,7 @@ final class StepRunner {
     /// container that dies while starting is reported at once, with its log, instead of after the
     /// full timeout.
     private Result<Step> awaitReady(Step.AwaitReady step) {
-        java.time.Instant deadline = machine.now().plus(step.timeout());
+        Instant deadline = machine.now().plus(step.timeout());
         while (machine.now().isBefore(deadline)) {
             if (readyForThisSession(step)) return Result.ok(step);
             if (!containerIsRunning(step.name())) {
@@ -366,7 +370,7 @@ final class StepRunner {
     /// Like [#run(String,Duration,Tuple)], but reports each output line as it is printed.
     private Machine.Outcome runStreaming(String tag, Duration timeout, Tuple<String> argv) {
         Machine.Command command = new Machine.Command(argv,
-                sprouts.Association.between(String.class, String.class),
+                Association.between(String.class, String.class),
                 Optional.empty(), timeout, tag, false);
         context.emit(new LampEvent.Output(tag, "$ " + redacted(command)));
         // Standard output and standard error arrive on two threads; report one line at a time.
@@ -378,7 +382,7 @@ final class StepRunner {
 
     private Machine.Outcome run(String tag, Duration timeout, Tuple<String> argv) {
         Machine.Command command = new Machine.Command(argv,
-                sprouts.Association.between(String.class, String.class),
+                Association.between(String.class, String.class),
                 Optional.empty(), timeout, tag, false);
         context.emit(new LampEvent.Output(tag, "$ " + redacted(command)));
         Machine.Outcome outcome = machine.run(command);
@@ -399,7 +403,7 @@ final class StepRunner {
     }
 
     private static boolean looksSecret(String text) {
-        String upper = text.toUpperCase(java.util.Locale.ROOT);
+        String upper = text.toUpperCase(Locale.ROOT);
         return upper.contains("KEY=") || upper.contains("TOKEN") || upper.contains("PASSWORD")
             || upper.endsWith("_KEY");
     }

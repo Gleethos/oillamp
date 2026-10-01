@@ -1,11 +1,15 @@
 package dev.oillamp;
 
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.URI;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.Channels;
 import java.nio.channels.ServerSocketChannel;
@@ -21,9 +25,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import java.util.regex.Pattern;
 
 import dev.lamp.Problem;
 
@@ -66,7 +73,7 @@ final class Egress implements AutoCloseable {
     /// can leak it.
     ///
     /// @param keyEnv the variable the key was read from, named in the answer when there is none
-    record Model(java.net.URI service, String keyEnv, Optional<String> key) {
+    record Model(URI service, String keyEnv, Optional<String> key) {
         @Override public String toString() {
             return "Model[" + service + ", key from " + keyEnv + ", "
                  + (key.isPresent() ? "held" : "missing") + "]";
@@ -421,14 +428,14 @@ final class Egress implements AutoCloseable {
     /// Connects to the model service: over TLS, checking that the certificate belongs to its
     /// host, for an `https` service (always, on a real machine); in plain TCP for the stand-in
     /// server a test runs.
-    private static Socket connectToService(java.net.URI service) throws IOException {
+    private static Socket connectToService(URI service) throws IOException {
         String host = service.getHost();
         int port = servicePort(service);
         Socket plain = new Socket();
         plain.connect(new InetSocketAddress(host, port), (int) CONNECT_TIMEOUT.toMillis());
         if (!"https".equals(service.getScheme())) return plain;
-        var tls = (javax.net.ssl.SSLSocket) ((javax.net.ssl.SSLSocketFactory)
-                javax.net.ssl.SSLSocketFactory.getDefault()).createSocket(plain, host, port, true);
+        var tls = (SSLSocket) ((SSLSocketFactory)
+                SSLSocketFactory.getDefault()).createSocket(plain, host, port, true);
         var parameters = tls.getSSLParameters();
         // Without this, TLS checks that the certificate is valid, but not that it is this host's.
         parameters.setEndpointIdentificationAlgorithm("HTTPS");
@@ -444,14 +451,14 @@ final class Egress implements AutoCloseable {
     /// a model server on this machine, gets that path in place of `/v3`. A service without one
     /// gets the request's path unchanged. With a path configured, a request outside `/v3` has no
     /// place on the service, and gets nothing.
-    static Optional<String> serviceTarget(java.net.URI service, String requested) {
+    static Optional<String> serviceTarget(URI service, String requested) {
         String base = Optional.ofNullable(service.getRawPath()).orElse("").replaceAll("/+$", "");
         if (base.isEmpty()) return Optional.of(requested);
         boolean underV3 = requested.equals("/v3") || requested.startsWith("/v3/") || requested.startsWith("/v3?");
         return underV3 ? Optional.of(base + requested.substring(3)) : Optional.empty();
     }
 
-    private static int servicePort(java.net.URI service) {
+    private static int servicePort(URI service) {
         if (service.getPort() > 0) return service.getPort();
         return "https".equals(service.getScheme()) ? 443 : 80;
     }
@@ -500,8 +507,7 @@ final class Egress implements AutoCloseable {
     }
 
     /// A path on the model service: starts with `/`, printable ASCII, no spaces.
-    private static final java.util.regex.Pattern ORIGIN_PATH =
-            java.util.regex.Pattern.compile("/[!-~]{0,8191}");
+    private static final Pattern ORIGIN_PATH = Pattern.compile("/[!-~]{0,8191}");
 
     // ─── forwards ──────────────────────────────────────────────────────────────────────────
 
@@ -558,7 +564,7 @@ final class Egress implements AutoCloseable {
     private Resolution resolve(String host) {
         Optional<IpAddress> literal = IpAddress.parse(host);
         if (literal.isPresent()) return new Resolution(Tuple.of(IpAddress.class, literal.get()), false);
-        var task = new java.util.concurrent.FutureTask<>(() -> InetAddress.getAllByName(host));
+        var task = new FutureTask<>(() -> InetAddress.getAllByName(host));
         Thread.ofVirtual().name("oillamp-resolve").start(task);
         try {
             InetAddress[] found = task.get(RESOLVE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
@@ -590,7 +596,7 @@ final class Egress implements AutoCloseable {
         Thread outbound = Thread.ofVirtual().start(() -> {
             copy(clientIn, quietly(upstream), up);
             // TLS has no half-close; the far side ends the exchange instead.
-            if (upstream instanceof javax.net.ssl.SSLSocket) return;
+            if (upstream instanceof SSLSocket) return;
             try {
                 upstream.shutdownOutput();
             } catch (IOException ignored) {
@@ -697,8 +703,8 @@ final class Egress implements AutoCloseable {
     /// One byte at a time on purpose. A buffered read could also consume the first bytes of the
     /// tunnelled data, which the tunnel would then never forward, and the TLS handshake would hang.
     private static <T> Optional<T> readHead(InputStream in,
-                                            java.util.function.Function<String, T> parse,
-                                            java.util.function.Function<String, T> bad)
+                                            Function<String, T> parse,
+                                            Function<String, T> bad)
             throws IOException {
         StringBuilder head = new StringBuilder();
         int consecutive = 0;
@@ -771,11 +777,9 @@ final class Egress implements AutoCloseable {
     }
 
     /// An HTTP method: letters, digits and the few symbols the standard allows in a token.
-    private static final java.util.regex.Pattern METHOD =
-            java.util.regex.Pattern.compile("[A-Za-z0-9!#$%&'*+.^_`|~-]{1,32}");
+    private static final Pattern METHOD = Pattern.compile("[A-Za-z0-9!#$%&'*+.^_`|~-]{1,32}");
     /// A host name, an IPv4 address, or an IPv6 address in brackets.
-    private static final java.util.regex.Pattern HOST =
-            java.util.regex.Pattern.compile("[A-Za-z0-9._-]{1,253}|\\[[0-9A-Fa-f:.]{2,45}\\]");
+    private static final Pattern HOST = Pattern.compile("[A-Za-z0-9._-]{1,253}|\\[[0-9A-Fa-f:.]{2,45}\\]");
 
     private static Optional<Integer> port(String text) {
         try {

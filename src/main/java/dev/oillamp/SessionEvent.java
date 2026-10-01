@@ -1,6 +1,10 @@
 package dev.oillamp;
 
+import java.time.Instant;
+
 import dev.lamp.Problem;
+
+import sprouts.Tuple;
 
 /// Something that happened to a running session: the container becoming ready or exiting, a shell
 /// connecting or disconnecting, a signal, `oillamp stop`, or a second passing.
@@ -10,7 +14,7 @@ import dev.lamp.Problem;
 sealed interface SessionEvent {
 
     /// One second has passed. This is how timeouts are noticed.
-    record Tick(java.time.Instant now) implements SessionEvent {}
+    record Tick(Instant now) implements SessionEvent {}
 
     /// The sandbox is up and answering on its sockets.
     record ContainerReady(ReadyInfo info) implements SessionEvent {}
@@ -43,7 +47,7 @@ sealed interface SessionEvent {
     record ActionFailed(SessionAction action, Problem problem) implements SessionEvent {}
 
     /// The shutdown sequence has finished, with whatever went wrong along the way.
-    record ShutdownCompleted(sprouts.Tuple<Problem> problems) implements SessionEvent {}
+    record ShutdownCompleted(Tuple<Problem> problems) implements SessionEvent {}
 
     /// What this event is called in the session log.
     default String describe() {

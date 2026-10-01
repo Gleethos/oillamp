@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Locale;
 import java.util.Optional;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -187,7 +188,7 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
                 case ScheduledJob.When.Repeating repeating -> node.put("cron", repeating.cron().text());
             }
             node.put("prompt", job.prompt());
-            node.put("author", job.author().name().toLowerCase(java.util.Locale.ROOT));
+            node.put("author", job.author().name().toLowerCase(Locale.ROOT));
             node.put("created", job.created().toString());
             job.expires().ifPresent(end -> node.put("expires", end.toString()));
             node.put("enabled", job.enabled());

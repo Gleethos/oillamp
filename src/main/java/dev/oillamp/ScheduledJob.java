@@ -1,11 +1,14 @@
 package dev.oillamp;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Optional;
 
 import dev.lamp.LampEvent;
 import dev.lamp.LampEvent.JobAuthor;
+
+import sprouts.Tuple;
 
 /// One job on a lamp's schedule: a prompt, and when it wakes the agent with it.
 ///
@@ -77,13 +80,13 @@ record ScheduledJob(String id, When when, String prompt, JobAuthor author, Insta
     }
 
     /// How far ahead [#upcoming] looks, and how many times it lists at most.
-    static final java.time.Duration UPCOMING = java.time.Duration.ofDays(7);
+    static final Duration UPCOMING = Duration.ofDays(7);
     static final int MOST_UPCOMING = 200;
 
     /// When it runs after `now` and within [#UPCOMING] of it, before it expires, earliest first,
     /// and at most [#MOST_UPCOMING] times. Empty for a job switched off.
-    sprouts.Tuple<Instant> upcoming(ZoneId zone, Instant now) {
-        sprouts.Tuple<Instant> times = sprouts.Tuple.of(Instant.class);
+    Tuple<Instant> upcoming(ZoneId zone, Instant now) {
+        Tuple<Instant> times = Tuple.of(Instant.class);
         if (!enabled) return times;
         Instant end = now.plus(UPCOMING);
         if (expires.isPresent() && expires.get().isBefore(end)) end = expires.get();

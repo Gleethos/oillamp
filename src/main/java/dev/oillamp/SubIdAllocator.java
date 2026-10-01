@@ -1,5 +1,9 @@
 package dev.oillamp;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 import sprouts.Tuple;
 
 /// Picks a subordinate id range for the user that overlaps nobody else's.
@@ -19,9 +23,9 @@ final class SubIdAllocator {
     /// so that allocations stay tidy and human-readable in `/etc/subuid`.
     public static IdRange allocate(Tuple<IdRange> existing, int size) {
         if (size <= 0) throw new IllegalArgumentException("Range size must be positive: " + size);
-        java.util.List<IdRange> sorted = new java.util.ArrayList<>();
+        List<IdRange> sorted = new ArrayList<>();
         for (IdRange range : existing) sorted.add(range);
-        java.util.Collections.sort(sorted);
+        Collections.sort(sorted);
 
         int candidate = FLOOR;
         for (IdRange taken : sorted) {

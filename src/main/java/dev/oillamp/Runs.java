@@ -3,6 +3,7 @@ package dev.oillamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -288,7 +289,7 @@ final class Runs {
             context.emit(new LampEvent.Warning(Problems.runFailed(run.id(), answer.text())));
         Instant ended = machine.now();
 
-        String outcome = answer.outcome().name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+        String outcome = answer.outcome().name().toLowerCase(Locale.ROOT).replace('_', ' ');
         String said = answer.text().strip();
         if (said.length() > ANSWER_KEPT) said = said.substring(0, ANSWER_KEPT) + "\n[…]";
         Association<String, String> after = trailers
