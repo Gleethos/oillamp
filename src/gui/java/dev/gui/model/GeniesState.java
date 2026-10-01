@@ -68,7 +68,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withSidebarShown(boolean shown) { return new GeniesState(genies, selected, settings, page, environmentKey, shown, narrow, lookUp, zoom, area, now); }
     public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
     public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
-    public GeniesState withNow(Instant now)  { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
+    public GeniesState withNow(Instant now)            { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now); }
 
     /// Below this width, in the window's own units, the list of genies and a conversation do not
     /// both fit.
