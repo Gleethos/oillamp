@@ -4,9 +4,9 @@ import dev.gui.model.Genie;
 
 /// The pictures in Genies, drawn as SVG text so they stay sharp at any size: an oil lamp whose
 /// flame shows how its genie is doing.
-final class Art {
+final class LampSvgUtil {
 
-    private Art() {}
+    private LampSvgUtil() {}
 
     /// The lamp of a genie in `phase`: lit while it is awake, flaring while it works, a wisp of
     /// smoke while it sleeps, and red when something went wrong.

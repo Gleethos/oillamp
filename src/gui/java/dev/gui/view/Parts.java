@@ -25,7 +25,7 @@ final class Parts {
     /// The lamp of a genie in `phase`, drawn from SVG at `size`.
     static UIForAnySwing<?, ?> lamp(Val<Genie.Phase> phase, int size) {
         return box().withPrefSize(size, size).withMinSize(size, size)
-                .withStyle(phase.viewAsString(Art::lamp), (svg, it) -> it.image(img -> img.svg(svg).fitMode(UI.FitComponent.MIN_DIM)));
+                .withStyle(phase.viewAsString(LampSvgUtil::lamp), (svg, it) -> it.image(img -> img.svg(svg).fitMode(UI.FitComponent.MIN_DIM)));
     }
 
     /// A few lines of small print, wrapped to the width they are given.

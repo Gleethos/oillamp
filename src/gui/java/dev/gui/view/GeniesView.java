@@ -642,7 +642,7 @@ public final class GeniesView extends JPanel {
 
     /// The lamp, lit, for the window's icon.
     public static Image windowIcon() {
-        return SvgIcon.of(Art.lamp(Genie.Phase.READY)).withIconSize(64, 64).getImage();
+        return SvgIcon.of(LampSvgUtil.lamp(Genie.Phase.READY)).withIconSize(64, 64).getImage();
     }
 
     private static UIForButton<JButton> zoomButton(String text, String tip) {
