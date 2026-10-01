@@ -488,7 +488,7 @@ The same, step by step:
    - `LampPlanner.planSkeleton` plans the directory tree, identity file, SSH keys, ownership
      changes, recording retention and the runtime directory. `StepRunner` runs it.
    - `LampPlanner.planSession` then plans the per-session files: `runtime.env`, the agent guide,
-     the agent's git identity (`GitConfig`), `authorized_keys`, `ssh_config`, `known_hosts`. It is a second plan because it needs the
+     the agent's git identity (`AgentGitConfigUtil`), `authorized_keys`, `ssh_config`, `known_hosts`. It is a second plan because it needs the
      public keys the first one generated.
 5. **`--dry-run` stops here**, after also planning the image and container steps, so the full
    `podman run` command is printed. A dry run takes no lock and changes nothing.
@@ -1191,7 +1191,7 @@ line** by the entrypoint or the supervisor.
 | socat bridges | command-line arguments | every start, the entrypoint (`OILLAMP_PROXY_PORT`, `OILLAMP_FORWARDS`) |
 | sshd | `/etc/oillamp/sshd_config`; `HostKey` and `AuthorizedKeysFile` point into `/oillamp/session/` | config in the image; keys copied by `LampPlanner` every start |
 | every shell | `/etc/profile.d/oillamp.sh`, reached from `/etc/profile` and from `~/.bashrc` | the script is in the image; it reads `runtime.env`; `.bashrc` is written once by `LampPlanner` |
-| git | `/etc/gitconfig`, which includes `/oillamp/session/gitconfig` | the include is in the image; the file is written every start by `GitConfig`, from `git.*`; git on the host never reads it |
+| git | `/etc/gitconfig`, which includes `/oillamp/session/gitconfig` | the include is in the image; the file is written every start by `AgentGitConfigUtil`, from `git.*`; git on the host never reads it |
 | outbound ssh | `/etc/ssh/ssh_config.d/50-oillamp-proxy.conf` | in the image |
 | foot (in-sandbox terminal) | `/etc/xdg/foot/foot.ini` | in the image |
 | pi | `~/.pi/agent/` plus `EDENAI_*` from the profile | installed in the image, copied into the home by the entrypoint once |

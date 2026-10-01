@@ -9,9 +9,9 @@ import java.util.Optional;
 /// `~/.gitconfig` and a repository's `.git/config` still override it. It is mounted read-only
 /// and rewritten each session, so a changed `[git]` setting or a changed host identity takes
 /// effect at the next `oillamp at`.
-final class GitConfig {
+final class AgentGitConfigUtil {
 
-    private GitConfig() {}
+    private AgentGitConfigUtil() {}
 
     /// A name and an email for git's `user.name` and `user.email`.
     record Author(String name, String email) {

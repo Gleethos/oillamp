@@ -148,19 +148,19 @@ final class LampPhase {
 
         return LampPlanner.planSession(layout, clientKey.get(), hostKey.get(),
                 ((Result.Ok<String>) environment).value(), AgentGuide.render(config),
-                GitConfig.render(gitAuthor(config.git(), layout)),
+                AgentGitConfigUtil.render(gitAuthor(config.git(), layout)),
                 config.schedule().enabled() ? Optional.of(AgentGuide.scheduleTools()) : Optional.empty());
     }
 
     /// The name and email the agent's commits carry, as `[git]` chooses, said on the console
     /// either way. Without one, git in the sandbox refuses to commit, so that is said too.
-    private Optional<GitConfig.Author> gitAuthor(LampConfig.Git git, LampLayout layout) {
-        Optional<GitConfig.Author> author = switch (git.identity()) {
-            case GENIE  -> Optional.of(GitConfig.genie(layout.agentId()));
-            case CUSTOM -> Optional.of(new GitConfig.Author(git.name(), git.email()));
+    private Optional<AgentGitConfigUtil.Author> gitAuthor(LampConfig.Git git, LampLayout layout) {
+        Optional<AgentGitConfigUtil.Author> author = switch (git.identity()) {
+            case GENIE  -> Optional.of(AgentGitConfigUtil.genie(layout.agentId()));
+            case CUSTOM -> Optional.of(new AgentGitConfigUtil.Author(git.name(), git.email()));
             case NONE   -> Optional.empty();
             case HOST   -> hostGitValue("user.name").flatMap(name ->
-                           hostGitValue("user.email").map(email -> new GitConfig.Author(name, email)));
+                           hostGitValue("user.email").map(email -> new AgentGitConfigUtil.Author(name, email)));
         };
         if (author.isPresent())
             context.info("lamp", "the agent's commits will carry " + author.get().name()

@@ -217,7 +217,7 @@ final class LampPlanner {
     /// @param hostPublicKey   the generated host public key, pinned so the user is never prompted
     /// @param runtimeEnv      the contents of `runtime.env`
     /// @param agentGuide      the guide the agent reads as `~/AGENTS.md`
-    /// @param gitConfig       the agent's git identity, see [GitConfig]
+    /// @param gitConfig       the agent's git identity, see [AgentGitConfigUtil]
     /// @param scheduleTools   the pi extension with the agent's scheduling tools, or empty when
     ///                        the schedule is off and the agent should have none
     public static Result<Plan> planSession(LampLayout layout,
