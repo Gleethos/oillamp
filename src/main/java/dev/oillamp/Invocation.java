@@ -246,11 +246,11 @@ final class Invocation {
             return ExitStatus.SUCCESS;
         }
         if (command.equals("about")) {
-            sink.accept(new LampEvent.Answer(Handbook.about(version)));
+            sink.accept(new LampEvent.Answer(IntroductionTextUtil.about(version)));
             return ExitStatus.SUCCESS;
         }
         if (command.equals("guide")) {
-            sink.accept(new LampEvent.Answer(Handbook.guide()));
+            sink.accept(new LampEvent.Answer(IntroductionTextUtil.guide()));
             return ExitStatus.SUCCESS;
         }
 

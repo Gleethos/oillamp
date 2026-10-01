@@ -7,9 +7,9 @@ package dev.oillamp;
 /// `help` lists the commands, which is enough once you know what they are for. These are for the
 /// moment before that. They are short on purpose and point to the README for the rest, so keep
 /// them true when a command or a default changes.
-final class Handbook {
+final class IntroductionTextUtil {
 
-    private Handbook() {}
+    private IntroductionTextUtil() {}
 
     static String about(String version) {
         return "oillamp " + version + "\n\n" + """
