@@ -28,12 +28,12 @@ final class Typeset {
     static final int BODY = 14;
 
     /// @param settled 0 when the newest characters just arrived, 1 once they are fully there
-    static Tuple<StyledString> of(Tuple<Markdown.Run> runs, double settled) {
+    static Tuple<StyledString> of(Tuple<MarkdownParsingUtil.Run> runs, double settled) {
         int total = 0;
-        for (Markdown.Run run : runs) total += run.text().length();
+        for (MarkdownParsingUtil.Run run : runs) total += run.text().length();
         Tuple<StyledString> out = Tuple.of(StyledString.class);
         int position = 0;
-        for (Markdown.Run run : runs) {
+        for (MarkdownParsingUtil.Run run : runs) {
             String text = run.text();
             int start = 0;
             while (start < text.length()) {
@@ -55,28 +55,28 @@ final class Typeset {
         return Math.max(1, (int) Math.ceil(alpha * STEPS));
     }
 
-    private static Configurator<FontConf> look(Markdown.Run run, double alpha) {
+    private static Configurator<FontConf> look(MarkdownParsingUtil.Run run, double alpha) {
         Color colour = switch (run.inline()) {
-            case CODE -> run.block() == Markdown.Block.CODE ? TEXT : CODE_TEXT;
+            case CODE -> run.block() == MarkdownParsingUtil.Block.CODE ? TEXT : CODE_TEXT;
             case LINK -> FLAME;
             case STRIKE -> SUBTEXT;
-            case MARKER -> run.block() == Markdown.Block.RULE || run.block() == Markdown.Block.TABLE ? BORDER : BRASS;
-            default -> run.block() == Markdown.Block.QUOTE ? SUBTEXT : TEXT;
+            case MARKER -> run.block() == MarkdownParsingUtil.Block.RULE || run.block() == MarkdownParsingUtil.Block.TABLE ? BORDER : BRASS;
+            default -> run.block() == MarkdownParsingUtil.Block.QUOTE ? SUBTEXT : TEXT;
         };
         int size = switch (run.block()) { case H1 -> 20; case H2 -> 17; case H3 -> 15; default -> BODY; };
-        boolean heading = run.block() == Markdown.Block.H1 || run.block() == Markdown.Block.H2 || run.block() == Markdown.Block.H3;
-        boolean bold = heading || run.inline() == Markdown.Inline.BOLD || run.inline() == Markdown.Inline.BOLD_ITALIC;
-        boolean italic = run.inline() == Markdown.Inline.ITALIC || run.inline() == Markdown.Inline.BOLD_ITALIC
-                      || (run.block() == Markdown.Block.QUOTE && run.inline() != Markdown.Inline.MARKER);
-        boolean code = run.inline() == Markdown.Inline.CODE;
-        boolean even = code || run.block() == Markdown.Block.TABLE;
+        boolean heading = run.block() == MarkdownParsingUtil.Block.H1 || run.block() == MarkdownParsingUtil.Block.H2 || run.block() == MarkdownParsingUtil.Block.H3;
+        boolean bold = heading || run.inline() == MarkdownParsingUtil.Inline.BOLD || run.inline() == MarkdownParsingUtil.Inline.BOLD_ITALIC;
+        boolean italic = run.inline() == MarkdownParsingUtil.Inline.ITALIC || run.inline() == MarkdownParsingUtil.Inline.BOLD_ITALIC
+                      || (run.block() == MarkdownParsingUtil.Block.QUOTE && run.inline() != MarkdownParsingUtil.Inline.MARKER);
+        boolean code = run.inline() == MarkdownParsingUtil.Inline.CODE;
+        boolean even = code || run.block() == MarkdownParsingUtil.Block.TABLE;
         Color shown = faded(colour, alpha);
         return f -> {
             FontConf set = f.family(even ? MONO : FONT).size(even ? size - 1 : size).color(shown)
                             .weight(bold ? 2 : 1).posture(italic ? 0.2f : 0f);
-            if (code) set = set.backgroundColor(faded(run.block() == Markdown.Block.CODE ? SMOKE : RAISED, alpha));
-            if (run.inline() == Markdown.Inline.STRIKE) set = set.strikeThrough(true);
-            if (run.inline() == Markdown.Inline.LINK) set = set.underlined(true);
+            if (code) set = set.backgroundColor(faded(run.block() == MarkdownParsingUtil.Block.CODE ? SMOKE : RAISED, alpha));
+            if (run.inline() == MarkdownParsingUtil.Inline.STRIKE) set = set.strikeThrough(true);
+            if (run.inline() == MarkdownParsingUtil.Inline.LINK) set = set.underlined(true);
             return set;
         };
     }

@@ -2,21 +2,21 @@ package dev.gui.view
 
 import spock.lang.Specification
 
-import static dev.gui.view.Markdown.Block.*
-import static dev.gui.view.Markdown.Inline.*
+import static dev.gui.view.MarkdownParsingUtil.Block.*
+import static dev.gui.view.MarkdownParsingUtil.Inline.*
 
 /**
  *  How a genie's answer, written in Markdown as models write it, is read for the chat.
  *
- *  <p>{@link Markdown} turns the text into runs that each have one look, which
+ *  <p>{@link MarkdownParsingUtil} turns the text into runs that each have one look, which
  *  {@link Typeset} then sets in the lamp's colours for SwingTree to paint. Both are pure, so
  *  what an answer looks like is pinned here without a window.
  */
 class ReadingAGeniesMarkdownSpec extends Specification {
 
     // Both kinds of look have a CODE; these say which one is meant.
-    static final Markdown.Block CODE_LINE = Markdown.Block.CODE
-    static final Markdown.Inline CODE_SPAN = Markdown.Inline.CODE
+    static final MarkdownParsingUtil.Block CODE_LINE = MarkdownParsingUtil.Block.CODE
+    static final MarkdownParsingUtil.Inline CODE_SPAN = MarkdownParsingUtil.Inline.CODE
 
     def 'Emphasis, code and links lose their markers and keep their look'() {
         reportInfo """
@@ -110,15 +110,15 @@ class ReadingAGeniesMarkdownSpec extends Specification {
             Typeset.step(1, 1) == 8
 
         and: 'a settled answer is one styled run per Markdown run'
-            Typeset.of(Markdown.parse('plain **bold**'), 1).size() == 2
-            Typeset.of(Markdown.parse('x' * 100), 0).size() == 8
+            Typeset.of(MarkdownParsingUtil.parse('plain **bold**'), 1).size() == 2
+            Typeset.of(MarkdownParsingUtil.parse('x' * 100), 0).size() == 8
     }
 
     private static String text(String markdown) {
-        Markdown.parse(markdown).toList().collect { it.text() }.join('')
+        MarkdownParsingUtil.parse(markdown).toList().collect { it.text() }.join('')
     }
 
     private static List<List> runs(String markdown) {
-        Markdown.parse(markdown).toList().collect { [it.text(), it.block(), it.inline()] }
+        MarkdownParsingUtil.parse(markdown).toList().collect { [it.text(), it.block(), it.inline()] }
     }
 }
