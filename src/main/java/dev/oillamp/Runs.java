@@ -79,7 +79,7 @@ final class Runs {
     /// Starts working, once the sandbox is up. Runs asked for before this wait until now.
     void begin() {
         if (worker.isPresent()) return;
-        worker = Optional.of(Thread.ofVirtual().name("oillamp-runs").start(this::work));
+        worker = Optional.of(Thread.ofVirtual().name("oillamp-runs").start(this::performQueuedRuns));
         if (config.enabled()) Thread.ofVirtual().name("oillamp-schedule").start(this::watchTheSchedule);
     }
 
@@ -168,7 +168,7 @@ final class Runs {
 
     private void watchTheSchedule() {
         while (!stopping) {
-            tick();
+            removeFinishedJobsAndQueueDueOnes();
             try {
                 look.tryAcquire(TICK.toMillis(), TimeUnit.MILLISECONDS);
                 look.drainPermits();
@@ -178,8 +178,7 @@ final class Runs {
         }
     }
 
-    /// Takes finished jobs off the schedule, and queues the jobs whose time has come.
-    private void tick() {
+    private void removeFinishedJobsAndQueueDueOnes() {
         Instant now = machine.now();
         ZoneId zone = machine.zone();
         Result<Schedule> read = book.read();
@@ -235,7 +234,7 @@ final class Runs {
 
     // ─── a run ─────────────────────────────────────────────────────────────────────────────
 
-    private void work() {
+    private void performQueuedRuns() {
         while (!stopping) {
             Pending next;
             try {
