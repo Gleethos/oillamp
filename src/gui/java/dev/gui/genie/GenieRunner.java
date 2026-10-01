@@ -2,6 +2,8 @@ package dev.gui.genie;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -40,33 +42,30 @@ public final class GenieRunner {
     private final Lighter lighter;
     private final Consumer<UnaryOperator<Genie>> changes;
     private final ExecutorService work = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("genie").factory());
-    /// Reads the genie's conversations, one reading after the other, so that an older reading
-    /// never arrives after a newer one.
-    private final ExecutorService looks = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("conversations").factory());
+    /// One reading after the other, so that an older reading never arrives after a newer one.
+    private final ExecutorService conversationReader = Executors.newSingleThreadExecutor(Thread.ofVirtual().name("conversations").factory());
     private volatile Optional<Lighter.Lit> lamp = Optional.empty();
     private volatile boolean sleeping;
 
     /// Where the next message goes: the conversation's file, relative to the genie's home, and
     /// the entry it continues after. Both empty for a new conversation.
     private volatile Conversations.Here where = Conversations.Here.UNKNOWN;
-    /// The runs that answer this chat's messages. Other runs, such as a scheduled job's, change
-    /// only the tree of conversations.
-    private final Set<String> mine = ConcurrentHashMap.newKeySet();
-    /// The runs of `mine` that reported an answer, even a failed one.
-    private final Set<String> answered = ConcurrentHashMap.newKeySet();
-    /// The message being handed over, until [Lamp#send] returns. The run's first events can come
-    /// before that, and are recognised by it.
-    private volatile Optional<String> sending = Optional.empty();
-    /// The run of `mine` in progress, which the stop button stops.
-    private volatile Optional<String> working = Optional.empty();
-    /// The conversation the runs of `mine` are in, as [#where] named it when they were asked:
-    /// empty for a new one. The chat follows them only while it shows that conversation.
-    private volatile String runIn = "";
+    /// Other runs, such as a scheduled job's, change only the tree of conversations.
+    private final Set<String> runsOfThisChat = ConcurrentHashMap.newKeySet();
+    /// Even a failed answer counts.
+    private final Set<String> runsThatAnswered = ConcurrentHashMap.newKeySet();
+    /// Until [Lamp#send] returns. The run's first events can come before that, and are
+    /// recognised by it.
+    private volatile Optional<String> promptBeingSent = Optional.empty();
+    /// The one the stop button stops.
+    private volatile Optional<String> runInProgress = Optional.empty();
+    /// As [#where] named it when they were asked: empty for a new one. The chat follows them
+    /// only while it shows that conversation.
+    private volatile String conversationOfRuns = "";
     private final ScheduleKeeper schedule;
-    /// The events of a lamp being joined, held back until the catch-up ends with the agent's
-    /// status, so that the chat is set up before the run in progress is replayed into it. Empty
-    /// otherwise.
-    private volatile Optional<List<LampEvent>> catchingUp = Optional.empty();
+    /// The events of a lamp being joined, until the catch-up ends with the agent's status, so
+    /// that the chat is set up before the run in progress is replayed into it. Empty otherwise.
+    private volatile Optional<List<LampEvent>> heldWhileCatchingUp = Optional.empty();
     /// Where the chat goes on joining, when the genie is not answering a question of the user's.
     private volatile Conversations.Here rejoinAt = Conversations.Here.UNKNOWN;
     /// Whether the lamp was left running as the app closes. What it reports after that is for
@@ -136,7 +135,7 @@ public final class GenieRunner {
 
     /// Stops the run that answers this chat. What the genie did until then stays, and is saved.
     public void stop() {
-        working.ifPresent(this::stop);
+        runInProgress.ifPresent(this::stop);
     }
 
     /// Stops `run`, such as a job's. What the genie did until then stays, and is saved.
@@ -147,7 +146,7 @@ public final class GenieRunner {
             try {
                 lit.get().cancel(run);
             } catch (IOException | Lamp.Failed failed) {
-                said("The genie could not be stopped: " + reason(failed));
+                showProblem("The genie could not be stopped: " + reason(failed));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             }
@@ -168,7 +167,7 @@ public final class GenieRunner {
     /// Shows the conversation pi knows by `id`, where it stands, such as the one a job's run had.
     public void open(String id) {
         work.execute(() -> Lamp.conversation(directory, id).ifPresentOrElse(conversation -> show(conversation.file(), ""),
-                () -> said("That conversation is not there any more.")));
+                () -> showProblem("That conversation is not there any more.")));
     }
 
     /// Starts a new conversation: the chat empties, and the next message begins it. The others stay.
@@ -181,7 +180,7 @@ public final class GenieRunner {
     public void askInstead(String id, String text) {
         Optional<Lamp.Conversation> conversation = conversationIn(where.file());
         if (conversation.isEmpty()) {
-            said("The conversation of that question is not there any more.");
+            showProblem("The conversation of that question is not there any more.");
             return;
         }
         send(Lamp.Question.insteadOf(conversation.get().id(), id, text));
@@ -198,7 +197,7 @@ public final class GenieRunner {
                 if (where.file().equals(conversation)) show("", "");
                 Lamp.forget(directory, doomed.get().id());
             } catch (IOException failed) {
-                said("The conversation could not be deleted: " + reason(failed));
+                showProblem("The conversation could not be deleted: " + reason(failed));
             }
             lookAtConversations();
         });
@@ -206,7 +205,7 @@ public final class GenieRunner {
 
     /// Reads the genie's conversations from its lamp again, awake or asleep.
     public void lookAtConversations() {
-        looks.execute(() -> {
+        conversationReader.execute(() -> {
             Tuple<Conversation> all = Tuple.of(Conversation.class);
             for (Lamp.Conversation conversation : Lamp.conversations(directory)) all = all.add(LampTalk.conversation(conversation));
             Tuple<Conversation> read = all;
@@ -262,12 +261,12 @@ public final class GenieRunner {
             if (lamp.isPresent() || !lighter.isLit(directory)) return;
             sleeping = false;
             rejoinAt = new Conversations.Here(conversation, leaf);
-            catchingUp = Optional.of(new java.util.ArrayList<>());
+            heldWhileCatchingUp = Optional.of(new ArrayList<>());
             changes.accept(genie -> genie.waking().withActivity("joining its lamp, which was left running"));
             try {
                 Optional<Lighter.Lit> lit = lighter.join(directory, this::heard);
                 if (lit.isEmpty()) {
-                    catchingUp = Optional.empty();
+                    heldWhileCatchingUp = Optional.empty();
                     changes.accept(Genie::asleep);
                     return;
                 }
@@ -276,7 +275,7 @@ public final class GenieRunner {
                 changes.accept(genie -> genie.withHandouts(files).awake());
                 lookAtConversations();
             } catch (IOException | RuntimeException failed) {
-                catchingUp = Optional.empty();
+                heldWhileCatchingUp = Optional.empty();
                 putOut();
                 changes.accept(genie -> genie.broken(reason(failed)));
             } catch (InterruptedException interrupted) {
@@ -291,16 +290,15 @@ public final class GenieRunner {
     private void caughtUp(LampEvent.AgentStatus status, List<LampEvent> held) {
         Optional<LampEvent.Run> answering = status.current().filter(run -> run.job().isEmpty());
         if (answering.isPresent()) {
-            mine.add(answering.get().id());
+            runsOfThisChat.add(answering.get().id());
             showAnswering(answering.get());
         } else {
-            show(existing(rejoinAt.file()), rejoinAt.leaf());
+            show(fileOrMostRecent(rejoinAt.file()), rejoinAt.leaf());
         }
         held.forEach(this::heard);
     }
 
-    /// `file` if the genie still has that conversation, otherwise its most recent one.
-    private String existing(String file) {
+    private String fileOrMostRecent(String file) {
         List<Lamp.Conversation> all = Lamp.conversations(directory);
         if (all.stream().anyMatch(conversation -> conversation.file().equals(file))) return file;
         return all.isEmpty() ? "" : all.getFirst().file();
@@ -312,7 +310,7 @@ public final class GenieRunner {
         String file = conversation.map(Lamp.Conversation::file).orElse("");
         String before = conversation.map(it -> before(it, run.prompt())).orElse("");
         where = conversation.isPresent() ? new Conversations.Here(file, before) : Conversations.Here.UNKNOWN;
-        runIn = where.file();
+        conversationOfRuns = where.file();
         PiEvent.History history = conversation.map(it -> LampTalk.history(it, before))
                 .orElseGet(() -> new PiEvent.History(Tuple.of(PiEvent.History.Line.class), ""));
         changes.accept(genie -> genie.answering(file, history, run.prompt()));
@@ -349,20 +347,20 @@ public final class GenieRunner {
     private void send(Lamp.Question question) {
         Optional<Lighter.Lit> lit = lamp;
         if (lit.isEmpty()) {
-            said("The genie is asleep; wake it first.");
+            showProblem("The genie is asleep; wake it first.");
             return;
         }
-        sending = Optional.of(question.prompt());
-        runIn = where.file();
+        promptBeingSent = Optional.of(question.prompt());
+        conversationOfRuns = where.file();
         Thread.ofVirtual().name("send").start(() -> {
             try {
-                mine.add(lit.get().send(question).id());
+                runsOfThisChat.add(lit.get().send(question).id());
             } catch (IOException | Lamp.Failed failed) {
                 changes.accept(genie -> genie.hear(new PiEvent.Refused("prompt", reason(failed))));
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
             } finally {
-                sending = Optional.empty();
+                promptBeingSent = Optional.empty();
             }
         });
     }
@@ -372,28 +370,28 @@ public final class GenieRunner {
     /// Every event of the lamp's session, on the thread that reads them.
     private void heard(LampEvent event) {
         if (leftRunning) return;
-        Optional<List<LampEvent>> held = catchingUp;
+        Optional<List<LampEvent>> held = heldWhileCatchingUp;
         if (held.isPresent()) {
             if (event instanceof LampEvent.AgentStatus status) {
-                catchingUp = Optional.empty();
+                heldWhileCatchingUp = Optional.empty();
                 caughtUp(status, held.get());
             } else {
                 held.get().add(event);
             }
             return;
         }
-        schedule.heard(event, java.time.Instant.now());
+        schedule.heard(event, Instant.now());
         switch (event) {
             case LampEvent.RunStarted started -> {
                 LampEvent.Run run = started.run();
-                if (run.job().isEmpty() && sending.filter(run.prompt()::equals).isPresent()) mine.add(run.id());
-                if (mine.contains(run.id())) working = Optional.of(run.id());
+                if (run.job().isEmpty() && promptBeingSent.filter(run.prompt()::equals).isPresent()) runsOfThisChat.add(run.id());
+                if (runsOfThisChat.contains(run.id())) runInProgress = Optional.of(run.id());
             }
-            case LampEvent.RunProgress progress when mine.contains(progress.run()) -> {
-                if (progress.progress() instanceof LampEvent.Progress.Answered) answered.add(progress.run());
+            case LampEvent.RunProgress progress when runsOfThisChat.contains(progress.run()) -> {
+                if (progress.progress() instanceof LampEvent.Progress.Answered) runsThatAnswered.add(progress.run());
                 LampTalk.heard(progress.progress()).ifPresent(heard -> changes.accept(genie -> genie.hear(heard)));
             }
-            case LampEvent.RunFinished finished when mine.contains(finished.run().id()) -> finished(finished);
+            case LampEvent.RunFinished finished when runsOfThisChat.contains(finished.run().id()) -> finished(finished);
             // Another run, such as a scheduled job's, may have added to the conversations.
             case LampEvent.RunFinished ignored -> lookAtConversations();
             case LampEvent.SessionStateChanged changed when changed.status().state().equals("stopped") && !sleeping -> {
@@ -409,17 +407,17 @@ public final class GenieRunner {
     /// for what was said, and the genie is ready.
     private void finished(LampEvent.RunFinished finished) {
         String run = finished.run().id();
-        working = Optional.empty();
-        mine.remove(run);
-        if (!answered.remove(run) && finished.outcome() != LampEvent.RunOutcome.FINISHED && !finished.answer().isBlank())
-            said(finished.answer());
+        runInProgress = Optional.empty();
+        runsOfThisChat.remove(run);
+        if (!runsThatAnswered.remove(run) && finished.outcome() != LampEvent.RunOutcome.FINISHED && !finished.answer().isBlank())
+            showProblem(finished.answer());
         changes.accept(genie -> genie.hear(new PiEvent.Settled()));
         Optional<Lamp.Conversation> conversation = finished.conversation().flatMap(id -> Lamp.conversation(directory, id));
         if (conversation.isPresent()) {
             String file = conversation.get().file();
             String leaf = conversation.get().leaf().orElse("");
             // The user may be reading another conversation; they stay there.
-            if (where.file().equals(runIn)) where = new Conversations.Here(file, leaf);
+            if (where.file().equals(conversationOfRuns)) where = new Conversations.Here(file, leaf);
             PiEvent.History history = LampTalk.history(conversation.get(), leaf);
             changes.accept(genie -> genie.finishedIn(file, history));
         } else {
@@ -429,7 +427,7 @@ public final class GenieRunner {
         lookAtConversations();
     }
 
-    private void said(String problem) {
+    private void showProblem(String problem) {
         changes.accept(genie -> genie.withTranscript(genie.transcript().problem(problem)));
     }
 
@@ -498,7 +496,7 @@ public final class GenieRunner {
     private void transfer(String done, Transfer transfer) {
         Optional<Lighter.Lit> lit = lamp;
         if (lit.isEmpty()) {
-            said("The genie is asleep; wake it first.");
+            showProblem("The genie is asleep; wake it first.");
             return;
         }
         Thread.ofVirtual().name("transfer").start(() -> {
@@ -506,7 +504,7 @@ public final class GenieRunner {
                 transfer.run(lit.get());
                 if (!done.isEmpty()) changes.accept(genie -> genie.withTranscript(genie.transcript().notice(done)));
             } catch (IOException | InterruptedException failed) {
-                said(reason(failed));
+                showProblem(reason(failed));
             }
         });
     }
