@@ -9,7 +9,7 @@ import sprouts.Tuple;
 
 /// A lamp's complete, validated configuration.
 ///
-/// [ConfigLoader] checks every value before building this: the display size is in range,
+/// [ConfigLoadingUtil] checks every value before building this: the display size is in range,
 /// the address ranges parse, no two forwards share a name or a port, and `llm.forward` names a
 /// forward that exists. Code that reads it does not need to validate again, and every configuration
 /// mistake is reported in one place, with its file and key path.

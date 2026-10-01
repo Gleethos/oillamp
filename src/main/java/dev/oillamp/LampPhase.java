@@ -16,7 +16,7 @@ import sprouts.Tuple;
 ///
 /// It does the reading the pure planners cannot: resolves the path, looks at what is there,
 /// reads the configuration files and checks the filesystem can hold Unix sockets. The decisions are
-/// made by [LampPaths], [LampDirectoryUtil], [ConfigLoader], [Gpu] and
+/// made by [LampPaths], [LampDirectoryUtil], [ConfigLoadingUtil], [Gpu] and
 /// [LampPlanUtil]. The lock is taken afterwards, by `Commands.at`.
 final class LampPhase {
 
@@ -193,7 +193,7 @@ final class LampPhase {
     /// created from the shipped template, and the built-in defaults describe exactly what that
     /// template says.
     private Result<LampConfig> loadConfiguration(LampLayout layout, HostFacts host) {
-        return ConfigLoader.load(configurationFiles(host.user().home(), layout.config()));
+        return ConfigLoadingUtil.load(configurationFiles(host.user().home(), layout.config()));
     }
 
     /// The configuration files that apply to a lamp, in the order they are merged: the user's

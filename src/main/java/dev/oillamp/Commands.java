@@ -192,7 +192,7 @@ final class Commands {
     /// cannot be read, installing stays allowed; the lamp phase reports what is wrong with it.
     private Installing installing(Path lampPath) {
         if (!context.options().autoInstall()) return Installing.DECLINED;
-        Result<LampConfig> config = ConfigLoader.load(LampPhase.configurationFiles(home(),
+        Result<LampConfig> config = ConfigLoadingUtil.load(LampPhase.configurationFiles(home(),
                 lampPath.toAbsolutePath().resolve("oillamp.toml")));
         return config instanceof Result.Ok<LampConfig> ok && !ok.value().host().autoInstall()
                 ? Installing.DECLINED_IN_CONFIG
@@ -1082,7 +1082,7 @@ final class Commands {
         if (!Filesystem.exists(lampConfig))
             return Result.err(Problems.lampNotWritable(lampPath,
                     "there is no oillamp.toml here — run `oillamp at " + lampPath + "` to create one"));
-        return ConfigLoader.load(LampPhase.configurationFiles(home(), lampConfig));
+        return ConfigLoadingUtil.load(LampPhase.configurationFiles(home(), lampConfig));
     }
 
     private static String describe(LampConfig config) {

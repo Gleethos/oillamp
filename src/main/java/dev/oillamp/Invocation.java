@@ -185,7 +185,7 @@ final class Invocation {
         }
 
         if (modelService.isPresent()) {
-            Optional<String> wrong = ConfigLoader.serviceProblem(modelService.get());
+            Optional<String> wrong = ConfigLoadingUtil.serviceProblem(modelService.get());
             if (wrong.isPresent()) {
                 console.banner(version, "");
                 sink.accept(new LampEvent.Failure(Problems.usage(
@@ -193,7 +193,7 @@ final class Invocation {
                 return ExitStatus.USAGE;
             }
         }
-        if (modelKeyEnv.isPresent() && !ConfigLoader.isVariableName(modelKeyEnv.get())) {
+        if (modelKeyEnv.isPresent() && !ConfigLoadingUtil.isVariableName(modelKeyEnv.get())) {
             console.banner(version, "");
             sink.accept(new LampEvent.Failure(Problems.usage(
                     "--model-key-env \"" + modelKeyEnv.get() + "\": expected the name of an "

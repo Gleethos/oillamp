@@ -4,7 +4,7 @@ import java.nio.file.Path;
 
 /// The text of one configuration file and where it came from.
 ///
-/// [ConfigLoader] does not read files itself; it is given their text. The `origin`
+/// [ConfigLoadingUtil] does not read files itself; it is given their text. The `origin`
 /// lets a problem name the file a bad key is in when both the global file and the lamp's file
 /// contribute.
 record ConfigSource(Path origin, String text, Kind kind) {

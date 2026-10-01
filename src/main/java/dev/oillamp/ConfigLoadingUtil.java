@@ -21,9 +21,9 @@ import sprouts.Tuple;
 ///
 /// Every setting and its default is listed in `docs/ARCHITECTURE.md`, "Configuration
 /// reference".
-final class ConfigLoader {
+final class ConfigLoadingUtil {
 
-    private ConfigLoader() {}
+    private ConfigLoadingUtil() {}
 
     private static final TomlMapper TOML = TomlMapper.builder().build();
 
@@ -119,8 +119,8 @@ final class ConfigLoader {
             s.invalid("scale", Double.toString(scale), "a scale between 0.5 and 4.0");
             scale = fallback.scale();
         }
-        GpuMode gpu = s.oneOf("gpu", fallback.gpu(), ConfigLoader::parseGpuMode, "\"auto\", \"on\" or \"off\"");
-        WindowLayout windows = s.oneOf("windows", fallback.windows(), ConfigLoader::parseWindowLayout,
+        GpuMode gpu = s.oneOf("gpu", fallback.gpu(), ConfigLoadingUtil::parseGpuMode, "\"auto\", \"on\" or \"off\"");
+        WindowLayout windows = s.oneOf("windows", fallback.windows(), ConfigLoadingUtil::parseWindowLayout,
                                        "\"floating\" or \"tiling\"");
         return new LampConfig.Display(width, height, scale, gpu, windows);
     }
@@ -129,7 +129,7 @@ final class ConfigLoader {
         s.allowOnly("open_on_start", "clipboard", "view_only", "max_fps");
         return new LampConfig.Viewer(
                 s.bool("open_on_start", fallback.openOnStart()),
-                s.oneOf("clipboard", fallback.clipboard(), ConfigLoader::parseClipboard,
+                s.oneOf("clipboard", fallback.clipboard(), ConfigLoadingUtil::parseClipboard,
                         "\"to-agent\", \"both\" or \"none\""),
                 s.bool("view_only", fallback.viewOnly()),
                 bounded(s, "max_fps", fallback.maxFps(), 1, 120, "a frame rate between 1 and 120"));
@@ -181,7 +181,7 @@ final class ConfigLoader {
     private static NetworkPolicy readNetwork(ConfigSection s, NetworkPolicy fallback) {
         Decision fallbackDecision = fallback.defaultDecision();
         Decision defaultDecision = s.oneOf("default", fallbackDecision,
-                ConfigLoader::parseDecision, "\"allow\" or \"deny\"");
+                ConfigLoadingUtil::parseDecision, "\"allow\" or \"deny\"");
         boolean logAllowed    = s.bool("log_allowed", fallback.logAllowed());
         boolean consoleDenied = s.bool("console_denied", fallback.consoleDenied());
 
@@ -205,7 +205,7 @@ final class ConfigLoader {
                       "every rule needs a label — it is quoted in the log and in the 403 the agent sees");
             return Optional.empty();
         }
-        Optional<Decision> action = s.requiredOneOf("action", ConfigLoader::parseDecision,
+        Optional<Decision> action = s.requiredOneOf("action", ConfigLoadingUtil::parseDecision,
                                                     "\"allow\" or \"deny\"");
         if (action.isEmpty()) return Optional.empty();
 
@@ -364,7 +364,7 @@ final class ConfigLoader {
 
     private static LampConfig.Git readGit(ConfigSection s, LampConfig.Git fallback) {
         s.allowOnly("identity", "name", "email");
-        GitIdentity identity = s.oneOf("identity", fallback.identity(), ConfigLoader::parseGitIdentity,
+        GitIdentity identity = s.oneOf("identity", fallback.identity(), ConfigLoadingUtil::parseGitIdentity,
                                        "\"genie\", \"host\", \"custom\" or \"none\"");
         String name = oneLine(s, "name", fallback.name());
         String email = oneLine(s, "email", fallback.email());

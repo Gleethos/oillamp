@@ -483,7 +483,7 @@ The same, step by step:
    - Refuses network and FAT filesystems, which cannot hold Unix sockets.
    - `LampDirectoryUtil` decides what the directory is: missing, empty, an existing lamp, someone
      else's files, or damaged.
-   - Loads the configuration (`ConfigLoader`), decides on the GPU (`Gpu.decide`) and prints a
+   - Loads the configuration (`ConfigLoadingUtil`), decides on the GPU (`Gpu.decide`) and prints a
      summary.
    - `LampPlanUtil.planSkeleton` plans the directory tree, identity file, SSH keys, ownership
      changes, recording retention and the runtime directory. `StepRunner` runs it.
@@ -1319,7 +1319,7 @@ removed.
 | Lamp phase | `LampPhase`, `LampPlanUtil`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
 | History | `History` (reads the agent directory, writes and reads the repository), `GitFormat` (git's object format and the commit messages, pure) |
 | Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `TimeNotationUtil` (times as people write them), `WakePrompt` (a run's prompt, pure); in `dev.lamp`, `PiSessionFile` (pi's session files as `Lamp.Conversation`, pure) |
-| Configuration | `ConfigLoader`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `GeneratedFileTextUtil`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
+| Configuration | `ConfigLoadingUtil`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaults`, `LampConfig`, `GeneratedFileTextUtil`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `Problems`, `Result`, `LampEvent`, `ExitStatus` |
 | Shared | `Json` (every JSON file, message and answer goes through it) |
@@ -1366,7 +1366,7 @@ Configuration is TOML. Three layers are merged, later ones winning:
 
 Tables merge key by key. **Arrays replace**: if a lamp lists `network.rules`, it gets exactly those
 rules and none from the global file. Unknown keys are errors, with a suggestion for the nearest
-known key. `ConfigLoader` reads the merged tree with `ConfigSection`, which records every problem
+known key. `ConfigLoadingUtil` reads the merged tree with `ConfigSection`, which records every problem
 with its file, key path (such as `network.rules[0].cidrs`), value and expectation, and keeps going,
 so all problems are reported together.
 
