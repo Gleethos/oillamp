@@ -21,9 +21,9 @@ import sprouts.ValueSet;
 /// Where possible it tries things rather than checking versions. It runs
 /// `podman unshare true` because on Ubuntu 23.10 and newer AppArmor can block user namespaces
 /// even for an up-to-date podman.
-final class HostProbe {
+final class HostProbeUtil {
 
-    private HostProbe() {}
+    private HostProbeUtil() {}
 
     private static final Duration QUICK = Duration.ofSeconds(5);
 

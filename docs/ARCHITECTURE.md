@@ -469,7 +469,7 @@ The same, step by step:
 2. **`Invocation.execute`** parses the command line by hand (no library) and calls the matching
    method on `Commands`. Every usage mistake exits with code 2.
 3. **Host phase (`HostPhase`).**
-   - `HostProbe.probe` collects `HostFacts`: the distribution, your user and groups, the graphical
+   - `HostProbeUtil.probe` collects `HostFacts`: the distribution, your user and groups, the graphical
      session, which required packages are installed, your subordinate id ranges, podman's version
      and runtime, whether `podman unshare true` works, terminal emulators on `PATH`, GPU render
      nodes, CPU count, sudo, and the filesystem type of the lamp path.
@@ -1251,7 +1251,7 @@ clock or randomness. A few classes **do**. `TheShapeOfTheCodeSpec` fails the bui
 outside this list uses `java.nio.file.Files`, `ProcessBuilder`, `Process`, `SecureRandom`, `Thread`
 or `System`:
 
-`RealMachine`, `SimulatedMachine`, `Machine`, `Filesystem`, `LampLock`, `HostProbe`, `StepRunner`,
+`RealMachine`, `SimulatedMachine`, `Machine`, `Filesystem`, `LampLock`, `HostProbeUtil`, `StepRunner`,
 `HostPhase`, `LampPhase`, `Commands`, `ConsoleRenderer`, `OilLamp`, `Invocation`, `Supervisor`,
 `Relay`, `Control`, `Egress`, and `Lamp` in `dev.lamp`.
 
@@ -1315,7 +1315,7 @@ removed.
 |---|---|
 | Entry and commands | `OilLamp`, `Invocation`, `Commands`, `Context`, `ConsoleRenderer`, `Handbook` (the texts of `oillamp about` and `oillamp guide`) |
 | The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `Filesystem`, `LampLock` |
-| Host phase | `HostPhase`, `HostProbe`, `HostPlanUtil`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
+| Host phase | `HostPhase`, `HostProbeUtil`, `HostPlanUtil`, `HostFacts`, `HostRequirements`, `SubIdAllocator`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
 | Lamp phase | `LampPhase`, `LampPlanUtil`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
 | History | `History` (reads the agent directory, writes and reads the repository), `GitFormat` (git's object format and the commit messages, pure) |
 | Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `TimeNotationUtil` (times as people write them), `WakePrompt` (a run's prompt, pure); in `dev.lamp`, `PiSessionFile` (pi's session files as `Lamp.Conversation`, pure) |

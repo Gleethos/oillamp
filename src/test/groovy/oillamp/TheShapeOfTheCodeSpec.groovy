@@ -126,7 +126,7 @@ class TheShapeOfTheCodeSpec extends Specification {
             it stops quietly, one class at a time. Hence this test.
         """
         given: 'the classes whose job is to touch the outside world'
-            var allowed = ['RealMachine', 'SimulatedMachine', 'Filesystem', 'LampLock', 'HostProbe',
+            var allowed = ['RealMachine', 'SimulatedMachine', 'Filesystem', 'LampLock', 'HostProbeUtil',
                            'StepRunner', 'LampPhase', 'HostPhase', 'Commands', 'ConsoleRenderer',
                            'OilLamp', 'Invocation', 'Machine',
                            // The session. These three bind sockets, move bytes between them

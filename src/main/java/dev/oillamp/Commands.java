@@ -985,7 +985,7 @@ final class Commands {
         if (!(state instanceof LampState.Existing existing))
             return Result.err(Problems.lampNotWritable(root,
                     "this is not an oillamp lamp — run `oillamp at " + lampPath + "` to make one"));
-        return Result.ok(new LampLayout(root, existing.meta().agentId(), HostProbe.runtimeDirectory(machine)));
+        return Result.ok(new LampLayout(root, existing.meta().agentId(), HostProbeUtil.runtimeDirectory(machine)));
     }
 
     /// No supervisor answered. Either nothing is running, or a supervisor was killed without

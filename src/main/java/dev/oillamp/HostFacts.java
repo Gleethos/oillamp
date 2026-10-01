@@ -6,7 +6,7 @@ import java.util.Optional;
 import sprouts.Tuple;
 import sprouts.ValueSet;
 
-/// Everything oillamp learned about the host, gathered by [HostProbe].
+/// Everything oillamp learned about the host, gathered by [HostProbeUtil].
 ///
 /// This is the only input to [HostPlanUtil]. A check that fails is recorded as a fact (an
 /// empty `Optional`, a `Fails` case) rather than thrown, so one broken check does not
@@ -14,7 +14,7 @@ import sprouts.ValueSet;
 record HostFacts(
     OsRelease os,
     UserInfo user,
-    // $XDG_RUNTIME_DIR, or where it would be; see HostProbe.runtimeDirectory.
+    // $XDG_RUNTIME_DIR, or where it would be; see HostProbeUtil.runtimeDirectory.
     Path runtimeDirectory,
     GraphicalSession session,
     // Only the packages oillamp requires, not everything on the system.
