@@ -163,7 +163,8 @@ public final class GeniesView extends JPanel {
                 .borderAt(UI.Edge.LEFT, 3, on ? FLAME : TRANSPARENT)
                 .borderRadius(10))
             .withCursor(UI.Cursor.HAND)
-            .withTooltip(shown.viewAsString(it -> it.name() + " — " + it.activity() + ". Right-click for more."))
+            .withTooltip(shown.viewAsString(it -> it.name() + " — " + it.activity()
+                    + (it.showing().isEmpty() ? "" : ". Shows you: " + it.showing()) + ". Right-click for more."))
             .onMouseClick(it -> {
                 state.update(From.VIEW, s -> s.select(id));
                 if (it.isRightMouseButton()) genieMenu(id).show(it.getComponent(), it.mouseX(), it.mouseY());
@@ -457,10 +458,13 @@ public final class GeniesView extends JPanel {
     /// what the genie said it shows there.
     private UIForAnySwing<?, ?> desktopPane(Val<Boolean> shown) {
         Val<Boolean> showing = genie.viewAs(Boolean.class, it -> !it.showing().isEmpty());
-        Val<String> scale = Viewable.of(String.class, zoom, desktop.desktopSize(),
-                (it, size) -> it.isPanel() ? size : it.isFit() ? "fitted" : it.label());
-        // A recorded desktop keeps its size; at the panel's size, that needs saying.
+        // A recorded desktop keeps its size; at the panel's size, that needs saying, and it is
+        // drawn fitted, as with Fit.
         Val<Boolean> keeps = Viewable.of(Boolean.class, zoom, desktop.keepsItsSize(), (it, kept) -> it.isPanel() && kept);
+        Val<Boolean> zooms = Viewable.of(Boolean.class, zoom, keeps, (it, kept) -> !it.isPanel() || kept);
+        Val<String> panelSize = Viewable.of(String.class, keeps, desktop.desktopSize(), (kept, size) -> kept ? "fitted" : size);
+        Val<String> scale = Viewable.of(String.class, zoom, panelSize,
+                (it, size) -> it.isPanel() ? size : it.isFit() ? "fitted" : it.label());
         Val<String> hint = Viewable.of(String.class, keeps, state.viewAs(Boolean.class, GeniesState::narrow),
                 (kept, narrow) -> kept ? "Recorded, so it keeps its own size" : narrow ? "" : "Click the desktop to use it");
         return
@@ -472,22 +476,26 @@ public final class GeniesView extends JPanel {
             .add("growx, wmin 0",
                 label(genie.viewAsString(it -> "✦  " + it.name() + " shows you: " + it.showing()))
                 .isVisibleIf(showing)
+                .withTooltip(genie.viewAsString(Genie::showing))
                 .withStyle(it -> it.componentFont(f -> f.family(FONT).size(13).weight(2f).color(FLAME))))
             .add("growx, wmin 0",
-                box("fill, ins 0, gap 2, hidemode 3", "[][][][][][grow, right]")
+                box("fill, ins 0, gap 2, hidemode 3")
                 .add(modeButton("⤢  Panel", "Give the desktop the size of this panel, so what the genie shows fills it."
                                 + " It gets its own size back when you close it.", zoom.viewAs(Boolean.class, DesktopZoom::isPanel))
                      .onClick(it -> zoom.set(From.VIEW, DesktopZoom.PANEL)))
                 .add(modeButton("⊡  Fit", "Show the whole desktop at its own size, shrunk into this panel",
                                 zoom.viewAs(Boolean.class, DesktopZoom::isFit))
                      .onClick(it -> zoom.set(From.VIEW, DesktopZoom.FIT)))
-                .add(zoomButton("−", "Smaller (or Ctrl and the mouse wheel on the desktop)")
+                // At the panel's size, the desktop is drawn pixel for pixel: there is nothing to
+                // zoom, and between these the desktop's size could pass for something they change.
+                // A desktop that keeps its own size is drawn fitted, and zooms as from Fit.
+                .add(zoomButton("−", "Smaller (or Ctrl and the mouse wheel on the desktop)").isVisibleIf(zooms)
                      .onClick(it -> zoom.update(From.VIEW, z -> z.out(desktop.fitScale()))))
                 .add(label(scale).group(Skin.META)
                      .withMinSize(70, 0).withHorizontalAlignment(UI.HorizontalAlignment.CENTER))
-                .add(zoomButton("+", "Larger (or Ctrl and the mouse wheel on the desktop)")
+                .add(zoomButton("+", "Larger (or Ctrl and the mouse wheel on the desktop)").isVisibleIf(zooms)
                      .onClick(it -> zoom.update(From.VIEW, z -> z.in(desktop.fitScale()))))
-                .add("wmin 0", label(hint).group(Skin.META)))
+                .add("wmin 0, pushx, alignx right", label(hint).group(Skin.META)))
             .add("grow, push, wmin 0, hmin 0",
                 scrollPane().withEmptyBorder(0).withMinSize(0, 0)
                 .withStyle(it -> it.backgroundColor(SMOKE).border(1, BORDER).borderRadius(10))
