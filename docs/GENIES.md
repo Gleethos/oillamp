@@ -174,7 +174,7 @@ hold control characters, are refused.
 ## The chat
 
 Answers are Markdown as models write it: headings, emphasis, lists, quotes, links, inline code,
-fenced code blocks and tables, whose columns are lined up (`Markdown`, pure), set in the lamp's
+fenced code blocks and tables, whose columns are lined up (`MarkdownParsingUtil`, pure), set in the lamp's
 colours (`Typeset`) and painted by
 SwingTree's style engine, which wraps them to the room they get while they stream in. The newest
 characters of a streaming answer fade in. A genie that works with nothing streaming yet shows a

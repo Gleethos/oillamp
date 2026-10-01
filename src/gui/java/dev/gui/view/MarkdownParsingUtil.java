@@ -15,9 +15,9 @@ import sprouts.Tuple;
 /// Only what models commonly write is understood: headings, emphasis, inline code, fenced code
 /// blocks, lists, quotes, links, rules and tables. Anything else stays as it was written, and so
 /// does anything not closed yet, such as `**bold` while an answer is still streaming in.
-final class Markdown {
+final class MarkdownParsingUtil {
 
-    private Markdown() {}
+    private MarkdownParsingUtil() {}
 
     /// What a line is.
     enum Block { PARAGRAPH, H1, H2, H3, QUOTE, CODE, RULE, TABLE }
