@@ -541,6 +541,10 @@ public final class GeniesView extends JPanel {
                         // The composer is the box; the text in it needs no second one.
                         .withStyle(it -> it.backgroundColor(TRANSPARENT).border(0, TRANSPARENT))
                         .withTooltip("Return sends; Shift and Return starts a new line")
+                        // Swing stops laying out at the scroll pane, so the composer never learns
+                        // that the text grew or shrank; told here, it grows up to its hmax, then scrolls.
+                        .onTextChange(it -> SwingUtilities.getAncestorOfClass(JScrollPane.class, it.getComponent())
+                                                          .getParent().revalidate())
                         .onKeyPress(it -> {
                             KeyEvent key = it.getEvent();
                             if (key.getKeyCode() != KeyEvent.VK_ENTER) return;
