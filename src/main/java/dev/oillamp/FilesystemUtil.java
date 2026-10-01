@@ -22,9 +22,9 @@ import sprouts.Tuple;
 ///
 /// Files are written atomically: to a temporary file in the same directory, then renamed. An
 /// interrupted run cannot leave a half-written `lamp.json` or `runtime.env` behind.
-final class Filesystem {
+final class FilesystemUtil {
 
-    private Filesystem() {}
+    private FilesystemUtil() {}
 
     public static void createDirectory(Path path, PosixMode mode) throws IOException {
         if (Files.isDirectory(path)) {

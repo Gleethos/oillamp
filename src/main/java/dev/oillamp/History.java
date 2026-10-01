@@ -421,7 +421,7 @@ final class History {
     private void place(Path temporary, String id) throws IOException {
         Path target = objectPath(id);
         Files.createDirectories(target.getParent());
-        Filesystem.setMode(temporary, PosixMode.of(0444));
+        FilesystemUtil.setMode(temporary, PosixMode.of(0444));
         Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
@@ -440,27 +440,27 @@ final class History {
         if (!now.equals(parent))
             throw new IOException("the history changed while this save ran; it now ends at "
                     + now.orElse("nothing") + ", not " + parent.orElse("nothing"));
-        Filesystem.writeFile(repository.resolve(BRANCH), id + "\n", PosixMode.PRIVATE_FILE);
+        FilesystemUtil.writeFile(repository.resolve(BRANCH), id + "\n", PosixMode.PRIVATE_FILE);
     }
 
     /// Creates an empty repository, the first time a lamp is saved.
     private void ensureRepository() throws IOException {
         if (Files.isRegularFile(repository.resolve("HEAD"))) return;
-        Filesystem.createDirectories(repository.resolve("objects"), PosixMode.PRIVATE_DIR);
-        Filesystem.createDirectories(repository.resolve("refs").resolve("heads"), PosixMode.PRIVATE_DIR);
-        Filesystem.createDirectories(repository.resolve("refs").resolve("tags"), PosixMode.PRIVATE_DIR);
+        FilesystemUtil.createDirectories(repository.resolve("objects"), PosixMode.PRIVATE_DIR);
+        FilesystemUtil.createDirectories(repository.resolve("refs").resolve("heads"), PosixMode.PRIVATE_DIR);
+        FilesystemUtil.createDirectories(repository.resolve("refs").resolve("tags"), PosixMode.PRIVATE_DIR);
         // `gc.auto = 0` keeps git itself, run here by hand, from packing the objects into a
         // form oillamp does not read.
-        Filesystem.writeFile(repository.resolve("config"), """
+        FilesystemUtil.writeFile(repository.resolve("config"), """
                 [core]
                 \trepositoryformatversion = 0
                 \tbare = true
                 [gc]
                 \tauto = 0
                 """, PosixMode.PRIVATE_FILE);
-        Filesystem.writeFile(repository.resolve("description"),
+        FilesystemUtil.writeFile(repository.resolve("description"),
                 "The history of the oillamp lamp at " + layout.root() + "\n", PosixMode.PRIVATE_FILE);
-        Filesystem.writeFile(repository.resolve("HEAD"), "ref: " + BRANCH + "\n", PosixMode.PRIVATE_FILE);
+        FilesystemUtil.writeFile(repository.resolve("HEAD"), "ref: " + BRANCH + "\n", PosixMode.PRIVATE_FILE);
     }
 
     // ─── reading ───────────────────────────────────────────────────────────────────────────
@@ -565,7 +565,7 @@ final class History {
 
         Optional<GitFormat.Entry> configThen = wanted.get(CONFIG_FILE);
         if (configThen.isPresent() && !configThen.equals(now.get(CONFIG_FILE)))
-            Filesystem.writeBytes(layout.config(), readObject(configThen.get().id(), "blob"), PosixMode.PRIVATE_FILE);
+            FilesystemUtil.writeBytes(layout.config(), readObject(configThen.get().id(), "blob"), PosixMode.PRIVATE_FILE);
 
         applyModes(modesIn(now.get(MODES_FILE)), modesIn(wanted.get(MODES_FILE)),
                    agentThen.map(GitFormat.Entry::name).orElse(agentName));

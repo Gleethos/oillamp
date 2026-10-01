@@ -376,7 +376,7 @@ final class Supervisor {
 
         Tuple<Problem> warnings = Tuple.of(Problem.class);
         try {
-            Filesystem.writeFile(layout.sessionMeta(), sessionJson(), PosixMode.PRIVATE_FILE);
+            FilesystemUtil.writeFile(layout.sessionMeta(), sessionJson(), PosixMode.PRIVATE_FILE);
         } catch (IOException e) {
             // session.json is only informational (the lock decides), so this is a warning.
             warnings = warnings.add(Problems.internal("session.json", Problems.reason(e)));
@@ -457,7 +457,7 @@ final class Supervisor {
         // 5. Delete session.json last, because while it exists other oillamp commands assume a
         //    session is running.
         try {
-            Filesystem.deleteIfPresent(prepared.layout().sessionMeta());
+            FilesystemUtil.deleteIfPresent(prepared.layout().sessionMeta());
         } catch (IOException e) {
             problems = problems.add(Problems.internal("session.json", Problems.reason(e)));
         }
@@ -490,13 +490,13 @@ final class Supervisor {
     /// Updates `lastSessionAt` in `lamp.json`.
     private Tuple<Problem> recordLastSession() {
         Path metaFile = prepared.layout().lampMeta();
-        Optional<String> json = Filesystem.readString(metaFile);
+        Optional<String> json = FilesystemUtil.readString(metaFile);
         if (json.isEmpty()) return Tuple.of(Problem.class);
         LampState meta = LampDirectoryUtil.classify(prepared.layout().root(),
-                Filesystem.list(prepared.layout().root()), json);
+                FilesystemUtil.list(prepared.layout().root()), json);
         if (!(meta instanceof LampState.Existing existing)) return Tuple.of(Problem.class);
         try {
-            Filesystem.writeFile(metaFile,
+            FilesystemUtil.writeFile(metaFile,
                     LampDirectoryUtil.render(existing.meta().usedAt(machine.now())),
                     PosixMode.PUBLIC_FILE);
             return Tuple.of(Problem.class);
@@ -513,7 +513,7 @@ final class Supervisor {
                 "session         " + prepared.session(),
                 "sandbox         " + sandbox.container() + " (removed)");
         Path recording = prepared.layout().recording(prepared.session());
-        if (prepared.config().recording().enabled() && Filesystem.exists(recording))
+        if (prepared.config().recording().enabled() && FilesystemUtil.exists(recording))
             lines = lines.add("recording       " + recording);
         context.emit(new LampEvent.Summary("session " + prepared.session(), lines));
     }

@@ -1251,7 +1251,7 @@ clock or randomness. A few classes **do**. `TheShapeOfTheCodeSpec` fails the bui
 outside this list uses `java.nio.file.Files`, `ProcessBuilder`, `Process`, `SecureRandom`, `Thread`
 or `System`:
 
-`RealMachine`, `SimulatedMachine`, `Machine`, `Filesystem`, `LampLock`, `HostProbeUtil`, `StepRunner`,
+`RealMachine`, `SimulatedMachine`, `Machine`, `FilesystemUtil`, `LampLock`, `HostProbeUtil`, `StepRunner`,
 `HostPhase`, `LampPhase`, `Commands`, `ConsoleRenderer`, `OilLamp`, `Invocation`, `Supervisor`,
 `Relay`, `Control`, `Egress`, and `Lamp` in `dev.lamp`.
 
@@ -1271,7 +1271,7 @@ it.
   the container well enough for a whole session: on `podman run` it binds real Unix sockets and
   writes `ready.json`.
 
-Files **inside the lamp** are not behind `Machine`. They go through `Filesystem`, which touches the
+Files **inside the lamp** are not behind `Machine`. They go through `FilesystemUtil`, which touches the
 real disk even in tests, because the lamp's security depends on real permission bits, ownership
 and symlinks.
 
@@ -1314,7 +1314,7 @@ removed.
 | Area | Classes |
 |---|---|
 | Entry and commands | `OilLamp`, `Invocation`, `Commands`, `Context`, `ConsoleRenderer`, `IntroductionTextUtil` (the texts of `oillamp about` and `oillamp guide`) |
-| The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `Filesystem`, `LampLock` |
+| The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `FilesystemUtil`, `LampLock` |
 | Host phase | `HostPhase`, `HostProbeUtil`, `HostPlanUtil`, `HostFacts`, `HostRequirements`, `SubIdRangeUtil`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
 | Lamp phase | `LampPhase`, `LampPlanUtil`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampPaths`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `Retention`, `RecordingFile` |
 | History | `History` (reads the agent directory, writes and reads the repository), `GitFormat` (git's object format and the commit messages, pure) |

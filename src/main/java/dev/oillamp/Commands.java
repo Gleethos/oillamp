@@ -326,14 +326,14 @@ final class Commands {
     /// What `remove` would delete for one lamp, or why it must not: the directory holds nothing
     /// of oillamp's, or the lamp is still running.
     private Result<LampPlanUtil.Removal> examineForRemoval(Path root) {
-        DirListing listing = Filesystem.list(root);
+        DirListing listing = FilesystemUtil.list(root);
         Tuple<Path> agentDirs = Tuple.of(Path.class);
         for (String entry : listing.entries())
             if (entry.startsWith(LampLayout.AGENT_DIR_PREFIX)) agentDirs = agentDirs.add(root.resolve(entry));
 
         boolean anythingOfOurs = !agentDirs.isEmpty()
-                || Filesystem.exists(LampLayout.stateDirOf(root))
-                || Filesystem.exists(LampLayout.configOf(root));
+                || FilesystemUtil.exists(LampLayout.stateDirOf(root))
+                || FilesystemUtil.exists(LampLayout.configOf(root));
         if (!anythingOfOurs)
             return Result.err(Problems.lampNotWritable(root,
                     "this is not an oillamp lamp — there is nothing of oillamp's in " + root));
@@ -418,17 +418,17 @@ final class Commands {
         StringBuilder out = new StringBuilder("`oillamp remove` permanently deletes:\n\n");
         for (Path agentDir : found.agentDirs()) {
             out.append("  ").append(agentDir.getFileName()).append("/\n      the agent's home");
-            DirListing home = Filesystem.list(agentDir);
+            DirListing home = FilesystemUtil.list(agentDir);
             if (!home.readable())    out.append(" (cannot be read from here)");
             else if (home.isEmpty()) out.append(" (empty)");
             else                     out.append(" — ").append(String.join(", ", home.entries()));
             out.append('\n');
         }
-        if (Filesystem.exists(LampLayout.stateDirOf(found.root())))
+        if (FilesystemUtil.exists(LampLayout.stateDirOf(found.root())))
             out.append("  .oillamp/\n      this lamp's identity, keys, logs, recordings and sockets\n");
-        if (Filesystem.exists(LampLayout.configOf(found.root())))
+        if (FilesystemUtil.exists(LampLayout.configOf(found.root())))
             out.append("  oillamp.toml\n      your configuration for this lamp\n");
-        if (Filesystem.exists(LampLayout.readmeOf(found.root())))
+        if (FilesystemUtil.exists(LampLayout.readmeOf(found.root())))
             out.append("  README.txt\n");
         found.runtimeDir().ifPresent(runtime -> out.append("  ").append(runtime)
                 .append("\n      the sockets this lamp uses while it runs\n"));
@@ -439,11 +439,11 @@ final class Commands {
 
     /// Removes the lamp directory itself, but only if nothing else is left in it.
     private String removeTheRootIfEmpty(Path root) {
-        DirListing left = Filesystem.list(root);
+        DirListing left = FilesystemUtil.list(root);
         if (!left.readable() || !left.isEmpty())
             return " — " + root + " itself is untouched";
         try {
-            Filesystem.deleteIfPresent(root);
+            FilesystemUtil.deleteIfPresent(root);
             return ", and " + root + " with it: oillamp was all that was in it";
         } catch (IOException e) {
             return " — " + root + " is empty now, but could not be removed: " + Problems.reason(e);
@@ -512,7 +512,7 @@ final class Commands {
         }
         try {
             Optional<SessionId> session = idle.isPresent() ? Optional.empty()
-                    : Filesystem.readString(layout.sessionMeta()).flatMap(JsonUtil::parse)
+                    : FilesystemUtil.readString(layout.sessionMeta()).flatMap(JsonUtil::parse)
                                 .flatMap(json -> SessionId.parse(JsonUtil.text(json, "session")));
             if (idle.isEmpty())
                 context.info("history", "a session is running, so programs in the sandbox may be "
@@ -662,7 +662,7 @@ final class Commands {
             if (!limits.enabled()) context.report(Tuple.of(Problem.class, Problems.scheduleOff(layout.config())));
             // A running session looks at the schedule every half minute; this makes it look now.
             // Without a session there is nothing to tell, and that is fine.
-            if (Filesystem.exists(layout.controlSocket()))
+            if (FilesystemUtil.exists(layout.controlSocket()))
                 Control.ask(layout.controlSocket(), layout.root(), Control.Request.of("schedule-changed"), "schedule");
         }
         return ExitStatus.SUCCESS;
@@ -671,7 +671,7 @@ final class Commands {
     /// `configured`, switched on when a running session has the schedule on, as it does when it
     /// was started with `--enable-scheduling`.
     private static LampConfig.Schedule scheduleInForce(LampLayout layout, LampConfig.Schedule configured) {
-        if (configured.enabled() || !Filesystem.exists(layout.controlSocket())) return configured;
+        if (configured.enabled() || !FilesystemUtil.exists(layout.controlSocket())) return configured;
         boolean on = Control.ask(layout.controlSocket(), layout.root(), Control.Request.of("status"), "schedule")
                 .map(reply -> reply.values().get("schedule").map("on"::equals).orElse(false))
                 .orElseGet(problems -> false);
@@ -878,7 +878,7 @@ final class Commands {
             return exitStatusFor(failure.problems());
         }
         LampLayout layout = ((Result.Ok<LampLayout>) found).value();
-        Tuple<RecordingFile> existing = Filesystem.listRecordings(layout.recordingsDir());
+        Tuple<RecordingFile> existing = FilesystemUtil.listRecordings(layout.recordingsDir());
 
         if (open.isPresent()) return openRecording(existing, open.get(), layout);
 
@@ -980,8 +980,8 @@ final class Commands {
     /// `shell`, `stop`, `status` and `recordings`.
     private Result<LampLayout> layoutOf(Path lampPath) {
         Path root = LampPhase.resolve(machine, lampPath);
-        LampState state = LampDirectoryUtil.classify(root, Filesystem.list(root),
-                Filesystem.readString(root.resolve(".oillamp").resolve("lamp.json")));
+        LampState state = LampDirectoryUtil.classify(root, FilesystemUtil.list(root),
+                FilesystemUtil.readString(root.resolve(".oillamp").resolve("lamp.json")));
         if (!(state instanceof LampState.Existing existing))
             return Result.err(Problems.lampNotWritable(root,
                     "this is not an oillamp lamp — run `oillamp at " + lampPath + "` to make one"));
@@ -1009,8 +1009,8 @@ final class Commands {
         boolean containerLeft = machine.run(Machine.Command
                 .of("podman", "container", "exists", container.value())
                 .labelled("podman container exists")).succeeded();
-        boolean filesLeft = Filesystem.exists(layout.controlSocket())
-                || Filesystem.exists(layout.sessionMeta());
+        boolean filesLeft = FilesystemUtil.exists(layout.controlSocket())
+                || FilesystemUtil.exists(layout.sessionMeta());
         if (!containerLeft && !filesLeft) {
             context.report(why);
             return exitStatusFor(why);
@@ -1029,7 +1029,7 @@ final class Commands {
         for (Path leftover : Tuple.of(Path.class, layout.controlSocket(), layout.primarySshSocket(),
                                                 layout.extraSshSocket(), layout.sessionMeta())) {
             try {
-                Filesystem.deleteIfPresent(leftover);
+                FilesystemUtil.deleteIfPresent(leftover);
             } catch (IOException e) {
                 context.report(Tuple.of(Problem.class, Problems.internal("cleanup", Problems.reason(e))));
             }
@@ -1079,7 +1079,7 @@ final class Commands {
     /// The lamp's configuration merged over the global one, exactly as `at` reads it.
     private Result<LampConfig> loadConfig(Path lampPath) {
         Path lampConfig = lampPath.resolve("oillamp.toml");
-        if (!Filesystem.exists(lampConfig))
+        if (!FilesystemUtil.exists(lampConfig))
             return Result.err(Problems.lampNotWritable(lampPath,
                     "there is no oillamp.toml here — run `oillamp at " + lampPath + "` to create one"));
         return ConfigLoadingUtil.load(LampPhase.configurationFiles(home(), lampConfig));
@@ -1110,7 +1110,7 @@ final class Commands {
     /// Says who holds the lamp, from the `session.json` the running session wrote.
     private Problem busyProblem(LampPhase.Prepared prepared) {
         Optional<com.fasterxml.jackson.databind.JsonNode> session =
-                Filesystem.readString(prepared.layout().sessionMeta()).flatMap(JsonUtil::parse);
+                FilesystemUtil.readString(prepared.layout().sessionMeta()).flatMap(JsonUtil::parse);
         return Problems.lockBusy(prepared.layout().root(),
                 session.map(json -> json.path("supervisorPid").asLong(0)).orElse(0L),
                 session.map(json -> JsonUtil.text(json, "startedAt")).filter(when -> !when.isEmpty())

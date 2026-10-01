@@ -23,7 +23,7 @@ import sprouts.Tuple;
 /// the real entry point against it.
 ///
 /// Not everything goes through here. Files inside the lamp directory are read and written by
-/// [Filesystem] on the real disk, even in tests, because the lamp's security depends on real
+/// [FilesystemUtil] on the real disk, even in tests, because the lamp's security depends on real
 /// permission bits, ownership and symlinks. The sockets of a running session ([Relay],
 /// [Control], [Egress]) are also real.
 ///

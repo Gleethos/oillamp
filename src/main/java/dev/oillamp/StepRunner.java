@@ -73,11 +73,11 @@ final class StepRunner {
     private Optional<String> reasonToSkip(Step step) {
         return switch (step) {
             case Step.WriteFile write when write.policy() == Step.WritePolicy.IF_ABSENT
-                                            && Filesystem.exists(write.path()) ->
+                                            && FilesystemUtil.exists(write.path()) ->
                     Optional.of("already exists — leaving your version alone");
-            case Step.GenerateSshKey key when Filesystem.exists(key.privateKey()) ->
+            case Step.GenerateSshKey key when FilesystemUtil.exists(key.privateKey()) ->
                     Optional.of("the key already exists");
-            case Step.CreateDirectory directory when Filesystem.exists(directory.path()) ->
+            case Step.CreateDirectory directory when FilesystemUtil.exists(directory.path()) ->
                     Optional.of("already exists");
             case Step ignored -> Optional.empty();
         };
@@ -87,28 +87,28 @@ final class StepRunner {
         try {
             return switch (step) {
                 case Step.CreateDirectory s -> {
-                    Filesystem.createDirectory(s.path(), s.mode());
+                    FilesystemUtil.createDirectory(s.path(), s.mode());
                     yield Result.ok(step);
                 }
                 case Step.WriteFile s -> {
-                    Filesystem.writeFile(s.path(), s.content(), s.mode());
+                    FilesystemUtil.writeFile(s.path(), s.content(), s.mode());
                     yield Result.ok(step);
                 }
                 case Step.CopyFile s -> {
-                    Filesystem.copyFile(s.from(), s.to(), s.mode());
+                    FilesystemUtil.copyFile(s.from(), s.to(), s.mode());
                     yield Result.ok(step);
                 }
                 case Step.CreateSymlink s -> {
-                    Filesystem.createSymlink(s.link(), s.target());
+                    FilesystemUtil.createSymlink(s.link(), s.target());
                     yield Result.ok(step);
                 }
                 case Step.WriteLampMeta s -> {
-                    Filesystem.writeFile(s.path(), LampDirectoryUtil.render(s.meta()),
+                    FilesystemUtil.writeFile(s.path(), LampDirectoryUtil.render(s.meta()),
                             PosixMode.PUBLIC_FILE);
                     yield Result.ok(step);
                 }
                 case Step.RemovePath s -> {
-                    Filesystem.deleteIfPresent(s.path());
+                    FilesystemUtil.deleteIfPresent(s.path());
                     yield Result.ok(step);
                 }
                 case Step.RemoveTree s -> removeTree(s);
@@ -136,12 +136,12 @@ final class StepRunner {
     /// Copies the image's files out of the jar onto disk, where `podman build` can read them,
     /// with the modes from the manifest. Without its executable bit the entrypoint could not start.
     private Result<Step> extractImageContext(Step.ExtractImageContext step) throws IOException {
-        Filesystem.createDirectories(step.targetDir(), PosixMode.PUBLIC_DIR);
+        FilesystemUtil.createDirectories(step.targetDir(), PosixMode.PUBLIC_DIR);
         for (ImageResources.Entry entry : ImageResources.entries()) {
             Path target = step.targetDir().resolve(entry.path());
             Path parent = target.getParent();
-            if (parent != null) Filesystem.createDirectories(parent, PosixMode.PUBLIC_DIR);
-            Filesystem.writeBytes(target, ImageResources.read(entry.path()), entry.mode());
+            if (parent != null) FilesystemUtil.createDirectories(parent, PosixMode.PUBLIC_DIR);
+            FilesystemUtil.writeBytes(target, ImageResources.read(entry.path()), entry.mode());
         }
         return Result.ok(step);
     }
@@ -203,7 +203,7 @@ final class StepRunner {
     /// there. Checking only that the file exists would report a new session ready before its
     /// container had started.
     private boolean readyForThisSession(Step.AwaitReady step) {
-        return Filesystem.readString(step.readyFile())
+        return FilesystemUtil.readString(step.readyFile())
                 .flatMap(json -> ReadyInfo.parse(json).session())
                 .filter(step.session()::equals)
                 .isPresent();
@@ -327,12 +327,12 @@ final class StepRunner {
     /// Then with a plain delete for whatever is left. That covers a machine without podman, where
     /// a lamp that never ran contains only this user's files.
     private Result<Step> removeTree(Step.RemoveTree step) {
-        if (!Filesystem.exists(step.path())) return Result.ok(step);
+        if (!FilesystemUtil.exists(step.path())) return Result.ok(step);
         Machine.Outcome outcome = run("podman", Duration.ofMinutes(2), Tuple.of(String.class,
                 "podman", "unshare", "rm", "-rf", step.path().toString()));
-        if (outcome.succeeded() && !Filesystem.exists(step.path())) return Result.ok(step);
+        if (outcome.succeeded() && !FilesystemUtil.exists(step.path())) return Result.ok(step);
 
-        Tuple<Path> survivors = Filesystem.deleteTree(step.path());
+        Tuple<Path> survivors = FilesystemUtil.deleteTree(step.path());
         if (survivors.isEmpty()) return Result.ok(step);
         return Result.err(Problems.lampNotRemoved(survivors.first(), outcome instanceof Machine.Outcome.NotFound
                 ? "podman is not installed, so the files owned by the sandbox's own users are out of reach"

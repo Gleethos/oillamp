@@ -77,7 +77,7 @@ final class SandboxPhase {
         if (context.options().dryRun())
             return Result.ok(new Running(container, image, "{}"), started.warnings());
 
-        String ready = Filesystem.readString(layout.readyFile()).orElse("{}");
+        String ready = FilesystemUtil.readString(layout.readyFile()).orElse("{}");
         return Result.ok(new Running(container, image, ready), started.warnings());
     }
 

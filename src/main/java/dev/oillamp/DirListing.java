@@ -2,7 +2,7 @@ package dev.oillamp;
 
 import sprouts.Tuple;
 
-/// What a directory contained when oillamp looked at it. [Filesystem#list] produces it and
+/// What a directory contained when oillamp looked at it. [FilesystemUtil#list] produces it and
 /// [LampDirectoryUtil] decides what it means, so the classifier can be tested without a disk.
 ///
 /// @param entries the names in the directory, sorted

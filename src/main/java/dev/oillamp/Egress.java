@@ -167,7 +167,7 @@ final class Egress implements AutoCloseable {
             try {
                 // Relay.bind makes the socket 0600. The relay inside the container runs as the
                 // infra user, a different uid, so it needs 0666 to connect.
-                Filesystem.setMode(socket, PosixMode.SHARED_SOCKET);
+                FilesystemUtil.setMode(socket, PosixMode.SHARED_SOCKET);
             } catch (IOException e) {
                 return Result.err(Problems.cannotListen(socket, Problems.reason(e)));
             }

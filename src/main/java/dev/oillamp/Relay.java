@@ -91,7 +91,7 @@ final class Relay implements AutoCloseable {
             ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
             server.bind(UnixDomainSocketAddress.of(socket), ACCEPT_QUEUE);
             // 0600 at once: only this user may connect to the session's relays and control socket.
-            Filesystem.setMode(socket, PosixMode.PRIVATE_FILE);
+            FilesystemUtil.setMode(socket, PosixMode.PRIVATE_FILE);
             return Result.ok(server);
         } catch (IOException e) {
             return Result.err(Problems.cannotListen(socket, Problems.reason(e)));

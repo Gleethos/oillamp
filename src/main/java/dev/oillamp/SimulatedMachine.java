@@ -346,7 +346,7 @@ final class SimulatedMachine implements Machine {
             if (argument.startsWith("-")) continue;
             Path path = Path.of(argument);
             if (recursive) {
-                Tuple<Path> survivors = Filesystem.deleteTree(path);
+                Tuple<Path> survivors = FilesystemUtil.deleteTree(path);
                 if (!survivors.isEmpty())
                     return new Outcome.Finished(1, "",
                             "rm: cannot remove '" + survivors.first() + "': Permission denied\n",

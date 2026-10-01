@@ -323,7 +323,7 @@ final class Runs {
     }
 
     private String wakePrompt(Pending pending, History history, Instant now, ZoneId zone) {
-        Optional<String> notes = Filesystem.readString(layout.workspace().resolve("NOTES.md"));
+        Optional<String> notes = FilesystemUtil.readString(layout.workspace().resolve("NOTES.md"));
         Tuple<WakePrompt.Described> recent = recentRuns(history, WakePrompt.RECENT_RUNS);
         WakePrompt.Reason reason = pending.job().<WakePrompt.Reason>map(WakePrompt.Reason.ByJob::new)
                 .orElseGet(WakePrompt.Reason.Asked::new);

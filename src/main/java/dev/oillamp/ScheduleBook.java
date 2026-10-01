@@ -24,7 +24,7 @@ final class ScheduleBook {
 
     /// The schedule as it is now.
     Result<Schedule> read() {
-        Optional<String> text = Filesystem.readString(layout.scheduleFile());
+        Optional<String> text = FilesystemUtil.readString(layout.scheduleFile());
         return text.isEmpty() ? Result.ok(Schedule.empty()) : Schedule.parse(text.get(), layout.scheduleFile());
     }
 
@@ -47,7 +47,7 @@ final class ScheduleBook {
             if (!(current instanceof Result.Ok<Schedule>(Schedule schedule, var _))) return Result.err(current.problems());
             Result<T> changed = change.apply(schedule);
             if (!(changed instanceof Result.Ok<T>(T value, var _))) return changed;
-            Filesystem.writeFile(layout.scheduleFile(), stored.apply(value).render(), PosixMode.PRIVATE_FILE);
+            FilesystemUtil.writeFile(layout.scheduleFile(), stored.apply(value).render(), PosixMode.PRIVATE_FILE);
             return changed;
         } catch (IOException e) {
             return Result.err(Problems.scheduleDamaged(layout.scheduleFile(), Problems.reason(e)));

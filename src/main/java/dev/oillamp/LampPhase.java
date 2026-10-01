@@ -46,8 +46,8 @@ final class LampPhase {
         if (UNUSABLE_FILESYSTEMS.contains(host.fileSystemTypeOfLamp()))
             return Result.err(Problems.lampBadFilesystem(root, host.fileSystemTypeOfLamp()));
 
-        LampState state = LampDirectoryUtil.classify(root, Filesystem.list(root),
-                Filesystem.readString(root.resolve(".oillamp").resolve("lamp.json")));
+        LampState state = LampDirectoryUtil.classify(root, FilesystemUtil.list(root),
+                FilesystemUtil.readString(root.resolve(".oillamp").resolve("lamp.json")));
 
         AgentId agentId = switch (state) {
             case LampState.Existing existing -> existing.meta().agentId();
@@ -88,7 +88,7 @@ final class LampPhase {
 
         Result<Plan> skeleton = LampPlanUtil.planSkeleton(new LampPlanUtil.Inputs(
                 state, layout, config, session, agentId, machine.now(), context.version(),
-                existingRecordings(layout), Optional.empty(), Filesystem.exists(layout.sessionMeta()),
+                existingRecordings(layout), Optional.empty(), FilesystemUtil.exists(layout.sessionMeta()),
                 context.options().init()));
         if (skeleton instanceof Result.Err<Plan> failure) return Result.err(failure.problems());
         context.report(skeleton.warnings());
@@ -134,8 +134,8 @@ final class LampPhase {
                     "(rendered per session)", "(rendered per session)", "(rendered per session)",
                     config.schedule().enabled() ? Optional.of("(the scheduling tools)") : Optional.empty());
 
-        Optional<String> clientKey = Filesystem.readString(layout.clientKeyPub());
-        Optional<String> hostKey = Filesystem.readString(layout.hostKeyPub());
+        Optional<String> clientKey = FilesystemUtil.readString(layout.clientKeyPub());
+        Optional<String> hostKey = FilesystemUtil.readString(layout.hostKeyPub());
         if (clientKey.isEmpty() || hostKey.isEmpty())
             return Result.err(Problems.sshKeygenFailed(new Problem.Evidence.Command(
                     Tuple.of(String.class, "ssh-keygen"), 0,
@@ -203,10 +203,10 @@ final class LampPhase {
     static Tuple<ConfigSource> configurationFiles(Path home, Path lampConfig) {
         Tuple<ConfigSource> sources = Tuple.of(ConfigSource.class);
         Path global = home.resolve(".config").resolve("oillamp").resolve("config.toml");
-        Optional<String> globalText = Filesystem.readString(global);
+        Optional<String> globalText = FilesystemUtil.readString(global);
         if (globalText.isPresent())
             sources = sources.add(ConfigSource.userGlobal(global, globalText.get()));
-        Optional<String> lampText = Filesystem.readString(lampConfig);
+        Optional<String> lampText = FilesystemUtil.readString(lampConfig);
         if (lampText.isPresent())
             sources = sources.add(ConfigSource.lamp(lampConfig, lampText.get()));
         return sources;
@@ -292,6 +292,6 @@ final class LampPhase {
     }
 
     private Tuple<RecordingFile> existingRecordings(LampLayout layout) {
-        return Filesystem.listRecordings(layout.recordingsDir());
+        return FilesystemUtil.listRecordings(layout.recordingsDir());
     }
 }
