@@ -12,9 +12,9 @@ import sprouts.Tuple;
 /// as the other, and nobody would notice for a long time. That is why this is a pure function with
 /// its own tests for the awkward cases: ranges that touch, ranges out of order, a range that ends
 /// exactly where the new one would start.
-final class SubIdAllocator {
+final class SubIdRangeUtil {
 
-    private SubIdAllocator() {}
+    private SubIdRangeUtil() {}
 
     /// Below this, ranges would collide with real system and login users.
     public static final int FLOOR = 100_000;

@@ -80,7 +80,7 @@ final class HostPlanUtil {
                     problems = problems.add(Problems.noSudo(sudoReason(facts.sudo())));
                 problems = problems.add(Problems.hostNoSubIds(facts.user().name()));
             } else {
-                IdRange range = SubIdAllocator.allocate(
+                IdRange range = SubIdRangeUtil.allocate(
                         gap.allocatedUidRanges().addAll(gap.allocatedGidRanges()), SubIdFacts.REQUIRED_SIZE);
                 steps = steps.add(new Step.AddSubIds(facts.user().name(), range));
                 // podman caches the id map, so it has to be told the map changed.

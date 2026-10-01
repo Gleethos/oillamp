@@ -13,7 +13,7 @@ sealed interface SubIdFacts {
     record Present(IdRange uidRange, IdRange gidRange) implements SubIdFacts {}
 
     /// No usable range. Carries every range already allocated to _anyone_, because the
-    /// new one has to avoid all of them; see [SubIdAllocator].
+    /// new one has to avoid all of them; see [SubIdRangeUtil].
     record Missing(Tuple<IdRange> allocatedUidRanges, Tuple<IdRange> allocatedGidRanges) implements SubIdFacts {}
 
     /// The smallest block of subordinate ids oillamp accepts: one full container id space.
