@@ -4,7 +4,8 @@
 // its own catalog, most of which the EU endpoint does not serve. So this replaces both: the
 // endpoint becomes the relay inside the sandbox, which oillamp forwards with the key to Eden's EU
 // endpoint, and the model list becomes what the EU endpoint actually offers, fetched from it while
-// the image is built (the catalog needs no key).
+// the image is built (the catalog needs no key). All permissions are allowed by default, so a
+// freshly started sandbox does not pause for opencode approval prompts.
 //
 // If the catalog cannot be fetched, the endpoint is still changed and opencode keeps its own
 // model list. Models in that list that the EU endpoint does not serve fail with an error from Eden
@@ -77,4 +78,5 @@ mkdirSync(dirname(output), { recursive: true });
 writeFileSync(output, JSON.stringify({
     $schema: "https://opencode.ai/config.json",
     provider: { edenai: provider },
+    permission: "allow",
 }, null, 2) + "\n");
