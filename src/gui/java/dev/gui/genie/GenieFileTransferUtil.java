@@ -20,9 +20,9 @@ import sprouts.Tuple;
 /// Every file travels through the lamp's ssh command, as the bytes of a command's input or
 /// output. Nothing of the host is shared with the sandbox, and nothing the genie hands over is
 /// written anywhere on the host but where the user chose to save it.
-final class Handouts {
+final class GenieFileTransferUtil {
 
-    private Handouts() {}
+    private GenieFileTransferUtil() {}
 
     static final String MAKE_DIRECTORIES = "mkdir -p \"$HOME/outbox\" \"$HOME/inbox\"";
     static final String LIST = "find \"$HOME/outbox\" -maxdepth 1 -type f -printf '%s\\t%f\\n'";
