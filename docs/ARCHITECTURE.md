@@ -93,7 +93,8 @@ table lists every part that runs, what it is written in, where it runs and as wh
 | `dbus-daemon` | third-party | container, agent user | The session bus GUI applications expect. |
 | `/etc/profile.d/oillamp.sh` | bash | container, agent user | The environment of every shell: proxy, display, library paths, SDKMAN, prompt, banner. |
 | `lamp` (`rootfs/usr/local/bin/`) | bash | container, agent user | The desktop helper: screenshot, click, type, key, wait-stable. |
-| `lamp-pointer` (`rootfs/usr/local/lib/oillamp/`) | Python 3, standard library | container, agent user | Sends mouse events through the VNC socket for `lamp click` and friends. |
+| `lamp-pointer` (`rootfs/usr/local/lib/oillamp/`) | Python 3, standard library | container, agent user | Sends mouse events through the VNC socket for `lamp click` and friends, and reads the desktop's size for `lamp info`. |
+| `keep-windows-on-screen` (`rootfs/usr/local/lib/oillamp/`) | Python 3, standard library | container, infra user | With floating windows, moves windows back onto the desktop when it gets smaller, and back where they were when it grows. |
 | `install-*.sh`, `write-opencode-config.mjs` (`build/`) | bash, Node.js | container, root, **while the image is built** | Install Node.js, SDKMAN, pi, opencode, and write opencode's config. |
 | pi, opencode, Firefox, the JDK, … | third-party | container, agent user | What the agent uses. oillamp never starts these itself. |
 
@@ -205,7 +206,7 @@ session log**: what it reports exists only in the terminal it runs in, apart fro
 │   │   └── gitconfig            the name and email on the agent's commits
 │   ├── image/context/           the image build files, extracted from the jar before a build
 │   ├── sockets/                 not attached itself; each directory below is, on its own
-│   │   ├── host/                you;        proxy.sock, model.sock, fwd-*.sock, schedule.sock;
+│   │   ├── host/                you;        proxy.sock, model.sock, fwd-*.sock, schedule.sock, desktop.sock;
 │   │   │                        read-only in the container
 │   │   ├── infra/               infra user; vnc.sock, ready.json
 │   │   └── agent/               you;        ssh.sock
@@ -614,8 +615,10 @@ podman run --detach --name oillamp-<id>
    socket stays 0700. Opens X11 display `:0` to the agent: makes `/tmp/.X11-unix/X0` connectable
    and runs `xhost +si:localuser:agent` as the infra user. A failure here is logged but does not
    stop the sandbox.
-7. Starts **wayvnc** as the infra user on `/oillamp/sockets/infra/vnc.sock`, with its control
-   socket in `/run/lamp/private`.
+7. With floating windows, starts **keep-windows-on-screen** as the infra user. It is not watched:
+   if it stops, only a desktop that gets smaller can leave a window out of reach. Then starts
+   **wayvnc** as the infra user on `/oillamp/sockets/infra/vnc.sock`, with its control socket in
+   `/run/lamp/private`, and with `--disable-resizing` when recording is on.
 8. If recording is on, starts **wf-recorder** as the infra user, writing
    `/oillamp/recordings/<session>.mkv`.
 9. Starts the **network bridges** as the infra user: socat on `127.0.0.1:3128` to the proxy
@@ -642,7 +645,7 @@ umask, and prefixes each output line with a tag such as `[sway]`. In GPU mode it
 | uid inside | 1000 | 1001 |
 | uid on the host | yours | a subordinate id, such as 166536 |
 | home | `/home/agent` (the agent directory) | `/var/lib/lamp` |
-| runs | sshd per connection, the shell, D-Bus, everything the agent starts | sway, Xwayland, swaybg, wayvnc, wf-recorder, socat bridges |
+| runs | sshd per connection, the shell, D-Bus, everything the agent starts | sway, Xwayland, swaybg, wayvnc, wf-recorder, socat bridges, keep-windows-on-screen |
 | can reach | the Wayland and X11 display sockets, the VNC socket, its home, `/tmp`, the proxy port | its own sockets and files |
 
 The agent cannot signal the infra processes (different uid, no capabilities), cannot connect to
@@ -1110,6 +1113,32 @@ those two words, because that file is compositor configuration. Dialogs float ei
 No key binding exits sway or runs a command, because the agent can type into the desktop and sway
 runs as the infra user. `TheSandboxImageSpec` checks the sway config for this.
 
+**The size can change while the session runs.** A VNC viewer may ask for another size (RFB's
+ExtendedDesktopSize: the message `SetDesktopSize`), and wayvnc then changes the size of
+`HEADLESS-1`. Genies does this to show the desktop at the size of its panel, and gives the desktop
+its own size back, `display.width` × `display.height`, when the panel closes; `SessionOpened` and
+`Lamp.session()` say that size. What follows a change of size:
+
+| What | How it follows |
+|---|---|
+| fullscreen and tiled windows | sway sizes them to the new screen |
+| floating windows | `keep-windows-on-screen` listens to sway's output events. Once none came for 0.3 s, it moves each floating window that no longer fits, and makes it smaller only if it must. It remembers where the window was, and when the screen grows, puts it back there, as far as the screen allows. A window someone moved in the meantime, by more than 24 pixels, is left where they put it. The commands it sends sway are made of window ids and positions only, never of window titles, which the agent chooses |
+| `lamp info` | asks the desktop for its size now, through `lamp-pointer`, and also says its own size when the two differ |
+| the recording | does not follow: wf-recorder loses the screen at a change of size ("invalid buffer dimensions"), stays alive, and writes the last picture thousands of times a second. So with recording on, wayvnc runs with `--disable-resizing` and answers every request for another size with "not allowed" (status 1). The agent can reach the VNC socket too; this keeps it from spoiling the recording |
+
+wayvnc 0.9.1 misreads a `SetDesktopSize` message that arrives in pieces. It drops the viewer
+("uninterpretable qemu message"), and with `--disable-resizing` the whole desktop crashed, which
+ends the session. A viewer must therefore send that message in one write; Genies does. The agent
+can reach the VNC socket, so it can end its own session this way; it cannot reach the host by it.
+
+**The agent asks the user to look** with `lamp show "what it shows"`. That sends
+`{"op":"show","what":…}` to `/oillamp/sockets/host/desktop.sock`, which the session serves on the
+host with `Control.Server` for as long as it runs. The session takes control characters out of
+the text, cuts it to 200 characters, and reports `LampEvent.LookAtDesktop`: the terminal of
+`oillamp at` prints it, and an application that shows the desktop can open it. Any other request
+on that socket is refused. A session that could not open the socket starts anyway, with a warning;
+`lamp show` then fails and says the user was not told.
+
 The agent's environment points at the display with `WAYLAND_DISPLAY=/run/lamp/wayland-1` and
 `DISPLAY=:0`. `_JAVA_AWT_WM_NONREPARENTING=1` stops Swing drawing a second set of decorations.
 
@@ -1123,14 +1152,16 @@ The agent's environment points at the display with `WAYLAND_DISPLAY=/run/lamp/wa
 | `lamp type "text"` | `wtype -s 150 -- "text"` |
 | `lamp key ctrl+shift+t` | `wtype -s 150 -M ctrl -M shift -k t` |
 | `lamp wait-stable [SECONDS]` | a screenshot every 0.5 s until two are identical (default limit 10 s) |
-| `lamp info` | size, renderer, output name and screenshot directory |
+| `lamp info` | the size now (and the desktop's own size, when it differs), renderer, output name and screenshot directory |
+| `lamp show "text"` | asks the user to look at the desktop, through the session (see Desktop, above) |
 
 There is no window list: that would need sway's control socket, which the agent must not reach.
 
 **Pointer input goes through VNC.** `lamp-pointer` connects to the desktop's VNC socket and sends
 absolute pointer positions and button presses, the same way your viewer does. It remembers the last
 position in `$XDG_RUNTIME_DIR`, so `lamp scroll AMOUNT` scrolls where the pointer last was.
-Reaching the VNC socket gives the agent nothing new: it can already see the screen and send input.
+Reaching the VNC socket gives the agent little new: it can already see the screen and send input.
+It can also ask for another desktop size, as a viewer can; a recorded desktop refuses.
 (`wlrctl` was tried first and failed: its moves are relative, and each call's virtual mouse
 disappears when the call ends, taking pointer focus with it.)
 
@@ -1145,9 +1176,9 @@ follows `viewer.clipboard` (default `to-agent`: you can paste in, the sandbox ca
 
 ### Recording
 
-Off by default. With `recording.enabled = true`, wf-recorder writes
-`.oillamp/recordings/<session>.mkv` at `recording.max_fps` frames per second. The quality option is
-called `crf` for software encoders and `qp` for hardware ones (`*vaapi*`, `*nvenc*`, `*qsv*`,
+Off by default. With `recording.enabled = true`, the desktop keeps its size (see Desktop), and
+wf-recorder writes `.oillamp/recordings/<session>.mkv` at `recording.max_fps` frames per second.
+The quality option is called `crf` for software encoders and `qp` for hardware ones (`*vaapi*`, `*nvenc*`, `*qsv*`,
 `*_v4l2m2m`). A Matroska file stays playable even if the recorder is killed.
 
 Retention (`RecordingRetentionUtil.select`) runs at every session start and on `oillamp recordings --prune`. A
