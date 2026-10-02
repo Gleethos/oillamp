@@ -1,6 +1,7 @@
 package gui
 
 import dev.gui.ErrorLog
+import dev.gui.LoggedErrors
 import dev.gui.model.Trouble
 import spock.lang.Specification
 import spock.lang.TempDir
@@ -110,6 +111,35 @@ class NoticingWhatWentWrongSpec extends Specification {
         then:
             noExceptionThrown()
             shown.size() == 1
+    }
+
+    def 'An exception SwingTree caught in an event handler, and logged, reaches the error log too'() {
+        reportInfo """
+            SwingTree catches an exception thrown by a button's handler, say, and logs it through
+            slf4j rather than letting it through. Genies gives slf4j a provider of its own, which
+            hands such errors to the error log, so they are written and shown like any other.
+            Warnings only go to the error output, and the rest nowhere.
+        """
+        given: 'the error log handles what no code caught, as when Genies runs'
+            var log = new ErrorLog(tmp.resolve('errors.log'))
+            var shown = new CopyOnWriteArrayList<Trouble>()
+            log.showIn { shown << it }
+            var before = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler(log)
+
+        when: 'SwingTree logs an error from a click handler, and a warning'
+            var logger = new LoggedErrors().loggerFactory.getLogger('swingtree.UIForAnySwing')
+            logger.error('Error in mouse click event action handler!', new IllegalStateException('a bug in Genies'))
+            logger.warn('Something odd, but harmless')
+
+        then: 'the error is shown, saying who logged it'
+            shown.size() == 1
+            shown[0].where() == 'swingtree.UIForAnySwing, which logged: Error in mouse click event action handler!'
+            shown[0].what() == 'java.lang.IllegalStateException: a bug in Genies'
+            Files.readString(tmp.resolve('errors.log')).contains('a bug in Genies')
+
+        cleanup:
+            Thread.setDefaultUncaughtExceptionHandler(before)
     }
 
     private static NullPointerException paintingFailure() {
