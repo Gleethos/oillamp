@@ -245,9 +245,16 @@ else
 fi
 
 # ── the VNC server the human watches through ─────────────────────────────────────────────────
+# A viewer may ask wayvnc to give the desktop another size, and wayvnc then changes the size of
+# HEADLESS-1. While the desktop is recorded, it refuses: wf-recorder does not survive a change of
+# size. It loses the screen with "invalid buffer dimensions", stays alive, and from then on writes
+# the last picture thousands of times a second, at four cores' worth of CPU. The agent can reach
+# this socket too (lamp-pointer does), so this is also what stops it from spoiling the recording.
+resizing=()
+[ "$OILLAMP_RECORDING_ENABLED" = true ] && resizing=(--disable-resizing)
 drop lamp 000 wayvnc env XDG_RUNTIME_DIR=/run/lamp WAYLAND_DISPLAY=wayland-1 \
      wayvnc --unix-socket --socket=/run/lamp/private/wayvncctl --render-cursor \
-            --config=/dev/null \
+            --config=/dev/null "${resizing[@]}" \
             --max-fps="$OILLAMP_VNC_MAX_FPS" --output=HEADLESS-1 \
             /oillamp/sockets/infra/vnc.sock
 VNC_PID=$LAST_PID
