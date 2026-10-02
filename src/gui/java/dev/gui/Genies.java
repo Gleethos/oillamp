@@ -101,12 +101,14 @@ public final class Genies implements Actions {
     }
 
     public static void main(String[] args) {
+        Shelf shelf = Shelf.standard(name -> Optional.ofNullable(System.getenv(name)));
+        ErrorLog errors = new ErrorLog(shelf.root().resolve("errors.log"));
+        Thread.setDefaultUncaughtExceptionHandler(errors);
         GeniesView.setUpLook();
-        SwingUtilities.invokeLater(Genies::open);
+        SwingUtilities.invokeLater(() -> open(shelf));
     }
 
-    private static void open() {
-        Shelf shelf = Shelf.standard(name -> Optional.ofNullable(System.getenv(name)));
+    private static void open(Shelf shelf) {
         Optional<String> environmentKey = Optional.ofNullable(System.getenv(Settings.KEY_VARIABLE)).filter(key -> !key.isBlank());
         Genies app = new Genies(Var.of(GeniesState.of(shelf.genies(), shelf.settings(), environmentKey)),
                                 shelf, new LampLighter());
