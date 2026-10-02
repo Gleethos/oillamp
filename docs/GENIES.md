@@ -29,6 +29,7 @@ models served in the EU.
 | the list of genies: each one's id and name | `~/.local/share/genies/genies.json` | Genies |
 | the model settings: which place the model runs; Eden AI's key source, entered key and model; the server elsewhere's address, key and model; the model server on this computer's address and model | `~/.local/share/genies/settings.json`, readable by the user only | Genies |
 | each genie's lamp: its home, its settings, its state | `~/.local/share/genies/lamps/<genie id>/` | oillamp |
+| what went wrong that Genies did not expect, with stack traces; past 1 MB it becomes `errors.log.1` | `~/.local/share/genies/errors.log` | Genies |
 | each genie's conversations, one file each, with every branch | in its home, `.pi/agent/sessions/<folder>/*.jsonl`, inside its lamp | pi, run by the lamp's session |
 | the genie's instructions, and the model pi uses | in its home, `.pi/agent/APPEND_SYSTEM.md`, and `defaultProvider` and `defaultModel` in `.pi/agent/settings.json` | Genies writes them at every wake |
 | the files a genie hands over | `~/outbox` in its home | the genie |
