@@ -42,6 +42,7 @@ import sprouts.Var;
 import sprouts.Viewable;
 
 import swingtree.UI;
+import swingtree.components.JGlassPane;
 import swingtree.dialogs.ConfirmAnswer;
 
 /// Genies: a chat app whose every conversation partner is an AI agent with a sandboxed Linux
@@ -109,6 +110,7 @@ public final class Genies implements Actions {
         Genies app = new Genies(Var.of(GeniesState.of(shelf.genies(), shelf.settings(), environmentKey)),
                                 shelf, new LampLighter());
         JFrame frame = new JFrame("Genies");
+        new JGlassPane(frame.getRootPane());
         frame.setContentPane(new GeniesView(app.state, app));
         frame.setIconImage(GeniesView.windowIcon());
         frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
