@@ -2,12 +2,17 @@ package gui
 
 import dev.gui.ErrorLog
 import dev.gui.LoggedErrors
+import dev.gui.model.Genie
+import dev.gui.model.GeniesState
+import dev.gui.model.Settings
 import dev.gui.model.Trouble
 import spock.lang.Specification
+import sprouts.Tuple
 import spock.lang.TempDir
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -140,6 +145,36 @@ class NoticingWhatWentWrongSpec extends Specification {
 
         cleanup:
             Thread.setDefaultUncaughtExceptionHandler(before)
+    }
+
+    def 'The window says what went wrong until the user has looked, and keeps no more than twenty'() {
+        reportInfo """
+            The list of genies says when something went wrong, until the user clicks it to see
+            what. What they saw is then off the window; one that happened while they looked
+            stays, so it is not missed. Should a bug strike many times, only the latest twenty
+            are kept in the window; the error log has every one.
+        """
+        given:
+            var state = GeniesState.of(Tuple.of(Genie), Settings.defaults(), Optional.empty())
+
+        when: 'twenty-five different things go wrong'
+            (1..25).each { state = state.withTrouble(trouble("failure $it")) }
+
+        then: 'the latest twenty are on the window, oldest first'
+            state.troubles().size() == GeniesState.MOST_TROUBLES
+            state.troubles().first().what() == 'failure 6'
+            state.troubles().last().what() == 'failure 25'
+
+        when: 'the user looks at them, and meanwhile one more goes wrong'
+            var seen = state.troubles()
+            state = state.withTrouble(trouble('failure 26')).withoutTroubles(seen)
+
+        then: 'only that one is left'
+            state.troubles().toList()*.what() == ['failure 26']
+    }
+
+    private static Trouble trouble(String what) {
+        new Trouble(Instant.now(), 'thread genie', what, what + '\n\tat somewhere')
     }
 
     private static NullPointerException paintingFailure() {

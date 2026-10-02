@@ -117,6 +117,10 @@ public final class GeniesView extends JPanel {
         return desktop.letGo();
     }
 
+    private static String troubleWords(int troubles) {
+        return troubles == 1 ? "⚠  Something went wrong" : "⚠  " + troubles + " things went wrong";
+    }
+
     private UIForAnySwing<?, ?> sidebar() {
         return
             panel("fill, wrap 1, ins 0, gap 10, hidemode 3", "[grow]", "[][][][grow][]").group(Skin.SIDEBAR)
@@ -136,6 +140,12 @@ public final class GeniesView extends JPanel {
                 .addAll(genies, this::genieChip))
             .add("growx",
                 box("fill, wrap 1, ins 0, gap 6, hidemode 3")
+                .add("growx",
+                    button(state.viewAsString(it -> troubleWords(it.troubles().size()))).group(Skin.QUIET_BUTTON)
+                    .withStyle(it -> it.backgroundColor(TROUBLE_WASH).border(1, TROUBLE).componentFont(f -> f.color(TROUBLE)))
+                    .isVisibleIf(state.viewAs(Boolean.class, it -> !it.troubles().isEmpty()))
+                    .withTooltip("Genies carried on. Click to see what happened")
+                    .onClick(it -> showTroubles()))
                 .add("growx, wmin 0", ViewPartsUtil.wrapped(state.viewAsString(it -> it.settingsProblem().orElse("")), TROUBLE,
                         state.viewAs(Boolean.class, it -> it.settingsProblem().isPresent())))
                 .add("growx",
@@ -349,10 +359,14 @@ public final class GeniesView extends JPanel {
         Val<Boolean> awake = Viewable.of(Boolean.class, phase, onChat, (it, chat) -> it.isAwake() && chat);
         Val<Boolean> working = phase.viewAs(Boolean.class, it -> it == Genie.Phase.WORKING);
         Val<Boolean> wide = state.viewAs(Boolean.class, GeniesState::roomForWords);
+        // The list of genies says when something went wrong; while it is hidden, this button does.
+        Val<Boolean> hiddenTroubles = state.viewAs(Boolean.class, it -> !it.sidebarShown() && !it.troubles().isEmpty());
         return
             panel("fill, ins 0, gap 10, hidemode 3", "[][30!][grow][]").group(Skin.HEADER)
             .isVisibleIf(visible)
-            .add(button("☰").group(Skin.ICON_BUTTON).withTooltip("Show or hide your genies")
+            .add(button(hiddenTroubles.viewAsString(it -> it ? "☰ ⚠" : "☰")).group(Skin.ICON_BUTTON)
+                 .withStyle(hiddenTroubles, (it, style) -> it ? style.componentFont(f -> f.color(TROUBLE)) : style)
+                 .withTooltip(hiddenTroubles.viewAsString(it -> it ? "Show your genies, and what went wrong" : "Show or hide your genies"))
                  .onClick(it -> sidebarShown.update(From.VIEW, shown -> !shown)))
             .add(ViewPartsUtil.lamp(phase, 30))
             .add("growx, wmin 0",
@@ -468,7 +482,7 @@ public final class GeniesView extends JPanel {
         Val<String> hint = Viewable.of(String.class, keeps, state.viewAs(Boolean.class, GeniesState::narrow),
                 (kept, narrow) -> kept ? "Recorded, so it keeps its own size" : narrow ? "" : "Click the desktop to use it");
         return
-            panel("fill, wrap 1, ins 8 12 12 12, gap 6, hidemode 3", "[grow]", "[][][grow]")
+            panel("fill, wrap 1, ins 8 12 12 12, gap 6, hidemode 3", "[grow]", "[][grow]")
             .isVisibleIf(shown)
             .withMinSize(0, 0)
             .withStyle(state.viewAs(Integer.class, GeniesState::desktopHeight), (height, it) -> it
@@ -497,7 +511,8 @@ public final class GeniesView extends JPanel {
                      .onClick(it -> zoom.update(From.VIEW, z -> z.in(desktop.fitScale()))))
                 .add("wmin 0, pushx, alignx right", label(hint).group(Skin.META)))
             .add("grow, push, wmin 0, hmin 0",
-                scrollPane().withEmptyBorder(0).withMinSize(0, 0)
+                scrollPane()
+                .withEmptyBorder(0).withMinSize(0, 0)
                 .withStyle(it -> it.backgroundColor(SMOKE).border(1, BORDER).borderRadius(10))
                 .add(UI.of(desktop)));
     }
@@ -735,6 +750,34 @@ public final class GeniesView extends JPanel {
             if (answer instanceof String text && !text.isBlank())
                 state.update(From.VIEW, it -> it.update(id, genie -> genie.withName(text.strip())));
         });
+    }
+
+    /// The troubles, newest first, each with its stack trace, which the user can select and copy.
+    /// Once seen, they are off the window; the error log keeps them.
+    private void showTroubles() {
+        Tuple<Trouble> seen = state.get().troubles();
+        if (seen.isEmpty()) return;
+        StringBuilder details = new StringBuilder();
+        for (int i = seen.size() - 1; i >= 0; i--) details.append(seen.get(i).details()).append('\n');
+        String what = seen.size() == 1 ? "Something went wrong that Genies did not expect."
+                                       : seen.size() + " things went wrong that Genies did not expect.";
+        UI.dialog(SwingUtilities.getWindowAncestor(this), "What went wrong")
+            .withOnCloseOperation(UI.OnWindowClose.DISPOSE)
+            .onClosed(it -> state.update(From.VIEW, now -> now.withoutTroubles(seen)))
+            .add(UI.use(look, () ->
+                panel("fill, wrap 1, ins 16 18 16 18, gap 10", "[grow]", "[][][grow][]").group(Skin.FRAME)
+                .add("growx, wmin 0", label(what).group(Skin.TITLE))
+                .add("growx, wmin 0", label("Genies carried on. All of it is kept in " + actions.errorLog()
+                                            + ", which helps whoever fixes it.").group(Skin.META))
+                .add("grow, push, w 760, h 380",
+                    scrollPane().add(textArea(details.toString()).group(Skin.INPUT)
+                        .withStyle(it -> it.componentFont(f -> f.family(MONO).size(12)))
+                        .peek(area -> { area.setEditable(false); area.setCaretPosition(0); })))
+                .add("right",
+                    button("Close").group(Skin.QUIET_BUTTON)
+                    .onClick(it -> SwingUtilities.getWindowAncestor(it.getComponent()).dispose()))
+                .get(JPanel.class)))
+            .show();
     }
 
     private void confirmDelete(UUID id) {

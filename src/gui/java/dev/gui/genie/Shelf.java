@@ -44,6 +44,9 @@ public final class Shelf {
 
     public Path root() { return root; }
 
+    /// Where Genies writes what went wrong that it did not expect.
+    public Path errorLog() { return root.resolve("errors.log"); }
+
     /// The lamp directory of the genie `id`.
     public Path lampOf(UUID id) { return root.resolve("lamps").resolve(id.toString()); }
 

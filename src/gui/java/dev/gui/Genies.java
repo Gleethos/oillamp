@@ -104,19 +104,20 @@ public final class Genies implements Actions {
         // Before anything logs, so that SwingTree's errors reach the error log too.
         System.setProperty("slf4j.provider", LoggedErrors.class.getName());
         Shelf shelf = Shelf.standard(name -> Optional.ofNullable(System.getenv(name)));
-        ErrorLog errors = new ErrorLog(shelf.root().resolve("errors.log"));
+        ErrorLog errors = new ErrorLog(shelf.errorLog());
         Thread.setDefaultUncaughtExceptionHandler(errors);
         GeniesView.setUpLook();
-        SwingUtilities.invokeLater(() -> open(shelf));
+        SwingUtilities.invokeLater(() -> open(shelf, errors));
     }
 
-    private static void open(Shelf shelf) {
+    private static void open(Shelf shelf, ErrorLog errors) {
         Optional<String> environmentKey = Optional.ofNullable(System.getenv(Settings.KEY_VARIABLE)).filter(key -> !key.isBlank());
         Genies app = new Genies(Var.of(GeniesState.of(shelf.genies(), shelf.settings(), environmentKey)),
                                 shelf, new LampLighter());
         JFrame frame = new JFrame("Genies");
         new JGlassPane(frame.getRootPane());
         GeniesView view = new GeniesView(app.state, app);
+        errors.showIn(trouble -> SwingUtilities.invokeLater(() -> app.state.update(it -> it.withTrouble(trouble))));
         frame.setContentPane(view);
         frame.setIconImage(GeniesView.windowIcon());
         frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
@@ -150,6 +151,8 @@ public final class Genies implements Actions {
     }
 
     // ─── actions ───────────────────────────────────────────────────────────────────────────
+
+    @Override public Path errorLog() { return shelf.errorLog(); }
 
     /// A new genie wakes at once, as a new chat is ready at once elsewhere.
     @Override public void newGenie() {

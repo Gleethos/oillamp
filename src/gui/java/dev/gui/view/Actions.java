@@ -72,6 +72,9 @@ public interface Actions {
     /// The settings page closes. Leaving it, however, keeps the settings.
     void settingsDone();
 
+    /// Where what went wrong that Genies did not expect is written.
+    Path errorLog();
+
     /// The genie's desktop, while it is awake.
     Optional<Desktop> desktopOf(UUID genie);
 }
