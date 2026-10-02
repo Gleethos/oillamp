@@ -124,6 +124,9 @@ public final class RfbConnection implements AutoCloseable {
 
     /// Asks the desktop to take this size, in its own pixels. It answers with
     /// [Listener#resized] once it has it, or with [Listener#keptItsSize].
+    ///
+    /// The request goes out in one write. wayvnc 0.9.1 misreads one that arrives in pieces: it
+    /// drops the viewer, and a recorded desktop crashed altogether.
     public void askForSize(int width, int height) {
         int w = Math.clamp(width, 1, 0xffff), h = Math.clamp(height, 1, 0xffff), id = screenId;
         send(new byte[] {(byte) 251, 0, (byte) (w >> 8), (byte) w, (byte) (h >> 8), (byte) h, 1, 0,
