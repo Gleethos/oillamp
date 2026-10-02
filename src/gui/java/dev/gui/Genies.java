@@ -249,9 +249,9 @@ public final class Genies implements Actions {
                     if (event instanceof LampEvent.Failure failure) why.append(failure.problem().whatHappened());
                 }).remove();
                 if (removed != ExitStatus.SUCCESS)
-                    System.err.println("genies: could not remove the lamp at " + lamp + ": " + why);
+                    report(new IOException("could not remove the lamp at " + lamp + ": " + why));
             } catch (IOException | InterruptedException failed) {
-                System.err.println("genies: could not remove the lamp at " + lamp + ": " + failed.getMessage());
+                report(new IOException("could not remove the lamp at " + lamp, failed));
             }
         });
     }
@@ -325,11 +325,18 @@ public final class Genies implements Actions {
                 change -> SwingUtilities.invokeLater(() -> state.update(it -> it.update(genie, change)))));
     }
 
+    /// Hands `failed` to the error log, which is this thread's uncaught exception handler, so the
+    /// user sees it, and goes on.
+    private static void report(Exception failed) {
+        Thread thread = Thread.currentThread();
+        thread.getUncaughtExceptionHandler().uncaughtException(thread, failed);
+    }
+
     private void keepSettings() {
         try {
             shelf.keep(state.get().settings());
         } catch (IOException failed) {
-            System.err.println("genies: could not keep the settings in " + shelf.root() + ": " + failed.getMessage());
+            report(new IOException("could not keep the settings in " + shelf.root(), failed));
         }
     }
 
@@ -337,7 +344,7 @@ public final class Genies implements Actions {
         try {
             shelf.keep(state.get().genies());
         } catch (IOException failed) {
-            System.err.println("genies: could not keep the genies in " + shelf.root() + ": " + failed.getMessage());
+            report(new IOException("could not keep the genies in " + shelf.root(), failed));
         }
     }
 
