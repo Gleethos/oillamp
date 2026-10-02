@@ -131,6 +131,10 @@ public final class Lamp implements AutoCloseable {
         ///
         /// Called on one thread that reads the engine's output. A listener that takes long holds
         /// up the ones after it, so a Swing application hands the event over to its event thread.
+        ///
+        /// A listener that throws misses nothing else: the exception goes to the reading thread's
+        /// uncaught exception handler, and the other listeners, and the lamp itself, still get
+        /// this event and every one after it.
         public Starting onEvent(Consumer<LampEvent> listener) {
             List<Consumer<LampEvent>> more = new ArrayList<>(listeners);
             more.add(listener);
@@ -428,7 +432,7 @@ public final class Lamp implements AutoCloseable {
             while ((line = output.readLine()) != null)
                 LampEvent.fromJson(line).ifPresent(event -> {
                     events.add(event);
-                    listeners.forEach(listener -> listener.accept(event));
+                    passToListeners(listeners, event);
                 });
         }
         return new Ran(ExitStatus.ofCode(engine.waitFor()).orElse(ExitStatus.ERROR), List.copyOf(events));
@@ -996,21 +1000,32 @@ public final class Lamp implements AutoCloseable {
         try (BufferedReader output = new BufferedReader(
                 new InputStreamReader(engine.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
-            while ((line = output.readLine()) != null)
-                LampEvent.fromJson(line).ifPresent(this::deliver);
+            while ((line = output.readLine()) != null) {
+                try {
+                    LampEvent.fromJson(line).ifPresent(this::deliver);
+                } catch (RuntimeException unexpected) {
+                    report(unexpected);
+                }
+            }
         } catch (IOException ended) {
             // The engine's output closed; it has exited, or is about to.
+        } catch (Error broken) {
+            // Reading broke off. No one may wait for the session on an event that will not come,
+            // and the engine may go on until it is closed.
+            runningOrEnded.countDown();
+            throw broken;
+        } finally {
+            int code;
+            try {
+                code = engine.waitFor();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                code = -1;
+            }
+            exit = Optional.of(ExitStatus.ofCode(code).orElse(ExitStatus.ERROR));
+            runningOrEnded.countDown();
+            ended.countDown();
         }
-        int code;
-        try {
-            code = engine.waitFor();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            code = -1;
-        }
-        exit = Optional.of(ExitStatus.ofCode(code).orElse(ExitStatus.ERROR));
-        runningOrEnded.countDown();
-        ended.countDown();
     }
 
     private void deliver(LampEvent event) {
@@ -1019,7 +1034,25 @@ public final class Lamp implements AutoCloseable {
             opened = Optional.of(session);
             runningOrEnded.countDown();
         }
-        for (Consumer<LampEvent> listener : listeners) listener.accept(event);
+        passToListeners(listeners, event);
+    }
+
+    /// Gives `event` to each listener. One that throws does not keep it from the others.
+    private static void passToListeners(List<Consumer<LampEvent>> listeners, LampEvent event) {
+        for (Consumer<LampEvent> listener : listeners) {
+            try {
+                listener.accept(event);
+            } catch (RuntimeException failed) {
+                report(failed);
+            }
+        }
+    }
+
+    /// Hands `failed` to this thread's uncaught exception handler, where the application sees
+    /// it as it sees any other, and goes on.
+    private static void report(RuntimeException failed) {
+        Thread thread = Thread.currentThread();
+        thread.getUncaughtExceptionHandler().uncaughtException(thread, failed);
     }
 
     /// Starts the engine with this process's own Java runtime and classpath, so that the

@@ -60,6 +60,44 @@ class HoldingALampSpec extends Specification {
             !Files.exists(host.lampPath().resolve('.oillamp/session.json'))
     }
 
+    def 'A listener that throws does not keep the lamp, or the other listeners, from hearing the session'() {
+        reportInfo """
+            An application's listener is its own code, and may have a bug. When it throws, the
+            exception goes to the uncaught exception handler, where the application can log and
+            show it, and nothing else changes: the lamp still learns that the session is up, and
+            every other listener still hears every event. A broken listener once left the reading
+            thread dead, and the application waiting for a session that was long running.
+        """
+        given: 'the application collects what goes wrong, as a Swing application might log it'
+            var failures = new CopyOnWriteArrayList<Throwable>()
+            var before = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { thread, failed -> failures << failed }
+
+        and: 'its first listener throws at every event'
+            var lamp = Lamp.at(host.lampPath())
+                           .onEvent { throw new IllegalStateException('a bug in the application') }
+                           .onEvent { received << it }
+                           .launchedBy(host.launcher).start()
+
+        expect: 'the session comes up anyway'
+            lamp.awaitRunning(Duration.ofSeconds(30))
+
+        when:
+            lamp.close()
+
+        then: 'the other listener heard the whole session'
+            received.any { it instanceof LampEvent.SessionOpened }
+            received.any { it instanceof LampEvent.Summary
+                           && it.lines().toList().any { line -> line.contains('asked to stop by the application') } }
+
+        and: 'each failure reached the handler'
+            failures.size() == received.size()
+            failures.every { it.message == 'a bug in the application' }
+
+        cleanup:
+            Thread.setDefaultUncaughtExceptionHandler(before)
+    }
+
     def 'An application can leave its lamp running when it closes, until oillamp stop ends it'() {
         reportInfo """
             An agent with a schedule should keep working after the application that started it
