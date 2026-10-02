@@ -657,12 +657,13 @@ final class Supervisor {
     private void dispatchUserBriefing() {
         if (briefed) return;
         briefed = true;
-        // The sandbox is up, so the agent can be woken from now on.
-        runs.begin();
         LampLayout layout = prepared.layout();
         LampConfig config = prepared.config();
         context.emit(new LampEvent.SessionOpened(prepared.session().value(), SandboxSshUtil.commandArgv(layout),
                 layout.vncSocket(), config.display().width(), config.display().height()));
+        // The sandbox is up, so the agent can be woken from now on. Only now, so that an
+        // application hears of a job's run only after it has heard that the session is open.
+        runs.begin();
         if (context.options().embedded()) {
             context.emit(new LampEvent.Summary("your session is up", Tuple.of(String.class,
                     "started by      an application, which ends it when it is done",

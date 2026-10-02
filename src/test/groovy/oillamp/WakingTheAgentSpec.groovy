@@ -239,6 +239,9 @@ class WakingTheAgentSpec extends Specification {
             The lamp is saved as the run ends, whatever happened, with the run's name and the
             agent's last words in the snapshot's message, so the history reads as a log of what
             the agent did and when. A job meant to run once is then off the schedule.
+
+            A job that is due as the session starts runs at once, but only after the session has
+            said it is open, so an application that waits for that hears of the run after it.
         """
         given: 'a job for five minutes from now'
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
@@ -256,7 +259,12 @@ class WakingTheAgentSpec extends Specification {
             var finished = waitFor(LampEvent.RunFinished)
             stop(lamp)
 
-        then: 'the agent was woken with the job\'s prompt, as the job\'s first run'
+        then: 'the session said it was open before anything of the run'
+            reported.any { it instanceof LampEvent.SessionOpened }
+            reported.findIndexOf { it instanceof LampEvent.SessionOpened } <
+                    reported.findIndexOf { it instanceof LampEvent.RunQueued || it instanceof LampEvent.RunStarted }
+
+        and: 'the agent was woken with the job\'s prompt, as the job\'s first run'
             reported.find { it instanceof LampEvent.RunStarted }.run() == new LampEvent.Run('run-1', Optional.of('job-1'),
                     'Write the weekly report into ~/workspace/report.md', Optional.empty())
             prompts.size() == 1
