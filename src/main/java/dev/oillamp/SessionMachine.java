@@ -34,12 +34,19 @@ record SessionMachine(Settings settings) {
     /// @param lamp            the lamp directory, for the commands the messages suggest
     /// @param openWindows     false for a session that opens no windows (`--no-windows`, or
     ///                        `--embedded`): it is up as soon as the sandbox is
-    record Settings(Duration terminalTimeout, boolean openViewer, boolean viewOnly, String lamp,
-                    boolean openWindows) {}
+    record Settings(
+            Duration terminalTimeout,
+            boolean openViewer,
+            boolean viewOnly,
+            String lamp,
+            boolean openWindows
+    ) {}
 
     /// Where the session goes next, and what should be done on the way.
-    record Transition(SessionState next, Tuple<SessionAction> actions) {
-
+    record Transition(
+            SessionState next,
+            Tuple<SessionAction> actions
+    ) {
         static Transition to(SessionState next, SessionAction... actions) {
             return new Transition(next, Tuple.of(SessionAction.class, actions));
         }
