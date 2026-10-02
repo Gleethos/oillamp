@@ -82,6 +82,8 @@ dependencies {
 
     // Genies: declarative Swing, and a look-and-feel that looks at home on a modern desktop.
     guiImplementation group: 'io.github.globaltcad', name: 'swing-tree', version: '1.0.0'
+    // For dev.gui.LoggedErrors, which takes what SwingTree logs to Genies' error log.
+    guiImplementation group: 'org.slf4j', name: 'slf4j-api', version: '2.0.17'
     guiImplementation group: 'com.formdev', name: 'flatlaf', version: '3.6.1'
     // Its fonts, bundled, so Genies looks the same whatever font the desktop is set to.
     guiImplementation group: 'com.formdev', name: 'flatlaf-fonts-inter', version: '4.1'

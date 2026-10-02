@@ -101,6 +101,8 @@ public final class Genies implements Actions {
     }
 
     public static void main(String[] args) {
+        // Before anything logs, so that SwingTree's errors reach the error log too.
+        System.setProperty("slf4j.provider", LoggedErrors.class.getName());
         Shelf shelf = Shelf.standard(name -> Optional.ofNullable(System.getenv(name)));
         ErrorLog errors = new ErrorLog(shelf.root().resolve("errors.log"));
         Thread.setDefaultUncaughtExceptionHandler(errors);
