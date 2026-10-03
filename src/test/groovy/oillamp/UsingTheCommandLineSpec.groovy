@@ -100,6 +100,20 @@ class UsingTheCommandLineSpec extends Specification {
             'stop LAMP --message=note'         | "`oillamp stop` does not take --message" | 'oillamp stop <dir>'
             'shell LAMP --embedded'            | "`oillamp shell` does not take --embedded" | 'oillamp shell <dir>'
             'list --embedded'                  | "`oillamp list` does not take --embedded"  | 'oillamp list'
+            'stop LAMP --init'                 | "`oillamp stop` does not take --init"    | 'oillamp stop <dir>'
+            'status LAMP --no-viewer'          | "`oillamp status` does not take --no-viewer" | 'oillamp status <dir>'
+            'status LAMP --no-windows'         | "`oillamp status` does not take --no-windows" | 'oillamp status <dir>'
+            'view LAMP --model-service https://api.eu.edenai.run' | "`oillamp view` does not take --model-service" | 'oillamp view <dir>'
+            'view LAMP --model-key-env EDENAI_API_KEY' | "`oillamp view` does not take --model-key-env" | 'oillamp view <dir>'
+            'stop LAMP --enable-scheduling'    | "`oillamp stop` does not take --enable-scheduling" | 'oillamp stop <dir>'
+            'history LAMP --in c1'             | "`oillamp history` does not take --in"   | 'oillamp history <dir>'
+            'history LAMP --after e1'          | "`oillamp history` does not take --after" | 'oillamp history <dir>'
+            'history LAMP --instead-of e1'     | "`oillamp history` does not take --instead-of" | 'oillamp history <dir>'
+            'stop LAMP --no-wait'              | "`oillamp stop` does not take --no-wait" | 'oillamp stop <dir>'
+            'save LAMP --cron @daily'          | "`oillamp save` does not take --cron"    | 'oillamp save <dir>'
+            'save LAMP --at in-2h'             | "`oillamp save` does not take --at"      | 'oillamp save <dir>'
+            'save LAMP --expires in-3d'        | "`oillamp save` does not take --expires" | 'oillamp save <dir>'
+            'status LAMP --prune'              | "`oillamp status` does not take --prune" | 'oillamp status <dir>'
     }
 
     def 'The options a command does take are still accepted: oillamp #line'() {
@@ -112,7 +126,7 @@ class UsingTheCommandLineSpec extends Specification {
         where:
             line << ['--verbose doctor', 'doctor --dry-run', 'at LAMP --dry-run --init --no-viewer --no-install',
                      'at LAMP --dry-run --no-windows',
-                     'remove LAMP --dry-run', 'recordings LAMP --prune --dry-run', '--no-color list',
+                     'remove LAMP --dry-run', 'remove LAMP -y', 'recordings LAMP --prune --dry-run', '--no-color list',
                      'config LAMP check', 'completion bash',
                      'at LAMP --dry-run --model-service https://api.eu.edenai.run --model-key-env EDENAI_API_KEY',
                      'at LAMP --dry-run --enable-scheduling', 'doctor --no-install',
@@ -141,6 +155,9 @@ class UsingTheCommandLineSpec extends Specification {
         then:
             outcome.status() == ExitStatus.SUCCESS
             outcome.console().contains('oillamp 0.2.0')
+
+        and: 'and the Java it runs on, which a bug report needs as well'
+            outcome.console().contains('java ' + Runtime.version())
     }
 
     def 'Someone new can learn what oillamp is for, and how to use it, from oillamp itself'() {
