@@ -62,6 +62,15 @@ public interface Actions {
     /// Stops a run the genie has going, such as a job's.
     void stopRun(UUID genie, String run);
 
+    /// Saves the genie's home as a moment of its history, awake or asleep.
+    ///
+    /// @param message what to remember it by; may be empty
+    void save(UUID genie, String message);
+
+    /// Brings the genie's home back to its history's moment `moment`. An awake genie sleeps
+    /// meanwhile, and wakes again after. The window has asked the user already.
+    void goBack(UUID genie, String moment);
+
     /// Shows the genie's chat at the conversation pi knows by `conversation`, such as the one a
     /// job's run had.
     void openConversation(UUID genie, String conversation);

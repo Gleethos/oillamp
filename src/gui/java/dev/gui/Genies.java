@@ -29,6 +29,7 @@ import dev.gui.model.Conversation;
 import dev.gui.model.Conversations;
 import dev.gui.model.Genie;
 import dev.gui.model.GeniesState;
+import dev.gui.model.History;
 import dev.gui.model.Settings;
 import dev.gui.view.Actions;
 import dev.gui.view.GeniesView;
@@ -76,6 +77,9 @@ public final class Genies implements Actions {
     /// The genie whose schedule is on show, or [GeniesState#NONE]. Kept as a field for the same
     /// reason: a schedule is read from its lamp when it comes on show.
     private final Val<UUID> scheduleShown;
+    /// The genie whose history is on show, or [GeniesState#NONE]. Kept as a field for the same
+    /// reason: a history is read from its lamp when it comes on show.
+    private final Val<UUID> historyShown;
 
     Genies(Var<GeniesState> state, Shelf shelf, Lighter lighter) {
         this.state = state;
@@ -97,6 +101,11 @@ public final class Genies implements Actions {
         Viewable.cast(scheduleShown).onChange(From.ALL, it -> {
             UUID shown = it.currentValue().orElse(GeniesState.NONE);
             if (!shown.equals(GeniesState.NONE)) runner(shown).schedule().read();
+        });
+        this.historyShown = state.viewAs(UUID.class, it -> it.page() == GeniesState.Page.HISTORY ? it.selected() : GeniesState.NONE);
+        Viewable.cast(historyShown).onChange(From.ALL, it -> {
+            UUID shown = it.currentValue().orElse(GeniesState.NONE);
+            if (!shown.equals(GeniesState.NONE)) runner(shown).history().read();
         });
     }
 
@@ -277,6 +286,21 @@ public final class Genies implements Actions {
 
     @Override public void stopRun(UUID id, String run) {
         Optional.ofNullable(runners.get(id)).ifPresent(runner -> runner.stopRun(run));
+    }
+
+    // ─── the history ───────────────────────────────────────────────────────────────────────
+
+    @Override public void save(UUID id, String message) { runner(id).history().save(message); }
+
+    /// Not while the genie wakes or works, which going back would cut short. Waking it again
+    /// afterwards waits until it went back: the runner does one thing after the other.
+    @Override public void goBack(UUID id, String moment) {
+        Optional<Genie> genie = state.get().find(id);
+        if (genie.isEmpty() || genie.get().phase() == Genie.Phase.WAKING || genie.get().phase() == Genie.Phase.WORKING) return;
+        Optional<History.Moment> target = genie.get().history().find(moment);
+        if (target.isEmpty()) return;
+        runner(id).goBackTo(target.get());
+        if (genie.get().phase().isAwake()) wake(id);
     }
 
     /// While the genie wakes, the chat stays where it is, as the tree does.

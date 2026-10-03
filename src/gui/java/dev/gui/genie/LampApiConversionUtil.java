@@ -10,6 +10,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 import dev.gui.model.Conversation;
+import dev.gui.model.History;
 import dev.gui.model.Recurrence;
 import dev.gui.model.Schedule;
 import dev.gui.pi.PiEvent;
@@ -106,5 +107,27 @@ final class LampApiConversionUtil {
             case TIMED_OUT -> Schedule.Outcome.TIMED_OUT;
             case INTERRUPTED, CANCELLED -> Schedule.Outcome.STOPPED;
         };
+    }
+
+    // ─── the history ───────────────────────────────────────────────────────────────────────
+
+    /// The lamp's snapshots as the history page shows them, newest first, as oillamp lists them.
+    static Tuple<History.Moment> moments(List<LampEvent.Snapshot> snapshots) {
+        Tuple<History.Moment> moments = Tuple.of(History.Moment.class);
+        for (LampEvent.Snapshot snapshot : snapshots) {
+            History.Kind kind = switch (snapshot.kind()) {
+                case STARTUP -> History.Kind.WOKE;
+                case SHUTDOWN -> History.Kind.SLEPT;
+                case RUNNING, IDLE -> History.Kind.SAVED;
+                case BEFORE_RUN -> History.Kind.BEFORE_RUN;
+                case RUN -> History.Kind.RAN;
+                case BEFORE_RESTORE -> History.Kind.BEFORE_GOING_BACK;
+                case RESTORE -> History.Kind.WENT_BACK;
+            };
+            moments = moments.add(new History.Moment(snapshot.id(), snapshot.at(), kind, snapshot.message(),
+                    snapshot.run().orElse(""), snapshot.job().orElse(""),
+                    snapshot.outcome().map(LampApiConversionUtil::outcome), snapshot.conversation().orElse("")));
+        }
+        return moments;
     }
 }

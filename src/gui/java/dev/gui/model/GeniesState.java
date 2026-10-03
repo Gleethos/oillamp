@@ -16,7 +16,7 @@ import sprouts.Tuple;
 /// @param genies   every genie, in the order they were made
 /// @param selected the genie the chat shows. Refers to no genie while there are none
 /// @param settings the model settings every genie uses when it wakes
-/// @param page     the chat, or the settings
+/// @param page     what the main area shows
 /// @param environmentKey the key in `EDENAI_API_KEY` where Genies started, if any; kept here so
 ///                 the settings can say whether it is there, and never shown
 /// @param sidebarShown whether the list of genies is shown; hidden to make room in a narrow window
@@ -51,8 +51,8 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
         }
     }
 
-    /// The selected genie's chat, its schedule, or the settings every genie shares.
-    public enum Page { CHAT, SCHEDULE, SETTINGS }
+    /// The selected genie's chat, its schedule or its history, or the settings every genie shares.
+    public enum Page { CHAT, SCHEDULE, HISTORY, SETTINGS }
 
     /// The selection when there is no genie.
     public static final UUID NONE = new UUID(0, 0);
@@ -179,9 +179,10 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
         return withGenies(rest).withSelected(next);
     }
 
-    /// Shows genie `id`: its chat, or its schedule when a schedule is on show.
+    /// Shows genie `id`: its schedule or its history when another genie's is on show, and its
+    /// chat otherwise.
     public GeniesState select(UUID id) {
-        return find(id).isPresent() ? withSelected(id).withPage(page == Page.SCHEDULE ? Page.SCHEDULE : Page.CHAT) : this;
+        return find(id).isPresent() ? withSelected(id).withPage(page == Page.SCHEDULE || page == Page.HISTORY ? page : Page.CHAT) : this;
     }
 
     /// The selected genie's schedule, laid out around [#now].

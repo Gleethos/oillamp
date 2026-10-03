@@ -18,6 +18,8 @@ import dev.gui.desktop.Desktop;
 import dev.gui.model.Conversation;
 import dev.gui.model.Conversations;
 import dev.gui.model.Genie;
+import dev.gui.model.Handout;
+import dev.gui.model.History;
 import dev.gui.model.Settings;
 import dev.gui.pi.PiEvent;
 import dev.lamp.Lamp;
@@ -64,6 +66,7 @@ public final class GenieRunner {
     /// only while it shows that conversation.
     private volatile String conversationOfRuns = "";
     private final ScheduleKeeper schedule;
+    private final HistoryKeeper history;
     /// The events of a lamp being joined, until the catch-up ends with the agent's status, so
     /// that the chat is set up before the run in progress is replayed into it. Empty otherwise.
     private volatile Optional<List<LampEvent>> heldWhileCatchingUp = Optional.empty();
@@ -78,10 +81,14 @@ public final class GenieRunner {
         this.lighter = lighter;
         this.changes = changes;
         this.schedule = new ScheduleKeeper(lighter.unlit(directory), changes);
+        this.history = new HistoryKeeper(lighter.unlit(directory), changes);
     }
 
     /// The genie's schedule, which can be read and changed awake or asleep.
     public ScheduleKeeper schedule() { return schedule; }
+
+    /// The genie's history, which can be read and saved to awake or asleep.
+    public HistoryKeeper history() { return history; }
 
     /// The genie's lamp directory.
     public Path directory() { return directory; }
@@ -111,9 +118,7 @@ public final class GenieRunner {
                 GenieFileTransferUtil.makeDirectories(lit);
                 GeniePiSetupUtil.prepare(home().orElseThrow(() -> new IOException("the genie's lamp has no home")),
                         name, settings.model());
-                List<Lamp.Conversation> all = Lamp.conversations(directory);
-                String file = !conversation.isEmpty() ? conversation : all.isEmpty() ? "" : all.getFirst().file();
-                showConversation(file, leaf);
+                showConversation(fileOrMostRecent(conversation), leaf);
                 var files = GenieFileTransferUtil.list(lit);
                 changes.accept(genie -> genie.withHandouts(files).awake());
                 reloadConversations();
@@ -382,6 +387,7 @@ public final class GenieRunner {
             return;
         }
         schedule.onLampEvent(event, Instant.now());
+        history.onLampEvent(event);
         switch (event) {
             case LampEvent.RunStarted started -> {
                 LampEvent.Run run = started.run();
@@ -463,6 +469,37 @@ public final class GenieRunner {
         sleeping = true;
         lamp.ifPresent(Lighter.Lit::close);
         lamp = Optional.empty();
+        history.wentOut();
+    }
+
+    // ─── going back in time ────────────────────────────────────────────────────────────────
+
+    /// Brings the genie's home back to how it was at `moment`, conversations included. oillamp
+    /// refuses while the sandbox runs, so a lit lamp is put out first, and the genie is left
+    /// asleep. oillamp saves the home before it goes back, so this can be undone. The chat stays
+    /// in its conversation if that is still there, and goes to the most recent one otherwise.
+    public void goBackTo(History.Moment moment) {
+        work.execute(() -> {
+            changes.accept(genie -> genie.withHistory(genie.history().withBusy("Going back…").withNote("").withProblem("")));
+            if (lamp.isPresent()) {
+                putOutLamp();
+                changes.accept(Genie::asleep);
+            }
+            try {
+                lighter.unlit(directory).restore(moment.id());
+                showConversation(fileOrMostRecent(where.file()), where.leaf());
+                // The outbox went back too; it is looked into again when the genie wakes.
+                changes.accept(genie -> genie.withHandouts(Tuple.of(Handout.class))
+                        .withHistory(genie.history().withBusy("").withPicked("")));
+            } catch (IOException | Lamp.Failed failed) {
+                String why = failed instanceof Lamp.Failed refused ? refused.problem().whatHappened() : reasonOf(failed);
+                changes.accept(genie -> genie.withHistory(genie.history().withBusy("").withProblem("oillamp could not go back: " + why)));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            reloadConversations();
+            history.read();
+        });
     }
 
     // ─── files ─────────────────────────────────────────────────────────────────────────────
