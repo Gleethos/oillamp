@@ -725,6 +725,29 @@ class SettingUpALampSpec extends Specification {
             missing.errors().first().whyItMatters().contains('20260115-100000')
     }
 
+    def 'A recording is played by naming its session, with --open or --open='() {
+        reportInfo """
+            `oillamp recordings <dir> --open <session>` hands the recording of that session to the
+            desktop's own video player, the way opening the file by double-click would.
+            `--open=<session>` means the same. oillamp does not wait for the player to close.
+        """
+        given: 'a desktop that can open files, and a lamp with one recording'
+            host.machine { it.withPackages('xdg-utils') }
+            var lamp = host.lampPath()
+            host.oillamp.run('at', lamp.toString())
+            var recording = givenRecording(lamp, '20260115-100000', Duration.ofMinutes(5), 2048)
+
+        when:
+            var spaced = host.oillamp.run('recordings', lamp.toString(), '--open', '20260115-100000')
+            var joined = host.oillamp.run('recordings', lamp.toString(), '--open=20260115-100000')
+
+        then: 'both open the same file'
+            spaced.status() == ExitStatus.SUCCESS
+            spaced.console().contains('opened ' + recording)
+            joined.status() == ExitStatus.SUCCESS
+            joined.console().contains('opened ' + recording)
+    }
+
     def 'Pruning now applies the same retention the next session would'() {
         reportInfo """
             Retention already runs at the start of every session, because a lamp used day after day
