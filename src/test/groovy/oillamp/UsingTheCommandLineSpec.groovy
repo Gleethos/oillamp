@@ -543,6 +543,11 @@ class UsingTheCommandLineSpec extends Specification {
     }
 
     def 'The completion script is for bash, also when no shell is named'() {
+        reportInfo """
+            oillamp ships a completion script for bash only. So `oillamp completion` with no
+            shell gives that script, and naming another shell is refused: a bash script handed
+            to zsh would fail in ways that are hard to trace back to oillamp.
+        """
         when:
             var unnamed = host.oillamp.run('completion')
             var zsh = host.oillamp.run('completion', 'zsh')
