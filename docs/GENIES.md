@@ -36,6 +36,7 @@ models served in the EU.
 | the files the user gives a genie | `~/inbox` in its home | Genies puts them there |
 | each genie's jobs | `.oillamp/schedule.json` in its lamp | oillamp; Genies changes it through `Lamp.Starting` |
 | each job's past runs: which job, how it ended, what the genie said last, its conversation | the lamp's history, as `run` snapshots | oillamp |
+| the moments a genie's home was saved at, which it can go back to | the lamp's history, as snapshots | oillamp; Genies saves and goes back through `Lamp.Starting` |
 
 `~/.local/share` is `$XDG_DATA_HOME` when that is set. The window itself keeps nothing: what it
 shows is one value, `GeniesState`, rebuilt from the files above when Genies starts. All genies
@@ -193,9 +194,12 @@ the card is narrow.
 
 ## The schedule
 
-Each genie has a second page beside its chat, switched to in its header: its schedule. The jobs
-on it wake the genie at their times, but only while it is awake; a job whose time came while it
-slept runs once, as soon as it wakes. The page says which of these holds.
+Each genie has two pages beside its chat, switched to in its header: its schedule, and its
+history (see below). Where the header has no room for words, the switch steps aside, and the pages
+are in the menu behind "⋯", which a right-click on the genie's card opens too.
+
+The jobs on the schedule wake the genie at their times, but only while it is awake; a job whose
+time came while it slept runs once, as soon as it wakes. The page says which of these holds.
 
 **Reading it.** When the page comes on show, `ScheduleKeeper` asks the lamp for its schedule
 (`Lamp.Starting.schedule()`) and its history (`history()`), awake or asleep: the schedule lives in
@@ -220,6 +224,40 @@ written by hand. A repeating job can end on a day. `JobDraft` says in a sentence
 in the way and, once the time can be read, when the job will first run. Saving adds the job with
 `Lamp.Starting.once` or `repeat`; changing one adds the new job, then removes the old one, so a job
 oillamp refuses leaves the old one, and the editor says why in oillamp's words.
+
+## The history
+
+oillamp saves a genie's home, its files with its conversations, and the lamp's `oillamp.toml`
+as they are: when the lamp is lit, before a run if something changed since the last save, after
+every run, when the lamp goes out, and when the user saves by hand. A save that finds nothing
+changed makes nothing. Each save is a moment the genie can go back to. Its schedule is not part of
+one: it is kept in the lamp, outside the home, and stays as it is.
+
+**The page** lists the moments newest first, day by day, under "now", on a rail like the
+schedule's week (`History`, pure): what each was, such as "Answered: Plot the sales figures",
+"before the big refactor" or "Woke up", and, after a run, what the genie said last. A run is titled
+by its conversation, or a job's run by its job. The newest 40 show; a button shows the rest.
+
+**Reading it.** When the page comes on show, `HistoryKeeper` asks the lamp for its history
+(`Lamp.Starting.history()`), awake or asleep, and `ScheduleKeeper` for the schedule, for the jobs'
+titles. While the genie is awake, `Saved` and `RunFinished` read it again, and so does the lamp
+going out.
+
+**Saving by hand.** "Save now…", on the page and in the genie's menu, asks for a few words to
+remember the moment by, which may be left out, and calls `Lamp.Starting.save`. The page picks the
+new moment, and the chat says it was saved; when nothing changed, both say so instead.
+
+**Going back.** Clicking a moment opens it, with "Go back to this moment…" and, after a run whose
+conversation is still there, a link that opens it in the chat. After asking, `Genies.goBack` has
+the genie's runner put its lamp out, since oillamp restores no lamp that is lit, and call
+`Lamp.Starting.restore`. oillamp saves the home first, if it changed, so nothing is lost. The
+conversations are read again; the chat stays in its conversation if it is still there, and goes
+to the most recent one otherwise. A genie that was awake wakes again. Going back is not offered
+while the genie wakes or works, or a job's run is going.
+
+**Undoing.** While going back is the last thing that changed the genie, a banner above the moments
+says where it went, with Undo: going back to the moment that was the newest before. Waking,
+sleeping and a save before a run do not count; an answer or a save by hand ends the offer.
 
 ## The desktop
 
@@ -257,11 +295,11 @@ the desktop forgets it.
 
 | Package | What is in it | Touches the outside world |
 |---|---|---|
-| `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, and `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `DateWordingUtil` for the schedule: records with withers, every change a pure method | no |
+| `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `DateWordingUtil` for the schedule, and `History` for the history: records with withers, every change a pure method | no |
 | `dev.gui.pi` | `PiEvent` (what the chat is told) | no |
 | `dev.gui.desktop` | `RfbConnection`, `X11KeysymUtil`, `Desktop` (its socket and its own size) | `RfbConnection` only |
-| `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `GenieFileTransferUtil` (files), `LampApiConversionUtil` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePiSetupUtil` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `Shelf` (what is kept on disk) | yes |
-| `dev.gui.view` | `GeniesView` (the window, bound to `Var<GeniesState>` through lenses), `SchedulePage`, `SettingsPage`, `DesktopScreen`, the look | Swing only |
+| `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `GenieFileTransferUtil` (files), `LampApiConversionUtil` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePiSetupUtil` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `HistoryKeeper` (the history, read and saved to through the lamp), `Shelf` (what is kept on disk) | yes |
+| `dev.gui.view` | `GeniesView` (the window, bound to `Var<GeniesState>` through lenses), `SchedulePage`, `HistoryPage`, `SettingsPage`, `DesktopScreen`, the look | Swing only |
 | `dev.gui` | `Genies`: the entry point, and the `Actions` the window calls | ties it together |
 
 The window never changes a genie by itself. It changes `GeniesState` through lenses (a draft, the
@@ -284,6 +322,7 @@ through one place, one at a time.
 | `KeepingAGenieAliveSpec` | a genie's life through the Lamp API, with oillamp's engine in the test's JVM on a simulated machine and a stand-in pi that writes conversations as pi does; `lamp show` opening its desktop |
 | `PlanningAGeniesWeekSpec` | the ways a job repeats and their cron expressions, the editor's checks and sentence, and the timeline |
 | `KeepingAGeniesScheduleSpec` | the schedule read and changed through the lamp, asleep and awake, and a job's run followed on the page, against the engine in the test's JVM |
+| `KeepingAGeniesHistorySpec` | the history read and saved to, going back and undoing it, against the engine in the test's JVM; how a long history folds, and when undo is offered |
 | `RunningARealGenieSpec` (spike) | the same with a real lamp, real pi, real wayvnc and, with a key, the real model |
 | `UsingGeniesForRealSpec` (spike) | the app's actions as the buttons call them, against real lamps, and with Ollama when it has the spike's model |
 
@@ -298,3 +337,5 @@ through one place, one at a time.
 - Conversations cannot be renamed from Genies; one named in pi is titled by its name.
 - A job's run cannot be followed live in the chat; its conversation opens there once it ended.
 - The timeline looks one week ahead and one week back.
+- Going back brings the whole home back; a single file cannot be taken from a moment. A moment
+  cannot be renamed or deleted from Genies.
