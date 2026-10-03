@@ -71,18 +71,18 @@ final class LampPhase {
                 .withModel(context.options().model().applyTo(configured.model()))
                 .withSchedule(context.options().enableScheduling() ? configured.schedule().switchedOn()
                                                                    : configured.schedule());
-        context.report(configuration.warnings());
+        context.sinkAcceptProblems(configuration.warnings());
         describeConfiguration(config);
 
         DesktopRendererUtil.Decision gpu = DesktopRendererUtil.decide(config.display().gpu(), host.gpu(), host.user(), host.podman());
         if (gpu instanceof DesktopRendererUtil.Decision.Refused refused) return Result.err(refused.problem());
         // The desktop size and renderer are the two things a user most wants confirmed at
         // startup, because they are what they will be looking at in the viewer window.
-        context.ok("lamp", "desktop " + config.display().size()
+        context.sink().accept(new LampEvent.Ok("lamp", "desktop " + config.display().size()
                 + (config.display().scale() == 1.0 ? "" : " at scale " + config.display().scale())
                 + ", renderer " + gpu.renderer()
-                + (gpu instanceof DesktopRendererUtil.Decision.Hardware ? " (hardware)" : " (software)"));
-        DesktopRendererUtil.noteLine(gpu).ifPresent(note -> context.emit(new LampEvent.Info("lamp", note)));
+                + (gpu instanceof DesktopRendererUtil.Decision.Hardware ? " (hardware)" : " (software)")));
+        DesktopRendererUtil.noteLine(gpu).ifPresent(note -> context.sink().accept(new LampEvent.Info("lamp", note)));
 
         SessionId session = SessionId.at(machine.now());
 
@@ -91,7 +91,7 @@ final class LampPhase {
                 existingRecordings(layout), Optional.empty(), FilesystemUtil.exists(layout.sessionMeta()),
                 context.options().init()));
         if (skeleton instanceof Result.Err<Plan> failure) return Result.err(failure.problems());
-        context.report(skeleton.warnings());
+        context.sinkAcceptProblems(skeleton.warnings());
 
         Result<Plan> executed = new StepRunner(machine, context).run(((Result.Ok<Plan>) skeleton).value());
         if (executed instanceof Result.Err<Plan> failure) return Result.err(failure.problems());
@@ -120,8 +120,8 @@ final class LampPhase {
             names = names.add(name);
         }
         if (!names.isEmpty())
-            context.info("lamp", "the agent's tools will see " + String.join(", ", names)
-                    + " from your environment (the value is never logged)");
+            context.sink().accept(new LampEvent.Info("lamp", "the agent's tools will see " + String.join(", ", names)
+                    + " from your environment (the value is never logged)"));
         return found;
     }
 
@@ -163,14 +163,16 @@ final class LampPhase {
                            hostGitValue("user.email").map(email -> new AgentGitConfigUtil.Author(name, email)));
         };
         if (author.isPresent())
-            context.info("lamp", "the agent's commits will carry " + author.get().name()
+            context.sink().accept(new LampEvent.Info("lamp", "the agent's commits will carry " + author.get().name()
                     + " <" + author.get().email() + ">"
-                    + (git.identity() == GitIdentity.HOST ? ", from your git configuration" : ""));
+                    + (git.identity() == GitIdentity.HOST ? ", from your git configuration" : "")));
         else if (git.identity() == GitIdentity.HOST)
-            context.info("lamp", "your git configuration has no user.name and user.email, so the agent "
-                    + "cannot commit; set them with `git config --global`, or set [git] in oillamp.toml");
+            context.sink().accept(new LampEvent.Info("lamp",
+                    "your git configuration has no user.name and user.email, so the agent "
+                    + "cannot commit; set them with `git config --global`, or set [git] in oillamp.toml"));
         else
-            context.info("lamp", "the agent has no git identity, as [git] in oillamp.toml says");
+            context.sink().accept(new LampEvent.Info("lamp",
+                    "the agent has no git identity, as [git] in oillamp.toml says"));
         return author;
     }
 
@@ -229,7 +231,7 @@ final class LampPhase {
             }
             summary.append(')');
         }
-        context.ok("lamp", summary.toString());
+        context.sink().accept(new LampEvent.Ok("lamp", summary.toString()));
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────────────────

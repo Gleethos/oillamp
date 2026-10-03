@@ -35,27 +35,27 @@ final class StepRunner {
 
     /// Runs every step, stopping at the first failure. Returns the problems it collected.
     public Result<Plan> run(Plan plan) {
-        context.emit(new LampEvent.PhaseStarted(plan.phase()));
+        context.sink().accept(new LampEvent.PhaseStarted(plan.phase()));
         Instant phaseStarted = machine.now();
         Tuple<Problem> warnings = Tuple.of(Problem.class);
 
         for (Step step : plan.steps()) {
             if (context.options().dryRun()) {
-                context.emit(new LampEvent.StepPlanned(step.info()));
+                context.sink().accept(new LampEvent.StepPlanned(step.info()));
                 continue;
             }
             Optional<String> skip = reasonToSkip(step);
             if (skip.isPresent()) {
-                context.emit(new LampEvent.StepSkipped(step.info(), skip.get()));
+                context.sink().accept(new LampEvent.StepSkipped(step.info(), skip.get()));
                 continue;
             }
-            context.emit(new LampEvent.StepStarted(step.info()));
+            context.sink().accept(new LampEvent.StepStarted(step.info()));
             Instant started = machine.now();
             Result<Step> outcome = perform(step);
             switch (outcome) {
                 case Result.Ok<Step> ok -> {
                     warnings = warnings.addAll(ok.warnings());
-                    context.emit(new LampEvent.StepSucceeded(step.info(),
+                    context.sink().accept(new LampEvent.StepSucceeded(step.info(),
                             Duration.between(started, machine.now())));
                 }
                 case Result.Err<Step> err -> {
@@ -63,7 +63,7 @@ final class StepRunner {
                 }
             }
         }
-        context.emit(new LampEvent.PhaseFinished(plan.phase(),
+        context.sink().accept(new LampEvent.PhaseFinished(plan.phase(),
                 Duration.between(phaseStarted, machine.now())));
         return Result.ok(plan, warnings);
     }
@@ -344,7 +344,7 @@ final class StepRunner {
     /// not be what leaves the container behind.
     private Result<Step> removeContainer(Step.RemoveContainer step) {
         Tuple<String> argv = Tuple.of(String.class, "podman", "rm", "-f", step.name().value());
-        context.emit(new LampEvent.Output("podman", "$ " + String.join(" ", argv)));
+        context.sink().accept(new LampEvent.Output("podman", "$ " + String.join(" ", argv)));
         Machine.Outcome outcome = machine.run(Machine.Command.of(argv).withTimeout(Duration.ofMinutes(2))
                 .labelled("podman").shieldedFromSignals());
         if (outcome.succeeded()) return Result.ok(step);
@@ -371,11 +371,11 @@ final class StepRunner {
         Machine.Command command = new Machine.Command(argv,
                 Association.between(String.class, String.class),
                 Optional.empty(), timeout, tag, false);
-        context.emit(new LampEvent.Output(tag, "$ " + redacted(command)));
+        context.sink().accept(new LampEvent.Output(tag, "$ " + redacted(command)));
         // Standard output and standard error arrive on two threads; report one line at a time.
         Object oneAtATime = new Object();
         return machine.run(command, line -> {
-            synchronized (oneAtATime) { context.emit(new LampEvent.Output(tag, line)); }
+            synchronized (oneAtATime) { context.sink().accept(new LampEvent.Output(tag, line)); }
         });
     }
 
@@ -383,10 +383,10 @@ final class StepRunner {
         Machine.Command command = new Machine.Command(argv,
                 Association.between(String.class, String.class),
                 Optional.empty(), timeout, tag, false);
-        context.emit(new LampEvent.Output(tag, "$ " + redacted(command)));
+        context.sink().accept(new LampEvent.Output(tag, "$ " + redacted(command)));
         Machine.Outcome outcome = machine.run(command);
         for (String line : outcome.errorOutput().split("\n", -1))
-            if (!line.isBlank()) context.emit(new LampEvent.Output(tag, line));
+            if (!line.isBlank()) context.sink().accept(new LampEvent.Output(tag, line));
         return outcome;
     }
 

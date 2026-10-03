@@ -142,13 +142,13 @@ final class Supervisor {
         if (opened instanceof Result.Err<Tuple<Problem>>(Tuple<Problem> problems)) {
             // The session could not be opened, but the container is already running and must
             // not be left behind.
-            context.report(problems);
-            context.report(shutDown(new SessionState.ShutdownReason.StartupFailed(
+            context.sinkAcceptProblems(problems);
+            context.sinkAcceptProblems(shutDown(new SessionState.ShutdownReason.StartupFailed(
                     problems.first())));
             followers.end();
             return ExitStatus.SESSION_FAILED;
         }
-        context.report(((Result.Ok<Tuple<Problem>>) opened).value());
+        context.sinkAcceptProblems(((Result.Ok<Tuple<Problem>>) opened).value());
 
         Thread hook = new Thread(this::onSignal, "oillamp-shutdown-hook");
         Runtime.getRuntime().addShutdownHook(hook);
@@ -210,7 +210,7 @@ final class Supervisor {
     }
 
     private void announceState() {
-        context.emit(new LampEvent.SessionStateChanged(new LampEvent.SessionStatus(
+        context.sink().accept(new LampEvent.SessionStateChanged(new LampEvent.SessionStatus(
                 state.name(), describeState(), uptime(), state.extraShells())));
     }
 
@@ -238,7 +238,7 @@ final class Supervisor {
 
     private void perform(SessionAction action) {
         switch (action) {
-            case SessionAction.Announce announce -> context.emit(announce.event());
+            case SessionAction.Announce announce -> context.sink().accept(announce.event());
             case SessionAction.LaunchViewer viewer -> openViewer(viewer.viewOnly());
             case SessionAction.LaunchTerminal ignored -> openTerminal();
             case SessionAction.CloseShells ignored -> extras.ifPresent(Relay::close);
@@ -269,7 +269,7 @@ final class Supervisor {
             return;
         }
         viewers.add(window);
-        context.emit(new LampEvent.WindowOpened("the desktop viewer", argv));
+        context.sink().accept(new LampEvent.WindowOpened("the desktop viewer", argv));
         watchBriefly(window, argv, exitCode -> new SessionEvent.ActionFailed(
                 new SessionAction.LaunchViewer(viewOnly),
                 ProblemCatalogUtil.viewerDiedImmediately(argv, exitCode, window.output())));
@@ -295,7 +295,7 @@ final class Supervisor {
             return;
         }
         terminal = Optional.of(window);
-        context.emit(new LampEvent.WindowOpened("your shell, in a new terminal window", argv));
+        context.sink().accept(new LampEvent.WindowOpened("your shell, in a new terminal window", argv));
         watchBriefly(window, argv, exitCode -> new SessionEvent.ActionFailed(
                 new SessionAction.LaunchTerminal(),
                 ProblemCatalogUtil.terminalNotStarted(argv, "it exited with code " + exitCode, window.output())));
@@ -420,10 +420,11 @@ final class Supervisor {
     /// `session.json` behind as well.
     private Tuple<Problem> shutDown(SessionState.ShutdownReason reason) {
         Tuple<Problem> problems = Tuple.of(Problem.class);
-        context.info("session", "shutting down — " + reason.describe());
+        context.sink().accept(new LampEvent.Info("session", "shutting down — " + reason.describe()));
 
         // 0. Stop the agent's run, if one is going, and save it, while the sandbox still runs.
-        if (runs.busy()) context.info("run", "stopping the agent's run and saving what it did");
+        if (runs.busy()) context.sink().accept(new LampEvent.Info("run",
+                "stopping the agent's run and saving what it did"));
         scheduleDesk.ifPresent(Control.Server::close);
         desktopDesk.ifPresent(Control.Server::close);
         runs.stop();
@@ -436,9 +437,9 @@ final class Supervisor {
         //    Both podman commands are shielded from Ctrl-C, which would otherwise reach them
         //    through the terminal's process group if the user pressed it again during shutdown.
         Duration stopTimeout = prepared.config().timeouts().stop();
-        context.info("session", "stopping the sandbox — up to "
+        context.sink().accept(new LampEvent.Info("session", "stopping the sandbox — up to "
                 + stopTimeout.toSeconds() + "s while the container finishes"
-                + (prepared.config().recording().enabled() ? " and the recording is finalised" : ""));
+                + (prepared.config().recording().enabled() ? " and the recording is finalised" : "")));
         Machine.Outcome stopped = machine.run(Machine.Command
                 .of("podman", "stop", "--time", String.valueOf(stopTimeout.toSeconds()),
                     sandbox.container().value())
@@ -455,9 +456,9 @@ final class Supervisor {
             problems = problems.add(ProblemCatalogUtil.containerNotRemoved(sandbox.container().value(),
                     stopped.errorOutput().strip(), removed.errorOutput().strip()));
         else if (!stopped.succeeded())
-            context.info("session", "the container had to be forced — "
+            context.sink().accept(new LampEvent.Info("session", "the container had to be forced — "
                     + describeFailure(stopped) + (prepared.config().recording().enabled()
-                        ? "; the recording may end a moment early" : ""));
+                        ? "; the recording may end a moment early" : "")));
 
         // 4. The host-only sockets, and the windows that were opened onto the session.
         egress.ifPresent(Egress::close);
@@ -526,7 +527,7 @@ final class Supervisor {
         Path recording = prepared.layout().recording(prepared.session());
         if (prepared.config().recording().enabled() && FilesystemUtil.exists(recording))
             lines = lines.add("recording       " + recording);
-        context.emit(new LampEvent.Summary("session " + prepared.session(), lines));
+        context.sink().accept(new LampEvent.Summary("session " + prepared.session(), lines));
     }
 
     private static String describe(Duration duration) {
@@ -558,8 +559,9 @@ final class Supervisor {
                 while ((line = input.readLine()) != null) {
                     if (!line.strip().equals(LEAVE_RUNNING)) continue;
                     leftRunning = true;
-                    context.info("session", "the application left the session running; it ends with `oillamp stop "
-                            + prepared.layout().root() + "`");
+                    context.sink().accept(new LampEvent.Info("session",
+                            "the application left the session running; it ends with `oillamp stop "
+                            + prepared.layout().root() + "`"));
                     announceState();
                     return;
                 }
@@ -610,13 +612,13 @@ final class Supervisor {
         boolean desktop = Relay.answers(prepared.layout().vncSocket());
         boolean shell = Relay.answers(prepared.layout().agentSshSocket());
         if (desktop != desktopAnswering)
-            context.emit(desktop
+            context.sink().accept(desktop
                     ? new LampEvent.Ok("health", "the desktop is answering again")
                     : new LampEvent.Warning(ProblemCatalogUtil.sandboxEndpointDead("the desktop (VNC)",
                             prepared.layout().vncSocket(), sandbox.container().value(),
                             lastLinesOfTheSandboxLog())));
         if (shell != shellAnswering)
-            context.emit(shell
+            context.sink().accept(shell
                     ? new LampEvent.Ok("health", "the shell is answering again")
                     : new LampEvent.Warning(ProblemCatalogUtil.sandboxEndpointDead("the shell (SSH)",
                             prepared.layout().agentSshSocket(), sandbox.container().value(),
@@ -627,20 +629,20 @@ final class Supervisor {
         // fetch anything, and nothing else would look different.
         boolean network = Egress.answers(prepared.layout().proxySocket());
         if (reportEvenIfUnchanged && desktop && shell && state.isLive())
-            context.info("health", network
+            context.sink().accept(new LampEvent.Info("health", network
                     ? "desktop, shell and network all still answering"
-                    : "desktop and shell answering — the egress proxy is NOT");
+                    : "desktop and shell answering — the egress proxy is NOT"));
     }
 
     /// The health line printed every 30 seconds in the terminal oillamp was started from.
     private void heartbeat() {
         if (!state.isLive()) return;
-        context.info("session", "up " + describe(uptime())
+        context.sink().accept(new LampEvent.Info("session", "up " + describe(uptime())
                 + " — " + sandbox.container()
                 + ", " + prepared.config().display().size()
                 + ", " + state.extraShells() + " extra shell"
                 + (state.extraShells() == 1 ? "" : "s")
-                + " (`oillamp status " + prepared.layout().root() + "` for more)");
+                + " (`oillamp status " + prepared.layout().root() + "` for more)"));
     }
 
     private String lastLinesOfTheSandboxLog() {
@@ -659,13 +661,13 @@ final class Supervisor {
         briefed = true;
         LampLayout layout = prepared.layout();
         LampConfig config = prepared.config();
-        context.emit(new LampEvent.SessionOpened(prepared.session().value(), SandboxSshUtil.commandArgv(layout),
+        context.sink().accept(new LampEvent.SessionOpened(prepared.session().value(), SandboxSshUtil.commandArgv(layout),
                 layout.vncSocket(), config.display().width(), config.display().height()));
         // The sandbox is up, so the agent can be woken from now on. Only now, so that an
         // application hears of a job's run only after it has heard that the session is open.
         runs.begin();
         if (context.options().embedded()) {
-            context.emit(new LampEvent.Summary("your session is up", Tuple.of(String.class,
+            context.sink().accept(new LampEvent.Summary("your session is up", Tuple.of(String.class,
                     "started by      an application, which ends it when it is done",
                     "the agent sees  " + layout.agentDir() + " and nothing else of this lamp",
                     "look inside     `oillamp shell " + layout.root() + "`, `oillamp view "
@@ -676,7 +678,7 @@ final class Supervisor {
         }
         if (!context.options().openWindows()) {
             // Nothing opened, so these lines are the only way the user learns how to get in.
-            context.emit(new LampEvent.Summary("your session is up", Tuple.of(String.class,
+            context.sink().accept(new LampEvent.Summary("your session is up", Tuple.of(String.class,
                     "windows        none opened (--no-windows); attach from any terminal:",
                     "shell          `oillamp shell " + layout.root() + "`",
                     // Said per machine: the ssh line run on this machine only fails, and says why
@@ -722,7 +724,7 @@ final class Supervisor {
         lines = lines.add("to finish      press Ctrl-C here, close this terminal, "
                         + "or run `oillamp stop " + layout.root() + "`");
         lines = lines.add("               closing the shell or viewer windows leaves the session running");
-        context.emit(new LampEvent.Summary("your session is up", lines));
+        context.sink().accept(new LampEvent.Summary("your session is up", lines));
     }
 
     /// What the briefing says about the schedule: whether jobs wake the agent in this session.
@@ -756,7 +758,7 @@ final class Supervisor {
             case Machine.Outcome ignored -> Optional.empty();
         };
         if (answer.isEmpty() && !podmanSilent)
-            context.emit(new LampEvent.Warning(ProblemCatalogUtil.sandboxStateUnknown(
+            context.sink().accept(new LampEvent.Warning(ProblemCatalogUtil.sandboxStateUnknown(
                     sandbox.container().value(), describeFailure(outcome))));
         podmanSilent = answer.isEmpty();
         return answer;
@@ -779,14 +781,14 @@ final class Supervisor {
     private final class PrimaryListener implements Relay.Listener {
         @Override public void connected()    { post(new SessionEvent.PrimaryConnected()); }
         @Override public void disconnected() { post(new SessionEvent.PrimaryDisconnected()); }
-        @Override public void trouble(Problem problem) { context.emit(new LampEvent.Warning(problem)); }
+        @Override public void trouble(Problem problem) { context.sink().accept(new LampEvent.Warning(problem)); }
     }
 
     /// `oillamp shell`. Closing one of these ends nothing.
     private final class ExtraListener implements Relay.Listener {
         @Override public void connected()    { post(new SessionEvent.ShellConnected()); }
         @Override public void disconnected() { post(new SessionEvent.ShellDisconnected()); }
-        @Override public void trouble(Problem problem) { context.emit(new LampEvent.Warning(problem)); }
+        @Override public void trouble(Problem problem) { context.sink().accept(new LampEvent.Warning(problem)); }
     }
 
     /// Reports what the egress proxy has to say. With `network.console_denied` on (the
@@ -795,9 +797,9 @@ final class Supervisor {
     private final class EgressListener implements Egress.Listener {
         @Override public void denied(Egress.Journey journey) {
             if (prepared.config().network().consoleDenied())
-                context.info("network", "denied " + journey.describe());
+                context.sink().accept(new LampEvent.Info("network", "denied " + journey.describe()));
         }
-        @Override public void trouble(Problem problem) { context.emit(new LampEvent.Warning(problem)); }
+        @Override public void trouble(Problem problem) { context.sink().accept(new LampEvent.Warning(problem)); }
     }
 
     /// Runs on Ctrl-C, SIGTERM or SIGHUP: asks for a clean shutdown and waits for it.
@@ -851,7 +853,7 @@ final class Supervisor {
         String said = ConsoleRenderer.NOT_PRINTABLE.matcher(request.arguments().get("what").orElse("")).replaceAll(" ").strip();
         String what = said.codePointCount(0, said.length()) <= LOOK_WORDS_MOST ? said
                 : said.substring(0, said.offsetByCodePoints(0, LOOK_WORDS_MOST - 1)) + "…";
-        context.emit(new LampEvent.LookAtDesktop(what));
+        context.sink().accept(new LampEvent.LookAtDesktop(what));
         return Control.Reply.ok().with("text", "The user was asked to look at your desktop. Whether and when they"
                 + " look is up to them.");
     }

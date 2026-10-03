@@ -13,17 +13,11 @@ import sprouts.Tuple;
 ///
 /// oillamp never prints directly. Everything it has to say becomes a [LampEvent], which the
 /// console renders and tests can inspect.
-final class Context {
-
-    private final Consumer<LampEvent> sink;
-    private final Options options;
-    private final String version;
-
-    public Context(Consumer<LampEvent> sink, Options options, String version) {
-        this.sink = sink;
-        this.options = options;
-        this.version = version;
-    }
+///
+/// @param sink    where every event goes: the console, the record tests read, and whoever follows
+///                the session
+/// @param version oillamp's version, which `lamp.json` records
+record Context(Consumer<LampEvent> sink, Options options, String version) {
 
     /// The options from the command line.
     ///
@@ -110,19 +104,9 @@ final class Context {
         return new Context(sink.andThen(more), options, version);
     }
 
-    public Options options() { return options; }
-
-    public String version() { return version; }
-
-    public void emit(LampEvent event) { sink.accept(event); }
-
-    public void ok(String area, String text) { emit(new LampEvent.Ok(area, text)); }
-
-    public void info(String area, String text) { emit(new LampEvent.Info(area, text)); }
-
-    /// Reports problems, routing warnings and errors to the right event.
-    public void report(Tuple<Problem> problems) {
+    /// Each problem as a [LampEvent.Failure] if it is an error, otherwise as a [LampEvent.Warning].
+    public void sinkAcceptProblems(Tuple<Problem> problems) {
         for (Problem problem : problems)
-            emit(problem.isError() ? new LampEvent.Failure(problem) : new LampEvent.Warning(problem));
+            sink.accept(problem.isError() ? new LampEvent.Failure(problem) : new LampEvent.Warning(problem));
     }
 }

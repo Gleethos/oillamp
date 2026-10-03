@@ -60,7 +60,7 @@ final class SandboxPhase {
             if (image_ instanceof Result.Err<Plan> failure) return Result.err(failure.problems());
         }
         if (imagePresent)
-            context.ok("image", "sandbox image ready — " + image);
+            context.sink().accept(new LampEvent.Ok("image", "sandbox image ready — " + image));
 
         Tuple<Step> session = Tuple.of(Step.class,
                 new Step.DeleteContainerOwnedFiles(staleSessionFiles(layout),

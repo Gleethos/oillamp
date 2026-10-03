@@ -3,6 +3,7 @@ package dev.oillamp;
 import java.nio.file.Path;
 
 import dev.lamp.ExitStatus;
+import dev.lamp.LampEvent;
 import dev.lamp.Problem;
 
 import sprouts.Tuple;
@@ -77,11 +78,11 @@ final class HostPhase {
     }
 
     private void describe(HostFacts facts) {
-        context.ok("host", facts.os().prettyName() + ", " + facts.session().describe());
-        facts.podman().ifPresent(podman -> context.ok("host",
+        context.sink().accept(new LampEvent.Ok("host", facts.os().prettyName() + ", " + facts.session().describe()));
+        facts.podman().ifPresent(podman -> context.sink().accept(new LampEvent.Ok("host",
                 "podman " + podman.version()
                         + (podman.rootless() ? ", rootless" : ", NOT rootless")
-                        + ", " + podman.ociRuntime()));
+                        + ", " + podman.ociRuntime())));
     }
 
     /// Exit code 3 when the host is not ready (missing packages, podman or subordinate ids), otherwise 1.

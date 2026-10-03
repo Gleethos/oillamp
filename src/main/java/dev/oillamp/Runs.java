@@ -117,7 +117,7 @@ final class Runs {
             if (waiting.run().id().equals(run.get()) && queue.remove(waiting)) {
                 LampEvent.RunFinished finished = new LampEvent.RunFinished(waiting.run(), RunOutcome.CANCELLED,
                         "cancelled before the agent got to it", Optional.empty(), Duration.ZERO, waiting.run().conversation());
-                context.emit(finished);
+                context.sink().accept(finished);
                 waiting.done().complete(finished);
                 return Result.ok(run.get());
             }
@@ -183,20 +183,21 @@ final class Runs {
         ZoneId zone = machine.zone();
         Result<Schedule> read = book.read();
         if (!(read instanceof Result.Ok<Schedule>(Schedule schedule, var _))) {
-            context.report(read.problems().map(ProblemCatalogUtil::asWarning));
+            context.sinkAcceptProblems(read.problems().map(ProblemCatalogUtil::asWarning));
             return;
         }
         for (ScheduledJob finished : schedule.finished(now, zone))
             if (book.update(current -> Result.ok(current.without(finished.id())), s -> s).isOk())
-                context.emit(new LampEvent.JobRemoved(finished.describe(zone, now), finished.expiredAt(now)
+                context.sink().accept(new LampEvent.JobRemoved(finished.describe(zone, now), finished.expiredAt(now)
                         ? "it expired" : "it ran, and will not run again"));
         for (ScheduledJob due : schedule.due(now, zone)) {
             if (stopping || isQueued(due.id())) continue;
             if (due.author() == JobAuthor.AGENT && agentRunsInADay(now) >= config.maxAgentRunsPerDay()) {
                 book.update(current -> Result.ok(current.ran(due.id(), now)), s -> s);
-                context.info("schedule", due.id() + " was due, but was skipped: the agent's jobs ran "
+                context.sink().accept(new LampEvent.Info("schedule",
+                        due.id() + " was due, but was skipped: the agent's jobs ran "
                         + config.maxAgentRunsPerDay() + " times in the last 24 hours, the most "
-                        + "`schedule.max_agent_runs_per_day` allows");
+                        + "`schedule.max_agent_runs_per_day` allows"));
                 continue;
             }
             Result<Schedule.Numbered> numbered = book.update(current -> Result.ok(current.numberRun()), Schedule.Numbered::schedule);
@@ -229,7 +230,7 @@ final class Runs {
     private void enqueue(Pending pending) {
         int ahead = queue.size() + (current.isPresent() ? 1 : 0);
         queue.add(pending);
-        if (ahead > 0) context.emit(new LampEvent.RunQueued(pending.run(), ahead - 1));
+        if (ahead > 0) context.sink().accept(new LampEvent.RunQueued(pending.run(), ahead - 1));
     }
 
     // ─── a run ─────────────────────────────────────────────────────────────────────────────
@@ -247,7 +248,8 @@ final class Runs {
             try {
                 next.done().complete(perform(next));
             } catch (RuntimeException bug) {
-                context.emit(new LampEvent.Warning(ProblemCatalogUtil.runFailed(next.run().id(), ProblemCatalogUtil.reason(bug))));
+                context.sink().accept(new LampEvent.Warning(
+                        ProblemCatalogUtil.runFailed(next.run().id(), ProblemCatalogUtil.reason(bug))));
                 next.done().completeExceptionally(bug);
             } finally {
                 current = Optional.empty();
@@ -260,7 +262,7 @@ final class Runs {
         Instant started = machine.now();
         ZoneId zone = machine.zone();
         pending.job().ifPresent(job -> startedJob(job, started, zone));
-        context.emit(new LampEvent.RunStarted(run));
+        context.sink().accept(new LampEvent.RunStarted(run));
 
         History history = new History(layout);
         Association<String, String> trailers = Association.between(String.class, String.class)
@@ -269,10 +271,10 @@ final class Runs {
                 trailers, false, started);
         Optional<String> base = Optional.empty();
         if (before instanceof Result.Ok<History.Saving>(History.Saving saving, var _)) {
-            saving.made().ifPresent(made -> context.emit(new LampEvent.Saved(made, saving.files())));
+            saving.made().ifPresent(made -> context.sink().accept(new LampEvent.Saved(made, saving.files())));
             base = saving.latest().map(LampEvent.Snapshot::id);
         } else {
-            context.report(before.problems().map(ProblemCatalogUtil::asWarning));
+            context.sinkAcceptProblems(before.problems().map(ProblemCatalogUtil::asWarning));
         }
 
         // A job wakes an agent that knows nothing of why, so its prompt carries the agent's notes
@@ -283,9 +285,9 @@ final class Runs {
         // Lamp.Conversation#job reads the job back from this name, so the two change together.
         Optional<String> name = run.job().map(job -> run.id() + " (" + job + ")");
         Harness.Answer answer = harness.run(name, prompt, config.maxRun(), pending.where(),
-                progress -> context.emit(new LampEvent.RunProgress(run.id(), progress)));
+                progress -> context.sink().accept(new LampEvent.RunProgress(run.id(), progress)));
         if (answer.outcome() == RunOutcome.FAILED && !answer.text().isBlank() && answer.text().startsWith("pi "))
-            context.emit(new LampEvent.Warning(ProblemCatalogUtil.runFailed(run.id(), answer.text())));
+            context.sink().accept(new LampEvent.Warning(ProblemCatalogUtil.runFailed(run.id(), answer.text())));
         Instant ended = machine.now();
 
         String outcome = answer.outcome().name().toLowerCase(Locale.ROOT).replace('_', ' ');
@@ -305,13 +307,14 @@ final class Runs {
         if (saved instanceof Result.Ok<History.Saving>(History.Saving saving, var _)) {
             snapshot = saving.made();
             if (!saving.skipped().isEmpty())
-                context.emit(new LampEvent.Warning(ProblemCatalogUtil.filesNotSaved(layout.root(), saving.skipped())));
+                context.sink().accept(new LampEvent.Warning(
+                        ProblemCatalogUtil.filesNotSaved(layout.root(), saving.skipped())));
         } else {
-            context.report(saved.problems().map(ProblemCatalogUtil::asWarning));
+            context.sinkAcceptProblems(saved.problems().map(ProblemCatalogUtil::asWarning));
         }
         LampEvent.RunFinished finished = new LampEvent.RunFinished(run, answer.outcome(), answer.text().strip(),
                 snapshot, Duration.between(started, ended), conversation);
-        context.emit(finished);
+        context.sink().accept(finished);
         return finished;
     }
 
@@ -319,7 +322,8 @@ final class Runs {
     private void startedJob(ScheduledJob job, Instant now, ZoneId zone) {
         boolean once = job.when() instanceof ScheduledJob.When.Once;
         book.update(schedule -> Result.ok(once ? schedule.without(job.id()) : schedule.ran(job.id(), now)), s -> s);
-        if (once) context.emit(new LampEvent.JobRemoved(job.describe(zone, now), "it runs once, and this is that run"));
+        if (once) context.sink().accept(
+                new LampEvent.JobRemoved(job.describe(zone, now), "it runs once, and this is that run"));
     }
 
     private String wakePrompt(Pending pending, History history, Instant now, ZoneId zone) {
@@ -374,7 +378,7 @@ final class Runs {
                         Schedule.Changed::schedule);
                 if (!(added instanceof Result.Ok<Schedule.Changed>(Schedule.Changed change, var _)))
                     yield Control.Reply.failed(added.problems().first().whatHappened());
-                context.emit(new LampEvent.JobAdded(change.job().describe(zone, now)));
+                context.sink().accept(new LampEvent.JobAdded(change.job().describe(zone, now)));
                 look.release();
                 yield Control.Reply.ok().with("text", "Added " + change.job().id() + ": " + describe(change.job(), zone)
                         + (config.enabled() ? "" : " The schedule is switched off by the user, so it will not run until they switch it on."));
@@ -384,7 +388,8 @@ final class Runs {
                         request.arguments().get("id").orElse(""), JobAuthor.AGENT, layout.root()), Schedule.Changed::schedule);
                 if (!(removed instanceof Result.Ok<Schedule.Changed>(Schedule.Changed change, var _)))
                     yield Control.Reply.failed(removed.problems().first().whatHappened());
-                context.emit(new LampEvent.JobRemoved(change.job().describe(zone, now), "removed by the agent"));
+                context.sink().accept(
+                        new LampEvent.JobRemoved(change.job().describe(zone, now), "removed by the agent"));
                 yield Control.Reply.ok().with("text", "Removed " + change.job().id() + ".");
             }
             case "history" -> Control.Reply.ok().with("text", history(request.arguments().get("run").orElse("").strip(), zone));

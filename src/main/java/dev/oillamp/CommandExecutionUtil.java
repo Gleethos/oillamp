@@ -159,18 +159,18 @@ final class CommandExecutionUtil {
         final Optional<Path> lampPath
     ) {
         Context.Options original = context.options();
-        HostPhase host = new HostPhase(machine, new Context(context::emit,
+        HostPhase host = new HostPhase(machine, new Context(context.sink(),
                 original.withDryRun(true).withAutoInstall(false), context.version()));
         HostPhase.Outcome outcome = host.prepare(lampPath.orElse(Path.of(".")), false, Installing.NEVER);
 
         if (!outcome.succeeded()) {
-            context.report(outcome.result().problems());
+            context.sinkAcceptProblems(outcome.result().problems());
             return HostPhase.exitStatusFor(outcome.result().problems());
         }
-        context.report(outcome.result().warnings());
+        context.sinkAcceptProblems(outcome.result().warnings());
 
         if (lampPath.isEmpty()) {
-            context.ok("host", "this machine can run oillamp sandboxes");
+            context.sink().accept(new LampEvent.Ok("host", "this machine can run oillamp sandboxes"));
             return ExitStatus.SUCCESS;
         }
         return checkConfiguration(machine, context, lampPath.get(), false);
@@ -191,18 +191,18 @@ final class CommandExecutionUtil {
         HostPhase.Outcome host = new HostPhase(machine, context)
                 .prepare(lampPath, opensWindows, installing(machine, context, lampPath));
         if (!host.succeeded()) {
-            context.report(host.result().problems());
+            context.sinkAcceptProblems(host.result().problems());
             return HostPhase.exitStatusFor(host.result().problems());
         }
-        context.report(host.result().warnings());
+        context.sinkAcceptProblems(host.result().warnings());
 
         Result<LampPhase.Prepared> lamp = new LampPhase(machine, context).prepare(lampPath, host.facts());
         if (lamp instanceof Result.Err<LampPhase.Prepared> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         LampPhase.Prepared prepared = ((Result.Ok<LampPhase.Prepared>) lamp).value();
-        context.report(lamp.warnings());
+        context.sinkAcceptProblems(lamp.warnings());
 
         // A dry run also plans the image and container steps, so the full podman command is
         // shown. It takes no lock, so it cannot block a session that is really running.
@@ -210,11 +210,11 @@ final class CommandExecutionUtil {
             Result<SandboxPhase.Running> planned =
                     new SandboxPhase(machine, context).start(prepared, host.facts());
             if (planned instanceof Result.Err<SandboxPhase.Running> failure) {
-                context.report(failure.problems());
+                context.sinkAcceptProblems(failure.problems());
                 return ExitStatus.ERROR;
             }
-            context.report(planned.warnings());
-            context.info("lamp", "dry run — nothing above was actually done");
+            context.sinkAcceptProblems(planned.warnings());
+            context.sink().accept(new LampEvent.Info("lamp", "dry run — nothing above was actually done"));
             return ExitStatus.SUCCESS;
         }
 
@@ -224,12 +224,12 @@ final class CommandExecutionUtil {
         try {
             lock = LampLock.tryAcquire(prepared.layout().lockFile());
         } catch (IOException e) {
-            context.report(Tuple.of(Problem.class,
+            context.sinkAcceptProblems(Tuple.of(Problem.class,
                     ProblemCatalogUtil.lampNotWritable(prepared.layout().root(), ProblemCatalogUtil.reason(e))));
             return ExitStatus.ERROR;
         }
         if (lock.isEmpty()) {
-            context.report(Tuple.of(Problem.class, busyProblem(prepared)));
+            context.sinkAcceptProblems(Tuple.of(Problem.class, busyProblem(prepared)));
             return ExitStatus.LAMP_BUSY;
         }
 
@@ -239,21 +239,22 @@ final class CommandExecutionUtil {
         // session is still worth having.
         for (Problem problem : saveLamp(context, prepared.layout(), SaveKind.STARTUP, "",
                                         Optional.of(prepared.session()), machine.now()))
-            context.emit(new LampEvent.Warning(problem));
+            context.sink().accept(new LampEvent.Warning(problem));
         // Until the supervisor takes over, nothing else would remove a container this run started:
         // not a failed start, and not a Ctrl-C while the image builds or the desktop comes up.
         ContainerName container = prepared.layout().containerName();
         AtomicBoolean interrupted = new AtomicBoolean();
         Thread abandon = new Thread(() -> {
             interrupted.set(true);
-            context.info("session", "interrupted while the sandbox was starting — removing it");
+            context.sink().accept(new LampEvent.Info("session",
+                    "interrupted while the sandbox was starting — removing it"));
             removeUnfinishedSandbox(machine, context, container, "interrupted while the sandbox was starting");
         }, "oillamp-abandon-start");
         Runtime.getRuntime().addShutdownHook(abandon);
         try {
-            context.ok("lamp", "ready — agent " + prepared.layout().agentId()
+            context.sink().accept(new LampEvent.Ok("lamp", "ready — agent " + prepared.layout().agentId()
                     + ", desktop " + prepared.config().display().size()
-                    + ", renderer " + prepared.gpu().renderer());
+                    + ", renderer " + prepared.gpu().renderer()));
 
             Result<SandboxPhase.Running> sandbox =
                     new SandboxPhase(machine, context).start(prepared, host.facts());
@@ -262,17 +263,17 @@ final class CommandExecutionUtil {
                 // "the sandbox stopped while starting up" would blame the sandbox for the user's
                 // own interrupt.
                 if (interrupted.get()) return ExitStatus.INTERRUPTED;
-                context.report(failure.problems());
+                context.sinkAcceptProblems(failure.problems());
                 removeUnfinishedSandbox(machine, context, container, "it did not start");
                 return ExitStatus.ERROR;
             }
-            context.report(sandbox.warnings());
+            context.sinkAcceptProblems(sandbox.warnings());
 
             SandboxPhase.Running running = ((Result.Ok<SandboxPhase.Running>) sandbox).value();
-            context.ok("session", "sandbox running — container " + running.container());
+            context.sink().accept(new LampEvent.Ok("session", "sandbox running — container " + running.container()));
             // oillamp connected to both sockets (CheckEndpoints) before printing this.
-            context.ok("session", "desktop and shell both answering — "
-                    + "oillamp connected to each socket before handing it over");
+            context.sink().accept(new LampEvent.Ok("session", "desktop and shell both answering — "
+                    + "oillamp connected to each socket before handing it over"));
 
             // From here `at` does not return until the session is over, and the supervisor
             // removes the container however the session ends.
@@ -283,7 +284,7 @@ final class CommandExecutionUtil {
             try {
                 held.close();
             } catch (IOException e) {
-                context.report(Tuple.of(Problem.class,
+                context.sinkAcceptProblems(Tuple.of(Problem.class,
                         ProblemCatalogUtil.internal("lock release", ProblemCatalogUtil.reason(e))));
             }
         }
@@ -303,8 +304,9 @@ final class CommandExecutionUtil {
         if (!exists) return;
         Result<Plan> removed = new StepRunner(machine, context).run(Plan.of(LampEvent.Phase.SESSION,
                 Tuple.of(Step.class, new Step.RemoveContainer(container, why))));
-        if (removed instanceof Result.Err<Plan> failure) context.report(failure.problems());
-        else context.info("session", "removed the sandbox that did not start, so nothing is left running");
+        if (removed instanceof Result.Err<Plan> failure) context.sinkAcceptProblems(failure.problems());
+        else context.sink().accept(new LampEvent.Info("session",
+                "removed the sandbox that did not start, so nothing is left running"));
     }
 
     private static void stopWatching(Thread hook) {
@@ -343,7 +345,7 @@ final class CommandExecutionUtil {
     private static ExitStatus view(Machine machine, Context context, Path lampPath, boolean viewOnly) {
         return askTheSession(machine, context, lampPath, "view",
                 Control.Request.of("view").with("view_only", String.valueOf(viewOnly)),
-                reply -> context.ok("view", "another viewer window is opening"));
+                reply -> context.sink().accept(new LampEvent.Ok("view", "another viewer window is opening")));
     }
 
     /// `oillamp shell <dir>`: an extra shell in this terminal.
@@ -353,16 +355,16 @@ final class CommandExecutionUtil {
     private static ExitStatus shell(Machine machine, Context context, Path lampPath) {
         Result<Control.Reply> reply = askTheSession(machine, lampPath, "shell", Control.Request.of("shell"));
         if (reply instanceof Result.Err<Control.Reply> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         Tuple<String> argv = ((Result.Ok<Control.Reply>) reply).value().argv();
         if (argv.isEmpty()) {
-            context.report(Tuple.of(Problem.class,
+            context.sinkAcceptProblems(Tuple.of(Problem.class,
                     ProblemCatalogUtil.internal("shell", "the session did not say how to reach it")));
             return ExitStatus.ERROR;
         }
-        context.info("shell", "connecting — closing this shell does not end the session");
+        context.sink().accept(new LampEvent.Info("shell", "connecting — closing this shell does not end the session"));
         int code = machine.launch(Machine.Command.of(argv).labelled("shell"),
                                   Machine.Window.Stdio.TERMINAL).waitFor();
         return code == 0 ? ExitStatus.SUCCESS : ExitStatus.ERROR;
@@ -376,7 +378,7 @@ final class CommandExecutionUtil {
     private static ExitStatus stop(Machine machine, Context context, Path lampPath) {
         Result<Control.Reply> reply = askTheSession(machine, lampPath, "stop", Control.Request.of("stop"));
         if (reply instanceof Result.Ok<Control.Reply>) {
-            context.ok("stop", "the session is shutting down");
+            context.sink().accept(new LampEvent.Ok("stop", "the session is shutting down"));
             return ExitStatus.SUCCESS;
         }
         return cleanUpAfterACrashedSession(machine, context, lampPath, reply.problems());
@@ -411,9 +413,9 @@ final class CommandExecutionUtil {
             anyInUse |= examined.problems().stream().anyMatch(p -> p.code().equals(ProblemCatalogUtil.LAMP_STILL_RUNNING));
         }
         if (!refusals.isEmpty()) {
-            context.report(refusals);
+            context.sinkAcceptProblems(refusals);
             if (roots.size() > 1)
-                context.emit(new LampEvent.Answer("Nothing has been removed: " + refusals.size() + " of the "
+                context.sink().accept(new LampEvent.Answer("Nothing has been removed: " + refusals.size() + " of the "
                         + roots.size() + " directories cannot be. Name only the lamps to remove."));
             // A lamp in use is worth its own exit code: stopping it is all it takes to retry.
             return anyInUse ? ExitStatus.LAMP_BUSY : ExitStatus.USAGE;
@@ -421,12 +423,12 @@ final class CommandExecutionUtil {
 
         boolean several = removals.size() > 1;
         for (LampPlanUtil.Removal found : removals)
-            context.emit(new LampEvent.Answer((several ? "── " + found.root() + "\n\n" : "")
+            context.sink().accept(new LampEvent.Answer((several ? "── " + found.root() + "\n\n" : "")
                     + describeWhatWouldGo(found)));
         if (!confirmed && !context.options().dryRun()) {
             StringBuilder command = new StringBuilder("oillamp remove");
             for (LampPlanUtil.Removal found : removals) command.append(' ').append(found.root());
-            context.emit(new LampEvent.Answer("Nothing has been removed. To go ahead"
+            context.sink().accept(new LampEvent.Answer("Nothing has been removed. To go ahead"
                     + (several ? " and delete all " + removals.size() + " lamps" : "") + ":\n\n  "
                     + command + " --yes"));
             return ExitStatus.USAGE;
@@ -439,18 +441,18 @@ final class CommandExecutionUtil {
         for (LampPlanUtil.Removal found : removals) {
             Result<Plan> done = new StepRunner(machine, context).run(LampPlanUtil.planRemoval(found));
             if (done instanceof Result.Err<Plan> failure) {
-                context.report(failure.problems());
+                context.sinkAcceptProblems(failure.problems());
                 failures = failures.addAll(failure.problems());
                 continue;
             }
-            context.report(done.warnings());
+            context.sinkAcceptProblems(done.warnings());
             if (context.options().dryRun()) continue;
             removed++;
             // The rest of the sentence names the directory, so it needs no prefix for several.
-            context.ok("remove", "the lamp is gone" + removeTheRootIfEmpty(found.root()));
+            context.sink().accept(new LampEvent.Ok("remove", "the lamp is gone" + removeTheRootIfEmpty(found.root())));
         }
         if (several && !context.options().dryRun())
-            context.emit(new LampEvent.Answer(removed == removals.size()
+            context.sink().accept(new LampEvent.Answer(removed == removals.size()
                     ? "All " + removed + " lamps were removed."
                     : removed + " of " + removals.size() + " lamps were removed; the others are "
                       + "reported above."));
@@ -585,7 +587,7 @@ final class CommandExecutionUtil {
     private static ExitStatus status(Machine machine, Context context, Path lampPath) {
         Result<Control.Reply> reply = askTheSession(machine, lampPath, "status", Control.Request.of("status"));
         if (reply instanceof Result.Err<Control.Reply> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         Control.Reply answer = ((Result.Ok<Control.Reply>) reply).value();
@@ -594,8 +596,8 @@ final class CommandExecutionUtil {
                                             "desktop", "renderer", "uptime", "shells", "agent", "schedule", "viewer"))
             answer.values().get(key).ifPresent(value ->
                     out.append(pad(key, 12)).append(value).append('\n'));
-        context.emit(new LampEvent.Answer(out.toString().stripTrailing()));
-        answer.values().get("agent_status").flatMap(LampEvent::fromJson).ifPresent(context::emit);
+        context.sink().accept(new LampEvent.Answer(out.toString().stripTrailing()));
+        answer.values().get("agent_status").flatMap(LampEvent::fromJson).ifPresent(context.sink());
         return ExitStatus.SUCCESS;
     }
 
@@ -604,7 +606,7 @@ final class CommandExecutionUtil {
     private static ExitStatus list(Machine machine, Context context) {
         Machine.Outcome outcome = listRunningSandboxes(machine);
         if (!outcome.succeeded()) {
-            context.report(Tuple.of(Problem.class, ProblemCatalogUtil.podmanFailed(
+            context.sinkAcceptProblems(Tuple.of(Problem.class, ProblemCatalogUtil.podmanFailed(
                     "podman ps", outcome.exitCode(), outcome.errorOutput().strip())));
             return ExitStatus.ERROR;
         }
@@ -613,7 +615,7 @@ final class CommandExecutionUtil {
         for (RunningSandbox sandbox : running)
             rows.append('\n').append(pad(sandbox.name(), 22)).append(pad(sandbox.state(), 22))
                 .append(sandbox.lamp());
-        context.emit(new LampEvent.Answer(running.isEmpty()
+        context.sink().accept(new LampEvent.Answer(running.isEmpty()
                 ? "no oillamp sandboxes are running on this host"
                 : rows.toString()));
         return ExitStatus.SUCCESS;
@@ -629,7 +631,7 @@ final class CommandExecutionUtil {
     private static ExitStatus save(Machine machine, Context context, Path lampPath, String message) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         LampLayout layout = ((Result.Ok<LampLayout>) found).value();
@@ -638,7 +640,8 @@ final class CommandExecutionUtil {
         try {
             idle = LampLock.tryAcquire(layout.lockFile());
         } catch (IOException e) {
-            context.report(Tuple.of(Problem.class, ProblemCatalogUtil.lampNotWritable(layout.root(), ProblemCatalogUtil.reason(e))));
+            context.sinkAcceptProblems(Tuple.of(Problem.class,
+                    ProblemCatalogUtil.lampNotWritable(layout.root(), ProblemCatalogUtil.reason(e))));
             return ExitStatus.ERROR;
         }
         try {
@@ -646,11 +649,12 @@ final class CommandExecutionUtil {
                     : FilesystemUtil.readString(layout.sessionMeta()).flatMap(JsonUtil::parse)
                                 .flatMap(json -> SessionId.parse(JsonUtil.text(json, "session")));
             if (idle.isEmpty())
-                context.info("history", "a session is running, so programs in the sandbox may be "
-                        + "writing while this saves; the snapshot is marked as a running save");
+                context.sink().accept(new LampEvent.Info("history",
+                        "a session is running, so programs in the sandbox may be "
+                        + "writing while this saves; the snapshot is marked as a running save"));
             Tuple<Problem> problems = saveLamp(context, layout,
                     idle.isPresent() ? SaveKind.IDLE : SaveKind.RUNNING, message, session, machine.now());
-            context.report(problems);
+            context.sinkAcceptProblems(problems);
             return exitStatusFor(problems);
         } finally {
             idle.ifPresent(CommandExecutionUtil::release);
@@ -661,15 +665,15 @@ final class CommandExecutionUtil {
     private static ExitStatus history(Machine machine, Context context, Path lampPath) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         Result<Tuple<LampEvent.Snapshot>> snapshots = new History(((Result.Ok<LampLayout>) found).value()).snapshots();
         if (snapshots instanceof Result.Err<Tuple<LampEvent.Snapshot>> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
-        context.emit(new LampEvent.History(((Result.Ok<Tuple<LampEvent.Snapshot>>) snapshots).value()));
+        context.sink().accept(new LampEvent.History(((Result.Ok<Tuple<LampEvent.Snapshot>>) snapshots).value()));
         return ExitStatus.SUCCESS;
     }
 
@@ -680,7 +684,7 @@ final class CommandExecutionUtil {
     private static ExitStatus restore(Machine machine, Context context, Path lampPath, String snapshot) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         LampLayout layout = ((Result.Ok<LampLayout>) found).value();
@@ -688,27 +692,29 @@ final class CommandExecutionUtil {
         try {
             lock = LampLock.tryAcquire(layout.lockFile());
         } catch (IOException e) {
-            context.report(Tuple.of(Problem.class, ProblemCatalogUtil.lampNotWritable(layout.root(), ProblemCatalogUtil.reason(e))));
+            context.sinkAcceptProblems(Tuple.of(Problem.class,
+                    ProblemCatalogUtil.lampNotWritable(layout.root(), ProblemCatalogUtil.reason(e))));
             return ExitStatus.ERROR;
         }
         if (lock.isEmpty()) {
             Tuple<Problem> refused = Tuple.of(Problem.class, ProblemCatalogUtil.restoreWhileRunning(layout.root()));
-            context.report(refused);
+            context.sinkAcceptProblems(refused);
             return exitStatusFor(refused);
         }
         try {
             Result<History.Restoring> restored = new History(layout).restore(snapshot, machine.now());
-            context.report(restored.warnings());
+            context.sinkAcceptProblems(restored.warnings());
             if (restored instanceof Result.Err<History.Restoring> failure) {
-                context.report(failure.problems());
+                context.sinkAcceptProblems(failure.problems());
                 return exitStatusFor(failure.problems());
             }
             History.Restoring done = ((Result.Ok<History.Restoring>) restored).value();
-            done.safety().ifPresent(safety -> context.emit(new LampEvent.Saved(safety, 0)));
-            context.emit(new LampEvent.Restored(done.target(), done.result().orElse(done.target())));
+            done.safety().ifPresent(safety -> context.sink().accept(new LampEvent.Saved(safety, 0)));
+            context.sink().accept(new LampEvent.Restored(done.target(), done.result().orElse(done.target())));
             if (done.result().isEmpty()) return ExitStatus.SUCCESS;
-            done.safety().ifPresent(safety -> context.info("history", "to undo this, run: oillamp restore "
-                    + layout.root() + " " + safety.shortId()));
+            done.safety().ifPresent(safety -> context.sink().accept(new LampEvent.Info("history",
+                    "to undo this, run: oillamp restore "
+                    + layout.root() + " " + safety.shortId())));
             return ExitStatus.SUCCESS;
         } finally {
             release(lock.get());
@@ -723,12 +729,12 @@ final class CommandExecutionUtil {
         if (saved instanceof Result.Err<History.Saving> failure) return failure.problems();
         History.Saving saving = ((Result.Ok<History.Saving>) saved).value();
         if (saving.made().isPresent())
-            context.emit(new LampEvent.Saved(saving.made().get(), saving.files()));
+            context.sink().accept(new LampEvent.Saved(saving.made().get(), saving.files()));
         else
-            context.info("history", saving.latest()
+            context.sink().accept(new LampEvent.Info("history", saving.latest()
                     .map(latest -> "nothing changed since " + latest.shortId() + " (" + latest.kind().label()
                                  + "), so there was nothing to save")
-                    .orElse("nothing to save yet"));
+                    .orElse("nothing to save yet")));
         return saving.skipped().isEmpty() ? Tuple.of(Problem.class)
                 : Tuple.of(Problem.class, ProblemCatalogUtil.filesNotSaved(layout.root(), saving.skipped()));
     }
@@ -742,13 +748,13 @@ final class CommandExecutionUtil {
     private static ExitStatus schedule(Machine machine, Context context, Path lampPath, Command.Schedule.Action action) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         LampLayout layout = ((Result.Ok<LampLayout>) found).value();
         Result<LampConfig> config = loadConfig(machine, layout.root());
         if (config instanceof Result.Err<LampConfig> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         LampConfig.Schedule limits = scheduleInForce(layout, ((Result.Ok<LampConfig>) config).value().schedule());
@@ -779,12 +785,13 @@ final class CommandExecutionUtil {
                     .map(resumed -> new LampEvent.ScheduleChanged("the schedule runs again"));
         };
         if (done instanceof Result.Err<LampEvent> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
-        context.emit(((Result.Ok<LampEvent>) done).value());
+        context.sink().accept(((Result.Ok<LampEvent>) done).value());
         if (!(action instanceof Command.Schedule.Action.ListJobs)) {
-            if (!limits.enabled()) context.report(Tuple.of(Problem.class, ProblemCatalogUtil.scheduleOff(layout.config())));
+            if (!limits.enabled()) context.sinkAcceptProblems(Tuple.of(Problem.class,
+                    ProblemCatalogUtil.scheduleOff(layout.config())));
             // A running session looks at the schedule every half minute; this makes it look now.
             // Without a session there is nothing to tell, and that is fine.
             if (FilesystemUtil.exists(layout.controlSocket()))
@@ -816,22 +823,22 @@ final class CommandExecutionUtil {
     private static ExitStatus conversations(Machine machine, Context context, Path lampPath, Optional<String> which) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         Path root = ((Result.Ok<LampLayout>) found).value().root();
         if (which.isEmpty()) {
-            context.emit(new LampEvent.Conversations(Tuple.of(dev.lamp.Lamp.Conversation.class,
+            context.sink().accept(new LampEvent.Conversations(Tuple.of(dev.lamp.Lamp.Conversation.class,
                     dev.lamp.Lamp.conversations(root))));
             return ExitStatus.SUCCESS;
         }
         Optional<dev.lamp.Lamp.Conversation> conversation = dev.lamp.Lamp.conversation(root, which.get());
         if (conversation.isEmpty()) {
             Tuple<Problem> missing = Tuple.of(Problem.class, ProblemCatalogUtil.noSuchConversation(which.get(), root));
-            context.report(missing);
+            context.sinkAcceptProblems(missing);
             return exitStatusFor(missing);
         }
-        context.emit(new LampEvent.ConversationShown(conversation.get()));
+        context.sink().accept(new LampEvent.ConversationShown(conversation.get()));
         return ExitStatus.SUCCESS;
     }
 
@@ -848,18 +855,18 @@ final class CommandExecutionUtil {
         if (prompt.isBlank()) {
             Tuple<Problem> refused = Tuple.of(Problem.class, ProblemCatalogUtil.usage(
                     "`oillamp ask` needs something to ask the agent", Command.usageOf("ask")));
-            context.report(refused);
+            context.sinkAcceptProblems(refused);
             return ExitStatus.USAGE;
         }
         Result<LampLayout> found = layoutOf(machine, ask.lamp());
         if (found instanceof Result.Err<LampLayout> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         LampLayout layout = ((Result.Ok<LampLayout>) found).value();
         Result<Control.Request> request = requestFor(ask, layout.root());
         if (request instanceof Result.Err<Control.Request> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         Control.Request toSend = ((Result.Ok<Control.Request>) request).value();
@@ -867,18 +874,19 @@ final class CommandExecutionUtil {
             Result<Control.Reply> taken = Control.ask(layout.controlSocket(), layout.root(),
                     toSend.with("no_wait", "true"), "ask");
             if (taken instanceof Result.Err<Control.Reply> failure) {
-                context.report(failure.problems());
+                context.sinkAcceptProblems(failure.problems());
                 return exitStatusFor(failure.problems());
             }
-            context.emit(new LampEvent.RunAccepted(new LampEvent.Run(
+            context.sink().accept(new LampEvent.RunAccepted(new LampEvent.Run(
                     ((Result.Ok<Control.Reply>) taken).value().values().get("run").orElse("run"),
                     Optional.empty(), prompt, ask.conversation())));
             return ExitStatus.SUCCESS;
         }
-        context.info("run", "asking the agent; its answer comes once it is done, which can take a while");
+        context.sink().accept(new LampEvent.Info("run",
+                "asking the agent; its answer comes once it is done, which can take a while"));
         Result<Control.Reply> reply = Control.ask(layout.controlSocket(), layout.root(), toSend, "ask", ASK_PATIENCE);
         if (reply instanceof Result.Err<Control.Reply> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         Control.Reply answer = ((Result.Ok<Control.Reply>) reply).value();
@@ -888,7 +896,7 @@ final class CommandExecutionUtil {
         if (saved.isPresent() && new History(layout).snapshots() instanceof Result.Ok<Tuple<LampEvent.Snapshot>>(
                 Tuple<LampEvent.Snapshot> all, var _))
             snapshot = all.stream().filter(s -> s.id().equals(saved.get())).findFirst();
-        context.emit(new LampEvent.RunFinished(
+        context.sink().accept(new LampEvent.RunFinished(
                 new LampEvent.Run(answer.values().get("run").orElse("run"), Optional.empty(), prompt, ask.conversation()),
                 outcome, answer.values().get("answer").orElse(""), snapshot,
                 Duration.ofSeconds(Long.parseLong(answer.values().get("seconds").orElse("0"))),
@@ -923,7 +931,8 @@ final class CommandExecutionUtil {
     private static ExitStatus cancel(Machine machine, Context context, Path lampPath, Optional<String> run) {
         Control.Request request = Control.Request.of("cancel");
         if (run.isPresent()) request = request.with("run", run.get());
-        return askTheSession(machine, context, lampPath, "cancel", request, reply -> context.emit(new LampEvent.Ok("run",
+        return askTheSession(machine, context, lampPath, "cancel", request, reply -> context.sink().accept(
+                new LampEvent.Ok("run",
                 "cancelled " + reply.values().get("run").orElse("the run")
               + "; what the agent did until now is saved as the run ends")));
     }
@@ -938,16 +947,16 @@ final class CommandExecutionUtil {
     private static ExitStatus follow(Machine machine, Context context, Path lampPath) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         LampLayout layout = ((Result.Ok<LampLayout>) found).value();
         Result<Control.Reply> followed = Control.follow(layout.controlSocket(), layout.root(),
                 Control.Request.of("follow"), "follow",
-                line -> LampEvent.fromJson(line).ifPresent(context::emit),
+                line -> LampEvent.fromJson(line).ifPresent(context.sink()),
                 context.options().embedded() ? Optional.of(machine.standardInput()) : Optional.empty());
         if (followed instanceof Result.Err<Control.Reply> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         return ExitStatus.SUCCESS;
@@ -967,7 +976,7 @@ final class CommandExecutionUtil {
                                             Control.Request request, Consumer<Control.Reply> onSuccess) {
         Result<Control.Reply> reply = askTheSession(machine, lampPath, command, request);
         if (reply instanceof Result.Err<Control.Reply> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         onSuccess.accept(((Result.Ok<Control.Reply>) reply).value());
@@ -985,7 +994,7 @@ final class CommandExecutionUtil {
     private static ExitStatus recordings(Machine machine, Context context, Path lampPath, Optional<String> open, boolean prune) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         LampLayout layout = ((Result.Ok<LampLayout>) found).value();
@@ -993,30 +1002,30 @@ final class CommandExecutionUtil {
 
         if (open.isPresent()) return openRecording(machine, context, existing, open.get(), layout);
 
-        context.emit(new LampEvent.Answer(describeRecordings(existing, layout)));
+        context.sink().accept(new LampEvent.Answer(describeRecordings(existing, layout)));
         if (!prune) return ExitStatus.SUCCESS;
 
         Result<LampConfig> loaded = loadConfig(machine, lampPath);
         if (loaded instanceof Result.Err<LampConfig> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         LampConfig.Recording policy = ((Result.Ok<LampConfig>) loaded).value().recording();
         Tuple<RecordingFile> doomed = RecordingRetentionUtil.select(existing, policy, machine.now());
         if (doomed.isEmpty()) {
-            context.ok("recordings", "nothing is beyond the configured retention of "
-                    + policy.maxAgeDays() + " days / " + policy.maxTotalGb() + " GB");
+            context.sink().accept(new LampEvent.Ok("recordings", "nothing is beyond the configured retention of "
+                    + policy.maxAgeDays() + " days / " + policy.maxTotalGb() + " GB"));
             return ExitStatus.SUCCESS;
         }
         Result<Plan> done = new StepRunner(machine, context)
                 .run(LampPlanUtil.planPrune(doomed, policy));
         if (done instanceof Result.Err<Plan> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
-        context.report(done.warnings());
+        context.sinkAcceptProblems(done.warnings());
         if (context.options().dryRun()) return ExitStatus.SUCCESS;
-        context.ok("recordings", doomed.size() + " recording(s) deleted");
+        context.sink().accept(new LampEvent.Ok("recordings", doomed.size() + " recording(s) deleted"));
         return ExitStatus.SUCCESS;
     }
 
@@ -1029,14 +1038,14 @@ final class CommandExecutionUtil {
                         Machine.Command.of("xdg-open", file.path().toString()).labelled("xdg-open"),
                         Machine.Window.Stdio.DETACHED);
                 if (window.failure().isPresent()) {
-                    context.report(Tuple.of(Problem.class,
+                    context.sinkAcceptProblems(Tuple.of(Problem.class,
                             ProblemCatalogUtil.recordingNotOpened(file.path(), window.failure().get())));
                     return ExitStatus.ERROR;
                 }
-                context.ok("recordings", "opened " + file.path());
+                context.sink().accept(new LampEvent.Ok("recordings", "opened " + file.path()));
                 return ExitStatus.SUCCESS;
             }
-        context.report(Tuple.of(Problem.class,
+        context.sinkAcceptProblems(Tuple.of(Problem.class,
                 ProblemCatalogUtil.noSuchRecording(session, layout.root(), layout.recordingsDir(), existing)));
         return ExitStatus.USAGE;
     }
@@ -1111,12 +1120,12 @@ final class CommandExecutionUtil {
                                                           Tuple<Problem> why) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return exitStatusFor(failure.problems());
         }
         LampLayout layout = ((Result.Ok<LampLayout>) found).value();
         if (Relay.answers(layout.controlSocket())) {
-            context.report(why);
+            context.sinkAcceptProblems(why);
             return exitStatusFor(why);
         }
         ContainerName container = layout.containerName();
@@ -1126,16 +1135,17 @@ final class CommandExecutionUtil {
         boolean filesLeft = FilesystemUtil.exists(layout.controlSocket())
                 || FilesystemUtil.exists(layout.sessionMeta());
         if (!containerLeft && !filesLeft) {
-            context.report(why);
+            context.sinkAcceptProblems(why);
             return exitStatusFor(why);
         }
-        context.info("stop", "no supervisor is running, but its session left things behind — cleaning up");
+        context.sink().accept(new LampEvent.Info("stop",
+                "no supervisor is running, but its session left things behind — cleaning up"));
         if (containerLeft) {
             Machine.Outcome removed = machine.run(Machine.Command
                     .of("podman", "rm", "-f", container.value())
                     .withTimeout(Duration.ofSeconds(30)).labelled("podman rm"));
             if (!removed.succeeded()) {
-                context.report(Tuple.of(Problem.class, ProblemCatalogUtil.podmanFailed(
+                context.sinkAcceptProblems(Tuple.of(Problem.class, ProblemCatalogUtil.podmanFailed(
                         "podman rm", removed.exitCode(), removed.errorOutput().strip())));
                 return ExitStatus.ERROR;
             }
@@ -1145,21 +1155,22 @@ final class CommandExecutionUtil {
             try {
                 FilesystemUtil.deleteIfPresent(leftover);
             } catch (IOException e) {
-                context.report(Tuple.of(Problem.class, ProblemCatalogUtil.internal("cleanup", ProblemCatalogUtil.reason(e))));
+                context.sinkAcceptProblems(Tuple.of(Problem.class,
+                        ProblemCatalogUtil.internal("cleanup", ProblemCatalogUtil.reason(e))));
             }
         }
-        context.ok("stop", containerLeft
+        context.sink().accept(new LampEvent.Ok("stop", containerLeft
                 ? "the sandbox left by the previous session has been removed"
-                : "removed what the previous session left behind; its sandbox was already gone");
+                : "removed what the previous session left behind; its sandbox was already gone"));
         return ExitStatus.SUCCESS;
     }
 
     /// `oillamp config <dir> check`: validate the lamp's configuration without changing anything.
     private static ExitStatus checkConfig(Machine machine, Context context, Path lampPath) {
-        HostPhase.Outcome host = new HostPhase(machine, new Context(context::emit,
+        HostPhase.Outcome host = new HostPhase(machine, new Context(context.sink(),
                 context.options().withDryRun(true).withAutoInstall(false), context.version()))
                 .prepare(lampPath, false, Installing.NEVER);
-        context.report(host.result().warnings());
+        context.sinkAcceptProblems(host.result().warnings());
         return checkConfiguration(machine, context, lampPath, true);
     }
 
@@ -1168,11 +1179,11 @@ final class CommandExecutionUtil {
     private static ExitStatus showEffectiveConfig(Machine machine, Context context, Path lampPath) {
         Result<LampConfig> loaded = loadConfig(machine, lampPath);
         if (loaded instanceof Result.Err<LampConfig> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return ExitStatus.USAGE;
         }
         LampConfig config = ((Result.Ok<LampConfig>) loaded).value();
-        context.emit(new LampEvent.Answer(describe(config)));
+        context.sink().accept(new LampEvent.Answer(describe(config)));
         return ExitStatus.SUCCESS;
     }
 
@@ -1181,12 +1192,12 @@ final class CommandExecutionUtil {
     private static ExitStatus checkConfiguration(Machine machine, Context context, Path lampPath, boolean quiet) {
         Result<LampConfig> loaded = loadConfig(machine, lampPath);
         if (loaded instanceof Result.Err<LampConfig> failure) {
-            context.report(failure.problems());
+            context.sinkAcceptProblems(failure.problems());
             return ExitStatus.USAGE;
         }
-        context.report(loaded.warnings());
-        if (!quiet) context.ok("lamp", "configuration is valid");
-        else context.ok("config", "valid");
+        context.sinkAcceptProblems(loaded.warnings());
+        if (!quiet) context.sink().accept(new LampEvent.Ok("lamp", "configuration is valid"));
+        else context.sink().accept(new LampEvent.Ok("config", "valid"));
         return ExitStatus.SUCCESS;
     }
 
