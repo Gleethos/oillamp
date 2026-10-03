@@ -73,9 +73,11 @@ class AskingInAConversationSpec extends Specification {
             first question.
         """
         when:
-            var asked = ask('Name a colour')
+            var colourAsked = host.oillamp.run('ask', lamp.toString(), 'Name a colour')
 
         then:
+            colourAsked.succeeded()
+            var asked = colourAsked.events().find { it instanceof LampEvent.RunFinished }
             asked.outcome() == RunOutcome.FINISHED
             var conversation = Lamp.conversation(lamp, asked.conversation().orElseThrow()).orElseThrow()
             conversation.title() == 'Name a colour'
@@ -89,7 +91,10 @@ class AskingInAConversationSpec extends Specification {
             their message. Only a scheduled job's run gets the agent's notes put in front of it.
         """
         given:
-            var first = ask('Name a colour').conversation().orElseThrow()
+            var colourAsked = host.oillamp.run('ask', lamp.toString(), 'Name a colour')
+            assert colourAsked.succeeded()
+            var colourRun = colourAsked.events().find { it instanceof LampEvent.RunFinished }
+            var first = colourRun.conversation().orElseThrow()
 
         when:
             var second = host.oillamp.run('ask', lamp.toString(), '--in', first.take(13), 'Name a fruit')
@@ -112,8 +117,11 @@ class AskingInAConversationSpec extends Specification {
             stands on the new one.
         """
         given:
-            var conversation = ask('Name a colour').conversation().orElseThrow()
-            askIn(conversation, 'Name a fruit')
+            var colourAsked = host.oillamp.run('ask', lamp.toString(), 'Name a colour')
+            assert colourAsked.succeeded()
+            var colourRun = colourAsked.events().find { it instanceof LampEvent.RunFinished }
+            var conversation = colourRun.conversation().orElseThrow()
+            assert host.oillamp.run('ask', lamp.toString(), '--in', conversation, 'Name a fruit').succeeded()
             var fruit = question(conversation, 'Name a fruit')
 
         when:
@@ -135,8 +143,11 @@ class AskingInAConversationSpec extends Specification {
             answers stay on their own branch.
         """
         given:
-            var conversation = ask('Name a colour').conversation().orElseThrow()
-            askIn(conversation, 'Name a fruit')
+            var colourAsked = host.oillamp.run('ask', lamp.toString(), 'Name a colour')
+            assert colourAsked.succeeded()
+            var colourRun = colourAsked.events().find { it instanceof LampEvent.RunFinished }
+            var conversation = colourRun.conversation().orElseThrow()
+            assert host.oillamp.run('ask', lamp.toString(), '--in', conversation, 'Name a fruit').succeeded()
             var blue = answerTo(conversation, 'Name a colour')
 
         when:
@@ -156,10 +167,18 @@ class AskingInAConversationSpec extends Specification {
             neither the agent nor the history is touched.
         """
         given:
-            var conversation = ask('Name a colour').conversation().orElseThrow()
+            var colourAsked = host.oillamp.run('ask', lamp.toString(), 'Name a colour')
+            assert colourAsked.succeeded()
+            var colourRun = colourAsked.events().find { it instanceof LampEvent.RunFinished }
+            var conversation = colourRun.conversation().orElseThrow()
             var colour = question(conversation, 'Name a colour')
             var blue = answerTo(conversation, 'Name a colour')
-            var snapshots = history().size()
+            var snapshotsInTheHistory = {
+                var listed = host.oillamp.run('history', lamp.toString())
+                assert listed.succeeded()
+                listed.events().find { it instanceof LampEvent.History }.snapshots().size()
+            }
+            var snapshots = snapshotsInTheHistory()
             var asked = prompts.size()
 
         when:
@@ -178,7 +197,7 @@ class AskingInAConversationSpec extends Specification {
 
         and:
             prompts.size() == asked
-            history().size() == snapshots
+            snapshotsInTheHistory() == snapshots
     }
 
     def 'A question says what it needs when it is made'() {
@@ -202,16 +221,6 @@ class AskingInAConversationSpec extends Specification {
 
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
 
-    private LampEvent.RunFinished ask(String prompt) {
-        var asked = host.oillamp.run('ask', lamp.toString(), prompt)
-        assert asked.succeeded()
-        asked.events().find { it instanceof LampEvent.RunFinished }
-    }
-
-    private void askIn(String conversation, String prompt) {
-        assert host.oillamp.run('ask', lamp.toString(), '--in', conversation, prompt).succeeded()
-    }
-
     /** The lamp, as an application sees it. The session holding it was started from the command line. */
     private Lamp.Starting running() {
         Lamp.at(lamp).launchedBy(host.launcher)
@@ -228,10 +237,6 @@ class AskingInAConversationSpec extends Specification {
 
     private static List<String> questionsAndAnswers(Iterable<Lamp.Conversation.Entry> line) {
         line.findAll { it.kind() in [Kind.MESSAGE_TO_AGENT, Kind.MESSAGE_FROM_AGENT] }*.text()
-    }
-
-    private List<LampEvent.Snapshot> history() {
-        host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots().collect()
     }
 
     private void startASession() {
