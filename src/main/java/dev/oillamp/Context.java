@@ -9,13 +9,16 @@ import dev.lamp.Problem;
 
 import sprouts.Tuple;
 
-/// What every command needs: where to send events, and the options from the command line.
+/// Three values that one run of oillamp hands to every class doing the work: [CommandExecutionUtil],
+/// the phases, [StepRunner], [Supervisor] and [Runs]. They are bundled only so that those classes
+/// take one parameter instead of three; they have nothing else in common.
 ///
-/// oillamp never prints directly. Everything it has to say becomes a [LampEvent], which the
-/// console renders and tests can inspect.
-///
-/// @param sink    where every event goes: the console, the record tests read, and whoever follows
-///                the session
+/// @param sink    the only way oillamp says anything. It never prints directly: everything it has
+///                to say is a [LampEvent] given to this consumer, which [OilLamp#run] builds to
+///                record the event for tests, render it on the console (or as JSON lines when
+///                embedded) and pass it to listeners. The supervisor extends it with
+///                [#alsoTelling] to reach `oillamp follow` as well
+/// @param options the options from the command line
 /// @param version oillamp's version, which `lamp.json` records
 record Context(Consumer<LampEvent> sink, Options options, String version) {
 
