@@ -73,7 +73,10 @@ class TravellingBackInTimeSpec extends Specification {
 
         and: 'nothing had changed when it ended, so there was no second save'
             ran.events().any { it instanceof LampEvent.Info && it.text().startsWith('nothing changed since') }
-            host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots()*.kind() == [SaveKind.STARTUP]
+            var listed = host.oillamp.run('history', lamp.toString())
+            listed.succeeded()
+            var snapshots = listed.events().find { it instanceof LampEvent.History }.snapshots()
+            snapshots*.kind() == [SaveKind.STARTUP]
     }
 
     def 'A session that changed the lamp is saved again as it ends'() {
@@ -94,7 +97,10 @@ class TravellingBackInTimeSpec extends Specification {
 
         then: 'the history has the startup save and, newest first, the shutdown save'
             ran.succeeded()
-            host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots()*.kind() == [SaveKind.SHUTDOWN, SaveKind.STARTUP]
+            var listed = host.oillamp.run('history', lamp.toString())
+            listed.succeeded()
+            var snapshots = listed.events().find { it instanceof LampEvent.History }.snapshots()
+            snapshots*.kind() == [SaveKind.SHUTDOWN, SaveKind.STARTUP]
     }
 
     def 'A save by hand keeps what the person wrote, and saves nothing when nothing changed'() {
@@ -150,9 +156,15 @@ class TravellingBackInTimeSpec extends Specification {
             var bare = host.oillamp.run('save', lamp.toString(), '--message', '--')
 
         then:
-            joined.events().find { it instanceof LampEvent.Saved }.snapshot().message() == 'before the upgrade'
-            dashed.events().find { it instanceof LampEvent.Saved }.snapshot().message() == '-- after the upgrade --'
-            bare.events().find { it instanceof LampEvent.Saved }.snapshot().message() == '--'
+            [joined, dashed, bare].every { it.succeeded() }
+
+        and: 'each snapshot has its message exactly as written'
+            var joinedSnapshot = joined.events().find { it instanceof LampEvent.Saved }.snapshot()
+            var dashedSnapshot = dashed.events().find { it instanceof LampEvent.Saved }.snapshot()
+            var bareSnapshot = bare.events().find { it instanceof LampEvent.Saved }.snapshot()
+            joinedSnapshot.message() == 'before the upgrade'
+            dashedSnapshot.message() == '-- after the upgrade --'
+            bareSnapshot.message() == '--'
     }
 
     def 'A restore brings back exactly what was saved, and removes what came after'() {
@@ -183,7 +195,9 @@ class TravellingBackInTimeSpec extends Specification {
             Files.createDirectories(home.resolve('empty/inside'))
             write(home, 'go/pkg/mod/lib@v1/lib.go', 'package lib\n')
             chmod(home.resolve('go/pkg/mod/lib@v1'), 'r-xr-xr-x')
-            var saved = host.oillamp.run('save', lamp.toString()).events().find { it instanceof LampEvent.Saved }.snapshot()
+            var save = host.oillamp.run('save', lamp.toString())
+            assert save.succeeded()
+            var saved = save.events().find { it instanceof LampEvent.Saved }.snapshot()
 
         and: 'then the agent wrecks it'
             deleteTree(home.resolve('workspace/game'))
@@ -234,7 +248,9 @@ class TravellingBackInTimeSpec extends Specification {
             var lamp = aLampThatHasRun()
             var home = home(lamp)
             write(home, 'workspace/story.txt', 'chapter one\n')
-            var early = host.oillamp.run('save', lamp.toString()).events().find { it instanceof LampEvent.Saved }.snapshot()
+            var save = host.oillamp.run('save', lamp.toString())
+            assert save.succeeded()
+            var early = save.events().find { it instanceof LampEvent.Saved }.snapshot()
             Files.writeString(home.resolve('workspace/story.txt'), 'chapter two\n')
 
         when: 'the person restores the early snapshot'
@@ -255,7 +271,10 @@ class TravellingBackInTimeSpec extends Specification {
             Files.readString(home.resolve('workspace/story.txt')) == 'chapter two\n'
 
         and: 'every step is in the history, newest first'
-            host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots()*.kind().take(4) == [SaveKind.RESTORE, SaveKind.RESTORE, SaveKind.BEFORE_RESTORE, SaveKind.IDLE]
+            var listed = host.oillamp.run('history', lamp.toString())
+            listed.succeeded()
+            var snapshots = listed.events().find { it instanceof LampEvent.History }.snapshots()
+            snapshots*.kind().take(4) == [SaveKind.RESTORE, SaveKind.RESTORE, SaveKind.BEFORE_RESTORE, SaveKind.IDLE]
     }
 
     def 'A restore brings back the configuration too'() {
@@ -267,8 +286,10 @@ class TravellingBackInTimeSpec extends Specification {
             var lamp = aLampThatHasRun()
             var config = lamp.resolve('oillamp.toml')
             var original = Files.readString(config)
-            host.oillamp.run('save', lamp.toString())
-            var saved = host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots().first()
+            assert host.oillamp.run('save', lamp.toString()).succeeded()
+            var listed = host.oillamp.run('history', lamp.toString())
+            assert listed.succeeded()
+            var saved = listed.events().find { it instanceof LampEvent.History }.snapshots().first()
             Files.writeString(config, original + '\n# changed later\n')
 
         when:
@@ -291,7 +312,9 @@ class TravellingBackInTimeSpec extends Specification {
         """
         given: 'a running session'
             var lamp = aLampThatHasRun()
-            var earlier = host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots().first()
+            var listed = host.oillamp.run('history', lamp.toString())
+            assert listed.succeeded()
+            var earlier = listed.events().find { it instanceof LampEvent.History }.snapshots().first()
             startASession(lamp)
             write(home(lamp), 'workspace/risky.txt', 'about to try something\n')
 
@@ -377,7 +400,7 @@ class TravellingBackInTimeSpec extends Specification {
             var lamp = aLampThatHasRun()
             write(home(lamp), 'workspace/game/.git/HEAD', 'ref: refs/heads/main\n')
             write(home(lamp), 'workspace/readme.txt', 'hello\n')
-            host.oillamp.run('save', lamp.toString(), '--message', 'with a nested repository')
+            assert host.oillamp.run('save', lamp.toString(), '--message', 'with a nested repository').succeeded()
             var repository = lamp.resolve('.oillamp/history')
             var agentDir = home(lamp).fileName.toString()
 
