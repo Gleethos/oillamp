@@ -70,8 +70,8 @@ class WakingTheAgentSpec extends Specification {
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
 
         when:
-            var added = schedule(lamp, 'add', '--cron', '0 9 * * 1-5', 'Check the nightly build and fix what broke')
-            var listed = schedule(lamp)
+            var added = host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '0 9 * * 1-5', 'Check the nightly build and fix what broke')
+            var listed = host.oillamp.run('schedule', lamp.toString())
 
         then: 'it runs next on Wednesday at nine, Berlin time'
             added.succeeded()
@@ -102,11 +102,11 @@ class WakingTheAgentSpec extends Specification {
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
 
         when:
-            schedule(lamp, 'add', '--cron', '0 9 * * 1-5', 'Weekday check')
-            schedule(lamp, 'add', '--cron', '0 9 * * *', '--expires', 'in 3d', 'Daily, for three days')
-            schedule(lamp, 'add', '--at', 'in 2h', 'Once')
-            schedule(lamp, 'add', '--cron', '@hourly', 'Switched off')
-            schedule(lamp, 'disable', 'job-4')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '0 9 * * 1-5', 'Weekday check')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '0 9 * * *', '--expires', 'in 3d', 'Daily, for three days')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--at', 'in 2h', 'Once')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '@hourly', 'Switched off')
+            host.oillamp.run('schedule', lamp.toString(), 'disable', 'job-4')
             var listed = jobs(lamp)
 
         then: 'nine on each weekday of the week ahead, which ends next Tuesday at 16:15'
@@ -132,9 +132,9 @@ class WakingTheAgentSpec extends Specification {
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
 
         when:
-            var badHour = schedule(lamp, 'add', '--cron', '0 25 * * *', 'x')
-            var passed = schedule(lamp, 'add', '--at', '2026-01-01 09:00', 'x')
-            var both = schedule(lamp, 'add', '--cron', '@daily', '--at', 'in 2h', 'x')
+            var badHour = host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '0 25 * * *', 'x')
+            var passed = host.oillamp.run('schedule', lamp.toString(), 'add', '--at', '2026-01-01 09:00', 'x')
+            var both = host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '@daily', '--at', 'in 2h', 'x')
 
         then:
             [badHour, passed, both].every { !it.succeeded() && it.reported('OIL-SCHEDULE-001') }
@@ -153,18 +153,18 @@ class WakingTheAgentSpec extends Specification {
         """
         given:
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
-            schedule(lamp, 'add', '--cron', '@hourly', 'Look at the queue')
-            schedule(lamp, 'add', '--at', 'in 2h', 'Send the summary')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '@hourly', 'Look at the queue')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--at', 'in 2h', 'Send the summary')
 
         when:
-            var off = schedule(lamp, 'disable', 'job-1')
+            var off = host.oillamp.run('schedule', lamp.toString(), 'disable', 'job-1')
             var switchedOff = jobs(lamp)
-            schedule(lamp, 'enable', 'job-1')
-            var paused = schedule(lamp, 'pause')
-            var pausedListing = schedule(lamp).console()
-            schedule(lamp, 'resume')
-            var removed = schedule(lamp, 'remove', 'job-2')
-            var missing = schedule(lamp, 'remove', 'job-9')
+            host.oillamp.run('schedule', lamp.toString(), 'enable', 'job-1')
+            var paused = host.oillamp.run('schedule', lamp.toString(), 'pause')
+            var pausedListing = host.oillamp.run('schedule', lamp.toString()).console()
+            host.oillamp.run('schedule', lamp.toString(), 'resume')
+            var removed = host.oillamp.run('schedule', lamp.toString(), 'remove', 'job-2')
+            var missing = host.oillamp.run('schedule', lamp.toString(), 'remove', 'job-9')
 
         then:
             off.succeeded()
@@ -191,9 +191,9 @@ class WakingTheAgentSpec extends Specification {
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
 
         when:
-            schedule(lamp, 'add', '--cron=0 9 * * 1-5', '--expires=in 3d', 'Weekday check')
-            schedule(lamp, 'add', '--at=in 2h', 'Once')
-            schedule(lamp, 'add', '--cron', '@daily', '--', '- read the inbox\n- answer what is urgent')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--cron=0 9 * * 1-5', '--expires=in 3d', 'Weekday check')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--at=in 2h', 'Once')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '@daily', '--', '- read the inbox\n- answer what is urgent')
             var listed = jobs(lamp)
 
         then: 'the first runs at nine on weekdays, and only until Friday afternoon'
@@ -218,7 +218,7 @@ class WakingTheAgentSpec extends Specification {
             var lamp = aLampThatHasRun('')
 
         when:
-            var added = schedule(lamp, 'add', '--cron', '@daily', 'Tidy up')
+            var added = host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '@daily', 'Tidy up')
 
         then:
             added.succeeded()
@@ -236,16 +236,16 @@ class WakingTheAgentSpec extends Specification {
         given: 'a lamp whose schedule is off, with a job for five minutes from now'
             var lamp = aLampThatHasRun('')
             var toml = Files.readString(lamp.resolve('oillamp.toml'))
-            schedule(lamp, 'add', '--at', 'in 5m', 'Tidy up')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--at', 'in 5m', 'Tidy up')
             anAgent { prompt -> 'Tidied up.' }
 
         when: 'a session starts ten minutes later with the flag'
             host.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
             startASession(lamp, '--enable-scheduling')
             var finished = waitFor(LampEvent.RunFinished)
-            var during = schedule(lamp)
+            var during = host.oillamp.run('schedule', lamp.toString())
             stop(lamp)
-            var after = schedule(lamp)
+            var after = host.oillamp.run('schedule', lamp.toString())
 
         then: 'the job ran'
             finished.run().job() == Optional.of('job-1')
@@ -273,7 +273,7 @@ class WakingTheAgentSpec extends Specification {
         """
         given: 'a job for five minutes from now'
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
-            schedule(lamp, 'add', '--at', 'in 5m', 'Write the weekly report into ~/workspace/report.md')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--at', 'in 5m', 'Write the weekly report into ~/workspace/report.md')
 
         and: 'an agent that writes the report'
             anAgent { prompt ->
@@ -334,8 +334,8 @@ class WakingTheAgentSpec extends Specification {
         """
         given: 'two jobs, one after the other'
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
-            schedule(lamp, 'add', '--at', 'in 1m', 'Do the first task')
-            schedule(lamp, 'add', '--at', 'in 2m', 'Do the second task')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--at', 'in 1m', 'Do the first task')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--at', 'in 2m', 'Do the second task')
             anAgent { prompt ->
                 if (prompt.contains('Do the first task')) {
                     Files.writeString(home(lamp).resolve('workspace/NOTES.md'), 'Next: add the chart.\n')
@@ -531,7 +531,7 @@ class WakingTheAgentSpec extends Specification {
         """
         given:
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\nmax_agent_jobs = 1\n')
-            schedule(lamp, 'add', '--cron', '@daily', 'The user\'s own job')
+            host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '@daily', 'The user\'s own job')
             startASession(lamp)
 
         when:
@@ -681,12 +681,8 @@ class WakingTheAgentSpec extends Specification {
 
     private static Path home(Path lamp) { Lamp.agentHome(lamp).orElseThrow() }
 
-    private def schedule(Path lamp, String... arguments) {
-        host.oillamp.run(*(['schedule', lamp.toString()] + arguments.toList()))
-    }
-
     private List<LampEvent.Job> jobs(Path lamp) {
-        var listed = schedule(lamp)
+        var listed = host.oillamp.run('schedule', lamp.toString())
         assert listed.succeeded()
         listed.events().find { it instanceof LampEvent.Schedule }.jobs().collect()
     }
