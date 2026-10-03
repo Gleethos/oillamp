@@ -1,7 +1,6 @@
 package dev.oillamp;
 
 import java.net.URI;
-import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -19,7 +18,6 @@ final class Context {
     private final Consumer<LampEvent> sink;
     private final Options options;
     private final String version;
-    private Optional<Path> installLog = Optional.empty();
 
     public Context(Consumer<LampEvent> sink, Options options, String version) {
         this.sink = sink;
@@ -109,9 +107,7 @@ final class Context {
 
     /// The same, with every event also passed to `more`.
     public Context alsoTelling(Consumer<LampEvent> more) {
-        Context both = new Context(sink.andThen(more), options, version);
-        both.installLog = installLog;
-        return both;
+        return new Context(sink.andThen(more), options, version);
     }
 
     public Options options() { return options; }
@@ -129,8 +125,4 @@ final class Context {
         for (Problem problem : problems)
             emit(problem.isError() ? new LampEvent.Failure(problem) : new LampEvent.Warning(problem));
     }
-
-    public Optional<Path> installLog() { return installLog; }
-
-    public void installLog(Path path) { this.installLog = Optional.of(path); }
 }

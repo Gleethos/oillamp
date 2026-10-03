@@ -277,8 +277,7 @@ final class StepRunner {
         for (String pkg : step.packages()) argv = argv.add(pkg);
         Machine.Outcome outcome = run("apt-get", Duration.ofMinutes(10), argv);
         if (outcome.succeeded()) return Result.ok(step);
-        return Result.err(ProblemCatalogUtil.installFailed(
-                evidenceOf(outcome, argv), context.installLog().orElse(Path.of("(no log)"))));
+        return Result.err(ProblemCatalogUtil.installFailed(evidenceOf(outcome, argv)));
     }
 
     private Result<Step> addSubIds(Step.AddSubIds step) {

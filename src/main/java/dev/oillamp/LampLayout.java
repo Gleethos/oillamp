@@ -113,7 +113,6 @@ record LampLayout(Path root, AgentId agentId, Path xdgRuntimeDir) {
     public Path sessionLog(SessionId s)   { return logsDir().resolve("oillamp-" + s.value() + ".log"); }
     public Path containerLog(SessionId s) { return logsDir().resolve("container-" + s.value() + ".log"); }
     public Path networkLog(SessionId s)   { return logsDir().resolve("network-" + s.value() + ".jsonl"); }
-    public Path installLog(String stamp)  { return logsDir().resolve("install-" + stamp + ".log"); }
 
     // ─── the agent directory (mounted into the container as /home/agent) ───────────────────
 

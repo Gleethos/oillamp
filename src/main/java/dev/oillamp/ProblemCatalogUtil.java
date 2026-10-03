@@ -183,14 +183,13 @@ final class ProblemCatalogUtil {
             .withFix(Fix.of("or install the prerequisites yourself and re-run with --no-install"));
     }
 
-    public static Problem installFailed(Evidence.Command command, Path installLog) {
+    public static Problem installFailed(Evidence.Command command) {
         return error(PKG_INSTALL_FAILED, "Package installation failed",
                 "apt-get exited with code " + command.exitCode(),
                 "without the prerequisites oillamp cannot start a sandbox")
             .withEvidence(command)
-            .withEvidence(new Evidence.File(installLog, "full installation transcript"))
             .withFix(Fix.run("update the package lists and try again", "sudo apt-get update"))
-            .withFix(Fix.of("check the transcript for the underlying apt error"));
+            .withFix(Fix.of("apt-get's output above shows the underlying error"));
     }
 
     // ─── podman ────────────────────────────────────────────────────────────────────────────

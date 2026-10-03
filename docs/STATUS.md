@@ -284,8 +284,8 @@ suggests. Each is a decision for the team: implement it, or remove the option.
 
 ### Things that are described but do not exist
 
-- No session log (`oillamp-<session>.log`), container log (`container-<session>.log`) or install
-  log (`install-<time>.log`) is written. `LampLayout` has paths for them, but nothing writes them.
+- No session log (`oillamp-<session>.log`) or container log (`container-<session>.log`) is
+  written. `LampLayout` has paths for them, but nothing writes them.
   The only file in `.oillamp/logs/` is the network log. The container's own output is available
   with `podman logs oillamp-<id>` while the container exists; oillamp includes the last lines in
   the relevant problems.
