@@ -130,6 +130,27 @@ class TravellingBackInTimeSpec extends Specification {
             listed.console().contains('before the upgrade')
     }
 
+    def 'A save message is kept as it was written, however it was given'() {
+        reportInfo """
+            `--message=text` is the same as `--message text` and `-m text`. Whatever follows
+            --message is the message, even when it looks like an option or is `--` itself, so a
+            person who marks a moment with "-- after the upgrade --" finds exactly that in the
+            history.
+        """
+        given:
+            var lamp = aLampThatHasRun()
+
+        when: 'the lamp changes between saves, so each one makes a snapshot'
+            var joined = saveAfterAChange(lamp, '--message=before the upgrade')
+            var dashed = saveAfterAChange(lamp, '-m', '-- after the upgrade --')
+            var bare = saveAfterAChange(lamp, '--message', '--')
+
+        then:
+            joined.message() == 'before the upgrade'
+            dashed.message() == '-- after the upgrade --'
+            bare.message() == '--'
+    }
+
     def 'A restore brings back exactly what was saved, and removes what came after'() {
         reportInfo """
             The whole point of a snapshot is that the agent's home comes back as it was: every
@@ -384,6 +405,14 @@ class TravellingBackInTimeSpec extends Specification {
         var saved = host.oillamp.run('save', lamp.toString(), '--message', message)
         assert saved.succeeded()
         saved.events().find { it instanceof LampEvent.Saved }?.snapshot() ?: history(lamp).first()
+    }
+
+    /** Changes a file in the agent's home, then saves with these arguments, and returns the snapshot made. */
+    private LampEvent.Snapshot saveAfterAChange(Path lamp, String... arguments) {
+        Files.writeString(home(lamp).resolve('workspace/notes.txt'), UUID.randomUUID().toString())
+        var saved = host.oillamp.run(*(['save', lamp.toString()] + arguments.toList()))
+        assert saved.succeeded()
+        saved.events().find { it instanceof LampEvent.Saved }.snapshot()
     }
 
     private List<LampEvent.Snapshot> history(Path lamp) {

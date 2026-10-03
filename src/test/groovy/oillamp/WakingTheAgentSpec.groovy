@@ -180,6 +180,34 @@ class WakingTheAgentSpec extends Specification {
             jobs(lamp).first().enabled()
     }
 
+    def 'A job can be written with --cron=, --at= and --expires=, and a prompt that starts with a dash goes after --'() {
+        reportInfo """
+            `--cron=@daily` means the same as `--cron @daily`, so a job comes out the same
+            whichever way it was typed. A prompt is often a list of things to do, and a list
+            starts with a dash, which oillamp would take for an option it does not know. After
+            `--`, every argument is taken as it is written.
+        """
+        given: 'Tuesday, 16:15 in Berlin'
+            var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
+
+        when:
+            schedule(lamp, 'add', '--cron=0 9 * * 1-5', '--expires=in 3d', 'Weekday check')
+            schedule(lamp, 'add', '--at=in 2h', 'Once')
+            schedule(lamp, 'add', '--cron', '@daily', '--', '- read the inbox\n- answer what is urgent')
+            var listed = jobs(lamp)
+
+        then: 'the first runs at nine on weekdays, and only until Friday afternoon'
+            listed[0].when().contains('0 9 * * 1-5')
+            listed[0].next() == Optional.of(Instant.parse('2026-09-23T07:00:00Z'))
+            listed[0].expires() == Optional.of(NOW.plus(Duration.ofDays(3)))
+
+        and: 'the second runs once, two hours from now'
+            listed[1].next() == Optional.of(NOW.plus(Duration.ofHours(2)))
+
+        and: 'the third has its prompt exactly as written'
+            listed[2].prompt() == '- read the inbox\n- answer what is urgent'
+    }
+
     def 'With the schedule switched off, a job is kept, but the user is told it will not run'() {
         reportInfo """
             Waking the agent costs model tokens, so a lamp's schedule is off until its owner turns
