@@ -161,8 +161,10 @@ final class HistoryPage {
 
     /// Right after going back: what happened, and the way to undo it.
     private UIForAnySwing<?, ?> undo() {
-        Val<String> wentBack = Viewable.of(String.class, genie, state, (it, s) -> it.history().moments().isEmpty() ? ""
-                : it.history().title(it.history().moments().first(), it, s.localNow()));
+        // The newest going back: a genie woken again after it may have saved a moment since.
+        Val<String> wentBack = Viewable.of(String.class, genie, state, (it, s) -> it.history().moments().stream()
+                .filter(moment -> moment.kind() == History.Kind.WENT_BACK).findFirst()
+                .map(moment -> it.history().title(moment, it, s.localNow())).orElse(""));
         Val<Boolean> shown = history.viewAs(Boolean.class, it -> it.busy().isEmpty() && it.undo().isPresent());
         return
             panel("fill, ins 10 14 10 14, gap 12, hidemode 3", "[][grow][]")
