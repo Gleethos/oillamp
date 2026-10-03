@@ -107,7 +107,8 @@ class WakingTheAgentSpec extends Specification {
             host.oillamp.run('schedule', lamp.toString(), 'add', '--at', 'in 2h', 'Once')
             host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '@hourly', 'Switched off')
             host.oillamp.run('schedule', lamp.toString(), 'disable', 'job-4')
-            var listed = host.oillamp.run('schedule', lamp.toString()).events().find { it instanceof LampEvent.Schedule }.jobs()
+            var listing = host.oillamp.run('schedule', lamp.toString())
+            var listed = listing.events().find { it instanceof LampEvent.Schedule }.jobs()
 
         then: 'nine on each weekday of the week ahead, which ends next Tuesday at 16:15'
             listed[0].upcoming().collect() == ['2026-09-23', '2026-09-24', '2026-09-25', '2026-09-28', '2026-09-29']
@@ -142,7 +143,9 @@ class WakingTheAgentSpec extends Specification {
             passed.problems().first().whatHappened().contains('has already passed')
 
         and: 'nothing was added'
-            host.oillamp.run('schedule', lamp.toString()).events().find { it instanceof LampEvent.Schedule }.jobs().isEmpty()
+            var listing = host.oillamp.run('schedule', lamp.toString())
+            var jobs = listing.events().find { it instanceof LampEvent.Schedule }.jobs()
+            jobs.isEmpty()
     }
 
     def 'A job can be switched off and on, and removed, and the whole schedule paused'() {
@@ -155,10 +158,15 @@ class WakingTheAgentSpec extends Specification {
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
             host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '@hourly', 'Look at the queue')
             host.oillamp.run('schedule', lamp.toString(), 'add', '--at', 'in 2h', 'Send the summary')
+            var jobsOnTheSchedule = {
+                var listing = host.oillamp.run('schedule', lamp.toString())
+                assert listing.succeeded()
+                listing.events().find { it instanceof LampEvent.Schedule }.jobs()
+            }
 
         when:
             var off = host.oillamp.run('schedule', lamp.toString(), 'disable', 'job-1')
-            var switchedOff = host.oillamp.run('schedule', lamp.toString()).events().find { it instanceof LampEvent.Schedule }.jobs()
+            var switchedOff = jobsOnTheSchedule()
             host.oillamp.run('schedule', lamp.toString(), 'enable', 'job-1')
             var paused = host.oillamp.run('schedule', lamp.toString(), 'pause')
             var pausedListing = host.oillamp.run('schedule', lamp.toString()).console()
@@ -175,9 +183,10 @@ class WakingTheAgentSpec extends Specification {
             removed.events().any { it instanceof LampEvent.JobRemoved && it.job().id() == 'job-2' }
             missing.reported('OIL-SCHEDULE-003')
 
-        and:
-            host.oillamp.run('schedule', lamp.toString()).events().find { it instanceof LampEvent.Schedule }.jobs()*.id() == ['job-1']
-            host.oillamp.run('schedule', lamp.toString()).events().find { it instanceof LampEvent.Schedule }.jobs().first().enabled()
+        and: 'only the first job is left, switched on again'
+            var jobs = jobsOnTheSchedule()
+            jobs*.id() == ['job-1']
+            jobs.first().enabled()
     }
 
     def 'A job can be written with --cron=, --at= and --expires=, and a prompt that starts with a dash goes after --'() {
@@ -194,7 +203,8 @@ class WakingTheAgentSpec extends Specification {
             host.oillamp.run('schedule', lamp.toString(), 'add', '--cron=0 9 * * 1-5', '--expires=in 3d', 'Weekday check')
             host.oillamp.run('schedule', lamp.toString(), 'add', '--at=in 2h', 'Once')
             host.oillamp.run('schedule', lamp.toString(), 'add', '--cron', '@daily', '--', '- read the inbox\n- answer what is urgent')
-            var listed = host.oillamp.run('schedule', lamp.toString()).events().find { it instanceof LampEvent.Schedule }.jobs()
+            var listing = host.oillamp.run('schedule', lamp.toString())
+            var listed = listing.events().find { it instanceof LampEvent.Schedule }.jobs()
 
         then: 'the first runs at nine on weekdays, and only until Friday afternoon'
             listed[0].when().contains('0 9 * * 1-5')
@@ -223,7 +233,9 @@ class WakingTheAgentSpec extends Specification {
         then:
             added.succeeded()
             added.reported('OIL-SCHEDULE-004')
-            host.oillamp.run('schedule', lamp.toString()).events().find { it instanceof LampEvent.Schedule }.jobs().size() == 1
+            var listing = host.oillamp.run('schedule', lamp.toString())
+            var jobs = listing.events().find { it instanceof LampEvent.Schedule }.jobs()
+            jobs.size() == 1
     }
 
     def 'A session started with --enable-scheduling runs the jobs, and leaves oillamp.toml as it is'() {
@@ -244,7 +256,9 @@ class WakingTheAgentSpec extends Specification {
             startASession(lamp, '--enable-scheduling')
             var finished = waitFor(LampEvent.RunFinished)
             var during = host.oillamp.run('schedule', lamp.toString())
-            stop(lamp)
+            assert host.oillamp.run('stop', lamp.toString()).succeeded()
+            session.join(30_000)
+            assert !session.alive
             var after = host.oillamp.run('schedule', lamp.toString())
 
         then: 'the job ran'
@@ -285,7 +299,9 @@ class WakingTheAgentSpec extends Specification {
             host.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
             startASession(lamp)
             var finished = waitFor(LampEvent.RunFinished)
-            stop(lamp)
+            assert host.oillamp.run('stop', lamp.toString()).succeeded()
+            session.join(30_000)
+            assert !session.alive
 
         then: 'the session said it was open before anything of the run'
             reported.any { it instanceof LampEvent.SessionOpened }
@@ -310,10 +326,12 @@ class WakingTheAgentSpec extends Specification {
             snapshot.kind() == SaveKind.RUN
             snapshot.run() == Optional.of('run-1')
             snapshot.message().contains('I wrote the weekly report')
-            host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots().first().id() == snapshot.id()
+            var history = host.oillamp.run('history', lamp.toString())
+            var newest = history.events().find { it instanceof LampEvent.History }.snapshots().first()
+            newest.id() == snapshot.id()
 
         and: 'the history says which job it was, how it ended, and where its conversation is'
-            with (host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots().first()) {
+            with (newest) {
                 job() == Optional.of('job-1')
                 outcome() == Optional.of(RunOutcome.FINISHED)
                 conversation().isPresent()
@@ -322,7 +340,9 @@ class WakingTheAgentSpec extends Specification {
 
         and: 'the job ran once, as it was meant to, and is gone'
             reported.any { it instanceof LampEvent.JobRemoved && it.job().id() == 'job-1' }
-            host.oillamp.run('schedule', lamp.toString()).events().find { it instanceof LampEvent.Schedule }.jobs().isEmpty()
+            var listing = host.oillamp.run('schedule', lamp.toString())
+            var jobs = listing.events().find { it instanceof LampEvent.Schedule }.jobs()
+            jobs.isEmpty()
     }
 
     def 'The next run is told what the last one did: its notes, the files it changed and its last words'() {
@@ -349,7 +369,9 @@ class WakingTheAgentSpec extends Specification {
             host.machine { it.clockAt(NOW.plus(Duration.ofMinutes(10))) }
             startASession(lamp)
             waitFor(LampEvent.RunFinished) { it.run().id() == 'run-2' }
-            stop(lamp)
+            assert host.oillamp.run('stop', lamp.toString()).succeeded()
+            session.join(30_000)
+            assert !session.alive
 
         then: 'the second run was given the notes, the changes and the last words of the first'
             prompts.size() == 2
@@ -443,7 +465,8 @@ class WakingTheAgentSpec extends Specification {
             asked.console().contains('ran out of time')
 
         and: 'the half-done work is in the run\'s snapshot'
-            var snapshot = host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots().first()
+            var history = host.oillamp.run('history', lamp.toString())
+            var snapshot = history.events().find { it instanceof LampEvent.History }.snapshots().first()
             snapshot.kind() == SaveKind.RUN
             snapshot.message().contains('timed out')
     }
@@ -467,12 +490,16 @@ class WakingTheAgentSpec extends Specification {
             Thread.start { host.oillamp.run('ask', lamp.toString(), 'A long task') }
             waitFor(LampEvent.RunStarted)
             Thread.sleep(300)
-            stop(lamp)
+            assert host.oillamp.run('stop', lamp.toString()).succeeded()
+            session.join(30_000)
+            assert !session.alive
 
         then:
             var finished = reported.find { it instanceof LampEvent.RunFinished }
             finished.outcome() == RunOutcome.INTERRUPTED
-            var run = host.oillamp.run('history', lamp.toString()).events().find { it instanceof LampEvent.History }.snapshots().find { it.kind() == SaveKind.RUN }
+            var history = host.oillamp.run('history', lamp.toString())
+            var snapshots = history.events().find { it instanceof LampEvent.History }.snapshots()
+            var run = snapshots.find { it.kind() == SaveKind.RUN }
             run.message().contains('interrupted')
             !reported.any { it instanceof LampEvent.Failure }
     }
@@ -554,7 +581,9 @@ class WakingTheAgentSpec extends Specification {
             listed.text.contains('job-2 (yours)')
 
         and: 'the agent\'s job ends after fourteen days, although it asked for no end'
-            var job = host.oillamp.run('schedule', lamp.toString()).events().find { it instanceof LampEvent.Schedule }.jobs().find { it.id() == 'job-2' }
+            var listing = host.oillamp.run('schedule', lamp.toString())
+            var jobs = listing.events().find { it instanceof LampEvent.Schedule }.jobs()
+            var job = jobs.find { it.id() == 'job-2' }
             job.author() == LampEvent.JobAuthor.AGENT
             job.expires() == Optional.of(NOW.plus(Duration.ofDays(14)))
 
@@ -686,12 +715,6 @@ class WakingTheAgentSpec extends Specification {
         var oillamp = host.oillamp.observedBy { reported.add(it) }
         session = Thread.start { oillamp.run(*(['at', lamp.toString()] + options.toList())) }
         waitFor(LampEvent.Summary) { it.title() == 'your session is up' }
-    }
-
-    private void stop(Path lamp) {
-        assert host.oillamp.run('stop', lamp.toString()).succeeded()
-        session.join(30_000)
-        assert !session.alive
     }
 
     private <T extends LampEvent> T waitFor(Class<T> kind, Closure<Boolean> which = { true }) {
