@@ -230,6 +230,36 @@ class TheSessionCommandsSpec extends Specification {
                     .count { it.what().contains('viewer') } == 2
     }
 
+    def 'view --view-only opens a viewer that only watches'() {
+        reportInfo """
+            A person who wants to watch the agent work, without a stray key press reaching the
+            desktop, opens the viewer with --view-only. It takes nothing typed or clicked. A
+            viewer opened without it can be used as usual.
+        """
+        given:
+            var lamp = host.lampPath()
+            startASession(lamp)
+            var viewers = {
+                reported.findAll { it instanceof LampEvent.WindowOpened && it.what().contains('viewer') }
+            }
+
+        when: 'one viewer is opened to watch, then an ordinary one'
+            var watching = host.oillamp.run('view', lamp.toString(), '--view-only')
+            waitUntil { viewers().size() == 2 }
+            var ordinary = host.oillamp.run('view', lamp.toString())
+            waitUntil { viewers().size() == 3 }
+
+        then:
+            watching.status() == ExitStatus.SUCCESS
+            ordinary.status() == ExitStatus.SUCCESS
+
+        and: 'only the first was told to take no input'
+            var watchingViewer = viewers()[1]
+            var ordinaryViewer = viewers()[2]
+            watchingViewer.argv().contains('-ViewOnly=1')
+            !ordinaryViewer.argv().contains('-ViewOnly=1')
+    }
+
     def 'list reports the sandboxes running on this host, and says so plainly when there are none'() {
         reportInfo """
             Asked of podman, not of a list oillamp keeps. A second list beside the one the
