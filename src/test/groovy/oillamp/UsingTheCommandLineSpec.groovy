@@ -631,6 +631,20 @@ class UsingTheCommandLineSpec extends Specification {
             'schedule LAMP pause x' | "`oillamp schedule <dir> pause` takes nothing more, but was given 'x'"
     }
 
+    def 'An action schedule does not know is refused before oillamp looks for the lamp'() {
+        reportInfo """
+            `oillamp schedule <dir>` lists, adds, removes, enables, disables, pauses and resumes.
+            Any other word is a usage error, and it is said before oillamp looks for the lamp,
+            so a typo is reported as a typo and not as a lamp that is missing.
+        """
+        when:
+            var outcome = host.oillamp.run('schedule', host.lampPath().toString(), 'tidy')
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().first().whatHappened().contains("'tidy' is not something `oillamp schedule` does")
+    }
+
     /** What bash offers for the last word, using the completion script oillamp printed. */
     private static List<String> complete(Path script, String... words) {
         var program = """

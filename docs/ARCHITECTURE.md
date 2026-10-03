@@ -467,8 +467,9 @@ The same, step by step:
 
 1. **`OilLamp.main`** builds a real `Machine` and calls `OilLamp.run(argv)`. `run` catches any
    unexpected exception and reports it as `OIL-INTERNAL-001`, so you never see a raw stack trace.
-2. **`Invocation.execute`** parses the command line by hand (no library) and calls the matching
-   method on `Commands`. Every usage mistake exits with code 2.
+2. **`Invocation.execute`** parses the command line by hand (no library) into a `Command`, a
+   sealed interface with one record per command, and calls the matching method on `Commands`.
+   Every usage mistake exits with code 2.
 3. **Host phase (`HostPhase`).**
    - `HostProbeUtil.probe` collects `HostFacts`: the distribution, your user and groups, the graphical
      session, which required packages are installed, your subordinate id ranges, podman's version
@@ -1344,7 +1345,7 @@ removed.
 
 | Area | Classes |
 |---|---|
-| Entry and commands | `OilLamp`, `Invocation`, `Commands`, `Context`, `ConsoleRenderer`, `IntroductionTextUtil` (the texts of `oillamp about` and `oillamp guide`) |
+| Entry and commands | `OilLamp`, `Invocation`, `Command`, `Commands`, `Context`, `ConsoleRenderer`, `IntroductionTextUtil` (the texts of `oillamp about` and `oillamp guide`) |
 | The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `FilesystemUtil`, `LampLock` |
 | Host phase | `HostPhase`, `HostProbeUtil`, `HostPlanUtil`, `HostFacts`, `HostRequirements`, `SubIdRangeUtil`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
 | Lamp phase | `LampPhase`, `LampPlanUtil`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampLocationUtil`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `RecordingRetentionUtil`, `RecordingFile` |

@@ -604,18 +604,11 @@ final class Commands {
 
     // ─── the schedule, and asking the agent ────────────────────────────────────────────────
 
-    /// What `oillamp schedule` was asked to do.
-    ///
-    /// @param action   `list`, `add`, `remove`, `enable`, `disable`, `pause` or `resume`
-    /// @param argument the job for `remove`, `enable` and `disable`; the prompt for `add`
-    record ScheduleAction(String action, Optional<String> argument, Optional<String> cron,
-                          Optional<String> at, Optional<String> expires) {}
-
     /// `oillamp schedule <dir> [<action>]`: list the lamp's jobs, or change them.
     ///
     /// Works whether or not a session runs. A running session reads the schedule again when it
     /// changes, so a job added now can run straight away.
-    public ExitStatus schedule(Path lampPath, ScheduleAction request) {
+    public ExitStatus schedule(Path lampPath, Command.Schedule.Action action) {
         Result<LampLayout> found = layoutOf(lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
             context.report(failure.problems());
@@ -631,34 +624,35 @@ final class Commands {
         ScheduleBook book = new ScheduleBook(layout);
         ZoneId zone = machine.zone();
         Instant now = machine.now();
-        String action = request.action();
         Result<LampEvent> done = switch (action) {
-            case "list" -> book.read().map(schedule -> describe(schedule, limits, zone, now));
-            case "add" -> book.update(schedule -> schedule.add(new Schedule.Request(request.cron(), request.at(),
-                            request.argument().orElse(""), request.expires()),
+            case Command.Schedule.Action.ListJobs _ -> book.read().map(schedule -> describe(schedule, limits, zone, now));
+            case Command.Schedule.Action.Add add -> book.update(schedule -> schedule.add(new Schedule.Request(add.cron(),
+                            add.at(), add.prompt(), add.expires()),
                             LampEvent.JobAuthor.USER, now, zone, limits), Schedule.Changed::schedule)
                     .map(added -> new LampEvent.JobAdded(added.job().describe(zone, now)));
-            case "remove" -> book.update(schedule -> schedule.remove(request.argument().orElse(""),
+            case Command.Schedule.Action.Remove remove -> book.update(schedule -> schedule.remove(remove.job(),
                             LampEvent.JobAuthor.USER, layout.root()), Schedule.Changed::schedule)
                     .map(removed -> new LampEvent.JobRemoved(removed.job().describe(zone, now), "removed by you"));
-            case "enable", "disable" -> book.update(schedule -> schedule.enable(request.argument().orElse(""),
-                            action.equals("enable"), now, layout.root()), Schedule.Changed::schedule)
-                    .map(changed -> new LampEvent.ScheduleChanged(changed.job().id() + " is switched "
-                            + (changed.job().enabled() ? "on" : "off")));
-            case "pause", "resume" -> book.update(schedule -> Result.ok(schedule.paused(action.equals("pause"))),
+            case Command.Schedule.Action.Enable enable -> book.update(schedule -> schedule.enable(enable.job(),
+                            true, now, layout.root()), Schedule.Changed::schedule)
+                    .map(changed -> new LampEvent.ScheduleChanged(changed.job().id() + " is switched on"));
+            case Command.Schedule.Action.Disable disable -> book.update(schedule -> schedule.enable(disable.job(),
+                            false, now, layout.root()), Schedule.Changed::schedule)
+                    .map(changed -> new LampEvent.ScheduleChanged(changed.job().id() + " is switched off"));
+            case Command.Schedule.Action.Pause _ -> book.update(schedule -> Result.ok(schedule.paused(true)),
                             Function.<Schedule>identity())
-                    .map(changed -> new LampEvent.ScheduleChanged(changed.paused()
-                            ? "the schedule is paused: no job runs until `oillamp schedule " + layout.root() + " resume`"
-                            : "the schedule runs again"));
-            default -> Result.err(ProblemCatalogUtil.usage("'" + action + "' is not something `oillamp schedule` does",
-                    Invocation.usageOf("schedule")));
+                    .map(paused -> new LampEvent.ScheduleChanged(
+                            "the schedule is paused: no job runs until `oillamp schedule " + layout.root() + " resume`"));
+            case Command.Schedule.Action.Resume _ -> book.update(schedule -> Result.ok(schedule.paused(false)),
+                            Function.<Schedule>identity())
+                    .map(resumed -> new LampEvent.ScheduleChanged("the schedule runs again"));
         };
         if (done instanceof Result.Err<LampEvent> failure) {
             context.report(failure.problems());
             return exitStatusFor(failure.problems());
         }
         context.emit(((Result.Ok<LampEvent>) done).value());
-        if (!action.equals("list")) {
+        if (!(action instanceof Command.Schedule.Action.ListJobs)) {
             if (!limits.enabled()) context.report(Tuple.of(Problem.class, ProblemCatalogUtil.scheduleOff(layout.config())));
             // A running session looks at the schedule every half minute; this makes it look now.
             // Without a session there is nothing to tell, and that is fine.

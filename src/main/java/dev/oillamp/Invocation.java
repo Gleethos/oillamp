@@ -2,19 +2,18 @@ package dev.oillamp;
 
 import java.net.URI;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Consumer;
 
 import dev.lamp.ExitStatus;
 import dev.lamp.LampEvent;
+import dev.lamp.Problem;
 
+import sprouts.Association;
 import sprouts.Tuple;
+import sprouts.ValueSet;
 
-/// Parses the command line and calls the matching method on [Commands].
+/// Parses the command line into a [Command], and calls the matching method on [Commands].
 ///
 /// Written by hand rather than with a command-line library. There are only a few commands and
 /// options, and this makes it simple to give a helpful message for a mistyped command and exit
@@ -25,97 +24,157 @@ final class Invocation {
 
     static ExitStatus execute(Machine machine, Consumer<LampEvent> sink,
                               ConsoleRenderer console, String version, String... argv) {
-        List<String> arguments = new ArrayList<>(List.of(argv));
+        Tuple<String> arguments = Tuple.of(String.class, argv);
         // Before anything is printed, so that even a usage error comes without colour.
         if (arguments.contains("--no-color")) console.withoutColour();
         // Likewise: an application reading standard output must never see a line that is not JSON.
         if (arguments.contains("--embedded")) console.asJsonLines();
 
+        Result<Command> parsed = parse(arguments);
+        if (parsed instanceof Result.Err<Command> refused) {
+            console.banner(version, "");
+            for (Problem problem : refused.problems()) sink.accept(new LampEvent.Failure(problem));
+            return ExitStatus.USAGE;
+        }
+        Command command = ((Result.Ok<Command>) parsed).value();
+
+        // The renderer was created before the options were known, so tell it now.
+        console.verbose(command.options().verbose());
+        Commands commands = new Commands(machine, new Context(sink, command.options(), version));
+
+        return switch (command) {
+            case Command.NoCommand _ -> {
+                console.banner(version, "");
+                sink.accept(new LampEvent.Answer(usage()));
+                yield ExitStatus.USAGE;
+            }
+            case Command.Version _ -> {
+                sink.accept(new LampEvent.Answer("oillamp " + version + "\njava " + Runtime.version()));
+                yield ExitStatus.SUCCESS;
+            }
+            case Command.Help _ -> {
+                sink.accept(new LampEvent.Answer(usage()));
+                yield ExitStatus.SUCCESS;
+            }
+            case Command.About _ -> {
+                sink.accept(new LampEvent.Answer(IntroductionTextUtil.about(version)));
+                yield ExitStatus.SUCCESS;
+            }
+            case Command.Guide _ -> {
+                sink.accept(new LampEvent.Answer(IntroductionTextUtil.guide()));
+                yield ExitStatus.SUCCESS;
+            }
+            case Command.Completion _ -> {
+                // Straight to stdout, with no banner: the output is meant to be evaluated by a
+                // shell, and anything else printed would be evaluated along with it.
+                console.plain(GeneratedFileTextUtil.bashCompletion());
+                yield ExitStatus.SUCCESS;
+            }
+            // Explain that there is no such command, instead of answering "unknown command".
+            case Command.Image _ -> {
+                sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
+                        "there is no 'image' command: oillamp rebuilds the sandbox image by itself "
+                      + "whenever anything that goes into it changes",
+                        usage())));
+                yield ExitStatus.USAGE;
+            }
+            case Command.Doctor doctor -> {
+                console.banner(version, doctor.lamp().map(Path::toString).orElse(""));
+                yield commands.doctor(doctor.lamp());
+            }
+            case Command.Config config -> switch (config.action()) {
+                case CHECK          -> commands.checkConfig(config.lamp());
+                case SHOW_EFFECTIVE -> commands.showEffectiveConfig(config.lamp());
+                case PATH -> {
+                    sink.accept(new LampEvent.Answer(config.lamp().resolve("oillamp.toml").toString()));
+                    yield ExitStatus.SUCCESS;
+                }
+            };
+            case Command.At at -> {
+                console.banner(version, at.lamp().toString());
+                yield commands.at(at.lamp());
+            }
+            // These five talk to a running session through its control socket. None of them
+            // sets anything up.
+            case Command.View view     -> commands.view(view.lamp(), view.viewOnly());
+            case Command.Shell shell   -> commands.shell(shell.lamp());
+            case Command.Stop stop     -> commands.stop(stop.lamp());
+            case Command.Status status -> commands.status(status.lamp());
+            case Command.Follow follow -> commands.follow(follow.lamp());
+            case Command.List _        -> commands.list();
+            // Talks to no session, and refuses if one answers.
+            case Command.Remove remove -> {
+                console.banner(version, remove.lamps().size() == 1 ? remove.lamps().first().toString()
+                                                                    : remove.lamps().size() + " lamps");
+                yield commands.remove(remove.lamps(), remove.confirmed());
+            }
+            case Command.Recordings recordings ->
+                    commands.recordings(recordings.lamp(), recordings.open(), recordings.prune());
+            // The lamp's history. `restore` needs the lamp stopped; the other two do not.
+            case Command.Save save -> {
+                console.banner(version, save.lamp().toString());
+                yield commands.save(save.lamp(), save.message());
+            }
+            case Command.History history -> commands.history(history.lamp());
+            case Command.Restore restore -> {
+                console.banner(version, restore.lamp().toString());
+                yield commands.restore(restore.lamp(), restore.snapshot());
+            }
+            // The schedule, and the agent it wakes. `schedule` works with or without a session;
+            // `ask` needs one, since the session is what holds the agent.
+            case Command.Schedule schedule -> commands.schedule(schedule.lamp(), schedule.action());
+            case Command.Conversations conversations ->
+                    commands.conversations(conversations.lamp(), conversations.conversation());
+            case Command.Ask ask       -> commands.ask(ask.lamp(), ask.prompt(), ask.place(), ask.waitForAnswer());
+            case Command.Cancel cancel -> commands.cancel(cancel.lamp(), cancel.run());
+        };
+    }
+
+    /// Reads the command line into a [Command], or says what is wrong with it.
+    static Result<Command> parse(Tuple<String> arguments) {
         Context.Options options = Context.Options.defaults();
-        // Only `view` reads this, so it stays a local rather than joining Options, where every
-        // command would carry a switch that means nothing to it.
+        // The options only one command reads.
         boolean viewOnly = false;
-        // Likewise --yes, which only `remove` reads. It is not a general "assume yes": it is the
-        // answer to one question, asked by one command, that deletes the agent's home.
         boolean confirmed = false;
-        // `recordings` only.
-        Optional<String> open = Optional.empty();
-        // `save` only.
-        String message = "";
-        // `schedule <dir> add` only.
-        Optional<String> cron = Optional.empty();
-        Optional<String> at = Optional.empty();
-        Optional<String> expires = Optional.empty();
-        // `ask` only.
-        Optional<String> in = Optional.empty();
-        Optional<String> after = Optional.empty();
-        Optional<String> insteadOf = Optional.empty();
-        // `at` only: where model requests go, and which variable holds the key.
-        Optional<String> modelService = Optional.empty();
-        Optional<String> modelKeyEnv = Optional.empty();
-        // --open, --model-service and --model-key-env take a value, either as `--open=x` or as
-        // the argument after them; pending is the option still waiting for its value.
-        Optional<String> pending = Optional.empty();
         boolean prune = false;
-        // `ask` only.
         boolean wait = true;
-        List<String> positional = new ArrayList<>();
+        // The value of each option in VALUE_OPTIONS that was given, given either as `--open=x` or
+        // as the argument after it; pending is the option still waiting for its value.
+        Association<String, String> values = Association.between(String.class, String.class);
+        Optional<String> pending = Optional.empty();
+        Tuple<String> positional = Tuple.of(String.class);
         // Every option other than the four that apply to all commands, as it is spelt in usage(),
         // so that a command given one it does not take can refuse it.
-        List<String> commandOptions = new ArrayList<>();
+        Tuple<String> commandOptions = Tuple.of(String.class);
         // After `--`, everything is taken as it is written, so a prompt may start with a dash.
         boolean literal = false;
         for (String argument : arguments) {
             if (literal) {
-                positional.add(argument);
+                positional = positional.add(argument);
                 continue;
             }
-            if (argument.equals("--") && pending.isEmpty()) {
+            if (pending.isPresent()) {
+                values = values.put(pending.get(), argument);
+                pending = Optional.empty();
+                continue;
+            }
+            if (argument.equals("--")) {
                 literal = true;
                 continue;
             }
             String option = VALUE_OPTIONS.stream().filter(taking -> argument.startsWith(taking + "="))
                     .findFirst().orElse(argument.equals("-y") ? "--yes"
                                       : argument.equals("-m") ? "--message" : argument);
-            if (pending.isPresent()) {
-                switch (pending.get()) {
-                    case "--open"          -> open = Optional.of(argument);
-                    case "--model-service" -> modelService = Optional.of(argument);
-                    case "--message"       -> message = argument;
-                    case "--cron"          -> cron = Optional.of(argument);
-                    case "--at"            -> at = Optional.of(argument);
-                    case "--expires"       -> expires = Optional.of(argument);
-                    case "--in"            -> in = Optional.of(argument);
-                    case "--after"         -> after = Optional.of(argument);
-                    case "--instead-of"    -> insteadOf = Optional.of(argument);
-                    default                -> modelKeyEnv = Optional.of(argument);
-                }
-                pending = Optional.empty();
-                continue;
-            }
+            if (OPTIONS_OF.values().any(taken -> taken.contains(option)))
+                commandOptions = commandOptions.add(option);
             if (VALUE_OPTIONS.contains(option) && argument.startsWith(option + "=")) {
-                commandOptions.add(option);
-                String value = argument.substring(option.length() + 1);
-                switch (option) {
-                    case "--open"          -> open = Optional.of(value);
-                    case "--model-service" -> modelService = Optional.of(value);
-                    case "--message"       -> message = value;
-                    case "--cron"          -> cron = Optional.of(value);
-                    case "--at"            -> at = Optional.of(value);
-                    case "--expires"       -> expires = Optional.of(value);
-                    case "--in"            -> in = Optional.of(value);
-                    case "--after"         -> after = Optional.of(value);
-                    case "--instead-of"    -> insteadOf = Optional.of(value);
-                    default                -> modelKeyEnv = Optional.of(value);
-                }
+                values = values.put(option, argument.substring(option.length() + 1));
                 continue;
             }
-            if (OPTIONS_OF.values().stream().anyMatch(taken -> taken.contains(option)))
-                commandOptions.add(option);
-            switch (argument) {
+            switch (option) {
                 case "--verbose", "-v" -> options = options.withVerbose(true);
                 case "--debug"         -> options = options.withDebug(true).withVerbose(true);
-                case "--no-color"      -> { }   // handled before this loop
+                case "--no-color"      -> { }   // handled by execute, before anything was printed
                 case "--dry-run"       -> options = options.withDryRun(true);
                 case "--no-install"    -> options = options.withAutoInstall(false);
                 case "--init"          -> options = options.withInit(true);
@@ -124,357 +183,245 @@ final class Invocation {
                 case "--embedded"      -> options = options.withEmbedded(true);
                 case "--enable-scheduling" -> options = options.withScheduling(true);
                 case "--view-only"     -> viewOnly = true;
-                case "--yes", "-y"     -> confirmed = true;
+                case "--yes"           -> confirmed = true;
                 case "--prune"         -> prune = true;
                 case "--no-wait"       -> wait = false;
-                case "--open", "--model-service", "--model-key-env",
-                     "--cron", "--at", "--expires", "--in", "--after", "--instead-of" -> pending = Optional.of(argument);
-                case "--message", "-m" -> pending = Optional.of("--message");
                 default -> {
-                    if (argument.startsWith("-")) {
-                        console.banner(version, "");
-                        sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
-                                "'" + argument + "' is not an option oillamp knows", usage())));
-                        return ExitStatus.USAGE;
-                    } else {
-                        positional.add(argument);
-                    }
+                    if (VALUE_OPTIONS.contains(option))
+                        pending = Optional.of(option);
+                    else if (argument.startsWith("-"))
+                        return Result.err(ProblemCatalogUtil.usage(
+                                "'" + argument + "' is not an option oillamp knows", usage()));
+                    else
+                        positional = positional.add(argument);
                 }
             }
         }
 
-        if (pending.isPresent() && pending.get().equals("--message")) {
-            console.banner(version, "");
-            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
+        if (pending.isPresent()) return Result.err(switch (pending.get()) {
+            case "--message" -> ProblemCatalogUtil.usage(
                     "--message needs the text to save with, for example --message \"before the upgrade\"",
-                    usageOf("save"))));
-            return ExitStatus.USAGE;
-        }
-        if (pending.isPresent() && Set.of("--in", "--after", "--instead-of").contains(pending.get())) {
-            console.banner(version, "");
-            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(pending.get() + " needs "
-                    + (pending.get().equals("--in") ? "a conversation, as `oillamp conversations` lists them"
-                                                    : "an entry, as `oillamp conversations <dir> <conversation>` shows them"),
-                    usageOf("ask"))));
-            return ExitStatus.USAGE;
-        }
-        if (pending.isPresent() && Set.of("--cron", "--at", "--expires").contains(pending.get())) {
-            console.banner(version, "");
-            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
-                    pending.get() + " needs a value, for example " + switch (pending.get()) {
-                        case "--cron" -> "--cron \"0 9 * * 1-5\"";
-                        case "--at"   -> "--at \"2026-10-01 09:00\"";
-                        default       -> "--expires \"in 14d\"";
-                    }, usageOf("schedule"))));
-            return ExitStatus.USAGE;
-        }
-        if (pending.isPresent() && !pending.get().equals("--open")) {
-            console.banner(version, "");
-            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
-                    pending.get() + " needs a value, for example " + pending.get()
-                  + (pending.get().equals("--model-service") ? " https://api.eu.edenai.run" : " MY_MODEL_KEY"),
-                    usageOf("at"))));
-            return ExitStatus.USAGE;
-        }
-        if (pending.isPresent()) {
-            console.banner(version, "");
-            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
+                    usageOf("save"));
+            case "--in" -> ProblemCatalogUtil.usage(
+                    "--in needs a conversation, as `oillamp conversations` lists them", usageOf("ask"));
+            case "--after", "--instead-of" -> ProblemCatalogUtil.usage(pending.get()
+                    + " needs an entry, as `oillamp conversations <dir> <conversation>` shows them", usageOf("ask"));
+            case "--cron" -> ProblemCatalogUtil.usage(
+                    "--cron needs a value, for example --cron \"0 9 * * 1-5\"", usageOf("schedule"));
+            case "--at" -> ProblemCatalogUtil.usage(
+                    "--at needs a value, for example --at \"2026-10-01 09:00\"", usageOf("schedule"));
+            case "--expires" -> ProblemCatalogUtil.usage(
+                    "--expires needs a value, for example --expires \"in 14d\"", usageOf("schedule"));
+            case "--model-service" -> ProblemCatalogUtil.usage(
+                    "--model-service needs a value, for example --model-service https://api.eu.edenai.run",
+                    usageOf("at"));
+            case "--model-key-env" -> ProblemCatalogUtil.usage(
+                    "--model-key-env needs a value, for example --model-key-env MY_MODEL_KEY", usageOf("at"));
+            default -> ProblemCatalogUtil.usage(
                     "--open needs the session to play, for example --open 20260101-120000",
-                    "oillamp recordings <dir> [--open <session>] [--prune]")));
-            return ExitStatus.USAGE;
-        }
+                    "oillamp recordings <dir> [--open <session>] [--prune]");
+        });
 
+        Optional<String> modelService = values.get("--model-service");
+        Optional<String> modelKeyEnv = values.get("--model-key-env");
         if (modelService.isPresent()) {
             Optional<String> wrong = ConfigLoadingUtil.serviceProblem(modelService.get());
-            if (wrong.isPresent()) {
-                console.banner(version, "");
-                sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
-                        "--model-service \"" + modelService.get() + "\": " + wrong.get(), usageOf("at"))));
-                return ExitStatus.USAGE;
-            }
+            if (wrong.isPresent())
+                return Result.err(ProblemCatalogUtil.usage(
+                        "--model-service \"" + modelService.get() + "\": " + wrong.get(), usageOf("at")));
         }
-        if (modelKeyEnv.isPresent() && !ConfigLoadingUtil.isVariableName(modelKeyEnv.get())) {
-            console.banner(version, "");
-            sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
+        if (modelKeyEnv.isPresent() && !ConfigLoadingUtil.isVariableName(modelKeyEnv.get()))
+            return Result.err(ProblemCatalogUtil.usage(
                     "--model-key-env \"" + modelKeyEnv.get() + "\": expected the name of an "
-                  + "environment variable, such as EDENAI_API_KEY", usageOf("at"))));
-            return ExitStatus.USAGE;
-        }
-        options = options.withModel(new Context.ModelOverride(
-                modelService.map(URI::create), modelKeyEnv));
+                  + "environment variable, such as EDENAI_API_KEY", usageOf("at")));
+        options = options.withModel(new Context.ModelOverride(modelService.map(URI::create), modelKeyEnv));
 
-        // The renderer was created before the options were known, so tell it now.
-        console.verbose(options.verbose());
+        if (positional.isEmpty()) return Result.ok(new Command.NoCommand(options));
 
-        if (positional.isEmpty()) {
-            console.banner(version, "");
-            sink.accept(new LampEvent.Answer(usage()));
-            return ExitStatus.USAGE;
-        }
+        String command = positional.first();
+        Tuple<String> rest = positional.removeFirst();
 
-        String command = positional.get(0);
-        List<String> rest = positional.subList(1, positional.size());
-
-        if (OPTIONS_OF.containsKey(command)) {
+        Optional<ValueSet<String>> takes = OPTIONS_OF.get(command);
+        if (takes.isPresent()) {
             Optional<String> misplaced = commandOptions.stream()
-                    .filter(option -> !OPTIONS_OF.get(command).contains(option)).findFirst();
+                    .filter(option -> !takes.get().contains(option)).findFirst();
             if (misplaced.isPresent())
-                return misused(console, sink, version, command,
-                        "`oillamp " + command + "` does not take " + misplaced.get());
+                return Result.err(ProblemCatalogUtil.usage("`oillamp " + command + "` does not take " + misplaced.get(), usageOf(command)));
             if (NEEDS_A_LAMP.contains(command) && rest.isEmpty())
-                return missingDirectory(console, sink, version, command);
+                return Result.err(ProblemCatalogUtil.usage(
+                        "`oillamp " + command + "` needs the path of a lamp directory",
+                        "oillamp " + command + " <dir>"));
+            // Usually a shell pattern such as `test*` that expanded to more than one; acting on
+            // the first and ignoring the rest would look as if it had done them all.
             if (ONE_LAMP_ONLY.contains(command) && rest.size() > 1)
-                return oneLampOnly(console, sink, version, command, rest);
-            int allowed = MOST_ARGUMENTS.getOrDefault(command, Integer.MAX_VALUE);
+                return Result.err(ProblemCatalogUtil.usage(
+                        "`oillamp " + command + "` works on one lamp, but was given " + rest.size()
+                      + " directories (" + rest.join(", ") + "); run it once for each",
+                        "oillamp " + command + " <dir>"));
+            int allowed = MOST_ARGUMENTS.get(command).orElse(Integer.MAX_VALUE);
             if (rest.size() > allowed && allowed == 0)
-                return misused(console, sink, version, command,
-                        "`oillamp " + command + "` takes no arguments, but was given "
-                      + String.join(" ", rest));
+                return Result.err(ProblemCatalogUtil.usage("`oillamp " + command + "` takes no arguments, but was given "
+                      + rest.join(" "), usageOf(command)));
             if (rest.size() > allowed)
-                return misused(console, sink, version, command,
-                        "`oillamp " + command + "` was given more than it takes, starting with '"
-                      + rest.get(allowed) + "'");
+                return Result.err(ProblemCatalogUtil.usage("`oillamp " + command
+                      + "` was given more than it takes, starting with '" + rest.get(allowed) + "'", usageOf(command)));
         }
-
-        if (command.equals("version")) {
-            sink.accept(new LampEvent.Answer(
-                    "oillamp " + version + "\njava " + Runtime.version()));
-            return ExitStatus.SUCCESS;
-        }
-        if (command.equals("help")) {
-            sink.accept(new LampEvent.Answer(usage()));
-            return ExitStatus.SUCCESS;
-        }
-        if (command.equals("about")) {
-            sink.accept(new LampEvent.Answer(IntroductionTextUtil.about(version)));
-            return ExitStatus.SUCCESS;
-        }
-        if (command.equals("guide")) {
-            sink.accept(new LampEvent.Answer(IntroductionTextUtil.guide()));
-            return ExitStatus.SUCCESS;
-        }
-
-        Context context = new Context(sink, options, version);
-        Commands commands = new Commands(machine, context);
 
         return switch (command) {
-            case "doctor" -> {
-                console.banner(version, rest.isEmpty() ? "" : rest.get(0));
-                yield commands.doctor(rest.isEmpty() ? Optional.empty() : Optional.of(Path.of(rest.get(0))));
+            case "version" -> Result.ok(new Command.Version(options));
+            case "help"    -> Result.ok(new Command.Help(options));
+            case "about"   -> Result.ok(new Command.About(options));
+            case "guide"   -> Result.ok(new Command.Guide(options));
+            case "image"   -> Result.ok(new Command.Image(options));
+            case "completion" -> {
+                String shell = rest.isEmpty() ? "bash" : rest.first();
+                if (!shell.equals("bash"))
+                    yield Result.err(ProblemCatalogUtil.usage(
+                            "oillamp only ships a completion script for bash, not '" + shell + "'",
+                            "oillamp completion bash"));
+                yield Result.ok(new Command.Completion(options));
             }
-            case "at" -> {
-                console.banner(version, rest.get(0));
-                yield commands.at(Path.of(rest.get(0)));
-            }
+            case "doctor" -> Result.ok(new Command.Doctor(
+                    rest.isEmpty() ? Optional.empty() : Optional.of(Path.of(rest.first())), options));
             case "config" -> {
-                Path lamp = Path.of(rest.get(0));
                 String action = rest.size() > 1 ? rest.get(1) : "check";
                 yield switch (action) {
-                    case "check"           -> commands.checkConfig(lamp);
-                    case "show-effective"  -> commands.showEffectiveConfig(lamp);
-                    case "path"            -> {
-                        sink.accept(new LampEvent.Answer(lamp.resolve("oillamp.toml").toString()));
-                        yield ExitStatus.SUCCESS;
-                    }
-                    default -> {
-                        sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
-                                "'" + action + "' is not a config action",
-                                "oillamp config <dir> (check | show-effective | path)")));
-                        yield ExitStatus.USAGE;
-                    }
+                    case "check"          -> Result.ok(new Command.Config(Path.of(rest.first()), Command.Config.Action.CHECK, options));
+                    case "show-effective" -> Result.ok(new Command.Config(Path.of(rest.first()), Command.Config.Action.SHOW_EFFECTIVE, options));
+                    case "path"           -> Result.ok(new Command.Config(Path.of(rest.first()), Command.Config.Action.PATH, options));
+                    default -> Result.err(ProblemCatalogUtil.usage("'" + action + "' is not a config action",
+                            "oillamp config <dir> (check | show-effective | path)"));
                 };
             }
-            // These five talk to a running session through its control socket. None of them
-            // sets anything up.
-            case "view"   -> commands.view(Path.of(rest.get(0)), viewOnly);
-            case "shell"  -> commands.shell(Path.of(rest.get(0)));
-            case "stop"   -> commands.stop(Path.of(rest.get(0)));
-            case "status" -> commands.status(Path.of(rest.get(0)));
-            case "follow" -> commands.follow(Path.of(rest.get(0)));
-            case "list" -> commands.list();
-
-            // Not one of the four above: it talks to no session, and refuses if one answers.
+            case "at"     -> Result.ok(new Command.At(Path.of(rest.first()), options));
+            case "view"   -> Result.ok(new Command.View(Path.of(rest.first()), viewOnly, options));
+            case "shell"  -> Result.ok(new Command.Shell(Path.of(rest.first()), options));
+            case "stop"   -> Result.ok(new Command.Stop(Path.of(rest.first()), options));
+            case "status" -> Result.ok(new Command.Status(Path.of(rest.first()), options));
+            case "follow" -> Result.ok(new Command.Follow(Path.of(rest.first()), options));
+            case "list"   -> Result.ok(new Command.List(options));
             // The one command that takes several lamps, since a pattern like `test*` is the
             // natural way to clean up after experiments.
-            case "remove" -> {
-                console.banner(version, rest.size() == 1 ? rest.get(0) : rest.size() + " lamps");
-                Tuple<Path> lamps = Tuple.of(Path.class);
-                for (String lamp : rest) lamps = lamps.add(Path.of(lamp));
-                yield commands.remove(lamps, confirmed);
+            case "remove" -> Result.ok(new Command.Remove(rest.mapTo(Path.class, Path::of), confirmed, options));
+            case "recordings" -> Result.ok(new Command.Recordings(Path.of(rest.first()), values.get("--open"),
+                    prune, options));
+            case "save" -> Result.ok(new Command.Save(Path.of(rest.first()), values.get("--message").orElse(""),
+                    options));
+            case "history" -> Result.ok(new Command.History(Path.of(rest.first()), options));
+            case "restore" -> {
+                if (rest.size() < 2)
+                    yield Result.err(ProblemCatalogUtil.usage("`oillamp restore` needs the snapshot to go back to, as `oillamp history` names it", usageOf("restore")));
+                yield Result.ok(new Command.Restore(Path.of(rest.first()), rest.get(1), options));
             }
-
-            case "recordings" -> commands.recordings(Path.of(rest.get(0)), open, prune);
-
-            // The lamp's history. `restore` needs the lamp stopped; the other two do not.
-            case "save" -> {
-                console.banner(version, rest.get(0));
-                yield commands.save(Path.of(rest.get(0)), message);
-            }
-            case "history" -> commands.history(Path.of(rest.get(0)));
-
-            // The schedule, and the agent it wakes. `schedule` works with or without a session;
-            // `ask` needs one, since the session is what holds the agent.
             case "schedule" -> {
                 String action = rest.size() > 1 ? rest.get(1) : "list";
                 Optional<String> argument = rest.size() > 2 ? Optional.of(rest.get(2)) : Optional.empty();
-                boolean needsArgument = Set.of("add", "remove", "enable", "disable").contains(action);
+                Optional<String> cron = values.get("--cron");
+                Optional<String> at = values.get("--at");
+                Optional<String> expires = values.get("--expires");
+                boolean needsArgument = ValueSet.of("add", "remove", "enable", "disable").contains(action);
                 if (needsArgument && argument.isEmpty())
-                    yield misused(console, sink, version, "schedule", action.equals("add")
+                    yield Result.err(ProblemCatalogUtil.usage(action.equals("add")
                             ? "`oillamp schedule <dir> add` needs the prompt the agent is woken with, in quotes"
-                            : "`oillamp schedule <dir> " + action + "` needs the job, such as job-3");
+                            : "`oillamp schedule <dir> " + action + "` needs the job, such as job-3", usageOf("schedule")));
                 if (!needsArgument && argument.isPresent())
-                    yield misused(console, sink, version, "schedule", "`oillamp schedule <dir> " + action
-                            + "` takes nothing more, but was given '" + argument.get() + "'");
+                    yield Result.err(ProblemCatalogUtil.usage("`oillamp schedule <dir> " + action
+                            + "` takes nothing more, but was given '" + argument.get() + "'", usageOf("schedule")));
                 if (!action.equals("add") && (cron.isPresent() || at.isPresent() || expires.isPresent()))
-                    yield misused(console, sink, version, "schedule",
-                            "--cron, --at and --expires only go with `oillamp schedule <dir> add`");
-                yield commands.schedule(Path.of(rest.get(0)),
-                        new Commands.ScheduleAction(action, argument, cron, at, expires));
+                    yield Result.err(ProblemCatalogUtil.usage("--cron, --at and --expires only go with `oillamp schedule <dir> add`", usageOf("schedule")));
+                String job = argument.orElse("");
+                Optional<Command.Schedule.Action> chosen = switch (action) {
+                    case "list"    -> Optional.of(new Command.Schedule.Action.ListJobs());
+                    case "add"     -> Optional.of(new Command.Schedule.Action.Add(job, cron, at, expires));
+                    case "remove"  -> Optional.of(new Command.Schedule.Action.Remove(job));
+                    case "enable"  -> Optional.of(new Command.Schedule.Action.Enable(job));
+                    case "disable" -> Optional.of(new Command.Schedule.Action.Disable(job));
+                    case "pause"   -> Optional.of(new Command.Schedule.Action.Pause());
+                    case "resume"  -> Optional.of(new Command.Schedule.Action.Resume());
+                    default        -> Optional.empty();
+                };
+                if (chosen.isEmpty())
+                    yield Result.err(ProblemCatalogUtil.usage("'" + action + "' is not something `oillamp schedule` does", usageOf("schedule")));
+                yield Result.ok(new Command.Schedule(Path.of(rest.first()), chosen.get(), options));
             }
-            case "conversations" -> commands.conversations(Path.of(rest.get(0)),
-                    rest.size() > 1 ? Optional.of(rest.get(1)) : Optional.empty());
+            case "conversations" -> Result.ok(new Command.Conversations(Path.of(rest.first()),
+                    rest.size() > 1 ? Optional.of(rest.get(1)) : Optional.empty(), options));
             case "ask" -> {
+                Optional<String> in = values.get("--in");
+                Optional<String> after = values.get("--after");
+                Optional<String> insteadOf = values.get("--instead-of");
                 if (rest.size() < 2)
-                    yield misused(console, sink, version, "ask",
-                            "`oillamp ask` needs something to ask the agent, in quotes");
+                    yield Result.err(ProblemCatalogUtil.usage("`oillamp ask` needs something to ask the agent, in quotes", usageOf("ask")));
                 if ((after.isPresent() || insteadOf.isPresent()) && in.isEmpty())
-                    yield misused(console, sink, version, "ask",
-                            "--after and --instead-of name an entry of the conversation that --in names");
+                    yield Result.err(ProblemCatalogUtil.usage("--after and --instead-of name an entry of the conversation that --in names", usageOf("ask")));
                 if (after.isPresent() && insteadOf.isPresent())
-                    yield misused(console, sink, version, "ask",
-                            "a question goes either after an entry or instead of a question, not both");
-                yield commands.ask(Path.of(rest.get(0)), rest.get(1), new Commands.AskPlace(in, after, insteadOf), wait);
+                    yield Result.err(ProblemCatalogUtil.usage("a question goes either after an entry or instead of a question, not both", usageOf("ask")));
+                yield Result.ok(new Command.Ask(Path.of(rest.first()), rest.get(1),
+                        new Commands.AskPlace(in, after, insteadOf), wait, options));
             }
-            case "cancel" -> commands.cancel(Path.of(rest.get(0)),
-                    rest.size() > 1 ? Optional.of(rest.get(1)) : Optional.empty());
-            case "restore" -> {
-                if (rest.size() < 2)
-                    yield misused(console, sink, version, "restore",
-                            "`oillamp restore` needs the snapshot to go back to, as `oillamp history` names it");
-                console.banner(version, rest.get(0));
-                yield commands.restore(Path.of(rest.get(0)), rest.get(1));
-            }
-
-            case "completion" -> {
-                String shell = rest.isEmpty() ? "bash" : rest.get(0);
-                if (!shell.equals("bash")) {
-                    console.banner(version, "");
-                    sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
-                            "oillamp only ships a completion script for bash, not '" + shell + "'",
-                            "oillamp completion bash")));
-                    yield ExitStatus.USAGE;
-                }
-                // Straight to stdout, with no banner: the output is meant to be evaluated by a
-                // shell, and anything else printed would be evaluated along with it.
-                console.plain(GeneratedFileTextUtil.bashCompletion());
-                yield ExitStatus.SUCCESS;
-            }
-
-            // Planned once and then dropped: the image is rebuilt automatically whenever its
-            // inputs change, so there is nothing to manage by hand. Explain that instead of
-            // answering "unknown command".
-            case "image" -> {
-                sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
-                        "there is no 'image' command: oillamp rebuilds the sandbox image by itself "
-                      + "whenever anything that goes into it changes",
-                        usage())));
-                yield ExitStatus.USAGE;
-            }
-            default -> {
-                console.banner(version, "");
-                sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
-                        "'" + command + "' is not an oillamp command", usage())));
-                yield ExitStatus.USAGE;
-            }
+            case "cancel" -> Result.ok(new Command.Cancel(Path.of(rest.first()),
+                    rest.size() > 1 ? Optional.of(rest.get(1)) : Optional.empty(), options));
+            default -> Result.err(ProblemCatalogUtil.usage("'" + command + "' is not an oillamp command", usage()));
         };
     }
 
     /// The options each command takes, besides `--verbose`, `--debug` and `--no-color`, which
     /// every command takes. `doctor` and `config` change nothing anyway, so they accept the two
     /// options that promise that.
-    private static final Map<String, Set<String>> OPTIONS_OF = Map.ofEntries(
-            Map.entry("at",         Set.of("--init", "--dry-run", "--no-install", "--no-viewer", "--no-windows",
-                                                        "--embedded", "--model-service", "--model-key-env",
-                                                        "--enable-scheduling")),
-            Map.entry("view",       Set.of("--view-only")),
-            Map.entry("remove",     Set.of("--yes", "--dry-run", "--embedded")),
-            Map.entry("recordings", Set.of("--open", "--prune", "--dry-run")),
-            Map.entry("doctor",     Set.of("--dry-run", "--no-install")),
-            Map.entry("config",     Set.of("--dry-run", "--no-install")),
-            Map.entry("save",       Set.of("--message", "--embedded")),
-            Map.entry("history",    Set.of("--embedded")),
-            Map.entry("schedule",   Set.of("--cron", "--at", "--expires", "--embedded")),
-            Map.entry("ask",        Set.of("--in", "--after", "--instead-of", "--no-wait", "--embedded")),
-            Map.entry("cancel",     Set.of("--embedded")),
-            Map.entry("conversations", Set.of("--embedded")),
-            Map.entry("restore",    Set.of("--embedded")),
-            Map.entry("shell",      Set.of()),
-            Map.entry("stop",       Set.of("--embedded")),
-            Map.entry("status",     Set.of("--embedded")),
-            Map.entry("follow",     Set.of("--embedded")),
-            Map.entry("list",       Set.of()),
-            Map.entry("completion", Set.of()),
-            Map.entry("version",    Set.of()),
-            Map.entry("help",       Set.of()),
-            Map.entry("about",      Set.of()),
-            Map.entry("guide",      Set.of()));
+    private static final Association<String, ValueSet<String>> OPTIONS_OF =
+            Association.between(String.class, ValueSet.classTyped(String.class))
+                .put("at",         ValueSet.of("--init", "--dry-run", "--no-install", "--no-viewer", "--no-windows",
+                                               "--embedded", "--model-service", "--model-key-env",
+                                               "--enable-scheduling"))
+                .put("view",       ValueSet.of("--view-only"))
+                .put("remove",     ValueSet.of("--yes", "--dry-run", "--embedded"))
+                .put("recordings", ValueSet.of("--open", "--prune", "--dry-run"))
+                .put("doctor",     ValueSet.of("--dry-run", "--no-install"))
+                .put("config",     ValueSet.of("--dry-run", "--no-install"))
+                .put("save",       ValueSet.of("--message", "--embedded"))
+                .put("history",    ValueSet.of("--embedded"))
+                .put("schedule",   ValueSet.of("--cron", "--at", "--expires", "--embedded"))
+                .put("ask",        ValueSet.of("--in", "--after", "--instead-of", "--no-wait", "--embedded"))
+                .put("cancel",     ValueSet.of("--embedded"))
+                .put("conversations", ValueSet.of("--embedded"))
+                .put("restore",    ValueSet.of("--embedded"))
+                .put("shell",      ValueSet.of(String.class))
+                .put("stop",       ValueSet.of("--embedded"))
+                .put("status",     ValueSet.of("--embedded"))
+                .put("follow",     ValueSet.of("--embedded"))
+                .put("list",       ValueSet.of(String.class))
+                .put("completion", ValueSet.of(String.class))
+                .put("version",    ValueSet.of(String.class))
+                .put("help",       ValueSet.of(String.class))
+                .put("about",      ValueSet.of(String.class))
+                .put("guide",      ValueSet.of(String.class));
 
     /// The options that take a value.
-    private static final Set<String> VALUE_OPTIONS = Set.of(
+    private static final ValueSet<String> VALUE_OPTIONS = ValueSet.of(
             "--open", "--model-service", "--model-key-env", "--message", "--cron", "--at", "--expires",
             "--in", "--after", "--instead-of");
 
     /// The commands that take a lamp directory and cannot do without it.
-    private static final Set<String> NEEDS_A_LAMP = Set.of(
+    private static final ValueSet<String> NEEDS_A_LAMP = ValueSet.of(
             "at", "view", "shell", "stop", "status", "follow", "recordings", "config", "remove",
             "save", "history", "restore", "schedule", "ask", "conversations", "cancel");
 
-    /// The commands that work on one lamp. `remove` takes several, since a pattern such as
-    /// `test*` is the natural way to clean up after experiments.
-    private static final Set<String> ONE_LAMP_ONLY = Set.of(
+    /// The commands that work on one lamp. `remove` takes several.
+    private static final ValueSet<String> ONE_LAMP_ONLY = ValueSet.of(
             "at", "view", "shell", "stop", "status", "follow", "recordings", "doctor", "save", "history");
 
     /// How many arguments may follow the other commands.
-    private static final Map<String, Integer> MOST_ARGUMENTS = Map.ofEntries(
-            Map.entry("config", 2), Map.entry("completion", 1), Map.entry("restore", 2),
-            Map.entry("schedule", 3), Map.entry("ask", 2), Map.entry("conversations", 2), Map.entry("cancel", 2),
-            Map.entry("list", 0), Map.entry("version", 0), Map.entry("help", 0),
-            Map.entry("about", 0), Map.entry("guide", 0));
-
-    private static ExitStatus misused(ConsoleRenderer console, Consumer<LampEvent> sink,
-                                      String version, String command, String what) {
-        console.banner(version, "");
-        sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(what, usageOf(command))));
-        return ExitStatus.USAGE;
-    }
+    private static final Association<String, Integer> MOST_ARGUMENTS =
+            Association.between(String.class, Integer.class)
+                .put("config", 2).put("completion", 1).put("restore", 2).put("schedule", 3).put("ask", 2)
+                .put("conversations", 2).put("cancel", 2)
+                .put("list", 0).put("version", 0).put("help", 0).put("about", 0).put("guide", 0);
 
     /// The line of [#usage] that describes `command`, such as `oillamp stop <dir>`.
     static String usageOf(String command) {
         return usage().lines().map(String::strip)
                 .filter(line -> line.equals(command) || line.startsWith(command + " "))
                 .findFirst().map(line -> "oillamp " + line).orElse(usage());
-    }
-
-    private static ExitStatus missingDirectory(ConsoleRenderer console, Consumer<LampEvent> sink,
-                                               String version, String command) {
-        console.banner(version, "");
-        sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
-                "`oillamp " + command + "` needs the path of a lamp directory",
-                "oillamp " + command + " <dir>")));
-        return ExitStatus.USAGE;
-    }
-
-    /// A command that works on one lamp was given several directories. Usually a shell pattern
-    /// such as `test*` expanded to more than one; acting on the first and ignoring the rest would
-    /// look as if it had done them all.
-    private static ExitStatus oneLampOnly(ConsoleRenderer console, Consumer<LampEvent> sink,
-                                          String version, String command, List<String> given) {
-        console.banner(version, "");
-        sink.accept(new LampEvent.Failure(ProblemCatalogUtil.usage(
-                "`oillamp " + command + "` works on one lamp, but was given " + given.size()
-              + " directories (" + String.join(", ", given) + "); run it once for each",
-                "oillamp " + command + " <dir>")));
-        return ExitStatus.USAGE;
     }
 
     static String usage() {
