@@ -68,7 +68,9 @@ class ShowingTheUserTheDesktopSpec extends Specification {
         when:
             var shown = lampShow('the chart you asked for')
             var look = waitFor(LampEvent.LookAtDesktop)
-            stop(lamp)
+            assert host.oillamp.run('stop', lamp.toString()).succeeded()
+            session.join(30_000)
+            assert !session.alive
 
         then:
             shown.status == 0
@@ -193,12 +195,6 @@ class ShowingTheUserTheDesktopSpec extends Specification {
         session = Thread.start { ended = oillamp.run('at', lamp.toString()) }
         waitFor(LampEvent.Summary) { it.title() == 'your session is up' }
         lamp
-    }
-
-    private void stop(Path lamp) {
-        assert host.oillamp.run('stop', lamp.toString()).succeeded()
-        session.join(30_000)
-        assert !session.alive
     }
 
     private <T extends LampEvent> T waitFor(Class<T> kind, Closure<Boolean> which = { true }) {
