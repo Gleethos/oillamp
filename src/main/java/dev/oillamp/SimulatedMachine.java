@@ -992,6 +992,7 @@ final class SimulatedMachine implements Machine {
                 if (pkg.equals("socat"))          executables.put("socat", Path.of("/usr/bin/socat"));
                 if (pkg.equals("podman"))         executables.put("podman", Path.of("/usr/bin/podman"));
                 if (pkg.equals("tigervnc-viewer"))executables.put("vncviewer", Path.of("/usr/bin/vncviewer"));
+                if (pkg.equals("xdg-utils"))      executables.put("xdg-open", Path.of("/usr/bin/xdg-open"));
             }
             if (sudo != Sudo.UNAVAILABLE) executables.put("sudo", Path.of("/usr/bin/sudo"));
 
