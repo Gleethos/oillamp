@@ -7,6 +7,7 @@ import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
+import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JTextArea;
 
 import dev.gui.model.Genie;
@@ -69,6 +70,13 @@ final class ViewPartsUtil {
     static JMenuItem item(String text, boolean enabled, Runnable action) {
         JMenuItem item = new JMenuItem(text);
         item.setEnabled(enabled);
+        item.addActionListener(event -> action.run());
+        return item;
+    }
+
+    /// One of several places to go, marked while it is where the user is.
+    static JRadioButtonMenuItem choice(String text, boolean chosen, Runnable action) {
+        JRadioButtonMenuItem item = new JRadioButtonMenuItem(text, chosen);
         item.addActionListener(event -> action.run());
         return item;
     }

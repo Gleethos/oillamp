@@ -61,6 +61,7 @@ public final class GeniesView extends JPanel {
     private final Var<Double> pulse = Var.of(0.0);
     private final ChatRows rows;
     private final SchedulePage schedulePage;
+    private final HistoryPage historyPage;
     /// Set once the conversation's scroll pane exists.
     private Optional<FollowTheEnd> follow = Optional.empty();
 
@@ -97,6 +98,7 @@ public final class GeniesView extends JPanel {
         rows = new ChatRows(look, this::saveHandout, pulse, this::askInstead,
                            phase.viewAs(Boolean.class, it -> it == Genie.Phase.READY));
         schedulePage = new SchedulePage(state, actions, look);
+        historyPage = new HistoryPage(state, actions, look);
 
         UI.use(look, () ->
             of(this).group(Skin.FRAME)
@@ -338,11 +340,12 @@ public final class GeniesView extends JPanel {
         });
     }
 
-    // ─── the main area: a conversation, a schedule, or the settings ────────────────────────
+    // ─── the main area: a conversation, a schedule, a history, or the settings ─────────────
 
     private UIForAnySwing<?, ?> main() {
         Val<Boolean> onChat = page.viewAs(Boolean.class, it -> it == GeniesState.Page.CHAT);
         Val<Boolean> onSchedule = page.viewAs(Boolean.class, it -> it == GeniesState.Page.SCHEDULE);
+        Val<Boolean> onHistory = page.viewAs(Boolean.class, it -> it == GeniesState.Page.HISTORY);
         Val<Boolean> onSettings = page.viewAs(Boolean.class, it -> it == GeniesState.Page.SETTINGS);
         Val<Boolean> hasGenies = state.viewAs(Boolean.class, GeniesState::hasGenies);
         return
@@ -350,6 +353,7 @@ public final class GeniesView extends JPanel {
             .add("growx, wmin 0", header(Viewable.of(Boolean.class, onSettings, hasGenies, (a, b) -> !a && b)))
             .add("grow, push, wmin 0", conversation(Viewable.of(Boolean.class, onChat, hasGenies, (a, b) -> a && b)))
             .add("grow, push, wmin 0", schedulePage.view(Viewable.of(Boolean.class, onSchedule, hasGenies, (a, b) -> a && b)))
+            .add("grow, push, wmin 0", historyPage.view(Viewable.of(Boolean.class, onHistory, hasGenies, (a, b) -> a && b)))
             .add("grow, push, wmin 0", firstGenie(Viewable.of(Boolean.class, onSettings, hasGenies, (a, b) -> !a && !b)))
             .add("grow, push, wmin 0", SettingsPage.of(state, actions, onSettings));
     }
@@ -390,23 +394,30 @@ public final class GeniesView extends JPanel {
                  .withTooltip("End the genie's sandbox. Its home and this conversation are kept.")
                  .onClick(it -> actions.sleep(genie.get().id())))
             .add(button("⋯").group(Skin.ICON_BUTTON)
-                 .withTooltip("Rename, start a new conversation, or delete this genie")
+                 .withTooltip(wide.viewAsString(it -> (it ? "" : "Chat, schedule or history; ")
+                         + "rename, save, wake or sleep, or delete this genie"))
                  .onClick(it -> ViewPartsUtil.below(genieMenu(genie.get().id()), it.getComponent()))));
     }
 
-    /// The two pages of a genie, its chat and its schedule, as one switch of two halves. The
-    /// schedule's half says how many jobs it has, once they were read.
+    /// The pages of a genie, its chat, its schedule and its history, as one switch of three
+    /// parts. The schedule's part says how many jobs it has, once they were read. Without room
+    /// for words in the header, the switch steps aside for the menu behind "⋯", which has the
+    /// pages too.
     private UIForAnySwing<?, ?> pages() {
         Val<Boolean> onChat = page.viewAs(Boolean.class, it -> it == GeniesState.Page.CHAT);
         Val<Boolean> onSchedule = page.viewAs(Boolean.class, it -> it == GeniesState.Page.SCHEDULE);
+        Val<Boolean> onHistory = page.viewAs(Boolean.class, it -> it == GeniesState.Page.HISTORY);
         Val<String> scheduleWords = genie.viewAsString(it -> "Schedule" + (it.schedule().jobs().isEmpty() ? "" : "  " + it.schedule().jobs().size()));
         return
             box("ins 2, gap 2")
+            .isVisibleIf(state.viewAs(Boolean.class, GeniesState::roomForWords))
             .withStyle(it -> it.backgroundColor(SMOKE).border(1, BORDER).borderRadius(11))
             .add(half(Val.of("Chat"), onChat).withTooltip("Talk with the genie")
                  .onClick(it -> page.set(From.VIEW, GeniesState.Page.CHAT)))
             .add(half(scheduleWords, onSchedule).withTooltip("When jobs wake the genie, and what they did")
-                 .onClick(it -> page.set(From.VIEW, GeniesState.Page.SCHEDULE)));
+                 .onClick(it -> page.set(From.VIEW, GeniesState.Page.SCHEDULE)))
+            .add(half(Val.of("History"), onHistory).withTooltip("The moments the genie's home was saved at, and going back to one")
+                 .onClick(it -> page.set(From.VIEW, GeniesState.Page.HISTORY)));
     }
 
     private static UIForButton<JButton> half(Val<String> text, Val<Boolean> shown) {
@@ -650,6 +661,8 @@ public final class GeniesView extends JPanel {
         com.formdev.flatlaf.FlatLaf.setGlobalExtraDefaults(Map.ofEntries(
             Map.entry("@background", hex(CARD)),
             Map.entry("@foreground", hex(TEXT)),
+            // Halfway between the subtext and the borders, so what cannot be used now steps back.
+            Map.entry("@disabledForeground", "#716769"),
             Map.entry("@accentColor", hex(FLAME)),
             Map.entry("@selectionBackground", hex(YOURS)),
             Map.entry("@selectionForeground", hex(TEXT)),
@@ -720,13 +733,21 @@ public final class GeniesView extends JPanel {
     }
 
     /// What can be done with a genie beyond its everyday buttons: behind "⋯" in the header,
-    /// and a right-click on its card. Deleting it is last, away from the rest.
+    /// and a right-click on its card, which selects the genie first. Its pages come first, which
+    /// is where they are while the header has no room for them; deleting it is last, away from
+    /// the rest.
     private JPopupMenu genieMenu(UUID id) {
+        GeniesState.Page on = state.get().page();
         return UI.popupMenu().applyIfPresent(state.get().find(id).map( shown -> ui -> {
                 Genie.Phase now = shown.phase();
                 boolean idle = now != Genie.Phase.WORKING && now != Genie.Phase.WAKING;
-                ui.add(ViewPartsUtil.item("Rename…", true, () -> rename(id)))
+                ui.add(ViewPartsUtil.choice("Chat", on == GeniesState.Page.CHAT, () -> page.set(From.VIEW, GeniesState.Page.CHAT)))
+                .add(ViewPartsUtil.choice("Schedule", on == GeniesState.Page.SCHEDULE, () -> page.set(From.VIEW, GeniesState.Page.SCHEDULE)))
+                .add(ViewPartsUtil.choice("History", on == GeniesState.Page.HISTORY, () -> page.set(From.VIEW, GeniesState.Page.HISTORY)))
+                .peek(JPopupMenu::addSeparator)
+                .add(ViewPartsUtil.item("Rename…", true, () -> rename(id)))
                 .add(ViewPartsUtil.item("New conversation", idle, () -> actions.startAfresh(id)))
+                .add(ViewPartsUtil.item("Save now…", shown.history().busy().isEmpty(), () -> historyPage.save(this)))
                 .peek(JPopupMenu::addSeparator)
                 .applyIf(now.isAwake(), ui1 -> ui1
                     .add(ViewPartsUtil.item("Sleep", true, () -> actions.sleep(id)))

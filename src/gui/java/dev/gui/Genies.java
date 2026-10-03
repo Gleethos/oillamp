@@ -105,7 +105,11 @@ public final class Genies implements Actions {
         this.historyShown = state.viewAs(UUID.class, it -> it.page() == GeniesState.Page.HISTORY ? it.selected() : GeniesState.NONE);
         Viewable.cast(historyShown).onChange(From.ALL, it -> {
             UUID shown = it.currentValue().orElse(GeniesState.NONE);
-            if (!shown.equals(GeniesState.NONE)) runner(shown).history().read();
+            // The schedule too, whose jobs give their runs' moments their titles.
+            if (!shown.equals(GeniesState.NONE)) {
+                runner(shown).history().read();
+                runner(shown).schedule().read();
+            }
         });
     }
 
