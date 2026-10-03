@@ -140,15 +140,19 @@ class TravellingBackInTimeSpec extends Specification {
         given:
             var lamp = aLampThatHasRun()
 
-        when: 'the lamp changes between saves, so each one makes a snapshot'
-            var joined = saveAfterAChange(lamp, '--message=before the upgrade')
-            var dashed = saveAfterAChange(lamp, '-m', '-- after the upgrade --')
-            var bare = saveAfterAChange(lamp, '--message', '--')
+        when: 'the lamp changes before each save, so each one makes a snapshot'
+            var notes = home(lamp).resolve('workspace/notes.txt')
+            Files.writeString(notes, 'first')
+            var joined = host.oillamp.run('save', lamp.toString(), '--message=before the upgrade')
+            Files.writeString(notes, 'second')
+            var dashed = host.oillamp.run('save', lamp.toString(), '-m', '-- after the upgrade --')
+            Files.writeString(notes, 'third')
+            var bare = host.oillamp.run('save', lamp.toString(), '--message', '--')
 
         then:
-            joined.message() == 'before the upgrade'
-            dashed.message() == '-- after the upgrade --'
-            bare.message() == '--'
+            joined.events().find { it instanceof LampEvent.Saved }.snapshot().message() == 'before the upgrade'
+            dashed.events().find { it instanceof LampEvent.Saved }.snapshot().message() == '-- after the upgrade --'
+            bare.events().find { it instanceof LampEvent.Saved }.snapshot().message() == '--'
     }
 
     def 'A restore brings back exactly what was saved, and removes what came after'() {
@@ -405,14 +409,6 @@ class TravellingBackInTimeSpec extends Specification {
         var saved = host.oillamp.run('save', lamp.toString(), '--message', message)
         assert saved.succeeded()
         saved.events().find { it instanceof LampEvent.Saved }?.snapshot() ?: history(lamp).first()
-    }
-
-    /** Changes a file in the agent's home, then saves with these arguments, and returns the snapshot made. */
-    private LampEvent.Snapshot saveAfterAChange(Path lamp, String... arguments) {
-        Files.writeString(home(lamp).resolve('workspace/notes.txt'), UUID.randomUUID().toString())
-        var saved = host.oillamp.run(*(['save', lamp.toString()] + arguments.toList()))
-        assert saved.succeeded()
-        saved.events().find { it instanceof LampEvent.Saved }.snapshot()
     }
 
     private List<LampEvent.Snapshot> history(Path lamp) {
