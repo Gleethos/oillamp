@@ -3,6 +3,8 @@ package dev.gui.view;
 import java.awt.Color;
 import java.awt.Component;
 
+import javax.swing.JButton;
+import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.JTextArea;
@@ -12,6 +14,10 @@ import dev.gui.model.Genie;
 import sprouts.Val;
 import swingtree.UI;
 import swingtree.UIForAnySwing;
+import swingtree.UIForBox;
+import swingtree.UIForButton;
+import swingtree.UIForLabel;
+import swingtree.components.JBox;
 import swingtree.style.StyledString;
 
 import static dev.gui.view.Palette.*;
@@ -65,5 +71,47 @@ final class ViewPartsUtil {
         item.setEnabled(enabled);
         item.addActionListener(event -> action.run());
         return item;
+    }
+
+    /// A round dot of `size`.
+    static UIForBox<JBox> dot(Val<Color> colour, int size) {
+        return box().withPrefSize(size, size).withMinSize(size, size).withMaxSize(size, size)
+                .withStyle(colour, (c, it) -> it.backgroundColor(c).borderRadius(size));
+    }
+
+    /// Text painted by the style engine, wrapped to the width it gets.
+    static UIForBox<JBox> words(String text, int size, float weight, Color colour) {
+        return box().withMinSize(0, 0)
+                .withStyle(it -> it.padding(1, 0, 1, 0).text(t -> t
+                        .content(StyledString.of(f -> f.family(FONT).size(size).weight(weight).color(colour), text))
+                        .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true)));
+    }
+
+    /// A few words on a small rounded patch, such as "added by Rex".
+    static UIForLabel<JLabel> tag(Val<String> text) {
+        return label(text)
+                .withStyle(it -> it
+                        .backgroundColor(RAISED)
+                        .borderRadius(8)
+                        .padding(2, 8, 2, 8)
+                        .componentFont(f -> f
+                            .family(FONT).size(11).color(SUBTEXT)
+                        )
+                );
+    }
+
+    /// A button that reads as a link, in brass.
+    static UIForButton<JButton> link(String text) {
+        return button(text).group(Skin.ICON_BUTTON)
+                .withStyle(it -> it.padding(2, 0, 2, 0).componentFont(f -> f.family(FONT).size(12).color(BRASS)));
+    }
+
+    /// `colour`, faded to step back.
+    static Color dim(Color colour) {
+        return withAlpha(colour, 110);
+    }
+
+    static Color withAlpha(Color colour, int alpha) {
+        return new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), Math.max(0, Math.min(255, alpha)));
     }
 }

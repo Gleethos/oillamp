@@ -21,7 +21,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 
 import javax.swing.JButton;
-import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
@@ -43,7 +42,6 @@ import swingtree.UI;
 import swingtree.UIForAnySwing;
 import swingtree.UIForBox;
 import swingtree.UIForButton;
-import swingtree.UIForLabel;
 import swingtree.UIForPanel;
 import swingtree.components.JBox;
 import swingtree.animation.LifeTime;
@@ -185,7 +183,7 @@ final class SchedulePage {
                 .add(label("Schedule").group(Skin.EMPTY_TITLE))
                 .add("growx, wmin 0",
                     box("fill, ins 0, gap 8", "[10!][grow]")
-                    .add("top, gaptop 5", dot(status.viewAs(Color.class, Status::colour), 8))
+                    .add("top, gaptop 5", ViewPartsUtil.dot(status.viewAs(Color.class, Status::colour), 8))
                     .add("growx, wmin 0", ViewPartsUtil.wrapped(status.viewAsString(Status::words), SUBTEXT, Val.of(true))))
                 .add("growx, wmin 0", ViewPartsUtil.wrapped(problem, TROUBLE, problem.viewAs(Boolean.class, it -> !it.isEmpty()))))
             .add(BUTTONS,
@@ -252,9 +250,9 @@ final class SchedulePage {
             .add("growx, wmin 0",
                 panel("fill, ins 12 0 4 0, gap 0", "[" + CLOCK + "!][" + RAIL + "!][grow]")
                 .withStyle(it -> it.backgroundColor(TRANSPARENT))
-                .add("skip 1, center", dot(Val.of(day.date().equals(today) ? FLAME : SUBTEXT), 5))
+                .add("skip 1, center", ViewPartsUtil.dot(Val.of(day.date().equals(today) ? FLAME : SUBTEXT), 5))
                 .add("growx, wmin 0, gapleft 8",
-                    words((day.label() + (near ? "  ·  " + DateWordingUtil.shortDay(day.date()) : "")), 13, 2f,
+                    ViewPartsUtil.words((day.label() + (near ? "  ·  " + DateWordingUtil.shortDay(day.date()) : "")), 13, 2f,
                           day.date().isBefore(today) ? SUBTEXT : TEXT)));
         for (Timeline.Moment moment : day.moments()) view = view.add("growx, wmin 0", momentView(moment));
         return view;
@@ -267,7 +265,7 @@ final class SchedulePage {
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
             .add("top, gaptop 7, right", label(moment.clock()).group(Skin.CLOCK)
                  .withStyle(it -> now ? it.componentFont(f -> f.color(FLAME).weight(2f))
-                                : moment.emphasis() == Timeline.Emphasis.FADED ? it.componentFont(f -> f.color(dim(SUBTEXT))) : it))
+                                : moment.emphasis() == Timeline.Emphasis.FADED ? it.componentFont(f -> f.color(ViewPartsUtil.dim(SUBTEXT))) : it))
             .add("top, growy, w " + RAIL + "!",
                 box().withPrefSize(RAIL, 28)
                 .withStyle(it -> it.backgroundColor(TRANSPARENT).painter(UI.Layer.BACKGROUND,
@@ -298,17 +296,17 @@ final class SchedulePage {
                     }).orElse(SUBTEXT);
                     g.setColor(NIGHT);
                     g.fill(new Ellipse2D.Double(x - 7, NODE_Y - 7, 14, 14));
-                    g.setColor(faded ? dim(colour) : colour);
+                    g.setColor(faded ? ViewPartsUtil.dim(colour) : colour);
                     g.fill(new Ellipse2D.Double(x - 4.5, NODE_Y - 4.5, 9, 9));
                 }
                 case DUE -> {
                     g.setColor(NIGHT);
                     g.fill(new Ellipse2D.Double(x - 7, NODE_Y - 7, 14, 14));
-                    g.setColor(faded ? dim(BRASS) : BRASS);
+                    g.setColor(faded ? ViewPartsUtil.dim(BRASS) : BRASS);
                     g.fill(new Ellipse2D.Double(x - 5, NODE_Y - 5, 10, 10));
                 }
                 case PLANNED, REPEATING -> {
-                    Color colour = picked ? FLAME : faded ? dim(BRASS) : BRASS;
+                    Color colour = picked ? FLAME : faded ? ViewPartsUtil.dim(BRASS) : BRASS;
                     g.setColor(NIGHT);
                     g.fill(new Ellipse2D.Double(x - 7, NODE_Y - 7, 14, 14));
                     g.setColor(colour);
@@ -354,8 +352,8 @@ final class SchedulePage {
             .withCursor(UI.Cursor.HAND)
             .withTooltip(moment.job().isEmpty() ? "" : picked ? "Click again to see every job" : "Click to bring this job's times forward")
             .withTransitionalStyle(hovered, LifeTime.of(0.14, TimeUnit.SECONDS), (status, it) -> it
-                .backgroundColor(working ? YOURS : picked ? withAlpha(FLAME, 26 + (int) (20 * status.progress()))
-                                 : withAlpha(RAISED, (int) (200 * status.progress())))
+                .backgroundColor(working ? YOURS : picked ? ViewPartsUtil.withAlpha(FLAME, 26 + (int) (20 * status.progress()))
+                                 : ViewPartsUtil.withAlpha(RAISED, (int) (200 * status.progress())))
                 .borderRadius(10)
                 .borderAt(UI.Edge.LEFT, 2, picked || working ? FLAME : TRANSPARENT))
             .onMouseEnter(it -> hovered.set(true))
@@ -363,20 +361,20 @@ final class SchedulePage {
             .onMouseClick(it -> {
                 if (!moment.job().isEmpty()) schedule.update(From.VIEW, s -> s.pick(moment.job()));
             })
-            .add("growx, wmin 0", words(moment.title(), 13, moment.kind() == Timeline.Kind.RAN ? 1f : 1.5f,
+            .add("growx, wmin 0", ViewPartsUtil.words(moment.title(), 13, moment.kind() == Timeline.Kind.RAN ? 1f : 1.5f,
                                         faded ? SUBTEXT : TEXT))
             .add("growx, wmin 0",
                 box("fill, ins 0, gap 8, hidemode 3", "[grow][]")
-                .add("growx, wmin 0", words(moment.detail(), 12, 1f, faded ? dim(detail) : detail))
+                .add("growx, wmin 0", ViewPartsUtil.words(moment.detail(), 12, 1f, faded ? ViewPartsUtil.dim(detail) : detail))
                 .add("top",
-                    tag(state.viewAsString( it -> "added by " + it.genie().name()))
+                    ViewPartsUtil.tag(state.viewAsString( it -> "added by " + it.genie().name()))
                     .isVisibleIf(moment.byGenie())
                 )
             )
             .add("left, hidemode 3",
                 box("ins 0, gap 6, hidemode 3")
                 .isVisibleIf(moment.conversation().isPresent() || working)
-                .add(link("Open the conversation  →").isVisibleIf(moment.conversation().isPresent())
+                .add(ViewPartsUtil.link("Open the conversation  →").isVisibleIf(moment.conversation().isPresent())
                      .onClick(it -> moment.conversation().ifPresent(id -> actions.openConversation(selected(), id))))
                 .add(button("■  Stop").group(Skin.QUIET_BUTTON).isVisibleIf(working)
                      .withTooltip("Stop this run; what the genie did so far is kept, and saved")
@@ -396,7 +394,7 @@ final class SchedulePage {
                 panel("fill, wrap 1, ins 22 18 22 18, gap 8", "[grow, center]").group(Skin.TILE)
                 .isVisibleIf(none)
                 .add(ViewPartsUtil.lamp(Val.of(Genie.Phase.ASLEEP), 56))
-                .add("growx, wmin 0", words("Nothing on the schedule yet", 15, 2f, TEXT).withStyle(it -> it.text(t -> t.placement(UI.Placement.TOP))))
+                .add("growx, wmin 0", ViewPartsUtil.words("Nothing on the schedule yet", 15, 2f, TEXT).withStyle(it -> it.text(t -> t.placement(UI.Placement.TOP))))
                 .add("growx, wmin 0", ViewPartsUtil.wrapped(genie.viewAsString(it -> "Give " + it.name() + " a task and a time, "
                         + "once or again and again: a morning check of the build, a weekly report, a reminder "
                         + "to tidy up. It works on it in a conversation of its own, and you can read it here afterwards."),
@@ -435,11 +433,11 @@ final class SchedulePage {
             .add("growx, wmin 0", ViewPartsUtil.wrapped(job.viewAsString(it -> shortened(it.prompt(), 280)), SUBTEXT, Val.of(true)))
             .add("growx, wmin 0",
                 box("ins 0, gap 6, hidemode 3")
-                .add(tag(next).isVisibleIf(next.viewAs(Boolean.class, it -> !it.isEmpty())))
-                .add(tag(job.viewAsString(it -> it.expires().map(end -> "until " + DateWordingUtil.shortDay(
+                .add(ViewPartsUtil.tag(next).isVisibleIf(next.viewAs(Boolean.class, it -> !it.isEmpty())))
+                .add(ViewPartsUtil.tag(job.viewAsString(it -> it.expires().map(end -> "until " + DateWordingUtil.shortDay(
                         end.minusSeconds(1).atZone(schedule.get().zone()).toLocalDate())).orElse("")))
                      .isVisibleIf(job.viewAs(Boolean.class, it -> it.expires().isPresent())))
-                .add(tag(genie.viewAsString(it -> "added by " + it.name())).isVisibleIf(job.viewAs(Boolean.class, Schedule.Job::byGenie))));
+                .add(ViewPartsUtil.tag(genie.viewAsString(it -> "added by " + it.name())).isVisibleIf(job.viewAs(Boolean.class, Schedule.Job::byGenie))));
     }
 
     /// When a job runs next, in a few words, for its tile.
@@ -651,7 +649,7 @@ final class SchedulePage {
             .withStyle(it -> it.backgroundColor(SMOKE).border(1, BORDER).borderRadius(12))
             .add("span 7, growx",
                 box("fill, ins 0 2 4 0, gap 2", "[grow][][]")
-                .add("growx, wmin 0", words(month.month().getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " "
+                .add("growx, wmin 0", ViewPartsUtil.words(month.month().getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH) + " "
                         + month.month().getYear(), 13, 2f, TEXT))
                 .add(button("‹").group(Skin.ICON_BUTTON).withTooltip("The month before")
                      .isEnabledIf(month.month().isAfter(YearMonth.from(month.today())))
@@ -680,7 +678,7 @@ final class SchedulePage {
             .withStyle(it -> it
                 .backgroundColor(picked ? FLAME : inStretch ? YOURS : TRANSPARENT)
                 .border(1, today && !picked ? BRASS : TRANSPARENT)
-                .componentFont(f -> f.color(picked ? ON_FLAME : past ? dim(SUBTEXT) : TEXT).weight(picked || today ? 2f : 1f)))
+                .componentFont(f -> f.color(picked ? ON_FLAME : past ? ViewPartsUtil.dim(SUBTEXT) : TEXT).weight(picked || today ? 2f : 1f)))
             .onClick(it -> draft.update(From.VIEW, d -> d.pick(day)));
     }
 
@@ -752,30 +750,6 @@ final class SchedulePage {
             .onMouseClick(it -> flip.run());
     }
 
-    private static UIForLabel<JLabel> tag(Val<String> text) {
-        return label(text)
-                .withStyle(it -> it
-                        .backgroundColor(RAISED)
-                        .borderRadius(8)
-                        .padding(2, 8, 2, 8)
-                        .componentFont(f -> f
-                            .family(FONT).size(11).color(SUBTEXT)
-                        )
-                );
-    }
-
-    /// A button that reads as a link, in brass.
-    private static UIForButton<JButton> link(String text) {
-        return button(text).group(Skin.ICON_BUTTON)
-                .withStyle(it -> it.padding(2, 0, 2, 0).componentFont(f -> f.family(FONT).size(12).color(BRASS)));
-    }
-
-    /// A round dot of `size`.
-    private static UIForBox<JBox> dot(Val<Color> colour, int size) {
-        return box().withPrefSize(size, size).withMinSize(size, size).withMaxSize(size, size)
-                .withStyle(colour, (c, it) -> it.backgroundColor(c).borderRadius(size));
-    }
-
     /// Words in a colour, for text whose colour changes with it.
     private record Words(String text, Color colour) {}
 
@@ -786,25 +760,9 @@ final class SchedulePage {
                         .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true)));
     }
 
-    /// Text painted by the style engine, wrapped to the width it gets.
-    private static UIForBox<JBox> words(String text, int size, float weight, Color colour) {
-        return box().withMinSize(0, 0)
-                .withStyle(it -> it.padding(1, 0, 1, 0).text(t -> t
-                        .content(StyledString.of(f -> f.family(FONT).size(size).weight(weight).color(colour), text))
-                        .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true)));
-    }
-
     private static String shortened(String text, int most) {
         String flat = text.strip().replaceAll("\\s+", " ");
         return flat.length() <= most ? flat : flat.substring(0, most - 1).stripTrailing() + "…";
-    }
-
-    private static Color dim(Color colour) {
-        return withAlpha(colour, 110);
-    }
-
-    private static Color withAlpha(Color colour, int alpha) {
-        return new Color(colour.getRed(), colour.getGreen(), colour.getBlue(), Math.max(0, Math.min(255, alpha)));
     }
 
     private static Color mix(Color from, Color to, double progress) {
