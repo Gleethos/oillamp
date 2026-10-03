@@ -10,7 +10,7 @@ import dev.lamp.Problem;
 import sprouts.Tuple;
 
 /// Three values that one run of oillamp hands to every class doing the work: [CommandExecutionUtil],
-/// the phases, [StepRunner], [Supervisor] and [Runs]. They are bundled only so that those classes
+/// the phases, [StepRunner], [Supervisor] and [AgentRunner]. They are bundled only so that those classes
 /// take one parameter instead of three; they have nothing else in common.
 ///
 /// @param sink    the only way oillamp says anything. It never prints directly: everything it has

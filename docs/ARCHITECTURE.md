@@ -307,8 +307,8 @@ Oillamp-Session: 20260929-181200
 | `idle` | `oillamp save` while no session runs |
 | `before-restore` | `oillamp restore`, just before it changes anything |
 | `restore` | `oillamp restore`, recording which snapshot it went back to |
-| `before-run` | `Runs`, just before the agent is woken, if anything changed since the last snapshot |
-| `run` | `Runs`, as a run ends, always, even when nothing changed: its message holds the agent's last message |
+| `before-run` | `AgentRunner`, just before the agent is woken, if anything changed since the last snapshot |
+| `run` | `AgentRunner`, as a run ends, always, even when nothing changed: its message holds the agent's last message |
 
 A run's snapshots carry more trailers: `Oillamp-Run` (`run-12`), and on the `run` snapshot
 `Oillamp-Job`, `Oillamp-Author` (`user` or `agent`: who added the job), `Oillamp-Outcome`
@@ -804,12 +804,12 @@ the supervisor is dead and `oillamp stop` cleans up; in the second it is alive b
 
 ### Runs and the schedule
 
-`Runs` holds everything about waking the agent. Where the state is:
+`AgentRunner` holds everything about waking the agent. Where the state is:
 
 | Place | What it holds |
 |---|---|
 | `<lamp>/.oillamp/schedule.json` | the jobs, whether the schedule is paused, and the numbers the next job and run get |
-| `Runs.queue`, `Runs.current` (memory) | runs waiting, and the one in progress; lost when the session ends, which is fine: a job that did not run is still due next session |
+| `AgentRunner.queue`, `AgentRunner.current` (memory) | runs waiting, and the one in progress; lost when the session ends, which is fine: a job that did not run is still due next session |
 | the pi process (`Harness`) | one per session, started with the first run, kept for the next |
 | `<lamp>/.oillamp/history/` | every run's `before-run` and `run` snapshots: the only lasting record of runs |
 | `~/workspace/NOTES.md` (the agent's) | what the agent wants to remember from one run to the next |
@@ -894,7 +894,7 @@ off, which they get whether they asked for one or not. The agent may remove only
 
 **The agent's side.** With the schedule on, the session serves `sockets/host/schedule.sock`,
 which the sandbox sees as `/oillamp/sockets/host/schedule.sock`, with `Control.Server` and
-`Runs.answerAgent`: one JSON line in, one out. Requests are `list`, `add` (`cron`, `at`, `prompt`,
+`AgentRunner.answerAgent`: one JSON line in, one out. Requests are `list`, `add` (`cron`, `at`, `prompt`,
 `expires`), `remove` (`id`) and `history` (`run`, or nothing for the recent runs). Replies have a
 `text` or an `error`, written for the agent to read. The extension
 `src/main/resources/agent/oillamp-schedule.js`, which `LampPlanUtil` writes into pi's extension
@@ -1351,7 +1351,7 @@ removed.
 | Host phase | `HostPhase`, `HostProbeUtil`, `HostPlanUtil`, `HostFacts`, `HostRequirements`, `SubIdRangeUtil`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
 | Lamp phase | `LampPhase`, `LampPlanUtil`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampLocationUtil`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `RecordingRetentionUtil`, `RecordingFile` |
 | History | `History` (reads the agent directory, writes and reads the repository), `GitObjectUtil` (git's object format and the commit messages, pure) |
-| Schedule and runs | `Runs` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `TimeNotationUtil` (times as people write them), `WakePromptUtil` (a run's prompt, pure); in `dev.lamp`, `PiSessionFile` (pi's session files as `Lamp.Conversation`, pure) |
+| Schedule and runs | `AgentRunner` (the queue, the schedule watcher, the agent's requests), `Harness` (pi over ssh), `Schedule` and `ScheduledJob` (the jobs and their rules, pure), `ScheduleBook` (the file), `CronExpression`, `TimeNotationUtil` (times as people write them), `WakePromptUtil` (a run's prompt, pure); in `dev.lamp`, `PiSessionFile` (pi's session files as `Lamp.Conversation`, pure) |
 | Configuration | `ConfigLoadingUtil`, `ConfigTree`, `ConfigSection`, `ConfigSource`, `ConfigDefaultsUtil`, `LampConfig`, `GeneratedFileTextUtil`, and value types `GpuMode`, `ClipboardMode`, `TerminalProfileId`, `WindowLayout` |
 | Plans | `Plan`, `Step`, `StepRunner`, `PosixMode` |
 | Errors and events | `Problem`, `ProblemCatalogUtil`, `Result`, `LampEvent`, `ExitStatus` |

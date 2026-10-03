@@ -93,7 +93,7 @@ final class Supervisor {
     /// The socket through which the agent asks the user to look at its desktop.
     private volatile Optional<Control.Server> desktopDesk = Optional.empty();
     /// Every time the agent is woken, by a job or by `oillamp ask`.
-    private final Runs runs;
+    private final AgentRunner runs;
     /// Everyone following the session with `oillamp follow`. Every event passes through it.
     private final Followers followers = new Followers();
     private volatile Optional<Machine.Window> terminal = Optional.empty();
@@ -127,7 +127,7 @@ final class Supervisor {
                 !context.options().embedded() && context.options().openWindows()));
         this.sessionStarted = machine.now();
         this.state = new SessionState.Starting(sessionStarted);
-        this.runs = new Runs(machine, this.context, prepared.layout(), prepared.config().schedule(), prepared.session());
+        this.runs = new AgentRunner(machine, this.context, prepared.layout(), prepared.config().schedule(), prepared.session());
     }
 
     /// Runs the session to its end and reports how it ended.
@@ -827,7 +827,7 @@ final class Supervisor {
     /// history as it was, so a limit here costs a snapshot, never the history.
     private Duration longestShutdown() {
         return prepared.config().timeouts().stop().plus(STOP_GRACE).plus(REMOVE_TIMEOUT)
-                       .plus(SAVE_ALLOWANCE).plus(Runs.WIND_DOWN).plusSeconds(15);
+                       .plus(SAVE_ALLOWANCE).plus(AgentRunner.WIND_DOWN).plusSeconds(15);
     }
 
     // ─── the control socket ────────────────────────────────────────────────────────────────
@@ -899,9 +899,9 @@ final class Supervisor {
                 } catch (IllegalArgumentException wrong) {
                     yield Control.Reply.failed(ProblemCatalogUtil.reason(wrong));
                 }
-                Result<Runs.Asked> asked = runs.ask(request.arguments().get("prompt").orElse(""),
+                Result<AgentRunner.Asked> asked = runs.ask(request.arguments().get("prompt").orElse(""),
                         request.arguments().get("conversation"), where);
-                if (!(asked instanceof Result.Ok<Runs.Asked>(Runs.Asked taken, var _)))
+                if (!(asked instanceof Result.Ok<AgentRunner.Asked>(AgentRunner.Asked taken, var _)))
                     yield Control.Reply.failed(asked.problems().first().whatHappened());
                 // Answered at once, for an application that follows the run on the session's events.
                 if (request.flag("no_wait")) yield Control.Reply.ok().with("run", taken.run().id());

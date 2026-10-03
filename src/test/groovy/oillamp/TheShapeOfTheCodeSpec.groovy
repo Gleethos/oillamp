@@ -144,7 +144,7 @@ class TheShapeOfTheCodeSpec extends Specification {
                            // in the sandbox, and threads that wait for it. What a run's
                            // prompt says is decided by WakePromptUtil, and the rules of the
                            // schedule by Schedule, which are both pure.
-                           'Harness', 'Runs',
+                           'Harness', 'AgentRunner',
                            // An application's handle on a lamp: starts the engine's process
                            // and reads its output. It decides nothing about the sandbox.
                            'Lamp'] as Set

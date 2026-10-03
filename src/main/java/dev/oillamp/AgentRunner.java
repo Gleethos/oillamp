@@ -18,26 +18,22 @@ import dev.lamp.LampEvent.SaveKind;
 import sprouts.Association;
 import sprouts.Tuple;
 
-/// The runs of a session: every time the agent is woken, by a job on the schedule or by someone
-/// asking it something.
+/// Hands prompts to the agent (pi, in the sandbox) one at a time, and waits for each answer.
+/// Prompts come from two places: jobs on the schedule that are due, and `oillamp ask`. They wait in
+/// one queue, so a question asked while a job is being worked on waits until it is done. Handling
+/// one prompt is called a run (`run-12`).
 ///
-/// Runs happen one at a time, in the order they came, on one thread of their own. A run that
-/// comes while the agent is busy waits its turn. Each run:
+/// A prompt is not passed on as written: [WakePromptUtil] puts the agent's notes and what recent
+/// runs did in front of it. The lamp is saved before a run if anything changed, and after it
+/// always, so the history keeps what the user did apart from what the agent did. A run is stopped
+/// after `schedule.max_run_minutes`.
 ///
-/// 1. saves the lamp, if anything changed, so that what the user did before and what the agent
-///    does now are two separate snapshots;
-/// 2. writes the prompt ([WakePromptUtil]): the task, the agent's notes, and what recent runs did;
-/// 3. gives it to pi ([Harness]) in a new conversation, and waits until pi is done, or until
-///    `schedule.max_run_minutes` have passed;
-/// 4. saves the lamp again, always, with the agent's last message and the run's name in the
-///    snapshot's message, so the history says which run did what;
-/// 5. reports the result.
+/// Due jobs are queued only while `schedule.enabled` is on. The agent changes its own schedule
+/// through [#answerAgent], under the same rules as the user.
 ///
-/// A second thread looks at the schedule every half minute, and whenever it changed, and queues
-/// the jobs whose time has come. That only happens while `schedule.enabled` is on: with it off,
-/// the agent is woken only when someone asks. The agent changes the schedule through a socket of
-/// its own ([#answerAgent]), and this class applies the same rules to it as to everyone.
-final class Runs {
+/// The queue is kept in memory only: prompts still waiting when the session ends are dropped. The
+/// pi process belongs to [Harness], not to this class.
+final class AgentRunner {
 
     /// How often the schedule is looked at when nothing has changed.
     static final Duration TICK = Duration.ofSeconds(30);
@@ -66,7 +62,7 @@ final class Runs {
     private record Pending(LampEvent.Run run, Optional<ScheduledJob> job, Optional<Harness.Target> where,
                            CompletableFuture<LampEvent.RunFinished> done) {}
 
-    Runs(Machine machine, Context context, LampLayout layout, LampConfig.Schedule config, SessionId session) {
+    AgentRunner(Machine machine, Context context, LampLayout layout, LampConfig.Schedule config, SessionId session) {
         this.machine = machine;
         this.context = context;
         this.layout = layout;

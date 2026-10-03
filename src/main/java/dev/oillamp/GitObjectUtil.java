@@ -247,7 +247,7 @@ final class GitObjectUtil {
                 split.trailers());
     }
 
-    /// The outcome an `Oillamp-Outcome` trailer names, as [Runs] writes it: `timed out` for
+    /// The outcome an `Oillamp-Outcome` trailer names, as [AgentRunner] writes it: `timed out` for
     /// [RunOutcome#TIMED_OUT]. Empty for anything else.
     private static Optional<RunOutcome> outcome(String written) {
         for (RunOutcome outcome : RunOutcome.values())
