@@ -9,6 +9,7 @@ import dev.gui.model.Settings
 import dev.lamp.Lamp
 import dev.lamp.LampEvent
 import oillamp.ScenarioHost
+import sprouts.Tuple
 import spock.lang.Specification
 import spock.lang.TempDir
 import spock.lang.Timeout
@@ -175,6 +176,51 @@ class KeepingAGeniesHistorySpec extends Specification {
         then: 'there is nothing to undo any more'
             waitUntil { genie.history().moments().first().kind() == History.Kind.RAN }
             genie.history().undo().isEmpty()
+    }
+
+    def 'A long history shows its newest forty moments, day by day, and waking does not end the offer to undo'() {
+        reportInfo """
+            A genie that is used a lot gathers a moment for every answer, so the page shows the
+            newest forty, grouped by the day they were saved on, and a button shows the rest.
+            Right after going back, an awake genie is woken again, which may save a moment of
+            its own; that must not take away the offer to undo, while an answer does.
+        """
+        given: 'fifty answers, one an hour, the newest first'
+            var moment = { int hoursAgo, History.Kind kind, String message ->
+                new History.Moment(Integer.toHexString(1000 + hoursAgo) + '0' * 36, NOW.minus(Duration.ofHours(hoursAgo)),
+                                   kind, message, '', '', Optional.empty(), '')
+            }
+            var answers = (0..<50).collect { moment(it, History.Kind.RAN, '') }
+            var history = History.UNREAD.readAs(Tuple.of(History.Moment, answers as History.Moment[]))
+
+        expect: 'forty are shown, on the days they were saved on, the newest day first'
+            history.hidden() == 10
+            var days = history.days(BERLIN)
+            days*.moments()*.size().sum() == 40
+            days.first().date() == LocalDateTime.ofInstant(NOW, BERLIN).toLocalDate()
+            days.first().date() > days.last().date()
+
+        and: 'every one, once asked for'
+            history.withEarlier(true).hidden() == 0
+            history.withEarlier(true).days(BERLIN)*.moments()*.size().sum() == 50
+
+        when: 'the genie went back to the third answer, then woke again'
+            var third = answers[2]
+            var before = moment(-1, History.Kind.BEFORE_GOING_BACK, 'before restoring ' + answers[0].id().take(8))
+            var wentBack = moment(-1, History.Kind.WENT_BACK, 'back to ' + third.id().take(8) + ' (run, then)')
+            var woke = moment(-2, History.Kind.WOKE, '')
+            var afterwards = History.UNREAD.readAs(Tuple.of(History.Moment, ([woke, wentBack, before] + answers) as History.Moment[]))
+
+        then: 'it offers to undo, and knows where it went back to'
+            afterwards.undo().get() == before
+            afterwards.wentBackTo(wentBack).get() == third
+
+        when: 'the genie answers once more'
+            var newest = moment(-3, History.Kind.RAN, '')
+            var answeredAgain = History.UNREAD.readAs(afterwards.moments().addAt(0, newest))
+
+        then:
+            answeredAgain.undo().isEmpty()
     }
 
     // ─── helpers ───────────────────────────────────────────────────────────────────────────
