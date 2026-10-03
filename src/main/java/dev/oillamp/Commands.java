@@ -715,7 +715,7 @@ final class Commands {
     public ExitStatus ask(Path lampPath, String prompt, AskPlace place, boolean wait) {
         if (prompt.isBlank()) {
             Tuple<Problem> refused = Tuple.of(Problem.class, ProblemCatalogUtil.usage(
-                    "`oillamp ask` needs something to ask the agent", Invocation.usageOf("ask")));
+                    "`oillamp ask` needs something to ask the agent", Command.usageOf("ask")));
             context.report(refused);
             return ExitStatus.USAGE;
         }
@@ -823,10 +823,10 @@ final class Commands {
                 return Result.err(ProblemCatalogUtil.noSuchConversation(entry.get(), lamp));
             if (after.isPresent() && question)
                 return Result.err(ProblemCatalogUtil.usage("--after " + entry.get() + " names a question; to ask something "
-                        + "instead of it, give --instead-of " + entry.get(), Invocation.usageOf("ask")));
+                        + "instead of it, give --instead-of " + entry.get(), Command.usageOf("ask")));
             if (insteadOf.isPresent() && !question)
                 return Result.err(ProblemCatalogUtil.usage("--instead-of " + entry.get() + " does not name a question; to "
-                        + "continue after it, give --after " + entry.get(), Invocation.usageOf("ask")));
+                        + "continue after it, give --after " + entry.get(), Command.usageOf("ask")));
             return Result.ok(request.with("move_to", entry.get()));
         }
     }
