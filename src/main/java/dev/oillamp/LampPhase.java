@@ -17,7 +17,7 @@ import sprouts.Tuple;
 /// It does the reading the pure planners cannot: resolves the path, looks at what is there,
 /// reads the configuration files and checks the filesystem can hold Unix sockets. The decisions are
 /// made by [LampLocationUtil], [LampDirectoryUtil], [ConfigLoadingUtil], [DesktopRendererUtil] and
-/// [LampPlanUtil]. The lock is taken afterwards, by `Commands.at`.
+/// [LampPlanUtil]. The lock is taken afterwards, by `CommandExecutionUtil.at`.
 final class LampPhase {
 
     /// Filesystems that cannot hold Unix domain sockets, which every connection to the sandbox uses.

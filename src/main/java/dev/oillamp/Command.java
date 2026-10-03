@@ -72,7 +72,8 @@ sealed interface Command {
         /// What `oillamp schedule <dir>` is asked to do; `ListJobs` when nothing is asked.
         sealed interface Action {
             record ListJobs() implements Action {}
-            record Add(String prompt, Optional<String> cron, Optional<String> at, Optional<String> expires) implements Action {}
+            record Add(String prompt, Optional<String> cron, Optional<String> at,
+                       Optional<String> expires) implements Action {}
             record Remove(String job) implements Action {}
             record Enable(String job) implements Action {}
             record Disable(String job) implements Action {}
@@ -83,7 +84,12 @@ sealed interface Command {
 
     record Conversations(Path lamp, Optional<String> conversation, Context.Options options) implements Command {}
 
-    record Ask(Path lamp, String prompt, Commands.AskPlace place, boolean waitForAnswer, Context.Options options) implements Command {}
+    /// `conversation` is the one `--in` names, by its id or the start of it; without one the
+    /// question starts a new conversation. `after` names an entry in it to continue after, other
+    /// than one of the user's questions; `insteadOf` one of the user's questions, to ask this one
+    /// instead of.
+    record Ask(Path lamp, String prompt, Optional<String> conversation, Optional<String> after,
+               Optional<String> insteadOf, boolean waitForAnswer, Context.Options options) implements Command {}
 
     record Cancel(Path lamp, Optional<String> run, Context.Options options) implements Command {}
 
@@ -193,7 +199,7 @@ sealed interface Command {
                   + "environment variable, such as EDENAI_API_KEY", usageOf("at")));
         options = options.withModel(new Context.ModelOverride(modelService.map(URI::create), modelKeyEnv));
 
-        if (positional.isEmpty()) return Result.ok(new Command.NoCommand(options));
+        if (positional.isEmpty()) return Result.ok(new NoCommand(options));
 
         String command = positional.first();
         Tuple<String> rest = positional.removeFirst();
@@ -203,7 +209,8 @@ sealed interface Command {
             Optional<String> misplaced = commandOptions.stream()
                     .filter(option -> !takes.get().contains(option)).findFirst();
             if (misplaced.isPresent())
-                return Result.err(ProblemCatalogUtil.usage("`oillamp " + command + "` does not take " + misplaced.get(), usageOf(command)));
+                return Result.err(ProblemCatalogUtil.usage(
+                        "`oillamp " + command + "` does not take " + misplaced.get(), usageOf(command)));
             if (NEEDS_A_LAMP.contains(command) && rest.isEmpty())
                 return Result.err(ProblemCatalogUtil.usage(
                         "`oillamp " + command + "` needs the path of a lamp directory",
@@ -217,7 +224,8 @@ sealed interface Command {
                         "oillamp " + command + " <dir>"));
             int allowed = MOST_ARGUMENTS.get(command).orElse(Integer.MAX_VALUE);
             if (rest.size() > allowed && allowed == 0)
-                return Result.err(ProblemCatalogUtil.usage("`oillamp " + command + "` takes no arguments, but was given "
+                return Result.err(ProblemCatalogUtil.usage(
+                        "`oillamp " + command + "` takes no arguments, but was given "
                       + rest.join(" "), usageOf(command)));
             if (rest.size() > allowed)
                 return Result.err(ProblemCatalogUtil.usage("`oillamp " + command
@@ -225,50 +233,53 @@ sealed interface Command {
         }
 
         return switch (command) {
-            case "version" -> Result.ok(new Command.Version(options));
-            case "help"    -> Result.ok(new Command.Help(options));
-            case "about"   -> Result.ok(new Command.About(options));
-            case "guide"   -> Result.ok(new Command.Guide(options));
-            case "image"   -> Result.ok(new Command.Image(options));
+            case "version" -> Result.ok(new Version(options));
+            case "help"    -> Result.ok(new Help(options));
+            case "about"   -> Result.ok(new About(options));
+            case "guide"   -> Result.ok(new Guide(options));
+            case "image"   -> Result.ok(new Image(options));
             case "completion" -> {
                 String shell = rest.isEmpty() ? "bash" : rest.first();
                 if (!shell.equals("bash"))
                     yield Result.err(ProblemCatalogUtil.usage(
                             "oillamp only ships a completion script for bash, not '" + shell + "'",
                             "oillamp completion bash"));
-                yield Result.ok(new Command.Completion(options));
+                yield Result.ok(new Completion(options));
             }
-            case "doctor" -> Result.ok(new Command.Doctor(
+            case "doctor" -> Result.ok(new Doctor(
                     rest.isEmpty() ? Optional.empty() : Optional.of(Path.of(rest.first())), options));
             case "config" -> {
                 String action = rest.size() > 1 ? rest.get(1) : "check";
                 yield switch (action) {
-                    case "check"          -> Result.ok(new Command.Config(Path.of(rest.first()), Command.Config.Action.CHECK, options));
-                    case "show-effective" -> Result.ok(new Command.Config(Path.of(rest.first()), Command.Config.Action.SHOW_EFFECTIVE, options));
-                    case "path"           -> Result.ok(new Command.Config(Path.of(rest.first()), Command.Config.Action.PATH, options));
+                    case "check"          -> Result.ok(new Config(Path.of(rest.first()), Config.Action.CHECK, options));
+                    case "show-effective" ->
+                            Result.ok(new Config(Path.of(rest.first()), Config.Action.SHOW_EFFECTIVE, options));
+                    case "path"           -> Result.ok(new Config(Path.of(rest.first()), Config.Action.PATH, options));
                     default -> Result.err(ProblemCatalogUtil.usage("'" + action + "' is not a config action",
                             "oillamp config <dir> (check | show-effective | path)"));
                 };
             }
-            case "at"     -> Result.ok(new Command.At(Path.of(rest.first()), options));
-            case "view"   -> Result.ok(new Command.View(Path.of(rest.first()), viewOnly, options));
-            case "shell"  -> Result.ok(new Command.Shell(Path.of(rest.first()), options));
-            case "stop"   -> Result.ok(new Command.Stop(Path.of(rest.first()), options));
-            case "status" -> Result.ok(new Command.Status(Path.of(rest.first()), options));
-            case "follow" -> Result.ok(new Command.Follow(Path.of(rest.first()), options));
-            case "list"   -> Result.ok(new Command.List(options));
+            case "at"     -> Result.ok(new At(Path.of(rest.first()), options));
+            case "view"   -> Result.ok(new View(Path.of(rest.first()), viewOnly, options));
+            case "shell"  -> Result.ok(new Shell(Path.of(rest.first()), options));
+            case "stop"   -> Result.ok(new Stop(Path.of(rest.first()), options));
+            case "status" -> Result.ok(new Status(Path.of(rest.first()), options));
+            case "follow" -> Result.ok(new Follow(Path.of(rest.first()), options));
+            case "list"   -> Result.ok(new List(options));
             // The one command that takes several lamps, since a pattern like `test*` is the
             // natural way to clean up after experiments.
-            case "remove" -> Result.ok(new Command.Remove(rest.mapTo(Path.class, Path::of), confirmed, options));
-            case "recordings" -> Result.ok(new Command.Recordings(Path.of(rest.first()), values.get("--open"),
+            case "remove" -> Result.ok(new Remove(rest.mapTo(Path.class, Path::of), confirmed, options));
+            case "recordings" -> Result.ok(new Recordings(Path.of(rest.first()), values.get("--open"),
                     prune, options));
-            case "save" -> Result.ok(new Command.Save(Path.of(rest.first()), values.get("--message").orElse(""),
+            case "save" -> Result.ok(new Save(Path.of(rest.first()), values.get("--message").orElse(""),
                     options));
-            case "history" -> Result.ok(new Command.History(Path.of(rest.first()), options));
+            case "history" -> Result.ok(new History(Path.of(rest.first()), options));
             case "restore" -> {
                 if (rest.size() < 2)
-                    yield Result.err(ProblemCatalogUtil.usage("`oillamp restore` needs the snapshot to go back to, as `oillamp history` names it", usageOf("restore")));
-                yield Result.ok(new Command.Restore(Path.of(rest.first()), rest.get(1), options));
+                    yield Result.err(ProblemCatalogUtil.usage(
+                            "`oillamp restore` needs the snapshot to go back to, as `oillamp history` names it",
+                            usageOf("restore")));
+                yield Result.ok(new Restore(Path.of(rest.first()), rest.get(1), options));
             }
             case "schedule" -> {
                 String action = rest.size() > 1 ? rest.get(1) : "list";
@@ -285,38 +296,43 @@ sealed interface Command {
                     yield Result.err(ProblemCatalogUtil.usage("`oillamp schedule <dir> " + action
                             + "` takes nothing more, but was given '" + argument.get() + "'", usageOf("schedule")));
                 if (!action.equals("add") && (cron.isPresent() || at.isPresent() || expires.isPresent()))
-                    yield Result.err(ProblemCatalogUtil.usage("--cron, --at and --expires only go with `oillamp schedule <dir> add`", usageOf("schedule")));
+                    yield Result.err(ProblemCatalogUtil.usage(
+                            "--cron, --at and --expires only go with `oillamp schedule <dir> add`", usageOf("schedule")));
                 String job = argument.orElse("");
-                Optional<Command.Schedule.Action> chosen = switch (action) {
-                    case "list"    -> Optional.of(new Command.Schedule.Action.ListJobs());
-                    case "add"     -> Optional.of(new Command.Schedule.Action.Add(job, cron, at, expires));
-                    case "remove"  -> Optional.of(new Command.Schedule.Action.Remove(job));
-                    case "enable"  -> Optional.of(new Command.Schedule.Action.Enable(job));
-                    case "disable" -> Optional.of(new Command.Schedule.Action.Disable(job));
-                    case "pause"   -> Optional.of(new Command.Schedule.Action.Pause());
-                    case "resume"  -> Optional.of(new Command.Schedule.Action.Resume());
+                Optional<Schedule.Action> chosen = switch (action) {
+                    case "list"    -> Optional.of(new Schedule.Action.ListJobs());
+                    case "add"     -> Optional.of(new Schedule.Action.Add(job, cron, at, expires));
+                    case "remove"  -> Optional.of(new Schedule.Action.Remove(job));
+                    case "enable"  -> Optional.of(new Schedule.Action.Enable(job));
+                    case "disable" -> Optional.of(new Schedule.Action.Disable(job));
+                    case "pause"   -> Optional.of(new Schedule.Action.Pause());
+                    case "resume"  -> Optional.of(new Schedule.Action.Resume());
                     default        -> Optional.empty();
                 };
                 if (chosen.isEmpty())
-                    yield Result.err(ProblemCatalogUtil.usage("'" + action + "' is not something `oillamp schedule` does", usageOf("schedule")));
-                yield Result.ok(new Command.Schedule(Path.of(rest.first()), chosen.get(), options));
+                    yield Result.err(ProblemCatalogUtil.usage(
+                            "'" + action + "' is not something `oillamp schedule` does", usageOf("schedule")));
+                yield Result.ok(new Schedule(Path.of(rest.first()), chosen.get(), options));
             }
-            case "conversations" -> Result.ok(new Command.Conversations(Path.of(rest.first()),
+            case "conversations" -> Result.ok(new Conversations(Path.of(rest.first()),
                     rest.size() > 1 ? Optional.of(rest.get(1)) : Optional.empty(), options));
             case "ask" -> {
                 Optional<String> in = values.get("--in");
                 Optional<String> after = values.get("--after");
                 Optional<String> insteadOf = values.get("--instead-of");
                 if (rest.size() < 2)
-                    yield Result.err(ProblemCatalogUtil.usage("`oillamp ask` needs something to ask the agent, in quotes", usageOf("ask")));
+                    yield Result.err(ProblemCatalogUtil.usage(
+                            "`oillamp ask` needs something to ask the agent, in quotes", usageOf("ask")));
                 if ((after.isPresent() || insteadOf.isPresent()) && in.isEmpty())
-                    yield Result.err(ProblemCatalogUtil.usage("--after and --instead-of name an entry of the conversation that --in names", usageOf("ask")));
+                    yield Result.err(ProblemCatalogUtil.usage(
+                            "--after and --instead-of name an entry of the conversation that --in names", usageOf("ask")));
                 if (after.isPresent() && insteadOf.isPresent())
-                    yield Result.err(ProblemCatalogUtil.usage("a question goes either after an entry or instead of a question, not both", usageOf("ask")));
-                yield Result.ok(new Command.Ask(Path.of(rest.first()), rest.get(1),
-                        new Commands.AskPlace(in, after, insteadOf), wait, options));
+                    yield Result.err(ProblemCatalogUtil.usage(
+                            "a question goes either after an entry or instead of a question, not both", usageOf("ask")));
+                yield Result.ok(new Ask(Path.of(rest.first()), rest.get(1), in, after, insteadOf,
+                        wait, options));
             }
-            case "cancel" -> Result.ok(new Command.Cancel(Path.of(rest.first()),
+            case "cancel" -> Result.ok(new Cancel(Path.of(rest.first()),
                     rest.size() > 1 ? Optional.of(rest.get(1)) : Optional.empty(), options));
             default -> Result.err(ProblemCatalogUtil.usage("'" + command + "' is not an oillamp command", usage()));
         };

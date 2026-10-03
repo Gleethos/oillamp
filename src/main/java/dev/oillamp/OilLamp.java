@@ -76,7 +76,7 @@ public final class OilLamp {
         };
         ExitStatus status;
         try {
-            status = Invocation.execute(machine, sink, console, VERSION, argv);
+            status = CommandExecutionUtil.execute(machine, sink, console, VERSION, argv);
         } catch (RuntimeException | StackOverflowError failure) {
             // A bug in oillamp is reported as problem OIL-INTERNAL-001, with the start of the
             // stack trace as evidence, rather than as a raw stack trace on the console.

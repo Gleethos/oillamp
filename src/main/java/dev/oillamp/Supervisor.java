@@ -477,7 +477,7 @@ final class Supervisor {
         // 6. Save the lamp as the session left it. The container is gone, so nothing is writing.
         //    Here rather than after the session, because after Ctrl-C this sequence is the last
         //    thing that runs before the JVM exits.
-        problems = problems.addAll(Commands.saveLamp(context, prepared.layout(),
+        problems = problems.addAll(CommandExecutionUtil.saveLamp(context, prepared.layout(),
                 dev.lamp.LampEvent.SaveKind.SHUTDOWN, "", Optional.of(prepared.session()), machine.now()));
         return problems;
     }

@@ -189,7 +189,7 @@ final class LampPlanUtil {
     ///
     /// Only what oillamp created is removed. The user may keep their own files beside
     /// `oillamp.toml`, so the lamp directory itself is only removed if it ends up empty
-    /// (`Commands.remove` does that).
+    /// (`CommandExecutionUtil.remove` does that).
     ///
     /// The agent's home goes last. If the state directory cannot be fully deleted, for example
     /// because podman is missing, the run stops there, with the agent's work still intact.

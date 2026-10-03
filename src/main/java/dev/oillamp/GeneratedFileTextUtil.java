@@ -162,7 +162,7 @@ final class GeneratedFileTextUtil {
     ///
     /// After the command name it completes directories, because every command that takes a
     /// directory argument takes a lamp directory. Options are offered only to the commands that
-    /// take them, the same ones [Invocation] accepts.
+    /// take them, the same ones [Command#parse] accepts.
     public static String bashCompletion() {
         return """
             # oillamp bash completion.

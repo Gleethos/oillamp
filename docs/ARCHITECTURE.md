@@ -158,8 +158,8 @@ known lifetime:
 |---|---|---|---|
 | `<lamp>/oillamp.toml` | you; created from a template if missing | every command that reads configuration | until `oillamp remove` |
 | `<lamp>/.oillamp/lamp.json` | `LampPlanUtil` (identity); `Supervisor` (`lastSessionAt`) | every command that names the lamp | until `oillamp remove` |
-| `<lamp>/.oillamp/lock` | `LampLock`; the kernel holds the lock | `Commands.at` | the lock ends with the process, however it ends |
-| `<lamp>/.oillamp/session.json` | `Supervisor`, after its sockets are bound | `Commands.at` on a busy lamp | deleted at shutdown; a killed supervisor leaves it |
+| `<lamp>/.oillamp/lock` | `LampLock`; the kernel holds the lock | `CommandExecutionUtil.at` | the lock ends with the process, however it ends |
+| `<lamp>/.oillamp/session.json` | `Supervisor`, after its sockets are bound | `CommandExecutionUtil.at` on a busy lamp | deleted at shutdown; a killed supervisor leaves it |
 | `<lamp>/.oillamp/keys/`, `ssh_config`, `known_hosts` | `LampPlanUtil` (keys once, the rest every start) | the shell window, `oillamp shell` | until `oillamp remove` |
 | `<lamp>/.oillamp/session/` | `LampPlanUtil.planSession`, every start | the entrypoint, sshd, every shell | rewritten each session |
 | `<lamp>/.oillamp/image/context/` | `SandboxImageFilesUtil`, before a build | `podman build` | overwritten at the next build |
@@ -301,7 +301,7 @@ Oillamp-Session: 20260929-181200
 
 | Kind | Made by |
 |---|---|
-| `startup` | `Commands.at`, after taking the lock and before the sandbox starts |
+| `startup` | `CommandExecutionUtil.at`, after taking the lock and before the sandbox starts |
 | `shutdown` | `Supervisor.shutDown`, after the container is removed; also after Ctrl-C |
 | `running` | `oillamp save` while a session runs; a program may have been writing |
 | `idle` | `oillamp save` while no session runs |
@@ -467,8 +467,9 @@ The same, step by step:
 
 1. **`OilLamp.main`** builds a real `Machine` and calls `OilLamp.run(argv)`. `run` catches any
    unexpected exception and reports it as `OIL-INTERNAL-001`, so you never see a raw stack trace.
-2. **`Invocation.execute`** parses the command line by hand (no library) into a `Command`, a
-   sealed interface with one record per command, and calls the matching method on `Commands`.
+2. **`CommandExecutionUtil.execute`** has `Command.parse` read the command line by hand (no
+   library) into a `Command`, a sealed interface with one record per command, and calls the
+   method for that command.
    Every usage mistake exits with code 2.
 3. **Host phase (`HostPhase`).**
    - `HostProbeUtil.probe` collects `HostFacts`: the distribution, your user and groups, the graphical
@@ -507,9 +508,9 @@ The same, step by step:
      the VNC and SSH sockets to prove they answer.
 8. **Supervisor (`Supervisor.run`)** binds the relays, the control socket and the egress proxy,
    writes `session.json`, opens the two windows, and waits until the session ends. On the way out
-   it runs the shutdown sequence. `Commands.at` then releases the lock.
+   it runs the shutdown sequence. `CommandExecutionUtil.at` then releases the lock.
 
-Until the supervisor is up, `Commands.at` holds a JVM shutdown hook of its own: a Ctrl-C while the
+Until the supervisor is up, `CommandExecutionUtil.at` holds a JVM shutdown hook of its own: a Ctrl-C while the
 image builds, or a start that fails, removes the container this run started. The supervisor's hook
 replaces it once the session is up.
 
@@ -1284,7 +1285,7 @@ outside this list uses `java.nio.file.Files`, `ProcessBuilder`, `Process`, `Secu
 or `System`:
 
 `RealMachine`, `SimulatedMachine`, `Machine`, `FilesystemUtil`, `LampLock`, `HostProbeUtil`, `StepRunner`,
-`HostPhase`, `LampPhase`, `Commands`, `ConsoleRenderer`, `OilLamp`, `Invocation`, `Supervisor`,
+`HostPhase`, `LampPhase`, `CommandExecutionUtil`, `ConsoleRenderer`, `OilLamp`, `Supervisor`,
 `Relay`, `Control`, `Egress`, and `Lamp` in `dev.lamp`.
 
 By convention, time comes from `Machine.now()`, never `Instant.now()`; the check does not look for
@@ -1345,7 +1346,7 @@ removed.
 
 | Area | Classes |
 |---|---|
-| Entry and commands | `OilLamp`, `Invocation`, `Command`, `Commands`, `Context`, `ConsoleRenderer`, `IntroductionTextUtil` (the texts of `oillamp about` and `oillamp guide`) |
+| Entry and commands | `OilLamp`, `Command`, `CommandExecutionUtil`, `Context`, `ConsoleRenderer`, `IntroductionTextUtil` (the texts of `oillamp about` and `oillamp guide`) |
 | The outside world | `Machine`, `RealMachine`, `SimulatedMachine`, `FilesystemUtil`, `LampLock` |
 | Host phase | `HostPhase`, `HostProbeUtil`, `HostPlanUtil`, `HostFacts`, `HostRequirements`, `SubIdRangeUtil`, and fact records `OsRelease`, `UserInfo`, `GraphicalSession`, `PodmanFacts`, `UserNameSpaceFacts`, `SubIdFacts`, `SudoFacts`, `GpuFacts`, `TerminalCandidate`, `IdRange`, `DistroFamily`, `Installing` |
 | Lamp phase | `LampPhase`, `LampPlanUtil`, `LampDirectoryUtil`, `LampState`, `LampLayout`, `LampLocationUtil`, `LampMeta`, `AgentId`, `SessionId`, `DirListing`, `RecordingRetentionUtil`, `RecordingFile` |

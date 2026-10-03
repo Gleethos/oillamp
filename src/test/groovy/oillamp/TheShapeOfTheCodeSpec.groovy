@@ -127,8 +127,8 @@ class TheShapeOfTheCodeSpec extends Specification {
         """
         given: 'the classes whose job is to touch the outside world'
             var allowed = ['RealMachine', 'SimulatedMachine', 'FilesystemUtil', 'LampLock', 'HostProbeUtil',
-                           'StepRunner', 'LampPhase', 'HostPhase', 'Commands', 'ConsoleRenderer',
-                           'OilLamp', 'Invocation', 'Machine',
+                           'StepRunner', 'LampPhase', 'HostPhase', 'CommandExecutionUtil', 'ConsoleRenderer',
+                           'OilLamp', 'Machine',
                            // The session. These three bind sockets, move bytes between them
                            // and start the windows. They decide nothing: every decision a
                            // session makes is SessionMachine's.
