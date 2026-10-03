@@ -57,7 +57,7 @@ class KeepingAGeniesHistorySpec extends Specification {
         runner?.sleepAndWait(30)
     }
 
-    def 'Waking, answering and sleeping are moments of the history, and a save by hand adds one'() {
+    def 'Waking and answering are moments of the history, and a save by hand adds one'() {
         reportInfo """
             The history page lists the moments oillamp saved the genie's home at, newest first,
             in words: it woke, it answered a question (titled by the conversation, with what it
@@ -65,7 +65,8 @@ class KeepingAGeniesHistorySpec extends Specification {
             answer adds no moment. The user can save by hand too, awake or asleep, with a few
             words to remember the moment by; the new moment is picked, so it stands out. When
             nothing changed since the newest moment, oillamp saves nothing, and the page says so
-            rather than leaving the user to wonder.
+            rather than leaving the user to wonder. The chat says what came of a save too, since
+            the user can save from there, through the genie's menu.
         """
         given: 'a genie that woke, answered a question and went to sleep'
             runner.wake('Jafar', Settings.defaults(), 'sk-key')
@@ -97,6 +98,7 @@ class KeepingAGeniesHistorySpec extends Specification {
             waitUntil { genie.history().busy().isEmpty() && !genie.history().note().isEmpty() }
             genie.history().picked() == genie.history().moments().first().id()
             genie.history().moments().first().kind() == History.Kind.RAN
+            genie.transcript().entries().last().text() == genie.history().note()
 
         when: 'a file changes in the genie\'s home, and the user saves again'
             Files.writeString(Lamp.agentHome(lamp).orElseThrow().resolve('plan.md'), 'refactor the parser')
@@ -109,6 +111,10 @@ class KeepingAGeniesHistorySpec extends Specification {
             waitUntil { genie.history().picked() == saved.id() }
             genie.history().note().isEmpty()
             genie.history().problem().isEmpty()
+
+        and: 'the chat says so'
+            var told = genie.transcript().entries().last().text()
+            told == 'Saved as a moment of the history: before the big refactor. The history page brings the genie back to it.'
     }
 
     def 'Going back brings the files and the conversations back, puts an awake genie to sleep, and can be undone'() {

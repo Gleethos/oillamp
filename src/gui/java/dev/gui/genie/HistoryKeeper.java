@@ -53,6 +53,7 @@ public final class HistoryKeeper {
 
     /// Saves the genie's home as a new moment, which is then picked. When nothing changed since
     /// the newest moment, oillamp saves nothing; the newest moment is picked, and the note says why.
+    /// The chat says what came of it too, since the user may have saved from there.
     ///
     /// @param message what to remember the moment by; may be empty
     public void save(String message) {
@@ -60,9 +61,13 @@ public final class HistoryKeeper {
         work.execute(() -> {
             try {
                 Optional<LampEvent.Snapshot> saved = lamp.save(message.strip());
+                String nothingChanged = "Nothing changed since the newest moment, so it holds how the genie is now already.";
                 change(it -> saved.isPresent() ? it.withBusy("").withPicked(saved.get().id())
-                        : it.withBusy("").withPicked(it.moments().isEmpty() ? "" : it.moments().first().id())
-                            .withNote("Nothing changed since the newest moment, so it holds how the genie is now already."));
+                        : it.withBusy("").withPicked(it.moments().isEmpty() ? "" : it.moments().first().id()).withNote(nothingChanged));
+                String told = saved.isEmpty() ? nothingChanged
+                        : "Saved as a moment of the history" + (message.isBlank() ? "" : ": " + message.strip())
+                          + ". The history page brings the genie back to it.";
+                changes.accept(genie -> genie.withTranscript(genie.transcript().notice(told)));
             } catch (IOException | Lamp.Failed failed) {
                 change(it -> it.withBusy("").withProblem("oillamp could not save: " + reason(failed)));
             } catch (InterruptedException interrupted) {
