@@ -26,11 +26,24 @@ import sprouts.Tuple;
 /// through [Context]. The decisions are made by the pure planners they call.
 final class CommandExecutionUtil {
 
+    /// How long `oillamp ask` waits for its answer. The agent may be busy with other runs first,
+    /// each of which may take up to `schedule.max_run_minutes`. If the session ends meanwhile,
+    /// the connection closes, and the wait ends with it.
+    private static final Duration ASK_PATIENCE = Duration.ofDays(1);
+
+    /// One oillamp container, as `podman ps` describes it.
+    private record RunningSandbox(String name, String state, String lamp) {}
+
+
     private CommandExecutionUtil() {}
 
-    static ExitStatus execute(Machine machine, Consumer<LampEvent> sink,
-                              ConsoleRenderer console, String version, String... argv) {
-        Tuple<String> arguments = Tuple.of(String.class, argv);
+    static ExitStatus execute(
+        final Machine machine,
+        final Consumer<LampEvent> sink,
+        final ConsoleRenderer console,
+        final String version,
+        final Tuple<String> arguments
+    ) {
         // Before anything is printed, so that even a usage error comes without colour.
         if (arguments.contains("--no-color")) console.withoutColour();
         // Likewise: an application reading standard output must never see a line that is not JSON.
@@ -140,7 +153,11 @@ final class CommandExecutionUtil {
     ///
     /// Does not require a graphical session, because finding out that you are on a plain SSH
     /// login is one of the reasons to run it.
-    static ExitStatus doctor(Machine machine, Context context, Optional<Path> lampPath) {
+    private static ExitStatus doctor(
+        final Machine machine,
+        final Context context,
+        final Optional<Path> lampPath
+    ) {
         Context.Options original = context.options();
         HostPhase host = new HostPhase(machine, new Context(context::emit,
                 original.withDryRun(true).withAutoInstall(false), context.version()));
@@ -164,7 +181,11 @@ final class CommandExecutionUtil {
     /// Runs the phases in order: host, lamp, image and sandbox, then the [Supervisor]. It
     /// does not return when the sandbox is up, but when the session is over, so that one Ctrl-C,
     /// one closed window or one `oillamp stop` takes down everything it created.
-    static ExitStatus at(Machine machine, Context context, Path lampPath) {
+    private static ExitStatus at(
+        final Machine machine,
+        final Context context,
+        final Path lampPath
+    ) {
         // Only a session that opens windows needs the host's display.
         boolean opensWindows = !context.options().embedded() && context.options().openWindows();
         HostPhase.Outcome host = new HostPhase(machine, context)
@@ -270,7 +291,12 @@ final class CommandExecutionUtil {
 
     /// Removes the container a start left behind, if there is one. Called when the start failed,
     /// and from a shutdown hook when the user pressed Ctrl-C before the supervisor took over.
-    private static void removeUnfinishedSandbox(Machine machine, Context context, ContainerName container, String why) {
+    private static void removeUnfinishedSandbox(
+        final Machine machine,
+        final Context context,
+        final ContainerName container,
+        final String why
+    ) {
         boolean exists = machine.run(Machine.Command.of("podman", "container", "exists", container.value())
                 .withTimeout(Duration.ofSeconds(20)).labelled("podman container exists")
                 .shieldedFromSignals()).succeeded();
@@ -294,7 +320,11 @@ final class CommandExecutionUtil {
     ///
     /// The host is prepared before the lamp, so the configuration is read here once already. If it
     /// cannot be read, installing stays allowed; the lamp phase reports what is wrong with it.
-    private static Installing installing(Machine machine, Context context, Path lampPath) {
+    private static Installing installing(
+        final Machine machine,
+        final Context context,
+        final Path lampPath
+    ) {
         if (!context.options().autoInstall()) return Installing.DECLINED;
         Result<LampConfig> config = ConfigLoadingUtil.load(LampPhase.configurationFiles(home(machine),
                 lampPath.toAbsolutePath().resolve("oillamp.toml")));
@@ -310,7 +340,7 @@ final class CommandExecutionUtil {
     // ─── commands that talk to a running session through its control socket ─────────────
 
     /// `oillamp view <dir> [--view-only]`: open another viewer onto the same desktop.
-    static ExitStatus view(Machine machine, Context context, Path lampPath, boolean viewOnly) {
+    private static ExitStatus view(Machine machine, Context context, Path lampPath, boolean viewOnly) {
         return askTheSession(machine, context, lampPath, "view",
                 Control.Request.of("view").with("view_only", String.valueOf(viewOnly)),
                 reply -> context.ok("view", "another viewer window is opening"));
@@ -320,7 +350,7 @@ final class CommandExecutionUtil {
     ///
     /// The supervisor returns the ssh command and this process runs it, because the shell belongs
     /// in the terminal the user typed this into. Closing it does not end the session.
-    static ExitStatus shell(Machine machine, Context context, Path lampPath) {
+    private static ExitStatus shell(Machine machine, Context context, Path lampPath) {
         Result<Control.Reply> reply = askTheSession(machine, lampPath, "shell", Control.Request.of("shell"));
         if (reply instanceof Result.Err<Control.Reply> failure) {
             context.report(failure.problems());
@@ -343,7 +373,7 @@ final class CommandExecutionUtil {
     /// It asks the supervisor rather than removing the container, because the supervisor holds
     /// the lock, the relays and the recording and must run its own shutdown. If no supervisor
     /// answers, it removes a container left behind by one that died.
-    static ExitStatus stop(Machine machine, Context context, Path lampPath) {
+    private static ExitStatus stop(Machine machine, Context context, Path lampPath) {
         Result<Control.Reply> reply = askTheSession(machine, lampPath, "stop", Control.Request.of("stop"));
         if (reply instanceof Result.Ok<Control.Reply>) {
             context.ok("stop", "the session is shutting down");
@@ -367,7 +397,7 @@ final class CommandExecutionUtil {
     /// Several lamps are usually named by a shell pattern such as `test*`, which may match more
     /// than the user meant. So every one is checked before anything is deleted: if any of them is
     /// not a lamp, or is still running, nothing is removed and each problem is reported.
-    static ExitStatus remove(Machine machine, Context context, Tuple<Path> lampPaths, boolean confirmed) {
+    private static ExitStatus remove(Machine machine, Context context, Tuple<Path> lampPaths, boolean confirmed) {
         LinkedHashSet<Path> roots = new LinkedHashSet<>();
         for (Path lampPath : lampPaths) roots.add(LampPhase.resolve(machine, lampPath));
 
@@ -486,9 +516,6 @@ final class CommandExecutionUtil {
                 .map(RunningSandbox::name).findFirst();
     }
 
-    /// One oillamp container, as `podman ps` describes it.
-    private record RunningSandbox(String name, String state, String lamp) {}
-
     /// Every container with an `oillamp.agent-id` label that podman is running.
     ///
     /// JSON rather than a --format template: the template field names differ between podman
@@ -555,7 +582,7 @@ final class CommandExecutionUtil {
     }
 
     /// `oillamp status <dir>`: what the running session is doing.
-    static ExitStatus status(Machine machine, Context context, Path lampPath) {
+    private static ExitStatus status(Machine machine, Context context, Path lampPath) {
         Result<Control.Reply> reply = askTheSession(machine, lampPath, "status", Control.Request.of("status"));
         if (reply instanceof Result.Err<Control.Reply> failure) {
             context.report(failure.problems());
@@ -574,7 +601,7 @@ final class CommandExecutionUtil {
 
     /// `oillamp list`: every oillamp container running on this host, found by its
     /// `oillamp.agent-id` label. oillamp keeps no list of its own that could go out of date.
-    static ExitStatus list(Machine machine, Context context) {
+    private static ExitStatus list(Machine machine, Context context) {
         Machine.Outcome outcome = listRunningSandboxes(machine);
         if (!outcome.succeeded()) {
             context.report(Tuple.of(Problem.class, ProblemCatalogUtil.podmanFailed(
@@ -599,7 +626,7 @@ final class CommandExecutionUtil {
     /// Works while a session is running, so a person can save just before letting the agent try
     /// something risky. The snapshot then says it was taken while the session ran, because a
     /// program writing at that moment may have left a file half written.
-    static ExitStatus save(Machine machine, Context context, Path lampPath, String message) {
+    private static ExitStatus save(Machine machine, Context context, Path lampPath, String message) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
             context.report(failure.problems());
@@ -631,7 +658,7 @@ final class CommandExecutionUtil {
     }
 
     /// `oillamp history <dir>`: every snapshot of the lamp, newest first.
-    static ExitStatus history(Machine machine, Context context, Path lampPath) {
+    private static ExitStatus history(Machine machine, Context context, Path lampPath) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
             context.report(failure.problems());
@@ -650,7 +677,7 @@ final class CommandExecutionUtil {
     ///
     /// Refused while a session runs. The lamp is saved first, so every restore can be undone by
     /// restoring that save.
-    static ExitStatus restore(Machine machine, Context context, Path lampPath, String snapshot) {
+    private static ExitStatus restore(Machine machine, Context context, Path lampPath, String snapshot) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
             context.report(failure.problems());
@@ -712,7 +739,7 @@ final class CommandExecutionUtil {
     ///
     /// Works whether or not a session runs. A running session reads the schedule again when it
     /// changes, so a job added now can run straight away.
-    static ExitStatus schedule(Machine machine, Context context, Path lampPath, Command.Schedule.Action action) {
+    private static ExitStatus schedule(Machine machine, Context context, Path lampPath, Command.Schedule.Action action) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
             context.report(failure.problems());
@@ -770,9 +797,9 @@ final class CommandExecutionUtil {
     /// was started with `--enable-scheduling`.
     private static LampConfig.Schedule scheduleInForce(LampLayout layout, LampConfig.Schedule configured) {
         if (configured.enabled() || !FilesystemUtil.exists(layout.controlSocket())) return configured;
-        boolean on = Control.ask(layout.controlSocket(), layout.root(), Control.Request.of("status"), "schedule")
+        boolean on = Boolean.TRUE.equals(Control.ask(layout.controlSocket(), layout.root(), Control.Request.of("status"), "schedule")
                 .map(reply -> reply.values().get("schedule").map("on"::equals).orElse(false))
-                .orElseGet(problems -> false);
+                .orElseGet(_ -> false));
         return on ? configured.switchedOn() : configured;
     }
 
@@ -786,7 +813,7 @@ final class CommandExecutionUtil {
     /// `oillamp conversations <dir> [<conversation>]`: the agent's conversations, or one in full.
     ///
     /// Read from pi's files in the agent's home, so it works whether or not a session runs.
-    static ExitStatus conversations(Machine machine, Context context, Path lampPath, Optional<String> which) {
+    private static ExitStatus conversations(Machine machine, Context context, Path lampPath, Optional<String> which) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
             context.report(failure.problems());
@@ -816,7 +843,7 @@ final class CommandExecutionUtil {
     /// The question goes into a new conversation, unless `--in` names one; `--after` or
     /// `--instead-of` then name an entry in it. Without waiting, the run's id is reported, and the
     /// answer comes on the session's own events.
-    static ExitStatus ask(Machine machine, Context context, Command.Ask ask) {
+    private static ExitStatus ask(Machine machine, Context context, Command.Ask ask) {
         String prompt = ask.prompt();
         if (prompt.isBlank()) {
             Tuple<Problem> refused = Tuple.of(Problem.class, ProblemCatalogUtil.usage(
@@ -893,7 +920,7 @@ final class CommandExecutionUtil {
     }
 
     /// `oillamp cancel <dir> [<run>]`: stop the run in progress, or one that is waiting.
-    static ExitStatus cancel(Machine machine, Context context, Path lampPath, Optional<String> run) {
+    private static ExitStatus cancel(Machine machine, Context context, Path lampPath, Optional<String> run) {
         Control.Request request = Control.Request.of("cancel");
         if (run.isPresent()) request = request.with("run", run.get());
         return askTheSession(machine, context, lampPath, "cancel", request, reply -> context.emit(new LampEvent.Ok("run",
@@ -908,7 +935,7 @@ final class CommandExecutionUtil {
     /// run in progress from its start, and the runs waiting. Following ends nothing: Ctrl-C here
     /// leaves the session running. Embedded, following ends when standard input closes, as the
     /// session itself would for the application that started it.
-    static ExitStatus follow(Machine machine, Context context, Path lampPath) {
+    private static ExitStatus follow(Machine machine, Context context, Path lampPath) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
             context.report(failure.problems());
@@ -925,11 +952,6 @@ final class CommandExecutionUtil {
         }
         return ExitStatus.SUCCESS;
     }
-
-    /// How long `oillamp ask` waits for its answer. The agent may be busy with other runs first,
-    /// each of which may take up to `schedule.max_run_minutes`. If the session ends meanwhile,
-    /// the connection closes, and the wait ends with it.
-    private static final Duration ASK_PATIENCE = Duration.ofDays(1);
 
     private static void release(LampLock lock) {
         try {
@@ -960,7 +982,7 @@ final class CommandExecutionUtil {
     ///
     /// Works while a session is running. The file being recorded is listed with its current size
     /// and duration.
-    static ExitStatus recordings(Machine machine, Context context, Path lampPath, Optional<String> open, boolean prune) {
+    private static ExitStatus recordings(Machine machine, Context context, Path lampPath, Optional<String> open, boolean prune) {
         Result<LampLayout> found = layoutOf(machine, lampPath);
         if (found instanceof Result.Err<LampLayout> failure) {
             context.report(failure.problems());
@@ -1133,7 +1155,7 @@ final class CommandExecutionUtil {
     }
 
     /// `oillamp config <dir> check`: validate the lamp's configuration without changing anything.
-    static ExitStatus checkConfig(Machine machine, Context context, Path lampPath) {
+    private static ExitStatus checkConfig(Machine machine, Context context, Path lampPath) {
         HostPhase.Outcome host = new HostPhase(machine, new Context(context::emit,
                 context.options().withDryRun(true).withAutoInstall(false), context.version()))
                 .prepare(lampPath, false, Installing.NEVER);
@@ -1143,7 +1165,7 @@ final class CommandExecutionUtil {
 
     /// `oillamp config <dir> show-effective`: print a summary of the validated configuration,
     /// the global file and the lamp's merged, as `at` would use it.
-    static ExitStatus showEffectiveConfig(Machine machine, Context context, Path lampPath) {
+    private static ExitStatus showEffectiveConfig(Machine machine, Context context, Path lampPath) {
         Result<LampConfig> loaded = loadConfig(machine, lampPath);
         if (loaded instanceof Result.Err<LampConfig> failure) {
             context.report(failure.problems());
@@ -1210,7 +1232,7 @@ final class CommandExecutionUtil {
     }
 
     /// The exit code for a list of problems: 4 for a busy lamp, 2 for configuration errors, otherwise 1.
-    static ExitStatus exitStatusFor(Tuple<Problem> problems) {
+    private static ExitStatus exitStatusFor(Tuple<Problem> problems) {
         for (Problem problem : problems) {
             String code = problem.code().value();
             if (code.equals("OIL-LOCK-001") || code.equals("OIL-HISTORY-005")) return ExitStatus.LAMP_BUSY;
