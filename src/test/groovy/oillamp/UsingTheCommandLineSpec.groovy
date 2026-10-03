@@ -85,8 +85,21 @@ class UsingTheCommandLineSpec extends Specification {
             'list --open 20260101-120000'      | "`oillamp list` does not take --open"    | 'oillamp list'
             'list LAMP'                        | "`oillamp list` takes no arguments"      | 'oillamp list'
             'version extra'                    | "`oillamp version` takes no arguments"   | 'oillamp version'
+            'help extra'                       | "`oillamp help` takes no arguments"      | 'oillamp help'
+            'about extra'                      | "`oillamp about` takes no arguments"     | 'oillamp about'
+            'guide extra'                      | "`oillamp guide` takes no arguments"     | 'oillamp guide'
             'config LAMP path extra'           | "'extra'"                                | 'oillamp config <dir> (check | show-effective | path)'
             'completion bash zsh'              | "'zsh'"                                  | 'oillamp completion bash'
+            'restore LAMP a1b2c3d4 extra'      | "'extra'"                                | 'oillamp restore <dir> <snapshot>'
+            'ask LAMP hello extra'             | "'extra'"                                | 'oillamp ask <dir> [--in'
+            'conversations LAMP c1 extra'      | "'extra'"                                | 'oillamp conversations <dir>'
+            'cancel LAMP run-1 extra'          | "'extra'"                                | 'oillamp cancel <dir>'
+            'schedule LAMP remove job-1 extra' | "'extra'"                                | 'oillamp schedule <dir>'
+            'stop LAMP -y'                     | "`oillamp stop` does not take --yes"     | 'oillamp stop <dir>'
+            'history LAMP -m note'             | "`oillamp history` does not take --message" | 'oillamp history <dir>'
+            'stop LAMP --message=note'         | "`oillamp stop` does not take --message" | 'oillamp stop <dir>'
+            'shell LAMP --embedded'            | "`oillamp shell` does not take --embedded" | 'oillamp shell <dir>'
+            'list --embedded'                  | "`oillamp list` does not take --embedded"  | 'oillamp list'
     }
 
     def 'The options a command does take are still accepted: oillamp #line'() {
@@ -100,7 +113,16 @@ class UsingTheCommandLineSpec extends Specification {
             line << ['--verbose doctor', 'doctor --dry-run', 'at LAMP --dry-run --init --no-viewer --no-install',
                      'at LAMP --dry-run --no-windows',
                      'remove LAMP --dry-run', 'recordings LAMP --prune --dry-run', '--no-color list',
-                     'config LAMP check', 'completion bash']
+                     'config LAMP check', 'completion bash',
+                     'at LAMP --dry-run --model-service https://api.eu.edenai.run --model-key-env EDENAI_API_KEY',
+                     'at LAMP --dry-run --enable-scheduling', 'doctor --no-install',
+                     'config LAMP check --dry-run --no-install', 'view LAMP --view-only',
+                     'recordings LAMP --open 20260101-120000', 'remove LAMP --yes --embedded',
+                     'save LAMP --message note --embedded', 'history LAMP --embedded',
+                     'restore LAMP a1b2c3d4 --embedded', 'stop LAMP --embedded', 'status LAMP --embedded',
+                     'follow LAMP --embedded', 'cancel LAMP --embedded', 'conversations LAMP --embedded',
+                     'schedule LAMP --embedded', 'schedule LAMP add --at in-2h --expires in-3d hello',
+                     'ask LAMP --no-wait --embedded hello']
     }
 
     def 'Asking to set up a lamp without saying where is a usage error, not a crash'() {
@@ -292,6 +314,299 @@ class UsingTheCommandLineSpec extends Specification {
             !complete(script, 'oillamp', 'at', '/x', '--').contains('--yes')
             complete(script, 'oillamp', 'completion', '') == ['bash']
             complete(script, 'oillamp', 'list', '').isEmpty()
+    }
+
+    def 'An option\'s value can follow it, or be joined to it with =: oillamp #line'() {
+        reportInfo """
+            `--model-service https://x` and `--model-service=https://x` mean the same, as they
+            do for most command-line tools, and that holds for every option that takes a value.
+            Each pair of lines here is refused for the same reason and quotes the same value,
+            which shows that both spellings handed oillamp the same thing. A value joined with =
+            is quoted without the =.
+        """
+        when:
+            var outcome = host.oillamp.run(*line.replace('LAMP', host.lampPath().toString()).split(' '))
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().first().whatHappened().contains(complaint)
+
+        where:
+            line                                                   | complaint
+            'at LAMP --model-service ftp://models.example'         | '--model-service "ftp://models.example": expected a scheme'
+            'at LAMP --model-service=ftp://models.example'         | '--model-service "ftp://models.example": expected a scheme'
+            'at LAMP --model-key-env not-a-name'                   | '--model-key-env "not-a-name": expected the name of an environment variable'
+            'at LAMP --model-key-env=not-a-name'                   | '--model-key-env "not-a-name": expected the name of an environment variable'
+            'ask LAMP --after e1 hello'                            | '--after and --instead-of name an entry of the conversation that --in names'
+            'ask LAMP --after=e1 hello'                            | '--after and --instead-of name an entry of the conversation that --in names'
+            'ask LAMP --instead-of e1 hello'                       | '--after and --instead-of name an entry of the conversation that --in names'
+            'ask LAMP --instead-of=e1 hello'                       | '--after and --instead-of name an entry of the conversation that --in names'
+            'ask LAMP --in c1 --after e1 --instead-of e2 hello'    | 'either after an entry or instead of a question, not both'
+            'ask LAMP --in=c1 --after=e1 --instead-of=e2 hello'    | 'either after an entry or instead of a question, not both'
+            'schedule LAMP list --cron @daily'                     | '--cron, --at and --expires only go with `oillamp schedule <dir> add`'
+            'schedule LAMP list --cron=@daily'                     | '--cron, --at and --expires only go with `oillamp schedule <dir> add`'
+            'schedule LAMP pause --at in-2h'                       | '--cron, --at and --expires only go with `oillamp schedule <dir> add`'
+            'schedule LAMP pause --at=in-2h'                       | '--cron, --at and --expires only go with `oillamp schedule <dir> add`'
+            'schedule LAMP resume --expires in-3d'                 | '--cron, --at and --expires only go with `oillamp schedule <dir> add`'
+            'schedule LAMP resume --expires=in-3d'                 | '--cron, --at and --expires only go with `oillamp schedule <dir> add`'
+    }
+
+    def 'An option given last, with no value after it, says what value it needs: oillamp #line'() {
+        reportInfo """
+            An option that takes a value and comes last on the line was usually cut short, or
+            the value was lost to quoting in the shell. Running without it could do something
+            other than what was meant, so oillamp stops, and shows an example of the value.
+        """
+        when:
+            var outcome = host.oillamp.run(*line.replace('LAMP', host.lampPath().toString()).split(' '))
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().first().whatHappened().contains(complaint)
+            outcome.console().contains(usage)
+
+        where:
+            line                           | complaint                                                         | usage
+            'save LAMP --message'          | '--message needs the text to save with, for example --message "before the upgrade"' | 'oillamp save <dir>'
+            'save LAMP -m'                 | '--message needs the text to save with'                           | 'oillamp save <dir>'
+            'ask LAMP hello --in'          | '--in needs a conversation, as `oillamp conversations` lists them' | 'oillamp ask <dir>'
+            'ask LAMP hello --after'       | '--after needs an entry, as `oillamp conversations <dir> <conversation>` shows them' | 'oillamp ask <dir>'
+            'ask LAMP hello --instead-of'  | '--instead-of needs an entry'                                     | 'oillamp ask <dir>'
+            'schedule LAMP add hi --cron'  | '--cron needs a value, for example --cron "0 9 * * 1-5"'          | 'oillamp schedule <dir>'
+            'schedule LAMP add hi --at'    | '--at needs a value, for example --at "2026-10-01 09:00"'         | 'oillamp schedule <dir>'
+            'schedule LAMP add hi --expires' | '--expires needs a value, for example --expires "in 14d"'       | 'oillamp schedule <dir>'
+            'at LAMP --model-service'      | '--model-service needs a value, for example --model-service https://api.eu.edenai.run' | 'oillamp at <dir>'
+            'at LAMP --model-key-env'      | '--model-key-env needs a value, for example --model-key-env MY_MODEL_KEY' | 'oillamp at <dir>'
+    }
+
+    def 'A model service or key variable that cannot be right is refused before anything starts: oillamp #line'() {
+        reportInfo """
+            `--model-service` and `--model-key-env` override the lamp's [model] settings for one
+            session. The key is sent to that service, so an address that is not https, or a
+            variable name the shell could never have set, is refused at once, in the same words
+            as the same mistake in oillamp.toml would be.
+        """
+        when:
+            var outcome = host.oillamp.run(*line.replace('LAMP', host.lampPath().toString()).split(' '))
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().first().whatHappened().contains(complaint)
+
+        and: 'nothing was set up'
+            !Files.exists(host.lampPath())
+
+        where:
+            line                                                | complaint
+            'at LAMP --model-service http://models.example'     | 'it must be https://'
+            'at LAMP --model-service https://models.example?x'  | 'expected a scheme, a host'
+            'at LAMP --model-key-env 1PASSWORD'                 | 'expected the name of an environment variable, such as EDENAI_API_KEY'
+            'at LAMP --model-key-env $EDENAI_API_KEY'           | 'expected the name of an environment variable'
+    }
+
+    def 'After --, every argument is taken as written, even one that looks like an option'() {
+        reportInfo """
+            A prompt may well start with a dash, such as a list of things to do. Without `--`,
+            oillamp would take `-` followed by anything as an option it does not know. After
+            `--`, it takes everything as it is written. The lamp here has no session, so the
+            question is not asked; what matters is that oillamp got as far as looking for one,
+            rather than refusing the line.
+        """
+        when: 'a prompt that starts with a dash comes after --'
+            var literal = host.oillamp.run('ask', host.lampPath().toString(), '--', '--list the open tickets')
+
+        then: 'it is not mistaken for an option'
+            literal.status() != ExitStatus.USAGE
+            !literal.errors().any { it.whatHappened().contains('is not an option oillamp knows') }
+
+        when: 'the same prompt without --'
+            var option = host.oillamp.run('ask', host.lampPath().toString(), '--list the open tickets')
+
+        then: 'it is taken for an option, and refused'
+            option.status() == ExitStatus.USAGE
+            option.errors().first().whatHappened().contains("'--list the open tickets' is not an option oillamp knows")
+    }
+
+    def '-v is --verbose, and --debug turns it on too'() {
+        reportInfo """
+            `--verbose` shows each step oillamp takes as it goes, not only the outcome. `-v` is
+            its short form. `--debug` does nothing more than `--verbose` yet, but it promises at
+            least as much, so it turns verbose output on as well.
+        """
+        given:
+            var lamp = host.lampPath().toString()
+
+        when: 'the same dry run, plain and with each of the three'
+            var quiet = host.oillamp.run('at', lamp, '--dry-run')
+            var verbose = host.oillamp.run('--verbose', 'at', lamp, '--dry-run')
+            var shortForm = host.oillamp.run('-v', 'at', lamp, '--dry-run')
+            var debug = host.oillamp.run('--debug', 'at', lamp, '--dry-run')
+
+        then: 'verbose output shows more than the plain one'
+            verbose.console().length() > quiet.console().length()
+
+        and: 'and the other two show the same'
+            shortForm.console() == verbose.console()
+            debug.console() == verbose.console()
+    }
+
+    def 'A command that works on a lamp says so when no lamp is given: oillamp #command'() {
+        reportInfo """
+            Every one of these commands acts on one lamp directory, and none can guess which.
+            Without one, the answer is a usage error that names the missing directory, rather
+            than a crash or a guess at the current directory.
+        """
+        when:
+            var outcome = host.oillamp.run(command)
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().first().whatHappened().contains("`oillamp ${command}` needs the path of a lamp directory")
+            outcome.console().contains("oillamp ${command} <dir>")
+
+        where:
+            command << ['at', 'view', 'shell', 'stop', 'status', 'follow', 'recordings', 'config', 'remove',
+                        'save', 'history', 'restore', 'schedule', 'ask', 'conversations', 'cancel']
+    }
+
+    def 'A command that works on one lamp refuses several, rather than acting on the first: oillamp #command'() {
+        reportInfo """
+            A shell pattern such as `test*` easily expands to more than one directory. A
+            command that quietly acted on the first and ignored the rest would look as if it
+            had done them all, so it refuses, and lists what it was given. `remove` is the one
+            command that takes several lamps on purpose.
+        """
+        given:
+            var first = host.lampPath('one').toString()
+            var second = host.lampPath('two').toString()
+
+        when:
+            var outcome = host.oillamp.run(command, first, second)
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().first().whatHappened()
+                    .contains("`oillamp ${command}` works on one lamp, but was given 2 directories (${first}, ${second}); run it once for each")
+
+        where:
+            command << ['at', 'view', 'shell', 'stop', 'status', 'follow', 'recordings', 'doctor', 'save', 'history']
+    }
+
+    def 'The first line names the lamp the command works on'() {
+        reportInfo """
+            Commands that set up or change a lamp start with a line naming oillamp, its version
+            and the lamp, so that a terminal with several sessions in it, or a pasted log, shows
+            which lamp each part is about. `remove` says how many lamps it was given instead.
+        """
+        given:
+            var lamp = host.lampPath().toString()
+
+        expect:
+            host.oillamp.run('doctor', lamp).console().contains("oillamp 0.2.0 — ${lamp}")
+            host.oillamp.run('at', lamp, '--dry-run').console().contains("oillamp 0.2.0 — ${lamp}")
+            host.oillamp.run('save', lamp).console().contains("oillamp 0.2.0 — ${lamp}")
+            host.oillamp.run('restore', lamp, 'a1b2c3d4').console().contains("oillamp 0.2.0 — ${lamp}")
+            host.oillamp.run('remove', lamp, host.lampPath('other').toString()).console().contains('oillamp 0.2.0 — 2 lamps')
+    }
+
+    def 'config checks the lamp when no action is given, and refuses an action it does not know'() {
+        reportInfo """
+            `oillamp config <dir>` on its own checks the configuration, which is what someone
+            who just edited oillamp.toml wants. `show-effective` prints every setting as a
+            session would use it, which a check does not. An action oillamp does not know is a
+            usage error, not a silent check.
+        """
+        given:
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, 'schema_version = 1\n')
+
+        when:
+            var bare = host.oillamp.run('config', lamp.toString())
+            var check = host.oillamp.run('config', lamp.toString(), 'check')
+            var shown = host.oillamp.run('config', lamp.toString(), 'show-effective')
+            var unknown = host.oillamp.run('config', lamp.toString(), 'fix')
+
+        then: 'with no action, it checks'
+            bare.status() == ExitStatus.SUCCESS
+            bare.console() == check.console()
+
+        and: 'show-effective shows more than the check does'
+            shown.status() == ExitStatus.SUCCESS
+            shown.console() != check.console()
+            shown.events().any { it instanceof dev.lamp.LampEvent.Answer }
+            !check.events().any { it instanceof dev.lamp.LampEvent.Answer }
+
+        and: 'an unknown action is refused, with the actions there are'
+            unknown.status() == ExitStatus.USAGE
+            unknown.errors().first().whatHappened().contains("'fix' is not a config action")
+            unknown.console().contains('oillamp config <dir> (check | show-effective | path)')
+    }
+
+    def 'The completion script is for bash, also when no shell is named'() {
+        when:
+            var unnamed = host.oillamp.run('completion')
+            var zsh = host.oillamp.run('completion', 'zsh')
+
+        then: 'with no shell named, it is the bash script'
+            unnamed.status() == ExitStatus.SUCCESS
+            unnamed.console() == host.oillamp.run('completion', 'bash').console()
+
+        and: 'another shell is refused, rather than given a script it cannot run'
+            zsh.status() == ExitStatus.USAGE
+            zsh.errors().first().whatHappened().contains("oillamp only ships a completion script for bash, not 'zsh'")
+    }
+
+    def '`help` lists the commands, and is not an error'() {
+        reportInfo """
+            Running oillamp with nothing lists the commands too, but as a usage error, since
+            nothing was asked. `oillamp help` asked for the list, so it succeeds.
+        """
+        when:
+            var outcome = host.oillamp.run('help')
+
+        then:
+            outcome.status() == ExitStatus.SUCCESS
+            outcome.console().contains('at <dir>')
+            outcome.console().contains('doctor [<dir>]')
+    }
+
+    def 'Asking for the image command says why there is none'() {
+        reportInfo """
+            An `image` command was planned and then dropped, since oillamp rebuilds the sandbox
+            image by itself whenever anything in it changes. Someone who read about it, or
+            expects one from other container tools, is told that, not just "unknown command".
+        """
+        when:
+            var outcome = host.oillamp.run('image')
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().first().whatHappened().contains("there is no 'image' command: oillamp rebuilds the sandbox image by itself")
+    }
+
+    def 'ask needs a prompt, and schedule needs what its action acts on: oillamp #line'() {
+        reportInfo """
+            These lines name a lamp but leave out the one thing the command needs to act: the
+            question to ask, the snapshot to go back to, the prompt for a new job, or the job to
+            change. Each is refused, and says what is missing, before oillamp looks for a lamp
+            or a session.
+        """
+        when:
+            var outcome = host.oillamp.run(*line.replace('LAMP', host.lampPath().toString()).split(' '))
+
+        then:
+            outcome.status() == ExitStatus.USAGE
+            outcome.errors().first().whatHappened().contains(complaint)
+
+        where:
+            line                    | complaint
+            'ask LAMP'              | '`oillamp ask` needs something to ask the agent, in quotes'
+            'restore LAMP'          | '`oillamp restore` needs the snapshot to go back to'
+            'schedule LAMP add'     | '`oillamp schedule <dir> add` needs the prompt the agent is woken with, in quotes'
+            'schedule LAMP remove'  | '`oillamp schedule <dir> remove` needs the job, such as job-3'
+            'schedule LAMP enable'  | '`oillamp schedule <dir> enable` needs the job, such as job-3'
+            'schedule LAMP disable' | '`oillamp schedule <dir> disable` needs the job, such as job-3'
+            'schedule LAMP pause x' | "`oillamp schedule <dir> pause` takes nothing more, but was given 'x'"
     }
 
     /** What bash offers for the last word, using the completion script oillamp printed. */
