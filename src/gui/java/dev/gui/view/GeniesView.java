@@ -614,7 +614,9 @@ public final class GeniesView extends JPanel {
         Val<String> hint = Viewable.of(String.class, keeps, state.viewAs(Boolean.class, GeniesState::narrow),
                 (kept, narrow) -> kept ? "Recorded, so it keeps its own size" : narrow ? "" : "Click the desktop to use it");
         return
-            panel("fill, wrap 1, ins 8 12 12 12, gap 6, hidemode 3", "[grow]", "[][grow]")
+            // No row constraints: the line on what the genie shows is hidden at times, which moves
+            // the rows under it up. Only the desktop's own "push" makes its row grow.
+            panel("fill, wrap 1, ins 8 12 12 12, gap 6, hidemode 3", "[grow]")
             .isVisibleIf(shown)
             .withMinSize(0, 0)
             .withStyle(state.viewAs(Integer.class, GeniesState::desktopHeight), (height, it) -> it
