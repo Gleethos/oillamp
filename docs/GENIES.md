@@ -202,7 +202,9 @@ to nothing, folds the list away. A window wide again has the list beside the gen
 
 ☰ shows and hides the list, in either arrangement. It is always in the window's top left corner:
 in the list's top row while the list is shown, in the genie's header while it is not. So it stays
-under the pointer, and pressing it again undoes the first press.
+under the pointer, and pressing it again undoes the first press. When something went wrong that
+Genies did not expect, anywhere in it, the list says so; while the list is hidden, a red ⚠ with
+the count does, between ☰ and the genie's lamp, and pressed, shows what happened.
 
 ## The schedule
 
