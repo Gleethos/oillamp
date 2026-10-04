@@ -279,10 +279,11 @@ public final class GeniesView extends JPanel {
 
     // ─── a genie's conversations ───────────────────────────────────────────────────────────
 
-    /// The genie's conversations, under its card, as two trees: the user's own, and those the
-    /// runs of its scheduled jobs had. Each opens from a line saying how many. A conversation is
-    /// a row, and below it are its branches, one for each question asked differently. Clicking a
-    /// row goes there; the row the genie is on is selected.
+    /// The genie's conversations, under its card, as two trees: those the runs of its scheduled
+    /// jobs had, and the user's own, with ＋ on its line for a new one. Each opens from a line
+    /// saying how many. A conversation is a row, and below it are its branches, one for each
+    /// question asked differently. Clicking a row goes there; the row the genie is on is
+    /// selected. Under both trees, since it can be in either, the one it is on can be deleted.
     private UIForAnySwing<?, ?> conversationsOf(Var<Genie> shown) {
         UUID id = shown.get().id();
         Var<Conversations> conversations = shown.zoomTo(Genie::conversations, Genie::withConversations);
@@ -293,34 +294,37 @@ public final class GeniesView extends JPanel {
         Val<Boolean> idle = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING && it.phase() != Genie.Phase.WAKING);
         Val<Boolean> canForget = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING
                 && it.phase() != Genie.Phase.WAKING && it.conversations().current().isPresent());
-        Val<Boolean> chatsOpen = chats.viewAs(Boolean.class, Fold::shown);
+        Val<Boolean> eitherOpen = Viewable.of(Boolean.class, chats, jobs, (c, j) -> c.shown() || j.shown());
         return
             box("fill, wrap 1, ins 0, gap 2, hidemode 3", "[grow]")
             .add("growx, wmin 0",
-                tree(id, chats, conversations.viewAsString(it -> howMany(it.chatCount(), "conversation", "no conversations yet")),
-                     "Show or hide your conversations with this genie", Val.of(true),
-                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::chats), browsable))
-            .add("growx, wmin 0",
-                box("ins 0, gap 4, hidemode 3")
-                .isVisibleIf(chatsOpen)
-                .add(button("＋  New").group(Skin.QUIET_BUTTON).isEnabledIf(idle)
-                     .withTooltip("Start a new conversation with this genie; the others are kept")
-                     .onClick(it -> actions.startAfresh(id)))
-                .add(button("Delete…").group(Skin.QUIET_BUTTON).isEnabledIf(canForget)
-                     .withTooltip("Delete the conversation this genie is in, with all its branches")
-                     .onClick(it -> confirmForget(id))))
-            .add("growx, wmin 0, gaptop 4",
                 tree(id, jobs, conversations.viewAsString(it -> howMany(it.jobCount(), "scheduled run", "")),
                      "Show or hide the conversations the runs of this genie's scheduled jobs had",
                      conversations.viewAs(Boolean.class, it -> it.jobCount() > 0),
-                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::jobRuns), browsable));
+                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::jobRuns), browsable, Optional.empty()))
+            .add("growx, wmin 0, gaptop 4",
+                tree(id, chats, conversations.viewAsString(it -> howMany(it.chatCount(), "conversation", "no conversations yet")),
+                     "Show or hide your conversations with this genie", Val.of(true),
+                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::chats), browsable,
+                     Optional.of(button("").group(Skin.ICON_BUTTON).isEnabledIf(idle)
+                         .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.NEW, SUBTEXT)).padding(1, 6, 1, 6))
+                         .withTooltip("Start a new conversation with this genie; the others are kept")
+                         .onClick(it -> actions.startAfresh(id)))))
+            .add("left, gaptop 2", button("Delete…").group(Skin.QUIET_BUTTON).isEnabledIf(canForget)
+                 .isVisibleIf(eitherOpen)
+                 .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.DELETE, SUBTEXT)))
+                 .withTooltip("Delete the conversation this genie is in, with all its branches")
+                 .onClick(it -> confirmForget(id)));
     }
 
     /// One tree of conversations: the line that opens it, then the tree in an area of the fold's
     /// height, which scrolls when the tree is taller, and a grip under it that the user drags to
     /// make the area taller or shorter.
+    ///
+    /// @param beside at the end of the line that opens it, such as a button that adds a row
     private UIForAnySwing<?, ?> tree(UUID id, Var<Fold> fold, Val<String> count, String tip,
-                                     Val<Boolean> present, Val<Tuple<Talk>> rows, Val<Boolean> browsable) {
+                                     Val<Boolean> present, Val<Tuple<Talk>> rows, Val<Boolean> browsable,
+                                     Optional<UIForAnySwing<?, ?>> beside) {
         Val<Boolean> open = fold.viewAs(Boolean.class, Fold::shown);
         Val<Tuple<String>> here = rows.viewAs(Tuple.classTyped(String.class), Conversations::pathToHere);
         JScrollPane[] area = new JScrollPane[1];
@@ -328,10 +332,13 @@ public final class GeniesView extends JPanel {
             box("fill, wrap 1, ins 0, gap 0, hidemode 3", "[grow]")
             .isVisibleIf(present)
             .add("growx, wmin 0",
-                label(Viewable.of(String.class, open, count, (on, words) -> (on ? "▾  " : "▸  ") + words))
-                .group(Skin.META).withCursor(UI.Cursor.HAND)
-                .withTooltip(tip)
-                .onMouseClick(it -> fold.update(From.VIEW, Fold::toggled)))
+                box("fill, ins 0, gap 0", "[grow][]")
+                .add("growx, wmin 0",
+                    label(Viewable.of(String.class, open, count, (on, words) -> (on ? "▾  " : "▸  ") + words))
+                    .group(Skin.META).withCursor(UI.Cursor.HAND)
+                    .withTooltip(tip)
+                    .onMouseClick(it -> fold.update(From.VIEW, Fold::toggled)))
+                .applyIfPresent(beside.map(it -> line -> line.add(it))))
             .add("growx, wmin 0, hmin 0",
                 scrollPane(conf -> conf.fitWidth(true)).withEmptyBorder(0).withMinSize(0, 0)
                 .peek(it -> area[0] = it)
