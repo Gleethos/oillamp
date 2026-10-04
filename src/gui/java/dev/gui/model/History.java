@@ -135,12 +135,15 @@ public record History(boolean read, Tuple<Moment> moments, String picked, boolea
     /// thing that changed it: going back there undoes it. That is oillamp's save before going
     /// back, or, when nothing had changed since the moment before, that moment. Waking, sleeping
     /// and what changed before a run do not count; an answer or a save does, and then there is
-    /// nothing to undo.
+    /// nothing to undo. Nor is there after an undo: both ways are in the history.
     public Optional<Moment> undo() {
         for (int i = 0; i < moments.size(); i++) {
             switch (moments.get(i).kind()) {
                 case WOKE, SLEPT, BEFORE_RUN -> { }
-                case WENT_BACK -> { return i + 1 < moments.size() ? Optional.of(moments.get(i + 1)) : Optional.empty(); }
+                case WENT_BACK -> {
+                    boolean last = i + 1 >= moments.size();
+                    return last || undid(moments.get(i)).isPresent() ? Optional.empty() : Optional.of(moments.get(i + 1));
+                }
                 default -> { return Optional.empty(); }
             }
         }
@@ -162,8 +165,10 @@ public record History(boolean read, Tuple<Moment> moments, String picked, boolea
                     ? genie.schedule().job(moment.job()).map(job -> "Did the job: " + job.title()).orElse("Did a scheduled job")
                     : genie.conversations().find(moment.conversation()).map(it -> "Answered: " + it.title()).orElse("Answered a question");
             case BEFORE_GOING_BACK -> "Before going back";
-            case WENT_BACK -> wentBackTo(moment).map(it -> "Went back to how it was " + when(it.at(), genie.schedule().zone(), now))
-                                                .orElse("Went back to an earlier moment");
+            case WENT_BACK -> undid(moment).flatMap(this::wentBackTo)
+                              .map(it -> "Undid going back to how it was " + when(it.at(), genie.schedule().zone(), now))
+                              .or(() -> wentBackTo(moment).map(it -> "Went back to how it was " + when(it.at(), genie.schedule().zone(), now)))
+                              .orElse("Went back to an earlier moment");
         };
     }
 
@@ -174,6 +179,27 @@ public record History(boolean read, Tuple<Moment> moments, String picked, boolea
         String start = said.substring("back to ".length()).split("\\s", 2)[0];
         if (start.length() < 4) return Optional.empty();
         for (Moment moment : moments) if (moment.id().startsWith(start)) return Optional.of(moment);
+        return Optional.empty();
+    }
+
+    /// The going back that `wentBack` undid: the newest going back before it, while it went back to
+    /// the moment that one left, with nothing in between but waking, sleeping and what changed
+    /// before a run. Empty for an ordinary going back.
+    public Optional<Moment> undid(Moment wentBack) {
+        Optional<Moment> target = wentBackTo(wentBack);
+        boolean older = false;
+        for (int i = 0; i < moments.size() && target.isPresent(); i++) {
+            Moment moment = moments.get(i);
+            if (!older) { older = moment.id().equals(wentBack.id()); continue; }
+            switch (moment.kind()) {
+                case WOKE, SLEPT, BEFORE_RUN, BEFORE_GOING_BACK -> { }
+                case WENT_BACK -> {
+                    boolean leftThere = i + 1 < moments.size() && moments.get(i + 1).id().equals(target.get().id());
+                    return leftThere ? Optional.of(moment) : Optional.empty();
+                }
+                default -> { return Optional.empty(); }
+            }
+        }
         return Optional.empty();
     }
 

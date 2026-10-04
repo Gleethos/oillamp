@@ -125,7 +125,9 @@ class KeepingAGeniesHistorySpec extends Specification {
             awake genie is put to sleep first. Before going back, oillamp saves the home as it is,
             if that changed since the newest moment, so nothing is lost: the history then offers
             to undo, which goes back to the moment that was the newest.
-            An answer or a save afterwards ends that offer, since undoing would then lose them.
+            Undoing is itself a going back, which the history names as an undo; it ends the
+            offer, since both ways are in the history. So does an answer or a save afterwards,
+            since undoing would then lose them.
         """
         given: 'an awake genie that answered once, then got a file, then answered again'
             var home = { Lamp.agentHome(lamp).orElseThrow() }
@@ -167,6 +169,13 @@ class KeepingAGeniesHistorySpec extends Specification {
             waitUntil { questionsAsked() == 2 && genie.history().busy().isEmpty() }
             Files.readString(home().resolve('plan.md')) == 'refactor the parser'
 
+        and: 'the history says it undid the going back, and offers no undo of the undo'
+            waitUntil { genie.history().moments().first().id() != wentBack.id() }
+            var undone = genie.history().moments().first()
+            undone.kind() == History.Kind.WENT_BACK
+            genie.history().undid(undone).get().id() == wentBack.id()
+            genie.history().undo().isEmpty()
+
         when: 'the genie wakes, and answers again'
             runner.wake('Jafar', Settings.defaults(), 'sk-key')
             waitUntil { genie.phase() == Genie.Phase.READY }
@@ -207,16 +216,25 @@ class KeepingAGeniesHistorySpec extends Specification {
         when: 'the genie went back to the third answer, then woke again'
             var third = answers[2]
             var before = moment(-1, History.Kind.BEFORE_GOING_BACK, 'before restoring ' + answers[0].id().take(8))
-            var wentBack = moment(-1, History.Kind.WENT_BACK, 'back to ' + third.id().take(8) + ' (run, then)')
-            var woke = moment(-2, History.Kind.WOKE, '')
+            var wentBack = moment(-2, History.Kind.WENT_BACK, 'back to ' + third.id().take(8) + ' (run, then)')
+            var woke = moment(-3, History.Kind.WOKE, '')
             var afterwards = History.UNREAD.readAs(Tuple.of(History.Moment, ([woke, wentBack, before] + answers) as History.Moment[]))
 
         then: 'it offers to undo, and knows where it went back to'
             afterwards.undo().get() == before
             afterwards.wentBackTo(wentBack).get() == third
 
+        when: 'the genie undid that going back instead'
+            var undid = moment(-4, History.Kind.WENT_BACK, 'back to ' + before.id().take(8) + ' (before-restore, then)')
+            var undone = History.UNREAD.readAs(afterwards.moments().addAt(0, undid))
+
+        then: 'it knows that was an undo, and offers no undo of it'
+            undone.undid(undid).get() == wentBack
+            undone.undid(wentBack).isEmpty()
+            undone.undo().isEmpty()
+
         when: 'the genie answers once more'
-            var newest = moment(-3, History.Kind.RAN, '')
+            var newest = moment(-5, History.Kind.RAN, '')
             var answeredAgain = History.UNREAD.readAs(afterwards.moments().addAt(0, newest))
 
         then:
