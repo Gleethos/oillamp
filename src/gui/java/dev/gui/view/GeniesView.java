@@ -69,6 +69,8 @@ public final class GeniesView extends JPanel {
     private final ChatRows rows;
     private final SchedulePage schedulePage;
     private final HistoryPage historyPage;
+    /// Whether the draft is setting the composer's text, which then is not written back into it.
+    private boolean settingDraft = false;
     /// Set once the conversation's scroll pane exists.
     private Optional<FollowTheEnd> follow = Optional.empty();
 
@@ -723,7 +725,22 @@ public final class GeniesView extends JPanel {
                     .withHorizontalScrollBarPolicy(UI.Active.NEVER)
                     .withStyle(it -> it.backgroundColor(TRANSPARENT))
                     .add(
-                        textArea(draft).group(Skin.INPUT).peek(ViewPartsUtil::softWrap)
+                        // Bound here rather than with textArea(draft): when the draft changes,
+                        // SwingTree 1.0.0 sets the text with Swing's own listeners taken off the
+                        // text, so the caret and the drawn lines keep the old text, and letters typed
+                        // after sending are not drawn. Here, Swing's listeners stay; only the
+                        // writing back into the draft is held off while the draft sets the text.
+                        textArea(draft.get()).group(Skin.INPUT).peek(ViewPartsUtil::softWrap)
+                        .peek(area -> Viewable.cast(draft).onChange(From.ALL, it -> {
+                            String text = it.currentValue().orElse("");
+                            if (area.getText().equals(text)) return;
+                            settingDraft = true;
+                            area.setText(text);
+                            settingDraft = false;
+                        }))
+                        .onTextChange(it -> {
+                            if (!settingDraft) draft.set(From.VIEW, it.getComponent().getText());
+                        })
                         // The composer is the box; the text in it needs no second one.
                         .withStyle(it -> it.backgroundColor(TRANSPARENT).border(0, TRANSPARENT))
                         .withTooltip("Return sends; Shift and Return starts a new line")
