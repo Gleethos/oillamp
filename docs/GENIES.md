@@ -195,11 +195,14 @@ the card is narrow.
 
 A window narrower than 820 units is one column, as on a phone: the list of genies on top, the
 selected genie below. Crossing the line takes a margin of a tenth either way, so dragging the
-window's edge across it does not flicker. Becoming narrow folds the list away; ☰ in the genie's
-header opens it, and folds it again. Open, the list is a row with New, the settings and an arrow
-that folds it, then the genies' cards in an area 180 units tall, which scrolls; a grip under the
-area makes it taller or shorter, as under a tree of conversations, and dragged to nothing, folds
-the list away. A window wide again has the list beside the genie, shown.
+window's edge across it does not flicker. Becoming narrow folds the list away. Open, the list is
+a row with New and the settings, then the genies' cards in an area 180 units tall, which scrolls;
+a grip under the area makes it taller or shorter, as under a tree of conversations, and dragged
+to nothing, folds the list away. A window wide again has the list beside the genie, shown.
+
+☰ shows and hides the list, in either arrangement. It is always in the window's top left corner:
+in the list's top row while the list is shown, in the genie's header while it is not. So it stays
+under the pointer, and pressing it again undoes the first press.
 
 ## The schedule
 
