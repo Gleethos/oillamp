@@ -122,7 +122,8 @@ public final class ScheduleKeeper {
     void onLampEvent(LampEvent event, Instant now) {
         switch (event) {
             case LampEvent.RunStarted started when started.run().job().isPresent() ->
-                    change(it -> it.withRunning(Optional.of(new Schedule.Running(started.run().id(), started.run().job().get(), now))));
+                    change(it -> it.withRunning(Optional.of(new Schedule.Running(started.run().id(), started.run().job().get(),
+                                                                           started.run().prompt(), now))));
             case LampEvent.RunFinished finished when finished.run().job().isPresent() -> {
                 change(it -> it.withRunning(Optional.empty()));
                 if (watched) read();

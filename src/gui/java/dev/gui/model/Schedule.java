@@ -67,8 +67,13 @@ public record Schedule(boolean read, boolean paused, ZoneId zone, Tuple<Job> job
 
     /// The run a job has going now.
     ///
-    /// @param since when it began
-    public record Running(String run, String job, Instant since) {}
+    /// @param prompt the job's prompt, as written
+    /// @param since  when it began
+    public record Running(String run, String job, String prompt, Instant since) {
+
+        /// The first line of the job's prompt, cut at 90 characters.
+        public String title() { return firstLine(prompt, 90); }
+    }
 
     public static Schedule unread(ZoneId zone) {
         return new Schedule(false, false, zone, Tuple.of(Job.class), Tuple.of(Run.class), Optional.empty(),

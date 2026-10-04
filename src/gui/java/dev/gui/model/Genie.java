@@ -1,5 +1,7 @@
 package dev.gui.model;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Optional;
 import java.util.UUID;
@@ -102,6 +104,32 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
         return withPhase(Phase.BROKEN).withActivity(why).withDesktopShown(false)
                 .withConversations(conversations.withAside(Optional.empty()))
                 .withTranscript(transcript.settled().problem(why));
+    }
+
+    // ─── what it is busy with ──────────────────────────────────────────────────────────────
+
+    /// What the genie does, in a few words, as shown under its name: a job of its schedule while
+    /// it does one, or else [#activity].
+    public String status() {
+        return phase.isAwake() && schedule.running().isPresent() ? "doing a scheduled job" : activity;
+    }
+
+    /// What the user waits for, as the chat's bar says it.
+    ///
+    /// @param what what the genie does, such as "Sami is doing a scheduled job first: Paint the sunset"
+    /// @param time how long the job has run, such as `1:12`; empty while the genie thinks
+    public record Waiting(String what, String time) {}
+
+    /// What the user waits for while the genie works on their message and nothing of the answer
+    /// has come yet. The genie does one thing at a time: while it does a job of its schedule, the
+    /// message waits until the job is done, and this says which job, and how long it has run by
+    /// `now`. Otherwise the genie works on the message itself, and thinks.
+    public Waiting waitingOn(Instant now) {
+        return schedule.running().map(job -> {
+            long seconds = Math.max(0, Duration.between(job.since(), now).toSeconds());
+            return new Waiting(name + " is doing a scheduled job first: " + job.title(),
+                               String.format("%d:%02d", seconds / 60, seconds % 60));
+        }).orElse(new Waiting(name + " is thinking", ""));
     }
 
     // ─── the conversation ──────────────────────────────────────────────────────────────────

@@ -3,9 +3,12 @@ package gui
 import dev.gui.model.Entry
 import dev.gui.model.Genie
 import dev.gui.model.Handout
+import dev.gui.model.Schedule
 import dev.gui.pi.PiEvent
 import spock.lang.Specification
 import sprouts.Tuple
+
+import java.time.Instant
 
 /**
  *  How a conversation with a genie turns into what the chat shows.
@@ -122,6 +125,35 @@ class FollowingAConversationSpec extends Specification {
             answering.transcript().entries()*.kind() == [Entry.Kind.YOU, Entry.Kind.THINKING, Entry.Kind.GENIE]
             !answering.transcript().entries()[1].isWriting()
             answering.transcript().entries()[1].text() == 'Rayleigh scattering.'
+    }
+
+    def 'While the genie does a scheduled job, the user is told that their message waits for it'() {
+        reportInfo """
+            A genie does one thing at a time. A message sent while it does a job of its schedule,
+            such as one it missed while asleep and catches up on as it wakes, waits until the job
+            is done. Until then the chat does not claim the genie thinks: it names the job and how
+            long it has run, and the line under the genie's name says it does a scheduled job.
+            Once the job is over, the genie works on the message, and thinks.
+        """
+        given:
+            var start = Instant.parse('2026-10-04T19:48:55Z')
+            var job = new Schedule.Running('run-7', 'job-3', 'Do something creative\nwith your desktop', start)
+            var sent = genie.withDraft('How is it going?').send()
+
+        when:
+            var waiting = sent.withSchedule(sent.schedule().withRunning(Optional.of(job)))
+
+        then:
+            waiting.waitingOn(start.plusSeconds(72)) == new Genie.Waiting(
+                    'Aladdin is doing a scheduled job first: Do something creative', '1:12')
+            waiting.status() == 'doing a scheduled job'
+
+        when:
+            var answering = waiting.withSchedule(waiting.schedule().withRunning(Optional.empty()))
+
+        then:
+            answering.waitingOn(start.plusSeconds(100)) == new Genie.Waiting('Aladdin is thinking', '')
+            answering.status() == 'thinking'
     }
 
     def 'A thought that starts in the middle of an answer does not break the answer in two'() {

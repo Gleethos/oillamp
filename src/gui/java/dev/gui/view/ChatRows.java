@@ -163,9 +163,11 @@ final class ChatRows {
             .onMouseClick(it -> entry.update(From.VIEW, e -> e.withExpanded(!e.expanded())));
     }
 
-    /// A bar that says the genie is working on an answer while nothing has come of it yet, so a
-    /// user can tell a genie that thinks from one that is stuck.
-    UIForAnySwing<?, ?> waiting(Val<String> who, Val<Boolean> shown) {
+    /// A bar that says what the user waits for while nothing of the answer has come yet: the
+    /// genie thinks, or it does a scheduled job first. So a user can tell a genie that works
+    /// from one that is stuck. The job's time stands after the moving bar, where a long title
+    /// cannot push it out of sight.
+    UIForAnySwing<?, ?> waiting(Val<Genie.Waiting> waiting, Val<Boolean> shown) {
         return UI.of(UI.use(look, () ->
             panel("fill, ins 0", "[grow, center]")
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
@@ -174,11 +176,16 @@ final class ChatRows {
                 box("fill, ins 4 18 4 18", "[grow]")
                 .add("growx, wmin 0",
                     strip(
-                        box("fill, ins 0, gap 8", "[][grow]")
-                        .add(label(who.viewAsString(name -> "✦ " + name + " is thinking")).withStyle(it -> it
+                        box("fill, ins 0, gap 8, hidemode 3", "[][grow][]")
+                        .add("wmin 0", label(waiting.viewAsString(it -> "✦ " + it.what())).withStyle(it -> it
                             .componentFont(f -> f.family(FONT).size(12).weight(2f).color(BRASS))))
-                        .add("growx, wmin 0, h 4!", progress(Val.of(true))),
-                        box().isVisibleIf(Val.of(false)))))
+                        .add("growx, wmin 60, h 4!", progress(Val.of(true)))
+                        .add(label(waiting.viewAsString(Genie.Waiting::time))
+                             .isVisibleIf(waiting.viewAs(Boolean.class, it -> !it.time().isEmpty()))
+                             .withStyle(it -> it.componentFont(f -> f.family(FONT).size(12).color(SUBTEXT)))),
+                        box().isVisibleIf(Val.of(false)))
+                    .withTooltip(waiting.viewAsString(it -> it.time().isEmpty() ? it.what()
+                            : it.what() + ". The genie does one thing at a time, so your message waits until this job is done."))))
             .get(JPanel.class)));
     }
 

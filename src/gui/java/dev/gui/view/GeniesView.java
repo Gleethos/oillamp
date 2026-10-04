@@ -25,6 +25,7 @@ import java.awt.RenderingHints;
 import java.awt.event.KeyEvent;
 import java.io.File;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -261,7 +262,7 @@ public final class GeniesView extends JPanel {
                 .borderAt(UI.Edge.LEFT, 3, on ? FLAME : TRANSPARENT)
                 .borderRadius(10))
             .withCursor(UI.Cursor.HAND)
-            .withTooltip(shown.viewAsString(it -> it.name() + " — " + it.activity()
+            .withTooltip(shown.viewAsString(it -> it.name() + " — " + it.status()
                     + (it.showing().isEmpty() ? "" : ". Shows you: " + it.showing()) + ". Right-click for more."))
             .onMousePress(it -> {
                 state.update(From.VIEW, s -> s.select(id));
@@ -272,7 +273,7 @@ public final class GeniesView extends JPanel {
                 box("fill, wrap 1, ins 0, gap 0, hidemode 3")
                 .add("growx, wmin 0", label(shown.viewAsString(Genie::name)).withStyle(it -> it
                     .componentFont(f -> f.family(FONT).size(13).weight(2f).color(TEXT))))
-                .add("growx, wmin 0", label(shown.viewAsString(Genie::activity)).group(Skin.META))
+                .add("growx, wmin 0", label(shown.viewAsString(Genie::status)).group(Skin.META))
                 .add("growx, wmin 0", label(shown.viewAsString(it -> "▣  shows you: " + it.showing()))
                      .isVisibleIf(showsElsewhere)
                      .withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(FLAME)))))
@@ -489,7 +490,7 @@ public final class GeniesView extends JPanel {
                 .add("growx, wmin 0", label(name).group(Skin.TITLE)
                      .withTooltip("Double-click to rename")
                      .onMouseClick(it -> { if (it.clickCount() == 2) rename(genie.get().id()); }))
-                .add("growx, wmin 0", label(genie.viewAsString(it -> it.activity())).group(Skin.SUBTITLE)))
+                .add("growx, wmin 0", label(genie.viewAsString(Genie::status)).group(Skin.SUBTITLE)))
             // One group on the right, so buttons that are hidden leave no gap behind.
             .add("cell 4 0", box("ins 0, gap 10, hidemode 3, aligny center")
             .add(pages())
@@ -655,10 +656,12 @@ public final class GeniesView extends JPanel {
 
     private UIForAnySwing<?, ?> transcript() {
         Val<Boolean> empty = entries.viewAs(Boolean.class, Tuple::isEmpty);
-        // Working, with nothing streaming in: the genie thinks, and a bar says so.
+        // Working, with nothing streaming in: a bar says what the user waits for. The pulse, which
+        // moves while the genie works, also moves on the time a job has run.
         Val<Boolean> waiting = genie.viewAs(Boolean.class, it -> it.phase() == Genie.Phase.WORKING
                 && it.conversations().aside().isEmpty()
                 && (it.transcript().isEmpty() || !it.transcript().entries().last().isWriting()));
+        Val<Genie.Waiting> waitingOn = Viewable.of(Genie.Waiting.class, genie, pulse, (it, ignored) -> it.waitingOn(Instant.now()));
         return
             box("fill, wrap 1, ins 0, gap 0, hidemode 3", "[grow]", "[grow][]")
             .add("grow, push, wmin 0",
@@ -670,7 +673,7 @@ public final class GeniesView extends JPanel {
                 // while they scroll back to read. Another genie's conversation starts at its end.
                 .peek(pane -> follow = Optional.of(FollowTheEnd.on(pane)))
                 .onView(Viewable.cast(selected), it -> follow.ifPresent(FollowTheEnd::toEnd)))
-            .add("growx, wmin 0", rows.waiting(genie.viewAsString(Genie::name), waiting))
+            .add("growx, wmin 0", rows.waiting(waitingOn, waiting))
             .add("grow, push, wmin 0, align center",
                 box("wrap 1, ins 30, gap 8, align center center", "[center, grow, fill]")
                 .isVisibleIf(empty)
