@@ -8,6 +8,7 @@ import swingtree.UIForButton;
 import swingtree.UIForPanel;
 import swingtree.api.Layout;
 import swingtree.dialogs.ConfirmAnswer;
+import swingtree.input.Keyboard;
 import swingtree.layout.FlowCell;
 import swingtree.style.SvgIcon;
 
@@ -177,7 +178,7 @@ public final class GeniesView extends JPanel {
             .withCursor(UI.Cursor.HAND)
             .withTooltip(shown.viewAsString(it -> it.name() + " — " + it.activity()
                     + (it.showing().isEmpty() ? "" : ". Shows you: " + it.showing()) + ". Right-click for more."))
-            .onMouseClick(it -> {
+            .onMousePress(it -> {
                 state.update(From.VIEW, s -> s.select(id));
                 if (it.isRightMouseButton()) genieMenu(id).show(it.getComponent(), it.mouseX(), it.mouseY());
             })
@@ -402,7 +403,8 @@ public final class GeniesView extends JPanel {
                  .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.MORE, SUBTEXT)))
                  .withTooltip(roomForPages.viewAsString(it -> (it ? "" : "Chat, schedule or history; ")
                          + "rename, save, wake or sleep, or delete this genie"))
-                 .onClick(it -> ViewPartsUtil.below(genieMenu(genie.get().id()), it.getComponent()))));
+                 .onMousePress(it -> ViewPartsUtil.toggleBelow(it.getEvent(), () -> genieMenu(genie.get().id())))
+                 .onPressed(Keyboard.Key.SPACE, it -> ViewPartsUtil.toggleBelow(it.getEvent(), () -> genieMenu(genie.get().id())))));
     }
 
     /// The pages of a genie, its chat, its schedule and its history, as one switch of three
@@ -748,18 +750,19 @@ public final class GeniesView extends JPanel {
     }
 
     /// What can be done with a genie beyond its everyday buttons: behind "⋯" in the header,
-    /// and a right-click on its card, which selects the genie first. Its pages come first, which
-    /// is where they are while the header has no room for them; deleting it is last, away from
+    /// and a right-click on its card, which selects the genie first. While the header has no
+    /// room for the switch between its pages, they come first; deleting it is last, away from
     /// the rest.
     private JPopupMenu genieMenu(UUID id) {
         GeniesState.Page on = state.get().page();
         return UI.popupMenu().applyIfPresent(state.get().find(id).map( shown -> ui -> {
                 Genie.Phase now = shown.phase();
                 boolean idle = now != Genie.Phase.WORKING && now != Genie.Phase.WAKING;
-                ui.add(ViewPartsUtil.choice("Chat", SignSvgUtil.sign(SignSvgUtil.CHAT, on == GeniesState.Page.CHAT ? TEXT : SUBTEXT), on == GeniesState.Page.CHAT, () -> page.set(From.VIEW, GeniesState.Page.CHAT)))
+                ui.applyIf(!state.get().roomForPages(), pages -> pages
+                .add(ViewPartsUtil.choice("Chat", SignSvgUtil.sign(SignSvgUtil.CHAT, on == GeniesState.Page.CHAT ? TEXT : SUBTEXT), on == GeniesState.Page.CHAT, () -> page.set(From.VIEW, GeniesState.Page.CHAT)))
                 .add(ViewPartsUtil.choice("Schedule", SignSvgUtil.sign(SignSvgUtil.SCHEDULE, on == GeniesState.Page.SCHEDULE ? TEXT : SUBTEXT), on == GeniesState.Page.SCHEDULE, () -> page.set(From.VIEW, GeniesState.Page.SCHEDULE)))
                 .add(ViewPartsUtil.choice("History", SignSvgUtil.sign(SignSvgUtil.HISTORY, on == GeniesState.Page.HISTORY ? TEXT : SUBTEXT), on == GeniesState.Page.HISTORY, () -> page.set(From.VIEW, GeniesState.Page.HISTORY)))
-                .peek(JPopupMenu::addSeparator)
+                .peek(JPopupMenu::addSeparator))
                 .add(ViewPartsUtil.item("Rename…", true, () -> rename(id)))
                 .add(ViewPartsUtil.item("New conversation", idle, () -> actions.startAfresh(id)))
                 .add(ViewPartsUtil.item("Save now…", shown.history().busy().isEmpty(), () -> historyPage.save(this)))

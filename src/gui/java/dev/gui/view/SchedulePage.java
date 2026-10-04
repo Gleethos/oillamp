@@ -48,6 +48,7 @@ import swingtree.animation.LifeTime;
 import swingtree.api.Layout;
 import swingtree.api.Painter;
 import swingtree.dialogs.ConfirmAnswer;
+import swingtree.input.Keyboard;
 import swingtree.layout.FlowCell;
 import swingtree.style.StyledString;
 
@@ -429,8 +430,10 @@ final class SchedulePage {
                 box("fill, ins 0, gap 10", "[][grow][]")
                 .add("top, gaptop 1", onOff(on, () -> actions.switchJob(selected(), id, !job.get().enabled())))
                 .add("growx, wmin 0", words(Viewable.of(Words.class, when, on, (text, isOn) -> new Words(text, isOn ? TEXT : SUBTEXT)), 13, 2f))
-                .add("top", button("⋯").group(Skin.ICON_BUTTON).withTooltip("Change, switch off or remove this job")
-                     .onClick(it -> ViewPartsUtil.below(menu(id), it.getComponent()))))
+                .add("top", button("").group(Skin.ICON_BUTTON).withTooltip("Change, switch off or remove this job")
+                     .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.MORE, SUBTEXT)))
+                     .onMousePress(it -> ViewPartsUtil.toggleBelow(it.getEvent(), () -> menu(id)))
+                     .onPressed(Keyboard.Key.SPACE, it -> ViewPartsUtil.toggleBelow(it.getEvent(), () -> menu(id)))))
             .add("growx, wmin 0", ViewPartsUtil.wrapped(job.viewAsString(it -> shortened(it.prompt(), 280)), SUBTEXT, Val.of(true)))
             .add("growx, wmin 0",
                 box("ins 0, gap 6, hidemode 3")

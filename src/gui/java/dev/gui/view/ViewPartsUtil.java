@@ -2,13 +2,20 @@ package dev.gui.view;
 
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.EventQueue;
+import java.awt.event.InputEvent;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JTextArea;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
 
 import dev.gui.model.Genie;
 
@@ -62,11 +69,27 @@ final class ViewPartsUtil {
         area.setWrapStyleWord(true);
     }
 
-    /// Opens `menu` under `button`, its right edge on the button's: such a button is near the
-    /// window's right edge, and a menu opening rightwards would leave the window.
-    static void below(JPopupMenu menu, Component button) {
-        menu.show(button, button.getWidth() - menu.getPreferredSize().width, button.getHeight());
+    /// Opens the `menu` of the button `pressed` came from, under it, its right edge on the
+    /// button's: such a button is near the window's right edge, and a menu opening rightwards
+    /// would leave the window. Pressing the button again closes the menu.
+    ///
+    /// Swing closes an open menu on a press anywhere outside it, before the button hears of the
+    /// press. So the button notes when its menu closed, and the press that closed it opens nothing.
+    static void toggleBelow(InputEvent pressed, Supplier<JPopupMenu> menu) {
+        if (!(pressed.getComponent() instanceof JComponent button)) return;
+        if (Objects.equals(button.getClientProperty(MENU_CLOSED_AT), pressed.getWhen())) return;
+        JPopupMenu shown = menu.get();
+        shown.addPopupMenuListener(new PopupMenuListener() {
+            @Override public void popupMenuWillBecomeVisible(PopupMenuEvent event) {}
+            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent event) {
+                button.putClientProperty(MENU_CLOSED_AT, EventQueue.getMostRecentEventTime());
+            }
+            @Override public void popupMenuCanceled(PopupMenuEvent event) {}
+        });
+        shown.show(button, button.getWidth() - shown.getPreferredSize().width, button.getHeight());
     }
+
+    private static final String MENU_CLOSED_AT = "genies.menuClosedAt";
 
     static JMenuItem item(String text, boolean enabled, Runnable action) {
         JMenuItem item = new JMenuItem(text);
