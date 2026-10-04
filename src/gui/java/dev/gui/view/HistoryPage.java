@@ -351,7 +351,7 @@ final class HistoryPage {
                 box().withMinSize(0, 0)
                 .withStyle(title, (words, it) -> it.padding(1, 0, 1, 0).text(t -> t
                     .content(StyledString.of(f -> f.family(FONT).size(13)
-                        .weight(moment.kind() == History.Kind.SAVED || moment.kind() == History.Kind.WENT_BACK ? 2f : 1.5f)
+                        .weight(moment.kind() == History.Kind.SAVED ? 2f : 1.5f)
                         .color(quiet ? SUBTEXT : TEXT), words))
                     .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true))))
             .add("growx, wmin 0, hidemode 3", ViewPartsUtil.words(detail, 12, 1f, failed ? TROUBLE : SUBTEXT)
