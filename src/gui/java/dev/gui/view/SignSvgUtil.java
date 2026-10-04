@@ -28,7 +28,6 @@ final class SignSvgUtil {
     static final String NEW = "<path d='M8 3v10M3 8h10'/>";
     static final String SETTINGS = "<path d='M2 4.5h12M2 11.5h12'/>"
                                  + "<circle cx='10.5' cy='4.5' r='2' fill='currentColor'/><circle cx='5.5' cy='11.5' r='2' fill='currentColor'/>";
-    static final String FOLD_UP = "<path d='M3.5 10l4.5-4.5 4.5 4.5'/>";
     static final String MORE = "<circle cx='3.5' cy='8' r='1.2' fill='currentColor' stroke='none'/>"
                              + "<circle cx='8' cy='8' r='1.2' fill='currentColor' stroke='none'/>"
                              + "<circle cx='12.5' cy='8' r='1.2' fill='currentColor' stroke='none'/>";

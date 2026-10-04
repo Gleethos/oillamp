@@ -146,7 +146,7 @@ public final class GeniesView extends JPanel {
      *      beside the genie                    above it, in a narrow window
      *
      *      ┌──────────────────┐                ┌──────────────────────────────────────┐
-     *      │ (lamp) Genies    │                │ (lamp) Genies   [+ New]  [⚙]  [^]    │
+     *      │ ☰ (lamp) Genies  │                │ ☰ (lamp) Genies        [+ New]  [⚙]  │
      *      │ [+ New genie]    │                │ ┌──────────────────────────────────┐ │
      *      │ YOUR GENIES      │                │ │ the genies' cards, scrolling,    │ │
      *      │ ┌──────────────┐ │                │ │ as tall as the user dragged      │ │
@@ -159,14 +159,17 @@ public final class GeniesView extends JPanel {
      *
      *  Each part is placed in a cell of the grid, so the parts are made once, and moving between
      *  the two is a change of the layout's value. The height above is the list's fold: dragging
-     *  the grip to the top folds the list away, as does the button with the arrow.
+     *  the grip to the top folds the list away, as does ☰.
+     *
+     *  ☰ shows and hides the list. It is in the top left corner of the window either way: here
+     *  while the list is shown, in the genie's header while it is not. So it stays under the
+     *  pointer, and a second press undoes the first.
      */
     private static final Layout BESIDE_THE_GENIE =
             Layout.mig("fill, ins 0, gap 10, hidemode 3",
-                MigAddConstraint.of("cell 0 0, growx, wmin 0"),             // the lamp and "Genies"
+                MigAddConstraint.of("cell 0 0, growx, wmin 0"),             // ☰, the lamp and "Genies"
                 MigAddConstraint.of("cell 0 1, growx"),                     // a new genie
                 MigAddConstraint.of("cell 0 6, growx"),                     // the settings
-                MigAddConstraint.of("cell 0 7"),                            // folding the list away, hidden
                 MigAddConstraint.of("cell 0 2, growx, gaptop 6"),           // "YOUR GENIES"
                 MigAddConstraint.of("cell 0 3, grow, push, wmin 0, hmin 0"),// the cards
                 MigAddConstraint.of("cell 0 4"),                            // the grip, hidden
@@ -176,16 +179,15 @@ public final class GeniesView extends JPanel {
     ///
     /// @param height the most the cards' area takes: the list's fold
     private static Layout aboveTheGenie(int height) {
-        return Layout.mig(LayoutConstraint.of("fill, ins 0, gap 8 6, hidemode 3"), LayoutConstraint.of("[grow][][][]"), LayoutConstraint.of(""))
+        return Layout.mig(LayoutConstraint.of("fill, ins 0, gap 8 6, hidemode 3"), LayoutConstraint.of("[grow][][]"), LayoutConstraint.of(""))
             .withChildConstraints(
                 MigAddConstraint.of("cell 0 0, growx, wmin 0"),
                 MigAddConstraint.of("cell 1 0"),
                 MigAddConstraint.of("cell 2 0"),
-                MigAddConstraint.of("cell 3 0"),
                 MigAddConstraint.of("cell 0 4"),
-                MigAddConstraint.of("cell 0 1, span 4, growx, wmin 0, h 0:pref:" + height),
-                MigAddConstraint.of("cell 0 2, span 4, growx, h 9!"),
-                MigAddConstraint.of("cell 0 3, span 4, growx, wmin 0"));
+                MigAddConstraint.of("cell 0 1, span 3, growx, wmin 0, h 0:pref:" + height),
+                MigAddConstraint.of("cell 0 2, span 3, growx, h 9!"),
+                MigAddConstraint.of("cell 0 3, span 3, growx, wmin 0"));
     }
 
     private UIForAnySwing<?, ?> sidebar() {
@@ -195,10 +197,16 @@ public final class GeniesView extends JPanel {
         return
             panel().group(Skin.SIDEBAR)
             .withLayout(state.viewAs(Layout.class, it -> it.narrow() ? aboveTheGenie(it.genieList().height()) : BESIDE_THE_GENIE))
-            .withStyle(narrow, (on, it) -> on ? it.borderAt(UI.Edge.RIGHT, 0, TRANSPARENT).borderAt(UI.Edge.BOTTOM, 1, BORDER).padding(10, 12, 2, 12) : it)
+            .withStyle(narrow, (on, it) -> on ? it.borderAt(UI.Edge.RIGHT, 0, TRANSPARENT).borderAt(UI.Edge.BOTTOM, 1, BORDER).padding(12, 12, 2, 12) : it)
             .isVisibleIf(genieList.viewAs(Boolean.class, Fold::shown))
             .add(
-                box("fill, ins 0, gap 8", "[34!][grow]")
+                // Inset so that ☰ is where the genie's header has it.
+                box("fill, ins 0 4 0 0, gap 8", "[][34!][grow]")
+                .add(
+                    button("").group(Skin.ICON_BUTTON)
+                    .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.GENIES, SUBTEXT)))
+                    .withTooltip("Hide your genies")
+                    .onClick(it -> genieList.update(From.VIEW, Fold::toggled)))
                 .add(ViewPartsUtil.lamp(Val.of(Genie.Phase.READY), 34))
                 .add("growx, wmin 0", label("Genies").group(Skin.BRAND)))
             .add(
@@ -210,11 +218,6 @@ public final class GeniesView extends JPanel {
                 toggleButton(narrow.viewAsString(it -> it ? "" : "Settings"), settingsShown).group(Skin.QUIET_BUTTON).withIconTextGap(6)
                 .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.SETTINGS, TEXT)))
                 .withTooltip("Settings: the model every genie uses. Pressed again, back to the genie"))
-            .add(
-                button("").group(Skin.ICON_BUTTON).isVisibleIf(narrow)
-                .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.FOLD_UP, SUBTEXT)))
-                .withTooltip("Fold your genies away; ☰ above the genie brings them back")
-                .onClick(it -> genieList.update(From.VIEW, Fold::toggled)))
             .add(label("YOUR GENIES").group(Skin.SECTION).isVisibleIf(wide))
             .add(
                 // As tall as the cards, so that above the genie a few of them take only their room.
@@ -456,22 +459,25 @@ public final class GeniesView extends JPanel {
         // The list of genies says when something went wrong; while it is hidden, this button does.
         Val<Boolean> hiddenTroubles = state.viewAs(Boolean.class, it -> !it.genieList().shown() && !it.troubles().isEmpty());
         return
-            panel("fill, ins 0, gap 10, hidemode 3", "[][30!][grow][]").group(Skin.HEADER)
+            panel("fill, ins 0, gap 10, hidemode 3", "[]0[30!][grow][]").group(Skin.HEADER)
             .isVisibleIf(visible)
-            .add(button(hiddenTroubles.viewAsString(it -> it ? "⚠" : "")).group(Skin.ICON_BUTTON)
+            // While the list is shown, ☰ is in its top row instead, in the same corner. Each part
+            // has its cell, so that the others keep theirs while ☰ is hidden.
+            .add("cell 0 0, gapright 10", button(hiddenTroubles.viewAsString(it -> it ? "⚠" : "")).group(Skin.ICON_BUTTON)
+                 .isVisibleIf(genieList.viewAs(Boolean.class, it -> !it.shown()))
                  .withStyle(hiddenTroubles, (it, style) -> it ? style.icon(SignSvgUtil.sign(SignSvgUtil.GENIES, TROUBLE)).componentFont(f -> f.color(TROUBLE))
                                                             : style.icon(SignSvgUtil.sign(SignSvgUtil.GENIES, SUBTEXT)))
-                 .withTooltip(hiddenTroubles.viewAsString(it -> it ? "Show your genies, and what went wrong" : "Show or hide your genies"))
+                 .withTooltip(hiddenTroubles.viewAsString(it -> it ? "Show your genies, and what went wrong" : "Show your genies"))
                  .onClick(it -> genieList.update(From.VIEW, Fold::toggled)))
-            .add(ViewPartsUtil.lamp(phase, 30))
-            .add("growx, wmin 0",
+            .add("cell 1 0", ViewPartsUtil.lamp(phase, 30))
+            .add("cell 2 0, growx, wmin 0",
                 box("fill, wrap 1, ins 0, gap 0")
                 .add("growx, wmin 0", label(name).group(Skin.TITLE)
                      .withTooltip("Double-click to rename")
                      .onMouseClick(it -> { if (it.clickCount() == 2) rename(genie.get().id()); }))
                 .add("growx, wmin 0", label(genie.viewAsString(it -> it.activity())).group(Skin.SUBTITLE)))
             // One group on the right, so buttons that are hidden leave no gap behind.
-            .add(box("ins 0, gap 10, hidemode 3, aligny center")
+            .add("cell 3 0", box("ins 0, gap 10, hidemode 3, aligny center")
             .add(pages())
             .add(label(genie.viewAsString(it -> it.tokens() == 0 ? "" : String.format("%,d tokens", it.tokens()))).group(Skin.META)
                  .isVisibleIf(wide)

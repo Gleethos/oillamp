@@ -34,7 +34,7 @@ final class Look extends StyleSheet {
         add(group(Skin.SIDEBAR), it -> it
             .backgroundColor(SIDEBAR)
             .borderAt(UI.Edge.RIGHT, 1, BORDER)
-            .padding(14, 12, 12, 12));
+            .padding(12, 12, 12, 12));
         add(group(Skin.BRAND), it -> it
             .componentFont(f -> f.family(FONT).size(19).weight(2f).color(TEXT)));
         add(group(Skin.SECTION), it -> it
