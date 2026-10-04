@@ -119,8 +119,9 @@ the old one followed, so the conversation forks there, and pi keeps both sides. 
 is a file of pi's; a genie can have any number of them.
 
 Under each genie's card are two trees, each opened by a line saying how many it holds, and each
-starting closed: the conversations the user had, and the scheduled runs, one conversation per run
-of a job. `Lamp.Conversation.job()` says which conversations a job's run had; oillamp names those
+starting closed: the scheduled runs, one conversation per run of a job, and below them the
+conversations the user had, whose line ends in ＋ for a new one. Delete…, under both trees while
+either is open, deletes the conversation the genie is in, whichever tree holds it. `Lamp.Conversation.job()` says which conversations a job's run had; oillamp names those
 after the run and the job, such as `run-12 (job-3)`. The line for scheduled runs shows only once
 there is one. Each tree is SwingTree's `UI.trees(..)`, bound to its conversations as one value: a
 row per conversation, and below it a row per branch. A branch is a run of questions in which
@@ -140,7 +141,7 @@ Genies runs.
 | clicks a row while the genie answers | the chat shows that row; nothing can be sent from there until the answer is done. The conversation being answered keeps growing out of sight, and going back to it shows the answer so far. An answer that ends meanwhile leaves the chat where the user is |
 | presses Edit under a question of theirs | a dialog holds the question; the changed one is asked instead, and what followed the old one stays as a branch |
 | presses Shift and Return while writing | a new line in the message; Return alone sends it |
-| presses New | the chat empties, and the next message starts a new conversation; the others stay |
+| presses ＋ | the chat empties, and the next message starts a new conversation; the others stay |
 | presses Delete… | after asking, the conversation the genie is in is deleted for good, with all its branches, and the genie starts a new one |
 
 Moving within a conversation happens in the session, when the next message is asked: its
