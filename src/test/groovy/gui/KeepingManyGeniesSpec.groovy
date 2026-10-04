@@ -97,7 +97,7 @@ class KeepingManyGeniesSpec extends Specification {
             button would be cut off. So the buttons show only their signs whenever the
             conversation's area is small, whatever the window's width. In a smaller area still,
             even the signs of the pages do not fit beside the genie's name; the switch steps
-            aside, and the pages are in the genie's menu behind "⋯", which has them always.
+            aside, and the pages are in the genie's menu behind "⋯" instead.
         """
         expect: 'a roomy area has words, and the pages'
             state.withArea(1000, 700).roomForWords()

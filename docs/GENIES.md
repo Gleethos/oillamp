@@ -197,8 +197,8 @@ the card is narrow.
 Each genie has two pages beside its chat, switched to in its header: its schedule, and its
 history (see below). The header's buttons have a sign beside their words, and it makes room in
 steps: below 780 units of width, the buttons and the switch show their signs alone; below 540, the
-switch steps aside. The pages are always in the menu behind "⋯", which a right-click on the genie's
-card opens too.
+switch steps aside, and the pages are in the menu behind "⋯" instead. A right-click on the genie's
+card opens that menu too. Menus open as their button is pressed, and a second press closes them.
 
 The jobs on the schedule wake the genie at their times, but only while it is awake; a job whose
 time came while it slept runs once, as soon as it wakes. The page says which of these holds.
