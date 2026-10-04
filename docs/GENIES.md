@@ -274,6 +274,9 @@ while the genie wakes or works, or a job's run is going.
 **Undoing.** While going back is the last thing that changed the genie, a banner above the moments
 says where it went, with Undo: going back to the moment that was the newest before. Waking,
 sleeping and a save before a run do not count; an answer or a save by hand ends the offer.
+Undoing is itself a going back: it adds a moment "Undid going back to …", and the banner does not
+come back for it, since both ways are now moments to go back to. A going back counts as an undo
+when it goes to the moment the newest going back left.
 
 ## The desktop
 
