@@ -20,7 +20,8 @@ elsewhere, at an `https://` address with a key if it asks for one, such as Ollam
 or a model server on this computer, Ollama, LM Studio or llama.cpp's server, which needs no key.
 Wherever it is, the Model field offers the models the service lists, from `Lamp.models`: asked
 when the settings open, when another place is chosen, and on Look up. For Eden AI these are the
-models served in the EU.
+models served in the EU. The Settings button stays pressed in while the page is open; pressed
+again, like Done, it keeps the settings and goes back to the genie's chat.
 
 ## Where things are
 
@@ -192,6 +193,14 @@ The chat and the desktop share a responsive grid: side by side in a wide window,
 the chat in a narrow one. The settings form is a grid too, with its labels above the fields when
 the card is narrow.
 
+A window narrower than 820 units is one column, as on a phone: the list of genies on top, the
+selected genie below. Crossing the line takes a margin of a tenth either way, so dragging the
+window's edge across it does not flicker. Becoming narrow folds the list away; ☰ in the genie's
+header opens it, and folds it again. Open, the list is a row with New, the settings and an arrow
+that folds it, then the genies' cards in an area 180 units tall, which scrolls; a grip under the
+area makes it taller or shorter, as under a tree of conversations, and dragged to nothing, folds
+the list away. A window wide again has the list beside the genie, shown.
+
 ## The schedule
 
 Each genie has two pages beside its chat, switched to in its header: its schedule, and its
@@ -297,7 +306,7 @@ the desktop forgets it.
 
 | Package | What is in it | Touches the outside world |
 |---|---|---|
-| `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `DateWordingUtil` for the schedule, and `History` for the history: records with withers, every change a pure method | no |
+| `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, `Fold` for the trees and the list of genies above a narrow window's genie, `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `DateWordingUtil` for the schedule, and `History` for the history: records with withers, every change a pure method | no |
 | `dev.gui.pi` | `PiEvent` (what the chat is told) | no |
 | `dev.gui.desktop` | `RfbConnection`, `X11KeysymUtil`, `Desktop` (its socket and its own size) | `RfbConnection` only |
 | `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `GenieFileTransferUtil` (files), `LampApiConversionUtil` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePiSetupUtil` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `HistoryKeeper` (the history, read and saved to through the lamp), `Shelf` (what is kept on disk) | yes |
