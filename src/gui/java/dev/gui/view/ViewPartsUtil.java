@@ -18,6 +18,7 @@ import swingtree.UIForAnySwing;
 import swingtree.UIForBox;
 import swingtree.UIForButton;
 import swingtree.UIForLabel;
+import swingtree.api.IconDeclaration;
 import swingtree.components.JBox;
 import swingtree.style.StyledString;
 
@@ -74,9 +75,9 @@ final class ViewPartsUtil {
         return item;
     }
 
-    /// One of several places to go, marked while it is where the user is.
-    static JRadioButtonMenuItem choice(String text, boolean chosen, Runnable action) {
-        JRadioButtonMenuItem item = new JRadioButtonMenuItem(text, chosen);
+    /// One of several places to go, with its sign, marked while it is where the user is.
+    static JRadioButtonMenuItem choice(String text, IconDeclaration sign, boolean chosen, Runnable action) {
+        JRadioButtonMenuItem item = new JRadioButtonMenuItem(text, sign.find().orElse(null), chosen);
         item.addActionListener(event -> action.run());
         return item;
     }

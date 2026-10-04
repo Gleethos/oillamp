@@ -120,9 +120,16 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     /// words, and show only their signs.
     static final int HEADER_WITH_WORDS_FROM = 780;
 
+    /// Below this width of the conversation's area, the header has no room for the switch between
+    /// a genie's pages, even with signs alone; the pages are in the genie's menu then.
+    static final int HEADER_WITH_PAGES_FROM = 540;
+
     /// Whether the header shows its buttons with words, which needs more room than a narrow
     /// window: the list of genies may take part of a window that is not narrow yet.
     public boolean roomForWords() { return !narrow && area.width() >= HEADER_WITH_WORDS_FROM; }
+
+    /// Whether the header shows the switch between a genie's pages.
+    public boolean roomForPages() { return area.width() >= HEADER_WITH_PAGES_FROM; }
 
     /// Whether the chat and the desktop fit side by side.
     public boolean sideBySide() { return area.width() >= SIDE_BY_SIDE_FROM; }

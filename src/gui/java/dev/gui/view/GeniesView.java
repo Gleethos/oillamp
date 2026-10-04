@@ -363,13 +363,15 @@ public final class GeniesView extends JPanel {
         Val<Boolean> awake = Viewable.of(Boolean.class, phase, onChat, (it, chat) -> it.isAwake() && chat);
         Val<Boolean> working = phase.viewAs(Boolean.class, it -> it == Genie.Phase.WORKING);
         Val<Boolean> wide = state.viewAs(Boolean.class, GeniesState::roomForWords);
+        Val<Boolean> roomForPages = state.viewAs(Boolean.class, GeniesState::roomForPages);
         // The list of genies says when something went wrong; while it is hidden, this button does.
         Val<Boolean> hiddenTroubles = state.viewAs(Boolean.class, it -> !it.sidebarShown() && !it.troubles().isEmpty());
         return
             panel("fill, ins 0, gap 10, hidemode 3", "[][30!][grow][]").group(Skin.HEADER)
             .isVisibleIf(visible)
-            .add(button(hiddenTroubles.viewAsString(it -> it ? "☰ ⚠" : "☰")).group(Skin.ICON_BUTTON)
-                 .withStyle(hiddenTroubles, (it, style) -> it ? style.componentFont(f -> f.color(TROUBLE)) : style)
+            .add(button(hiddenTroubles.viewAsString(it -> it ? "⚠" : "")).group(Skin.ICON_BUTTON)
+                 .withStyle(hiddenTroubles, (it, style) -> it ? style.icon(SignSvgUtil.sign(SignSvgUtil.GENIES, TROUBLE)).componentFont(f -> f.color(TROUBLE))
+                                                            : style.icon(SignSvgUtil.sign(SignSvgUtil.GENIES, SUBTEXT)))
                  .withTooltip(hiddenTroubles.viewAsString(it -> it ? "Show your genies, and what went wrong" : "Show or hide your genies"))
                  .onClick(it -> sidebarShown.update(From.VIEW, shown -> !shown)))
             .add(ViewPartsUtil.lamp(phase, 30))
@@ -385,44 +387,55 @@ public final class GeniesView extends JPanel {
             .add(label(genie.viewAsString(it -> it.tokens() == 0 ? "" : String.format("%,d tokens", it.tokens()))).group(Skin.META)
                  .isVisibleIf(wide)
                  .withTooltip("Tokens the model counted for this genie since Genies started"))
-            .add(toggleButton(worded("▣  Desktop", "▣"), desktopShown).group(Skin.QUIET_BUTTON).isVisibleIf(awake)
-                 .withTooltip("Watch the genie's desktop, and use it"))
-            .add(button(worded("■  Stop", "■")).group(Skin.QUIET_BUTTON).isVisibleIf(working)
+            .add(toggleButton(worded("Desktop"), desktopShown).group(Skin.QUIET_BUTTON).isVisibleIf(awake)
+                 .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.DESKTOP, TEXT)))
+                 .withTooltip("Desktop: watch the genie's desktop, and use it"))
+            .add(button(worded("Stop")).group(Skin.QUIET_BUTTON).isVisibleIf(working)
+                 .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.STOP, TEXT)))
                  .withTooltip("Stop what the genie is doing")
                  .onClick(it -> actions.stop(genie.get().id())))
-            .add(button(worded("☾  Sleep", "☾")).group(Skin.QUIET_BUTTON).isVisibleIf(phase.viewAs(Boolean.class, Genie.Phase::isAwake))
-                 .withTooltip("End the genie's sandbox. Its home and this conversation are kept.")
+            .add(button(worded("Sleep")).group(Skin.QUIET_BUTTON).isVisibleIf(phase.viewAs(Boolean.class, Genie.Phase::isAwake))
+                 .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.SLEEP, TEXT)))
+                 .withTooltip("Sleep: end the genie's sandbox. Its home and this conversation are kept.")
                  .onClick(it -> actions.sleep(genie.get().id())))
-            .add(button("⋯").group(Skin.ICON_BUTTON)
-                 .withTooltip(wide.viewAsString(it -> (it ? "" : "Chat, schedule or history; ")
+            .add(button("").group(Skin.ICON_BUTTON)
+                 .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.MORE, SUBTEXT)))
+                 .withTooltip(roomForPages.viewAsString(it -> (it ? "" : "Chat, schedule or history; ")
                          + "rename, save, wake or sleep, or delete this genie"))
                  .onClick(it -> ViewPartsUtil.below(genieMenu(genie.get().id()), it.getComponent()))));
     }
 
     /// The pages of a genie, its chat, its schedule and its history, as one switch of three
-    /// parts. The schedule's part says how many jobs it has, once they were read. Without room
-    /// for words in the header, the switch steps aside for the menu behind "⋯", which has the
-    /// pages too.
+    /// parts. The schedule's part says how many jobs it has, once they were read. The header
+    /// makes room in steps as it narrows: first the parts drop their words and keep their signs,
+    /// as the header's other buttons do; then the switch steps aside for the menu behind "⋯",
+    /// which has the pages too.
     private UIForAnySwing<?, ?> pages() {
         Val<Boolean> onChat = page.viewAs(Boolean.class, it -> it == GeniesState.Page.CHAT);
         Val<Boolean> onSchedule = page.viewAs(Boolean.class, it -> it == GeniesState.Page.SCHEDULE);
         Val<Boolean> onHistory = page.viewAs(Boolean.class, it -> it == GeniesState.Page.HISTORY);
-        Val<String> scheduleWords = genie.viewAsString(it -> "Schedule" + (it.schedule().jobs().isEmpty() ? "" : "  " + it.schedule().jobs().size()));
+        Val<Boolean> wide = state.viewAs(Boolean.class, GeniesState::roomForWords);
+        Val<String> scheduleWords = Viewable.of(String.class, genie, wide, (shown, words) -> {
+            int jobs = shown.schedule().jobs().size();
+            return (words ? "Schedule  " : "") + (jobs == 0 ? "" : jobs);
+        });
         return
             box("ins 2, gap 2")
-            .isVisibleIf(state.viewAs(Boolean.class, GeniesState::roomForWords))
+            .isVisibleIf(state.viewAs(Boolean.class, GeniesState::roomForPages))
             .withStyle(it -> it.backgroundColor(SMOKE).border(1, BORDER).borderRadius(11))
-            .add(half(Val.of("Chat"), onChat).withTooltip("Talk with the genie")
+            .add(half(worded("Chat"), SignSvgUtil.CHAT, onChat).withTooltip("Chat: talk with the genie")
                  .onClick(it -> page.set(From.VIEW, GeniesState.Page.CHAT)))
-            .add(half(scheduleWords, onSchedule).withTooltip("When jobs wake the genie, and what they did")
+            .add(half(scheduleWords, SignSvgUtil.SCHEDULE, onSchedule).withTooltip("Schedule: when jobs wake the genie, and what they did")
                  .onClick(it -> page.set(From.VIEW, GeniesState.Page.SCHEDULE)))
-            .add(half(Val.of("History"), onHistory).withTooltip("The moments the genie's home was saved at, and going back to one")
+            .add(half(worded("History"), SignSvgUtil.HISTORY, onHistory).withTooltip("History: the moments the genie's home was saved at, and going back to one")
                  .onClick(it -> page.set(From.VIEW, GeniesState.Page.HISTORY)));
     }
 
-    private static UIForButton<JButton> half(Val<String> text, Val<Boolean> shown) {
-        return button(text).group(Skin.ICON_BUTTON)
-                .withStyle(shown, (on, it) -> it.borderRadius(9).padding(4, 12, 4, 12)
+    /// One part of the switch between pages: its sign, and its words while there is room.
+    private static UIForButton<JButton> half(Val<String> text, String sign, Val<Boolean> shown) {
+        return button(text).group(Skin.ICON_BUTTON).withIconTextGap(6)
+                .withStyle(shown, (on, it) -> it.borderRadius(9).padding(4, 10, 4, 10)
+                    .icon(SignSvgUtil.sign(sign, on ? TEXT : SUBTEXT))
                     .backgroundColor(on ? RAISED : TRANSPARENT)
                     .componentFont(f -> f.family(FONT).size(12).weight(on ? 2f : 1f).color(on ? TEXT : SUBTEXT)));
     }
@@ -683,6 +696,8 @@ public final class GeniesView extends JPanel {
             Map.entry("PasswordField.background", hex(RAISED)),
             Map.entry("TextArea.background", hex(RAISED)),
             Map.entry("Tree.selectionArc", "6"),
+            // Behind the sign of the page the user is on, in a genie's menu, as in the header's switch.
+            Map.entry("MenuItem.checkBackground", hex(BORDER)),
             Map.entry("CheckBox.icon.selectedBackground", hex(FLAME)),
             Map.entry("CheckBox.icon.selectedBorderColor", hex(FLAME)),
             Map.entry("CheckBox.icon.checkmarkColor", hex(ON_FLAME)),
@@ -727,9 +742,9 @@ public final class GeniesView extends JPanel {
                 .withStyle(it -> it.componentFont(f -> f.family(FONT).size(12).color(TEXT)));
     }
 
-    /// A button's words while the header has room for them, and just its sign otherwise.
-    private Val<String> worded(String wide, String narrow) {
-        return state.viewAsString(it -> it.roomForWords() ? wide : narrow);
+    /// A button's words while the header has room for them; its sign alone says it otherwise.
+    private Val<String> worded(String words) {
+        return state.viewAsString(it -> it.roomForWords() ? words : "");
     }
 
     /// What can be done with a genie beyond its everyday buttons: behind "⋯" in the header,
@@ -741,9 +756,9 @@ public final class GeniesView extends JPanel {
         return UI.popupMenu().applyIfPresent(state.get().find(id).map( shown -> ui -> {
                 Genie.Phase now = shown.phase();
                 boolean idle = now != Genie.Phase.WORKING && now != Genie.Phase.WAKING;
-                ui.add(ViewPartsUtil.choice("Chat", on == GeniesState.Page.CHAT, () -> page.set(From.VIEW, GeniesState.Page.CHAT)))
-                .add(ViewPartsUtil.choice("Schedule", on == GeniesState.Page.SCHEDULE, () -> page.set(From.VIEW, GeniesState.Page.SCHEDULE)))
-                .add(ViewPartsUtil.choice("History", on == GeniesState.Page.HISTORY, () -> page.set(From.VIEW, GeniesState.Page.HISTORY)))
+                ui.add(ViewPartsUtil.choice("Chat", SignSvgUtil.sign(SignSvgUtil.CHAT, on == GeniesState.Page.CHAT ? TEXT : SUBTEXT), on == GeniesState.Page.CHAT, () -> page.set(From.VIEW, GeniesState.Page.CHAT)))
+                .add(ViewPartsUtil.choice("Schedule", SignSvgUtil.sign(SignSvgUtil.SCHEDULE, on == GeniesState.Page.SCHEDULE ? TEXT : SUBTEXT), on == GeniesState.Page.SCHEDULE, () -> page.set(From.VIEW, GeniesState.Page.SCHEDULE)))
+                .add(ViewPartsUtil.choice("History", SignSvgUtil.sign(SignSvgUtil.HISTORY, on == GeniesState.Page.HISTORY ? TEXT : SUBTEXT), on == GeniesState.Page.HISTORY, () -> page.set(From.VIEW, GeniesState.Page.HISTORY)))
                 .peek(JPopupMenu::addSeparator)
                 .add(ViewPartsUtil.item("Rename…", true, () -> rename(id)))
                 .add(ViewPartsUtil.item("New conversation", idle, () -> actions.startAfresh(id)))

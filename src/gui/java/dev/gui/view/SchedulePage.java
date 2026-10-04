@@ -376,7 +376,8 @@ final class SchedulePage {
                 .isVisibleIf(moment.conversation().isPresent() || working)
                 .add(ViewPartsUtil.link("Open the conversation  →").isVisibleIf(moment.conversation().isPresent())
                      .onClick(it -> moment.conversation().ifPresent(id -> actions.openConversation(selected(), id))))
-                .add(button("■  Stop").group(Skin.QUIET_BUTTON).isVisibleIf(working)
+                .add(button("Stop").group(Skin.QUIET_BUTTON).isVisibleIf(working)
+                     .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.STOP, TEXT)))
                      .withTooltip("Stop this run; what the genie did so far is kept, and saved")
                      .onClick(it -> actions.stopRun(selected(), moment.run()))));
     }

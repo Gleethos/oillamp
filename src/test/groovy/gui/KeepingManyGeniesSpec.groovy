@@ -88,23 +88,32 @@ class KeepingManyGeniesSpec extends Specification {
             narrow.withViewWidth(1000).sidebarShown()
     }
 
-    def 'The header shows its buttons with words only when they fit'() {
+    def 'The header makes room in steps: first its buttons drop their words, then the pages go into the menu'() {
         reportInfo """
-            The header above a conversation holds the genie's name and buttons such as Desktop,
-            Sleep and Delete. With the list of genies open, a window that is not narrow yet can
-            still leave the header too little room for their words, and the last button would be
-            cut off. So the buttons show only their signs whenever the conversation's area is
-            small, whatever the window's width.
+            The header above a conversation holds the genie's name, the switch between its
+            pages (chat, schedule, history) and buttons such as Desktop and Sleep. Each button
+            has a sign beside its words. With the list of genies open, a window that is not
+            narrow yet can still leave the header too little room for the words, and the last
+            button would be cut off. So the buttons show only their signs whenever the
+            conversation's area is small, whatever the window's width. In a smaller area still,
+            even the signs of the pages do not fit beside the genie's name; the switch steps
+            aside, and the pages are in the genie's menu behind "⋯", which has them always.
         """
-        expect: 'a roomy area has words'
+        expect: 'a roomy area has words, and the pages'
             state.withArea(1000, 700).roomForWords()
+            state.withArea(1000, 700).roomForPages()
 
-        and: 'a window wide enough for the list, but whose area is small, has signs'
-            !state.withArea(520, 700).roomForWords()
-            !state.withArea(520, 700).narrow()
+        and: 'a window wide enough for the list, but whose area is small, has signs, and the pages'
+            !state.withArea(600, 700).roomForWords()
+            state.withArea(600, 700).roomForPages()
+            !state.withArea(600, 700).narrow()
 
         and: 'a narrow window has signs'
             !state.withArea(1000, 700).withViewWidth(600).roomForWords()
+
+        and: 'a smaller area has signs, and its pages in the menu'
+            !state.withArea(480, 700).roomForWords()
+            !state.withArea(480, 700).roomForPages()
     }
 
     def 'Out of the box, genies use Eden AI\'s EU endpoint with the key from the environment'() {
