@@ -1,5 +1,6 @@
 package gui
 
+import dev.gui.model.Fold
 import dev.gui.model.Genie
 import dev.gui.model.GeniesState
 import dev.gui.model.Settings
@@ -71,21 +72,30 @@ class KeepingManyGeniesSpec extends Specification {
             the list of genies and a conversation no longer fit side by side, so the list hides,
             and the user can still open it. Widening the window shows it again. Around the
             line there is a margin, so dragging the window's edge does not make it flicker.
+            In a narrow window the list is above the genie, as tall as the user drags it; it
+            keeps that height while it is folded away and while the window is wide.
         """
         when:
             var narrow = state.withViewWidth(600)
 
         then:
             narrow.narrow()
-            !narrow.sidebarShown()
+            !narrow.genieList().shown()
 
         and: 'the user may open it anyway, and a little wider changes nothing'
-            narrow.withSidebarShown(true).withViewWidth(860).sidebarShown()
+            narrow.withGenieList(narrow.genieList().toggled()).withViewWidth(860).genieList().shown()
             narrow.withViewWidth(860).narrow()
 
         and: 'well past the line, it comes back'
             !narrow.withViewWidth(1000).narrow()
-            narrow.withViewWidth(1000).sidebarShown()
+            narrow.withViewWidth(1000).genieList().shown()
+
+        when: 'the user opens the list above the genie, and drags it taller'
+            var taller = narrow.withGenieList(narrow.genieList().toggled().withHeight(320))
+
+        then: 'it keeps its height, folded, wide, and narrow again'
+            taller.withGenieList(taller.genieList().toggled()).genieList().height() == 320
+            taller.withViewWidth(1000).withViewWidth(600).genieList() == new Fold(false, 320)
     }
 
     def 'The header makes room in steps: first its buttons drop their words, then the pages go into the menu'() {

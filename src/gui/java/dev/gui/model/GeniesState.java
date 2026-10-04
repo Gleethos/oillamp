@@ -19,7 +19,8 @@ import sprouts.Tuple;
 /// @param page     what the main area shows
 /// @param environmentKey the key in `EDENAI_API_KEY` where Genies started, if any; kept here so
 ///                 the settings can say whether it is there, and never shown
-/// @param sidebarShown whether the list of genies is shown; hidden to make room in a narrow window
+/// @param genieList whether the list of genies is shown, hidden to make room in a narrow window;
+///                 and how tall it is in a narrow window, where it is above the genie
 /// @param narrow   whether the window is too narrow for the list and a conversation side by side
 /// @param lookUp   the models the service in the settings offered when last asked
 /// @param zoom     how large a genie's desktop is shown
@@ -29,7 +30,7 @@ import sprouts.Tuple;
 /// @param troubles what went wrong unexpectedly since the user last looked, oldest first; at most
 ///                 [#MOST_TROUBLES], the rest is in the error log
 public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings, Page page,
-                          Optional<String> environmentKey, boolean sidebarShown, boolean narrow,
+                          Optional<String> environmentKey, Fold genieList, boolean narrow,
                           ModelLookUp lookUp, DesktopZoom zoom, Area area, Instant now, Tuple<Trouble> troubles) {
 
     /// A width and a height, in the window's own units.
@@ -59,18 +60,18 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
 
     public static GeniesState of(Tuple<Genie> genies, Settings settings, Optional<String> environmentKey) {
         return new GeniesState(genies, genies.isEmpty() ? NONE : genies.first().id(), settings,
-                               Page.CHAT, environmentKey, true, false, ModelLookUp.NOT_YET, DesktopZoom.PANEL,
+                               Page.CHAT, environmentKey, new Fold(true, Fold.CLOSED.height()), false, ModelLookUp.NOT_YET, DesktopZoom.PANEL,
                                new Area(1030, 760), Instant.now(), Tuple.of(Trouble.class));
     }
 
-    public GeniesState withGenies(Tuple<Genie> genies) { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withSelected(UUID selected)     { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withSettings(Settings settings) { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withPage(Page page)             { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withSidebarShown(boolean shown) { return new GeniesState(genies, selected, settings, page, environmentKey, shown, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withNow(Instant now)            { return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now, troubles); }
+    public GeniesState withGenies(Tuple<Genie> genies) { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
+    public GeniesState withSelected(UUID selected)     { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
+    public GeniesState withSettings(Settings settings) { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
+    public GeniesState withPage(Page page)             { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
+    public GeniesState withGenieList(Fold genieList)   { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
+    public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
+    public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
+    public GeniesState withNow(Instant now)            { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
 
     /// How many troubles the window keeps.
     public static final int MOST_TROUBLES = 20;
@@ -79,13 +80,13 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withTrouble(Trouble trouble) {
         Tuple<Trouble> more = troubles.add(trouble);
         Tuple<Trouble> kept = more.size() > MOST_TROUBLES ? more.removeFirst(more.size() - MOST_TROUBLES) : more;
-        return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now, kept);
+        return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, kept);
     }
 
     /// Without the troubles the user has `seen`; the error log still has them. One that came
     /// while they looked stays.
     public GeniesState withoutTroubles(Tuple<Trouble> seen) {
-        return new GeniesState(genies, selected, settings, page, environmentKey, sidebarShown, narrow, lookUp, zoom, area, now, troubles.removeAll(seen));
+        return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles.removeAll(seen));
     }
 
     /// Below this width, in the window's own units, the list of genies and a conversation do not
@@ -99,7 +100,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withViewWidth(int width) {
         boolean nowNarrow = narrow ? width < NARROW * 1.1 : width < NARROW / 1.1;
         if (nowNarrow == narrow) return this;
-        return new GeniesState(genies, selected, settings, page, environmentKey, !nowNarrow, nowNarrow, lookUp, zoom, area, now, troubles);
+        return new GeniesState(genies, selected, settings, page, environmentKey, genieList.withShown(!nowNarrow), nowNarrow, lookUp, zoom, area, now, troubles);
     }
 
     /// From this width of the conversation's area, a genie's desktop is shown beside the chat;
@@ -113,7 +114,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withArea(int width, int height) {
         Area rounded = new Area(width / 10 * 10, height / 10 * 10);
         return rounded.equals(area) ? this : new GeniesState(genies, selected, settings, page, environmentKey,
-                                                            sidebarShown, narrow, lookUp, zoom, rounded, now, troubles);
+                                                            genieList, narrow, lookUp, zoom, rounded, now, troubles);
     }
 
     /// Below this width of the conversation's area, the header's buttons do not fit with their

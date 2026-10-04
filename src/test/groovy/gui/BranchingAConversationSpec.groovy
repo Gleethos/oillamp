@@ -2,6 +2,7 @@ package gui
 
 import dev.gui.model.Conversation
 import dev.gui.model.Conversations
+import dev.gui.model.Fold
 import dev.gui.model.Talk
 import spock.lang.Specification
 import sprouts.Tuple
@@ -168,7 +169,7 @@ class BranchingAConversationSpec extends Specification {
             It opens again as tall as it was before that drag, not as an empty strip.
         """
         given:
-            var fold = Conversations.Fold.CLOSED
+            var fold = Fold.CLOSED
 
         expect:
             !fold.shown()
@@ -176,18 +177,18 @@ class BranchingAConversationSpec extends Specification {
             fold.withHeight(300).height() == 300
             fold.withHeight(5).height() == 5
             fold.withHeight(-40).height() == 0
-            fold.withHeight(50_000).height() == Conversations.Fold.HIGHEST
+            fold.withHeight(50_000).height() == Fold.HIGHEST
 
         and: 'let go of above nothing, it stays open; let go of at nothing, it closes and keeps its old height'
             var open = fold.toggled().withHeight(240)
-            open.withHeight(30).released(240) == new Conversations.Fold(true, 30)
-            open.withHeight(0).released(240) == new Conversations.Fold(false, 240)
-            open.withHeight(0).released(240).toggled() == new Conversations.Fold(true, 240)
+            open.withHeight(30).released(240) == new Fold(true, 30)
+            open.withHeight(0).released(240) == new Fold(false, 240)
+            open.withHeight(0).released(240).toggled() == new Fold(true, 240)
 
         and: 'reading the conversations again keeps both trees as they were'
             var kept = Conversations.NONE.withChatsFold(fold.toggled().withHeight(300))
-            kept.withAll(Tuple.of(Conversation, conversation(question('q1', '', 'Hi')))).chatsFold() == new Conversations.Fold(true, 300)
-            kept.jobsFold() == Conversations.Fold.CLOSED
+            kept.withAll(Tuple.of(Conversation, conversation(question('q1', '', 'Hi')))).chatsFold() == new Fold(true, 300)
+            kept.jobsFold() == Fold.CLOSED
     }
 
     def 'A conversation is titled by its name, or by its first question on one short line'() {

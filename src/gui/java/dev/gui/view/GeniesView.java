@@ -10,6 +10,9 @@ import swingtree.api.Layout;
 import swingtree.dialogs.ConfirmAnswer;
 import swingtree.input.Keyboard;
 import swingtree.layout.FlowCell;
+import swingtree.layout.LayoutConstraint;
+import swingtree.layout.MigAddConstraint;
+import swingtree.layout.Size;
 import swingtree.style.SvgIcon;
 
 import javax.swing.*;
@@ -26,12 +29,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntSupplier;
 
 import static dev.gui.view.Palette.*;
 import static swingtree.UI.*;
 
 /// The Genies window: the genies on the left, the conversation with the selected one in the
-/// middle, and its desktop next to it when the user wants to watch.
+/// middle, and its desktop next to it when the user wants to watch. In a narrow window, as on a
+/// phone, everything is one column: the genies on top, the selected one below.
 ///
 /// Everything shown is a function of one [GeniesState], reached through lenses. Typing, picking
 /// and toggling change that state directly; anything that starts, stops or moves something goes
@@ -50,7 +55,7 @@ public final class GeniesView extends JPanel {
     private final Var<String> name;
     private final Var<Boolean> desktopShown;
     private final Var<GeniesState.Page> page;
-    private final Var<Boolean> sidebarShown;
+    private final Var<Fold> genieList;
     private final Var<Tuple<Genie>> genies;
     private final Var<Tuple<Entry>> entries;
     private final Val<Tuple<Handout>> handouts;
@@ -74,7 +79,7 @@ public final class GeniesView extends JPanel {
         name         = genie.zoomTo(Genie::name, Genie::withName);
         desktopShown = genie.zoomTo(Genie::desktopShown, Genie::withDesktopShown);
         page         = state.zoomTo(GeniesState::page, GeniesState::withPage);
-        sidebarShown = state.zoomTo(GeniesState::sidebarShown, GeniesState::withSidebarShown);
+        genieList    = state.zoomTo(GeniesState::genieList, GeniesState::withGenieList);
         // Genies and entries keep their id while they change, so their rows are bound through a
         // lens onto each one: a row built from a plain value would never be redrawn.
         genies       = state.zoomTo(GeniesState::genies, GeniesState::withGenies);
@@ -103,14 +108,21 @@ public final class GeniesView extends JPanel {
 
         UI.use(look, () ->
             of(this).group(Skin.FRAME)
-            .withLayout("fill, ins 0, gap 0, hidemode 3")
+            .withLayout(state.viewAs(Layout.class, it -> it.narrow() ? ONE_COLUMN : SIDE_BY_SIDE))
             .withPrefSize(1280, 820)
             .withMinSize(0, 0)
             .onResize(it -> state.update(From.VIEW, s -> s.withViewWidth(it.getWidth())))
-            .add("growy, width 250!", sidebar())
-            .add("grow, push, wmin 0", main())
+            .add(sidebar())
+            .add(main())
         );
     }
+
+    /// The genies beside the selected one, or, in a narrow window, above it. The genie keeps
+    /// some height whatever the list's, so the list cannot push it out of the window.
+    private static final Layout SIDE_BY_SIDE = Layout.mig("fill, ins 0, gap 0, hidemode 3",
+            MigAddConstraint.of("growy, width 250!"), MigAddConstraint.of("grow, push, wmin 0"));
+    private static final Layout ONE_COLUMN = Layout.mig("fill, wrap 1, ins 0, gap 0, hidemode 3",
+            MigAddConstraint.of("growx, wmin 0"), MigAddConstraint.of("grow, push, wmin 0, hmin 160"));
 
     // ─── the sidebar: every genie ──────────────────────────────────────────────────────────
 
@@ -124,24 +136,92 @@ public final class GeniesView extends JPanel {
         return troubles == 1 ? "⚠  Something went wrong" : "⚠  " + troubles + " things went wrong";
     }
 
+    /*
+     *  The list of genies has two arrangements of the same parts, chosen by the window's width:
+     *
+     *      beside the genie                    above it, in a narrow window
+     *
+     *      ┌──────────────────┐                ┌──────────────────────────────────────┐
+     *      │ (lamp) Genies    │                │ (lamp) Genies   [+ New]  [⚙]  [^]    │
+     *      │ [+ New genie]    │                │ ┌──────────────────────────────────┐ │
+     *      │ YOUR GENIES      │                │ │ the genies' cards, scrolling,    │ │
+     *      │ ┌──────────────┐ │                │ │ as tall as the user dragged      │ │
+     *      │ │ the genies'  │ │                │ └──────────────────────────────────┘ │
+     *      │ │ cards        │ │                │ ────────────── grip ──────────────── │
+     *      │ └──────────────┘ │                │ what went wrong, if anything         │
+     *      │ what went wrong  │                └──────────────────────────────────────┘
+     *      │ [⚙ Settings]     │
+     *      └──────────────────┘
+     *
+     *  Each part is placed in a cell of the grid, so the parts are made once, and moving between
+     *  the two is a change of the layout's value. The height above is the list's fold: dragging
+     *  the grip to the top folds the list away, as does the button with the arrow.
+     */
+    private static final Layout BESIDE_THE_GENIE =
+            Layout.mig("fill, ins 0, gap 10, hidemode 3",
+                MigAddConstraint.of("cell 0 0, growx, wmin 0"),             // the lamp and "Genies"
+                MigAddConstraint.of("cell 0 1, growx"),                     // a new genie
+                MigAddConstraint.of("cell 0 6, growx"),                     // the settings
+                MigAddConstraint.of("cell 0 7"),                            // folding the list away, hidden
+                MigAddConstraint.of("cell 0 2, growx, gaptop 6"),           // "YOUR GENIES"
+                MigAddConstraint.of("cell 0 3, grow, push, wmin 0, hmin 0"),// the cards
+                MigAddConstraint.of("cell 0 4"),                            // the grip, hidden
+                MigAddConstraint.of("cell 0 5, growx, wmin 0"));            // what went wrong
+
+    /// The same parts, in the same order, as [#BESIDE_THE_GENIE].
+    ///
+    /// @param height the most the cards' area takes: the list's fold
+    private static Layout aboveTheGenie(int height) {
+        return Layout.mig(LayoutConstraint.of("fill, ins 0, gap 8 6, hidemode 3"), LayoutConstraint.of("[grow][][][]"), LayoutConstraint.of(""))
+            .withChildConstraints(
+                MigAddConstraint.of("cell 0 0, growx, wmin 0"),
+                MigAddConstraint.of("cell 1 0"),
+                MigAddConstraint.of("cell 2 0"),
+                MigAddConstraint.of("cell 3 0"),
+                MigAddConstraint.of("cell 0 4"),
+                MigAddConstraint.of("cell 0 1, span 4, growx, wmin 0, h 0:pref:" + height),
+                MigAddConstraint.of("cell 0 2, span 4, growx, h 9!"),
+                MigAddConstraint.of("cell 0 3, span 4, growx, wmin 0"));
+    }
+
     private UIForAnySwing<?, ?> sidebar() {
+        Val<Boolean> narrow = state.viewAs(Boolean.class, GeniesState::narrow);
+        Val<Boolean> wide = narrow.viewAs(Boolean.class, it -> !it);
+        JScrollPane[] cards = new JScrollPane[1];
         return
-            panel("fill, wrap 1, ins 0, gap 10, hidemode 3", "[grow]", "[][][][grow][]").group(Skin.SIDEBAR)
-            .isVisibleIf(sidebarShown)
-            .add("growx",
+            panel().group(Skin.SIDEBAR)
+            .withLayout(state.viewAs(Layout.class, it -> it.narrow() ? aboveTheGenie(it.genieList().height()) : BESIDE_THE_GENIE))
+            .withStyle(narrow, (on, it) -> on ? it.borderAt(UI.Edge.RIGHT, 0, TRANSPARENT).borderAt(UI.Edge.BOTTOM, 1, BORDER).padding(10, 12, 2, 12) : it)
+            .isVisibleIf(genieList.viewAs(Boolean.class, Fold::shown))
+            .add(
                 box("fill, ins 0, gap 8", "[34!][grow]")
                 .add(ViewPartsUtil.lamp(Val.of(Genie.Phase.READY), 34))
                 .add("growx, wmin 0", label("Genies").group(Skin.BRAND)))
-            .add("growx",
-                button("+  New genie").group(Skin.FLAME_BUTTON)
+            .add(
+                button(narrow.viewAsString(it -> it ? "New" : "New genie")).group(Skin.FLAME_BUTTON).withIconTextGap(6)
+                .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.NEW, ON_FLAME)))
                 .withTooltip("A new genie, with a sandboxed desktop of its own")
                 .onClick(it -> actions.newGenie()))
-            .add("growx, gaptop 6", label("YOUR GENIES").group(Skin.SECTION))
-            .add("grow, push, wmin 0",
-                scrollPanels().group(Skin.PAGE_SCROLL).withMinSize(0, 0).withPrefSize(220, 400).withEmptyBorder(0)
+            .add(
+                button(narrow.viewAsString(it -> it ? "" : "Settings")).group(Skin.QUIET_BUTTON).withIconTextGap(6)
+                .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.SETTINGS, TEXT)))
+                .withTooltip("Settings: the model every genie uses")
+                .onClick(it -> page.set(From.VIEW, GeniesState.Page.SETTINGS)))
+            .add(
+                button("").group(Skin.ICON_BUTTON).isVisibleIf(narrow)
+                .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.FOLD_UP, SUBTEXT)))
+                .withTooltip("Fold your genies away; ☰ above the genie brings them back")
+                .onClick(it -> genieList.update(From.VIEW, Fold::toggled)))
+            .add(label("YOUR GENIES").group(Skin.SECTION).isVisibleIf(wide))
+            .add(
+                // As tall as the cards, so that above the genie a few of them take only their room.
+                scrollPanels(conf -> conf.fitWidth(true).unitIncrement(16).prefSize(Size.of(conf.view().getPreferredSize())))
+                .group(Skin.PAGE_SCROLL).withMinSize(0, 0).withEmptyBorder(0)
+                .peek(it -> cards[0] = it)
                 .withStyle(it -> it.backgroundColor(TRANSPARENT))
                 .addAll(genies, this::genieChip))
-            .add("growx",
+            .add(grip(genieList, () -> cards[0].getHeight(), narrow, "Drag to see more of your genies, or up to fold them away"))
+            .add(
                 box("fill, wrap 1, ins 0, gap 6, hidemode 3")
                 .add("growx",
                     button(state.viewAsString(it -> troubleWords(it.troubles().size()))).group(Skin.QUIET_BUTTON)
@@ -150,10 +230,7 @@ public final class GeniesView extends JPanel {
                     .withTooltip("Genies carried on. Click to see what happened")
                     .onClick(it -> showTroubles()))
                 .add("growx, wmin 0", ViewPartsUtil.wrapped(state.viewAsString(it -> it.settingsProblem().orElse("")), TROUBLE,
-                        state.viewAs(Boolean.class, it -> it.settingsProblem().isPresent())))
-                .add("growx",
-                    button("⚙  Settings").group(Skin.QUIET_BUTTON)
-                    .onClick(it -> page.set(From.VIEW, GeniesState.Page.SETTINGS))));
+                        state.viewAs(Boolean.class, it -> it.settingsProblem().isPresent()))));
     }
 
     /// Built later than the constructor, so it enters the style sheet again.
@@ -203,14 +280,14 @@ public final class GeniesView extends JPanel {
     private UIForAnySwing<?, ?> conversationsOf(Var<Genie> shown) {
         UUID id = shown.get().id();
         Var<Conversations> conversations = shown.zoomTo(Genie::conversations, Genie::withConversations);
-        Var<Conversations.Fold> chats = conversations.zoomTo(Conversations::chatsFold, Conversations::withChatsFold);
-        Var<Conversations.Fold> jobs = conversations.zoomTo(Conversations::jobsFold, Conversations::withJobsFold);
+        Var<Fold> chats = conversations.zoomTo(Conversations::chatsFold, Conversations::withChatsFold);
+        Var<Fold> jobs = conversations.zoomTo(Conversations::jobsFold, Conversations::withJobsFold);
         // The trees can be gone through while the genie answers; a new conversation waits for the answer.
         Val<Boolean> browsable = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WAKING);
         Val<Boolean> idle = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING && it.phase() != Genie.Phase.WAKING);
         Val<Boolean> canForget = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING
                 && it.phase() != Genie.Phase.WAKING && it.conversations().current().isPresent());
-        Val<Boolean> chatsOpen = chats.viewAs(Boolean.class, Conversations.Fold::shown);
+        Val<Boolean> chatsOpen = chats.viewAs(Boolean.class, Fold::shown);
         return
             box("fill, wrap 1, ins 0, gap 2, hidemode 3", "[grow]")
             .add("growx, wmin 0",
@@ -236,13 +313,10 @@ public final class GeniesView extends JPanel {
     /// One tree of conversations: the line that opens it, then the tree in an area of the fold's
     /// height, which scrolls when the tree is taller, and a grip under it that the user drags to
     /// make the area taller or shorter.
-    private UIForAnySwing<?, ?> tree(UUID id, Var<Conversations.Fold> fold, Val<String> count, String tip,
+    private UIForAnySwing<?, ?> tree(UUID id, Var<Fold> fold, Val<String> count, String tip,
                                      Val<Boolean> present, Val<Tuple<Talk>> rows, Val<Boolean> browsable) {
-        Val<Boolean> open = fold.viewAs(Boolean.class, Conversations.Fold::shown);
+        Val<Boolean> open = fold.viewAs(Boolean.class, Fold::shown);
         Val<Tuple<String>> here = rows.viewAs(Tuple.classTyped(String.class), Conversations::pathToHere);
-        // Where a drag of the grip began: the pointer's height on the screen, the area's, and
-        // the fold's. The area's is what it shows, which for a short tree is less than the fold's.
-        int[] dragFrom = new int[3];
         JScrollPane[] area = new JScrollPane[1];
         return
             box("fill, wrap 1, ins 0, gap 0, hidemode 3", "[grow]")
@@ -251,7 +325,7 @@ public final class GeniesView extends JPanel {
                 label(Viewable.of(String.class, open, count, (on, words) -> (on ? "▾  " : "▸  ") + words))
                 .group(Skin.META).withCursor(UI.Cursor.HAND)
                 .withTooltip(tip)
-                .onMouseClick(it -> fold.update(From.VIEW, Conversations.Fold::toggled)))
+                .onMouseClick(it -> fold.update(From.VIEW, Fold::toggled)))
             .add("growx, wmin 0, hmin 0",
                 scrollPane(conf -> conf.fitWidth(true)).withEmptyBorder(0).withMinSize(0, 0)
                 .peek(it -> area[0] = it)
@@ -259,7 +333,7 @@ public final class GeniesView extends JPanel {
                 .withHorizontalScrollBarPolicy(UI.Active.NEVER)
                 .withVerticalScrollIncrement(16)
                 // At most the fold's height; a tree of a few rows takes only what it needs.
-                .withMaxHeight(fold.viewAs(Integer.class, Conversations.Fold::height))
+                .withMaxHeight(fold.viewAs(Integer.class, Fold::height))
                 .withStyle(it -> it.backgroundColor(TRANSPARENT))
                 .add(
                     // In a panel of its own: on its own, a tree asks its scroll pane for room for
@@ -281,21 +355,32 @@ public final class GeniesView extends JPanel {
                         .withSelection(here)
                         .onSelection(it -> goTo(id, it.leadPath(), it.lead()))
                         .withStyle(it -> it.backgroundColor(TRANSPARENT).componentFont(f -> f.family(FONT).size(12).color(TEXT))))))
-            .add("growx, wmin 0, h 9!",
-                panel().withCursor(UI.Cursor.RESIZE_BOTTOM)
-                .isVisibleIf(open)
-                .withTooltip("Drag to make this list taller or shorter")
-                .withStyle(it -> {
-                    int width = it.componentWidth(), height = it.componentHeight();
-                    return it.backgroundColor(TRANSPARENT).painter(UI.Layer.CONTENT, g -> grip(g, width, height));
-                })
-                .onMousePress(it -> {
-                    dragFrom[0] = it.mouseYOnScreen();
-                    dragFrom[1] = area[0].getHeight();
-                    dragFrom[2] = fold.get().height();
-                })
-                .onMouseDrag(it -> fold.update(From.VIEW, f -> f.withHeight(dragFrom[1] + it.mouseYOnScreen() - dragFrom[0])))
-                .onMouseRelease(it -> fold.update(From.VIEW, f -> f.released(dragFrom[2]))));
+            .add("growx, wmin 0, h 9!", grip(fold, () -> area[0].getHeight(), open, "Drag to make this list taller or shorter"));
+    }
+
+    /// The grip under a list that folds: the user drags it to make the list's area taller or
+    /// shorter, and all the way up to fold the list away.
+    ///
+    /// @param areaHeight how tall the list's area is now, which for a short list is less than
+    ///                   the fold's height
+    private static UIForAnySwing<?, ?> grip(Var<Fold> fold, IntSupplier areaHeight, Val<Boolean> shown, String tip) {
+        // Where a drag began: the pointer's height on the screen, the area's, and the fold's.
+        int[] dragFrom = new int[3];
+        return
+            panel().withCursor(UI.Cursor.RESIZE_BOTTOM)
+            .isVisibleIf(shown)
+            .withTooltip(tip)
+            .withStyle(it -> {
+                int width = it.componentWidth(), height = it.componentHeight();
+                return it.backgroundColor(TRANSPARENT).painter(UI.Layer.CONTENT, g -> grip(g, width, height));
+            })
+            .onMousePress(it -> {
+                dragFrom[0] = it.mouseYOnScreen();
+                dragFrom[1] = areaHeight.getAsInt();
+                dragFrom[2] = fold.get().height();
+            })
+            .onMouseDrag(it -> fold.update(From.VIEW, f -> f.withHeight(dragFrom[1] + it.mouseYOnScreen() - dragFrom[0])))
+            .onMouseRelease(it -> fold.update(From.VIEW, f -> f.released(dragFrom[2])));
     }
 
     /// The grip under a tree: a thin line across, like a split pane's divider, with a short
@@ -366,7 +451,7 @@ public final class GeniesView extends JPanel {
         Val<Boolean> wide = state.viewAs(Boolean.class, GeniesState::roomForWords);
         Val<Boolean> roomForPages = state.viewAs(Boolean.class, GeniesState::roomForPages);
         // The list of genies says when something went wrong; while it is hidden, this button does.
-        Val<Boolean> hiddenTroubles = state.viewAs(Boolean.class, it -> !it.sidebarShown() && !it.troubles().isEmpty());
+        Val<Boolean> hiddenTroubles = state.viewAs(Boolean.class, it -> !it.genieList().shown() && !it.troubles().isEmpty());
         return
             panel("fill, ins 0, gap 10, hidemode 3", "[][30!][grow][]").group(Skin.HEADER)
             .isVisibleIf(visible)
@@ -374,7 +459,7 @@ public final class GeniesView extends JPanel {
                  .withStyle(hiddenTroubles, (it, style) -> it ? style.icon(SignSvgUtil.sign(SignSvgUtil.GENIES, TROUBLE)).componentFont(f -> f.color(TROUBLE))
                                                             : style.icon(SignSvgUtil.sign(SignSvgUtil.GENIES, SUBTEXT)))
                  .withTooltip(hiddenTroubles.viewAsString(it -> it ? "Show your genies, and what went wrong" : "Show or hide your genies"))
-                 .onClick(it -> sidebarShown.update(From.VIEW, shown -> !shown)))
+                 .onClick(it -> genieList.update(From.VIEW, Fold::toggled)))
             .add(ViewPartsUtil.lamp(phase, 30))
             .add("growx, wmin 0",
                 box("fill, wrap 1, ins 0, gap 0")

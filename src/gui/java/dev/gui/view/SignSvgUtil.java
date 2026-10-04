@@ -25,6 +25,10 @@ final class SignSvgUtil {
     static final String STOP = "<rect x='4' y='4' width='8' height='8' rx='1.5' fill='currentColor'/>";
     static final String SLEEP = "<path d='M13.5 9.6A5.8 5.8 0 1 1 6.4 2.5a4.6 4.6 0 0 0 7.1 7.1z'/>";
     static final String GENIES = "<path d='M2.5 4h11M2.5 8h11M2.5 12h11'/>";
+    static final String NEW = "<path d='M8 3v10M3 8h10'/>";
+    static final String SETTINGS = "<path d='M2 4.5h12M2 11.5h12'/>"
+                                 + "<circle cx='10.5' cy='4.5' r='2' fill='currentColor'/><circle cx='5.5' cy='11.5' r='2' fill='currentColor'/>";
+    static final String FOLD_UP = "<path d='M3.5 10l4.5-4.5 4.5 4.5'/>";
     static final String MORE = "<circle cx='3.5' cy='8' r='1.2' fill='currentColor' stroke='none'/>"
                              + "<circle cx='8' cy='8' r='1.2' fill='currentColor' stroke='none'/>"
                              + "<circle cx='12.5' cy='8' r='1.2' fill='currentColor' stroke='none'/>";
