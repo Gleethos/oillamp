@@ -5,6 +5,7 @@ import java.awt.GradientPaint;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.font.FontRenderContext;
+import java.awt.geom.RoundRectangle2D;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -180,7 +181,9 @@ final class ChatRows {
                         .add("wmin 0", label(waiting.viewAsString(it -> "✦ " + it.what())).withStyle(it -> it
                             .componentFont(f -> f.family(FONT).size(12).weight(2f).color(BRASS))))
                         .add("growx, wmin 60, h 4!", progress(Val.of(true)))
-                        .add(label(waiting.viewAsString(Genie.Waiting::time))
+                        // As wide as "59:59", so the bar keeps its length while the digits change.
+                        .add("w 40!", label(waiting.viewAsString(Genie.Waiting::time))
+                             .withHorizontalAlignment(UI.HorizontalAlignment.RIGHT)
                              .isVisibleIf(waiting.viewAs(Boolean.class, it -> !it.time().isEmpty()))
                              .withStyle(it -> it.componentFont(f -> f.family(FONT).size(12).color(SUBTEXT)))),
                         box().isVisibleIf(Val.of(false)))
@@ -200,9 +203,14 @@ final class ChatRows {
                 int at = (int) Math.round((length + glowLength) * glow.at()) - glowLength;
                 return it.backgroundColor(RAISED).borderRadius(2)
                          .painter(UI.Layer.CONTENT, g -> {
-                             if (!glow.moving()) return;
+                             // Only the part of the glow on the track: the gradient repeats, and
+                             // painted further it would start a second glow behind the first.
+                             int from = Math.max(0, at);
+                             int to = Math.min(length, at + glowLength);
+                             if (!glow.moving() || to <= from) return;
                              g.setPaint(new GradientPaint(at, 0, TRANSPARENT, at + glowLength / 2f, 0, FLAME, true));
-                             g.fillRect(Math.max(0, at), 0, Math.max(0, Math.min(glowLength, length - Math.max(0, at))), thickness);
+                             // Round at its ends, as the track is, where it enters and leaves.
+                             g.fill(new RoundRectangle2D.Float(from, 0, to - from, thickness, thickness, thickness));
                          });
             });
     }
