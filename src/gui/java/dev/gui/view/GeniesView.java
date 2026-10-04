@@ -456,28 +456,33 @@ public final class GeniesView extends JPanel {
         Val<Boolean> working = phase.viewAs(Boolean.class, it -> it == Genie.Phase.WORKING);
         Val<Boolean> wide = state.viewAs(Boolean.class, GeniesState::roomForWords);
         Val<Boolean> roomForPages = state.viewAs(Boolean.class, GeniesState::roomForPages);
-        // The list of genies says when something went wrong; while it is hidden, this button does.
+        // The list of genies says when something went wrong; while it is hidden, the header does.
         Val<Boolean> hiddenTroubles = state.viewAs(Boolean.class, it -> !it.genieList().shown() && !it.troubles().isEmpty());
         return
-            panel("fill, ins 0, gap 10, hidemode 3", "[]0[30!][grow][]").group(Skin.HEADER)
+            panel("fill, ins 0, gap 10, hidemode 3", "[]0[]0[30!][grow][]").group(Skin.HEADER)
             .isVisibleIf(visible)
             // While the list is shown, ☰ is in its top row instead, in the same corner. Each part
-            // has its cell, so that the others keep theirs while ☰ is hidden.
-            .add("cell 0 0, gapright 10", button(hiddenTroubles.viewAsString(it -> it ? "⚠" : "")).group(Skin.ICON_BUTTON)
+            // has its cell, and the hidden ones' gaps go with them, so the others keep their places.
+            .add("cell 0 0, gapright 10", button("").group(Skin.ICON_BUTTON)
                  .isVisibleIf(genieList.viewAs(Boolean.class, it -> !it.shown()))
-                 .withStyle(hiddenTroubles, (it, style) -> it ? style.icon(SignSvgUtil.sign(SignSvgUtil.GENIES, TROUBLE)).componentFont(f -> f.color(TROUBLE))
-                                                            : style.icon(SignSvgUtil.sign(SignSvgUtil.GENIES, SUBTEXT)))
-                 .withTooltip(hiddenTroubles.viewAsString(it -> it ? "Show your genies, and what went wrong" : "Show your genies"))
+                 .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.GENIES, SUBTEXT)))
+                 .withTooltip("Show your genies")
                  .onClick(it -> genieList.update(From.VIEW, Fold::toggled)))
-            .add("cell 1 0", ViewPartsUtil.lamp(phase, 30))
-            .add("cell 2 0, growx, wmin 0",
+            // Not this genie's: what went wrong anywhere in Genies, so it stays beside ☰.
+            .add("cell 1 0, gapright 10", button(state.viewAsString(it -> "⚠ " + it.troubles().size())).group(Skin.QUIET_BUTTON)
+                 .isVisibleIf(hiddenTroubles)
+                 .withStyle(it -> it.backgroundColor(TROUBLE_WASH).border(1, TROUBLE).padding(3, 8, 3, 8).componentFont(f -> f.color(TROUBLE)))
+                 .withTooltip("Something went wrong in Genies, not only in this genie. Click to see what happened")
+                 .onClick(it -> showTroubles()))
+            .add("cell 2 0", ViewPartsUtil.lamp(phase, 30))
+            .add("cell 3 0, growx, wmin 0",
                 box("fill, wrap 1, ins 0, gap 0")
                 .add("growx, wmin 0", label(name).group(Skin.TITLE)
                      .withTooltip("Double-click to rename")
                      .onMouseClick(it -> { if (it.clickCount() == 2) rename(genie.get().id()); }))
                 .add("growx, wmin 0", label(genie.viewAsString(it -> it.activity())).group(Skin.SUBTITLE)))
             // One group on the right, so buttons that are hidden leave no gap behind.
-            .add("cell 3 0", box("ins 0, gap 10, hidemode 3, aligny center")
+            .add("cell 4 0", box("ins 0, gap 10, hidemode 3, aligny center")
             .add(pages())
             .add(label(genie.viewAsString(it -> it.tokens() == 0 ? "" : String.format("%,d tokens", it.tokens()))).group(Skin.META)
                  .isVisibleIf(wide)
