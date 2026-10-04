@@ -182,7 +182,11 @@ fenced code blocks and tables, whose columns are lined up (`MarkdownParsingUtil`
 colours (`MarkdownStylingUtil`) and painted by
 SwingTree's style engine, which wraps them to the room they get while they stream in. The newest
 characters of a streaming answer fade in. A genie that works with nothing streaming yet shows a
-moving bar; a model that shares its thoughts gets a row of its own, which opens to watch them, as
+moving bar that says what the user waits for: that the genie thinks, or, while a job of its
+schedule runs, that it does that job first, with the job's title and how long it has run. A message
+sent meanwhile waits for the job, since the lamp runs one thing at a time; a job the genie missed
+while asleep runs as soon as it wakes. The line under the genie's name then says "doing a scheduled
+job". Both come from `Genie.waitingOn` and `Genie.status`, which read `Schedule.running`. A model that shares its thoughts gets a row of its own, which opens to watch them, as
 a tool's row opens to show what the tool printed. The conversation follows its end while the user
 is there, and leaves them be when they scroll up to read.
 
