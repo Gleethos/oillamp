@@ -1,6 +1,8 @@
 package dev.gui.view;
 
 import java.awt.Color;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import swingtree.api.IconDeclaration;
 
@@ -10,6 +12,11 @@ import swingtree.api.IconDeclaration;
 final class SignSvgUtil {
 
     private SignSvgUtil() {}
+
+    /// Every sign handed out, by its SVG text. SwingTree keeps a drawn icon only while its
+    /// declaration is held somewhere, so holding them here spares drawing a sign again each time
+    /// a button's style is worked out. A few drawings in a few colours, so it stays small.
+    private static final Map<String, IconDeclaration> SIGNS = new ConcurrentHashMap<>();
 
     static final String CHAT = "<path d='M3.5 3h9a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H7l-3 2.5V12h-.5A1.5 1.5 0 0 1 2 10.5v-6A1.5 1.5 0 0 1 3.5 3z'/>";
     static final String SCHEDULE = "<rect x='2' y='3.5' width='12' height='10.5' rx='1.5'/><path d='M2 7h12M5.5 2v3M10.5 2v3'/>";
@@ -25,8 +32,9 @@ final class SignSvgUtil {
     /// `drawing`, one of the signs above, in `colour`, sixteen units square.
     static IconDeclaration sign(String drawing, Color colour) {
         String hex = String.format("#%02x%02x%02x", colour.getRed(), colour.getGreen(), colour.getBlue());
-        return IconDeclaration.ofSvg("<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' color='" + hex
+        String svg = "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' color='" + hex
                 + "' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'>"
-                + drawing + "</svg>");
+                + drawing + "</svg>";
+        return SIGNS.computeIfAbsent(svg, IconDeclaration::ofSvg);
     }
 }
