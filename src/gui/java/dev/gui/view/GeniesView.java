@@ -56,6 +56,7 @@ public final class GeniesView extends JPanel {
     private final Var<Boolean> desktopShown;
     private final Var<GeniesState.Page> page;
     private final Var<Fold> genieList;
+    private final Var<Boolean> settingsShown;
     private final Var<Tuple<Genie>> genies;
     private final Var<Tuple<Entry>> entries;
     private final Val<Tuple<Handout>> handouts;
@@ -80,6 +81,9 @@ public final class GeniesView extends JPanel {
         desktopShown = genie.zoomTo(Genie::desktopShown, Genie::withDesktopShown);
         page         = state.zoomTo(GeniesState::page, GeniesState::withPage);
         genieList    = state.zoomTo(GeniesState::genieList, GeniesState::withGenieList);
+        // Leaving the settings goes back to the chat, as their Done does.
+        settingsShown = page.zoomTo(it -> it == GeniesState.Page.SETTINGS, (it, shown) -> shown ? GeniesState.Page.SETTINGS
+                                                                       : it == GeniesState.Page.SETTINGS ? GeniesState.Page.CHAT : it);
         // Genies and entries keep their id while they change, so their rows are bound through a
         // lens onto each one: a row built from a plain value would never be redrawn.
         genies       = state.zoomTo(GeniesState::genies, GeniesState::withGenies);
@@ -203,10 +207,9 @@ public final class GeniesView extends JPanel {
                 .withTooltip("A new genie, with a sandboxed desktop of its own")
                 .onClick(it -> actions.newGenie()))
             .add(
-                button(narrow.viewAsString(it -> it ? "" : "Settings")).group(Skin.QUIET_BUTTON).withIconTextGap(6)
+                toggleButton(narrow.viewAsString(it -> it ? "" : "Settings"), settingsShown).group(Skin.QUIET_BUTTON).withIconTextGap(6)
                 .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.SETTINGS, TEXT)))
-                .withTooltip("Settings: the model every genie uses")
-                .onClick(it -> page.set(From.VIEW, GeniesState.Page.SETTINGS)))
+                .withTooltip("Settings: the model every genie uses. Pressed again, back to the genie"))
             .add(
                 button("").group(Skin.ICON_BUTTON).isVisibleIf(narrow)
                 .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.FOLD_UP, SUBTEXT)))
