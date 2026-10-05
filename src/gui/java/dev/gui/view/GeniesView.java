@@ -6,6 +6,8 @@ import swingtree.UI;
 import swingtree.UIForAnySwing;
 import swingtree.UIForButton;
 import swingtree.UIForPanel;
+import swingtree.animation.Animation;
+import swingtree.animation.AnimationStatus;
 import swingtree.api.Layout;
 import swingtree.dialogs.ConfirmAnswer;
 import swingtree.input.Keyboard;
@@ -65,8 +67,11 @@ public final class GeniesView extends JPanel {
     private final Val<UUID> selected;
     private final Val<UUID> watched;
     private final Var<DesktopZoom> zoom;
-    /// Loops from 0 to 1 while the genie on show thinks, for the dots in its answer.
+    /// Loops from 0 to 1 while any genie works: it moves the thinking bars, and the genies
+    /// that think or work.
     private final Var<Double> pulse = Var.of(0.0);
+    /// Whether the pulse loops, so that only one loop ever sets it.
+    private boolean breathing = false;
     private final ChatRows rows;
     private final SchedulePage schedulePage;
     private final HistoryPage historyPage;
@@ -105,8 +110,8 @@ public final class GeniesView extends JPanel {
         Viewable.cast(zoom).onChange(From.ALL, it -> desktop.zoom(it.currentValue().orElse(DesktopZoom.FIT).scale()));
         desktop.zoom(zoom.get().scale());
         desktop.onZoomSteps(steps -> zoom.update(From.VIEW, it -> steps > 0 ? it.in(desktop.fitScale()) : it.out(desktop.fitScale())));
-        Viewable.cast(phase).onChange(From.ALL, it -> {
-            if (it.currentValue().orElseNull() == Genie.Phase.WORKING) breathe();
+        Viewable.cast(genies).onChange(From.ALL, it -> {
+            if (anyWorks()) breathe();
         });
         rows = new ChatRows(look, this::saveHandout, pulse, this::askInstead,
                            phase.viewAs(Boolean.class, it -> it == Genie.Phase.READY));
@@ -985,10 +990,19 @@ public final class GeniesView extends JPanel {
         }
     }
 
-    /// Moves the thinking bars for as long as the genie on show works.
+    /// Loops the pulse for as long as any genie works.
     private void breathe() {
+        if (breathing) return;
+        breathing = true;
         UI.animateFor(1.2, TimeUnit.SECONDS)
-          .asLongAs(status -> genie.get().phase() == Genie.Phase.WORKING)
-          .go(status -> pulse.set(status.progress()));
+          .asLongAs(status -> anyWorks())
+          .go(new Animation() {
+              @Override public void run(AnimationStatus status) { pulse.set(status.progress()); }
+              @Override public void finish(AnimationStatus status) { breathing = false; }
+          });
+    }
+
+    private boolean anyWorks() {
+        return genies.get().stream().anyMatch(it -> it.phase() == Genie.Phase.WORKING);
     }
 }

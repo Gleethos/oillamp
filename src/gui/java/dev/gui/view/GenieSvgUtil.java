@@ -120,14 +120,15 @@ final class GenieSvgUtil {
         return Math.min(pose.frames - 1, (int) (progress * pose.frames));
     }
 
-    /// Every genie handed out, by its SVG text. SwingTree keeps a drawn icon only while its
-    /// declaration is held somewhere, so holding them here spares drawing a genie again. There
-    /// are at most a few hundred: eight colours, few accessories, nine frames.
-    private static final Map<String, IconDeclaration> GENIES = new ConcurrentHashMap<>();
+    /// Every genie handed out, by its appearance, pose and frame. The chat asks again on every
+    /// step of an animation, and SwingTree keeps a drawn icon only while its declaration is held
+    /// somewhere, so holding them here spares writing and drawing a genie again. There are nine
+    /// for each genie, one for each frame of its poses.
+    private static final Map<List<Object>, IconDeclaration> GENIES = new ConcurrentHashMap<>();
 
     /// The genie that `appearance` describes, in `frame` of `pose`, twenty pixels square.
     static IconDeclaration genie(Appearance appearance, Pose pose, int frame) {
-        return GENIES.computeIfAbsent(svg(appearance, pose, frame), IconDeclaration::ofSvg);
+        return GENIES.computeIfAbsent(List.of(appearance, pose, frame), key -> IconDeclaration.ofSvg(svg(appearance, pose, frame)));
     }
 
     /// The SVG text of the genie: one path for each colour, each pixel a square of one unit.
