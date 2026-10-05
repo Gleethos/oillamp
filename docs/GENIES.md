@@ -315,6 +315,35 @@ desktop next to the chat, with a line above it: "Rex shows you: the chart you as
 that is not on screen says it on its card in the sidebar, until the user is at its chat. Closing
 the desktop forgets it.
 
+## The genie's picture
+
+Each genie is drawn as Pip, a pixel spirit twenty pixels square with a big head, two big eyes,
+short arms and a tail (`GenieSvgUtil`, SVG text that SwingTree draws). Its body colour, one of
+eight, and what it wears follow from its id, so nothing about its looks is kept: a hat three times
+in four (a turban, a fez, a topknot or a flame), and a vest, cuffs and an earring, each once in
+three.
+
+Its pose follows from its phase:
+
+| Phase | Pose |
+|---|---|
+| asleep or waking | asleep: eyes shut, a z above its head |
+| ready | awake |
+| working, while the newest entry of the chat is a tool that runs | working: it looks down and raises one arm, then the other, with a sparkle |
+| working, otherwise | thinking: it looks up while dots rise |
+| broken | dizzy: crossed eyes and stars |
+
+Working and thinking are animations, moved by the loop that moves the thinking bars, which runs
+while any genie works.
+
+| Where | What it shows |
+|---|---|
+| beside each of its answers in the chat, 30 units square | its pose; but only the answer it writes now, the last since the user's last message, thinks or works, and older answers show it awake |
+| beside the bar that says what the user waits for | its pose |
+| the top right corner of its card, 40 units square, painted on the card | its pose, while it is ready or working; asleep, waking or broken it is in its lamp, and the card shows only the lamp |
+
+Everywhere else, the header, the empty chat and the window's icon, the lamp stays.
+
 ## How the code is arranged
 
 | Package | What is in it | Touches the outside world |
@@ -339,6 +368,7 @@ through one place, one at a time.
 | `FollowingAConversationSpec` | how events become the chat, and asking a question differently |
 | `BranchingAConversationSpec` | how pi's entries become the tree of conversations and branches |
 | `ReadingAGeniesMarkdownSpec` | Markdown as models write it, and the fade of a streaming answer |
+| `DrawingAGenieSpec` | a genie's appearance from its id, its pose from its phase, and that every appearance, pose and frame can be drawn |
 | `ZoomingIntoAGeniesDesktopSpec` | the panel's size as the default, and the zoom steps |
 | `KeepingManyGeniesSpec` | the list of genies, the settings for the three places and their model lists, a narrow window |
 | `KeepingGeniesBetweenRunsSpec` | the shelf |
