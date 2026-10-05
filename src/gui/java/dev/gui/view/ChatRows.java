@@ -6,8 +6,10 @@ import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
 import java.awt.font.FontRenderContext;
 import java.awt.geom.RoundRectangle2D;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import javax.swing.JPanel;
 
@@ -15,6 +17,7 @@ import dev.gui.model.Entry;
 import dev.gui.model.Genie;
 
 import sprouts.From;
+import sprouts.Tuple;
 import sprouts.Val;
 import sprouts.Var;
 import sprouts.Viewable;
@@ -22,6 +25,7 @@ import swingtree.UI;
 import swingtree.UIForAnySwing;
 import swingtree.UIForPanel;
 import swingtree.animation.LifeTime;
+import swingtree.api.IconDeclaration;
 import swingtree.style.StyledString;
 
 import static dev.gui.view.Palette.*;
@@ -46,19 +50,25 @@ final class ChatRows {
     /// How long newly arrived characters take to materialise.
     private static final LifeTime FADE = LifeTime.of(0.45, TimeUnit.SECONDS);
 
+    /// How large the genie beside an answer is: one and a half times its twenty pixels.
+    private static final int GENIE_SIZE = 30;
+
     private final Look look;
+    private final Val<Genie> genie;
     private final Consumer<String> saveHandout;
     private final Val<Double> pulse;
     private final Consumer<Entry> askInstead;
     private final Val<Boolean> waits;
 
+    /// @param genie       the genie whose conversation this is
     /// @param saveHandout asks the user where to save the outbox file of that name
-    /// @param pulse       loops from 0 to 1 while the genie thinks; drives the dots
+    /// @param pulse       loops from 0 to 1 while a genie works; drives the bars and the genie
     /// @param askInstead  lets the user ask one of their questions differently
     /// @param waits       whether the genie waits for the user, the only time a question can be
     ///                    asked differently
-    ChatRows(Look look, Consumer<String> saveHandout, Val<Double> pulse, Consumer<Entry> askInstead, Val<Boolean> waits) {
+    ChatRows(Look look, Val<Genie> genie, Consumer<String> saveHandout, Val<Double> pulse, Consumer<Entry> askInstead, Val<Boolean> waits) {
         this.look = look;
+        this.genie = genie;
         this.saveHandout = saveHandout;
         this.pulse = pulse;
         this.askInstead = askInstead;
@@ -115,14 +125,15 @@ final class ChatRows {
 
     // ─── what the genie answered ───────────────────────────────────────────────────────────
 
-    /// The answer as a page of text next to the genie's lamp, the way chat apps show a model's
-    /// answer: no bubble, the full column. While it streams in, its newest characters fade in.
+    /// The answer as a page of text next to the genie, the way chat apps show a model's answer:
+    /// no bubble, the full column. While it streams in, its newest characters fade in.
     private UIForAnySwing<?, ?> answer(Var<Entry> entry) {
         Val<Boolean> copyable = entry.viewAs(Boolean.class, it -> !it.isWriting());
+        UUID id = entry.get().id();
         return
-            panel("fill, ins 10 0 10 0, gap 12, hidemode 3", "[26!][grow]")
+            panel("fill, ins 10 0 10 0, gap 12, hidemode 3", "[" + GENIE_SIZE + "!][grow]")
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
-            .add("top, gaptop 1", ViewPartsUtil.lamp(Val.of(Genie.Phase.READY), 26))
+            .add("top", picture(it -> answers(it, id)))
             .add("growx, wmin 0",
                 box("fill, wrap 1, ins 0, gap 4, hidemode 3", "[grow]")
                 .add("growx, wmin 0",
@@ -174,7 +185,8 @@ final class ChatRows {
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
             .isVisibleIf(shown)
             .add("growx, wmin 0, wmax " + COLUMN,
-                box("fill, ins 4 18 4 18", "[grow]")
+                box("fill, ins 4 18 4 18, gap 12", "[" + GENIE_SIZE + "!][grow]")
+                .add(picture(it -> true))
                 .add("growx, wmin 0",
                     strip(
                         box("fill, ins 0, gap 8, hidemode 3", "[][grow][]")
@@ -190,6 +202,32 @@ final class ChatRows {
                     .withTooltip(waiting.viewAsString(it -> it.time().isEmpty() ? it.what()
                             : it.what() + ". The genie does one thing at a time, so your message waits until this job is done."))))
             .get(JPanel.class)));
+    }
+
+    /// The genie in its pose: awake, asleep, dizzy, or thinking or working while `moves` says
+    /// so of it, and otherwise awake. A picture in the style, not a component of its own.
+    private UIForAnySwing<?, ?> picture(Predicate<Genie> moves) {
+        Val<IconDeclaration> picture = Viewable.of(IconDeclaration.class, genie, pulse, (it, progress) -> {
+            GenieSvgUtil.Pose pose = GenieSvgUtil.poseOf(it);
+            if (pose.frames > 1 && !moves.test(it)) pose = GenieSvgUtil.Pose.AWAKE;
+            return GenieSvgUtil.genie(GenieSvgUtil.appearanceOf(it.id()), pose, GenieSvgUtil.frameAt(pose, progress));
+        });
+        return box().withPrefSize(GENIE_SIZE, GENIE_SIZE).withMinSize(GENIE_SIZE, GENIE_SIZE)
+                .withStyle(picture, (icon, it) -> it.image(img -> img.image(icon).fitMode(UI.FitComponent.MIN_DIM)));
+    }
+
+    /// Whether the answer with id `answer` is the one `genie` writes now: the last of its answers
+    /// since the user's last message, while something in the conversation is being written. The
+    /// genie beside it thinks and works; those beside older answers stand by.
+    private static boolean answers(Genie genie, UUID answer) {
+        Tuple<Entry> entries = genie.transcript().entries();
+        if (genie.conversations().aside().isPresent() || entries.isEmpty() || !entries.last().isWriting()) return false;
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            Entry it = entries.get(i);
+            if (it.kind() == Entry.Kind.YOU) return false;
+            if (it.kind() == Entry.Kind.GENIE) return it.id().equals(answer);
+        }
+        return false;
     }
 
     /// A slim track with a glow travelling along it while `moving`, and nothing once it stops.

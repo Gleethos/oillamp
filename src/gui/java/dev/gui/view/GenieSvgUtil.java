@@ -126,6 +126,9 @@ final class GenieSvgUtil {
     /// for each genie, one for each frame of its poses.
     private static final Map<List<Object>, IconDeclaration> GENIES = new ConcurrentHashMap<>();
 
+    /// No genie: an empty picture of the same size, for where the genie is in its lamp.
+    static final IconDeclaration NONE = IconDeclaration.ofSvg("<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'/>");
+
     /// The genie that `appearance` describes, in `frame` of `pose`, twenty pixels square.
     static IconDeclaration genie(Appearance appearance, Pose pose, int frame) {
         return GENIES.computeIfAbsent(List.of(appearance, pose, frame), key -> IconDeclaration.ofSvg(svg(appearance, pose, frame)));

@@ -8,6 +8,7 @@ import swingtree.UIForButton;
 import swingtree.UIForPanel;
 import swingtree.animation.Animation;
 import swingtree.animation.AnimationStatus;
+import swingtree.api.IconDeclaration;
 import swingtree.api.Layout;
 import swingtree.dialogs.ConfirmAnswer;
 import swingtree.input.Keyboard;
@@ -113,7 +114,7 @@ public final class GeniesView extends JPanel {
         Viewable.cast(genies).onChange(From.ALL, it -> {
             if (anyWorks()) breathe();
         });
-        rows = new ChatRows(look, this::saveHandout, pulse, this::askInstead,
+        rows = new ChatRows(look, genie, this::saveHandout, pulse, this::askInstead,
                            phase.viewAs(Boolean.class, it -> it == Genie.Phase.READY));
         schedulePage = new SchedulePage(state, actions, look);
         historyPage = new HistoryPage(state, actions, look);
@@ -258,6 +259,14 @@ public final class GeniesView extends JPanel {
         // What the genie shows on its desktop, said here until the user is at its chat to see it.
         Val<Boolean> atItsChat = state.viewAs(Boolean.class, it -> it.selected().equals(id) && it.page() == GeniesState.Page.CHAT);
         Val<Boolean> showsElsewhere = Viewable.of(Boolean.class, shown, atItsChat, (it, there) -> !it.showing().isEmpty() && !there);
+        // Awake, the genie is out of its lamp, in the card's top right corner beside its name,
+        // twice its twenty pixels. Asleep, waking or broken, it is in the lamp, so not shown.
+        Val<Boolean> out = shown.viewAs(Boolean.class, it -> it.phase().isAwake());
+        Val<IconDeclaration> picture = Viewable.of(IconDeclaration.class, shown, pulse, (it, progress) -> {
+            if (!it.phase().isAwake()) return GenieSvgUtil.NONE;
+            GenieSvgUtil.Pose pose = GenieSvgUtil.poseOf(it);
+            return GenieSvgUtil.genie(GenieSvgUtil.appearanceOf(it.id()), pose, GenieSvgUtil.frameAt(pose, progress));
+        });
         return
             panel("fill, ins 7 8 7 8, gap 8", "[26!][grow]")
             .withStyle(isSelected, (on, it) -> it
@@ -266,6 +275,9 @@ public final class GeniesView extends JPanel {
                 // Always there, lit when selected, so selecting a genie moves nothing.
                 .borderAt(UI.Edge.LEFT, 3, on ? FLAME : TRANSPARENT)
                 .borderRadius(10))
+            // Painted on the card rather than added to it, so it moves none of the card's parts.
+            .withStyle(picture, (icon, it) -> it
+                .image(img -> img.image(icon).placement(UI.Placement.TOP_RIGHT).size(46, 46).padding(5, 6, 1, 0)))
             .withCursor(UI.Cursor.HAND)
             .withTooltip(shown.viewAsString(it -> it.name() + " — " + it.status()
                     + (it.showing().isEmpty() ? "" : ". Shows you: " + it.showing()) + ". Right-click for more."))
@@ -276,6 +288,8 @@ public final class GeniesView extends JPanel {
             .add("top", ViewPartsUtil.lamp(shown.viewAs(Genie.Phase.class, Genie::phase), 26))
             .add("growx, wmin 0, wrap",
                 box("fill, wrap 1, ins 0, gap 0, hidemode 3")
+                // Room for the genie, while it is out, so a long name ends before it.
+                .withStyle(out, (room, it) -> it.padding(0, room ? 42 : 0, 0, 0))
                 .add("growx, wmin 0", label(shown.viewAsString(Genie::name)).withStyle(it -> it
                     .componentFont(f -> f.family(FONT).size(13).weight(2f).color(TEXT))))
                 .add("growx, wmin 0", label(shown.viewAsString(Genie::status)).group(Skin.META))
