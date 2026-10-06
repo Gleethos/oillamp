@@ -14,14 +14,63 @@ through `dev.lamp`. `TheShapeOfTheCodeSpec` fails if it ever imports the engine,
 ./gradlew genies
 ```
 
-Out of the box, a genie uses Eden AI's EU endpoint with the key in `EDENAI_API_KEY`. The settings
-page takes a key of the user's own instead, or another place for the model: a model server
-elsewhere, at an `https://` address with a key if it asks for one, such as Ollama behind a proxy;
-or a model server on this computer, Ollama, LM Studio or llama.cpp's server, which needs no key.
-Wherever it is, the Model field offers the models the service lists, from `Lamp.models`: asked
-when the settings open, when another place is chosen, and on Look up. For Eden AI these are the
-models served in the EU. The Settings button stays pressed in while the page is open; pressed
-again, like Done, it keeps the settings and goes back to the genie's chat.
+The settings offer two ways to a model. The simple way, shown first, is Ollama on this computer,
+which Genies installs, starts and gives a model: see "The first start, and the simple way to a
+model". The advanced way, behind a link, has three places: Eden AI's EU endpoint, with the key in
+`EDENAI_API_KEY` or one the user enters; a model server elsewhere, at an `https://` address with a
+key if it asks for one, such as Ollama behind a proxy; or any model server on this computer,
+Ollama, LM Studio or llama.cpp's server, which needs no key. There, the Model field offers the
+models the service lists, from `Lamp.models`: asked when the settings open, when another place is
+chosen, and on Look up. For Eden AI these are the models served in the EU. The Settings button
+stays pressed in while the page is open; pressed again, like Done, it keeps the settings and goes
+back to the genie's chat.
+
+## The first start, and the simple way to a model
+
+Without genies, Genies opens on the settings, without the list of genies, and welcomes the user:
+the lamp lights, Pip rises from its flame and waves, and a few lines say what a genie is and that
+it needs a model. Then the settings appear below. Once the genies can reach their model, "Your
+first genie" makes one; from then on the list of genies is there, and the settings are plain. After
+the last genie is deleted, the welcome comes back.
+
+The first time, with no `settings.json` yet, the settings start where this computer has a model:
+on Ollama, if `ollama` is on the `PATH` or in Genies' own folder; otherwise at Eden AI, if
+`EDENAI_API_KEY` is set; otherwise on Ollama, which Genies then installs. The settings show the
+advanced way first whenever the genies use something other than Ollama at
+`http://127.0.0.1:11434/v1`.
+
+The simple way says what the computer has, whether Ollama is installed and running, and suggests a
+model, which the user can change to any Ollama model. One button does what is left, in this order
+(`Genies.setUpOllama`, through `OllamaKeeper`):
+
+1. **Install Ollama**, unless it is installed or something answers at `127.0.0.1:11434`: Ollama's
+   official archive, `ollama-linux-<amd64|arm64>.tar.zst` from `ollama.com/download` (about
+   1.4 GB), and the `-rocm` one too with an AMD card. It is unpacked as it downloads, in Java and
+   with `tar`, into `ollama.part` beside the shelf's `ollama`, which it replaces once whole. No
+   password, and nothing outside that folder.
+2. **Start Ollama**, unless it runs: `setsid ollama serve` with `OLLAMA_HOST=127.0.0.1:11434`, its
+   output appended to `ollama/serve.log`. In a session of its own, it outlives Genies, so a genie
+   left running keeps its model. Waking a genie that uses Ollama starts it the same way.
+3. **Download the model**, unless Ollama has it, through `/api/pull`. Stopped, Ollama keeps what
+   it has, and the next download goes on from there.
+4. **Prepare it**: `/api/show` must list `tools` among its capabilities, or a genie could not work
+   with it. Then `/api/create` makes `genies/<model>` from it with a context of 32,768 tokens:
+   Ollama's own few thousand would overflow with a genie's instructions and its tools' output.
+5. **Try it**: one word through `/api/chat`, which loads it, for up to ten minutes.
+
+The settings then name `genies/<model>` at `http://127.0.0.1:11434/v1`, and are kept. A step that
+fails says why under the button; Stop ends any step.
+
+The suggestion (`Hardware.suggested`) reads the memory from `/proc/meminfo`, NVIDIA cards from
+`nvidia-smi` and AMD cards from `/sys/class/drm`; a card with less than 4 GB of its own counts as
+none. A model's size comes from its name: `8b` is eight billion parameters, at 4 bits each unless
+the name says `q8_0`, `fp16` or the like; `a3b` means three billion of them work on each word. A
+model weighs about `billions × (0.1 + 0.13 × bits)` GB and needs 1.25 times that plus 3 GB to run.
+It runs on the graphics card if that fits 90 % of the card's memory, on the processor if it fits
+65 % of the computer's, and is too large otherwise. Genies suggests, from `qwen3:32b`,
+`qwen3:30b-a3b`, `gpt-oss:20b`, `qwen3:14b`, `qwen3:8b`, `qwen3:4b` and `qwen3:1.7b` in that
+order, the first that runs on the graphics card; otherwise the first that runs on the processor
+with at most 8 billion parameters working on each word; otherwise `qwen3:1.7b`.
 
 ## Where things are
 
@@ -31,6 +80,8 @@ again, like Done, it keeps the settings and goes back to the genie's chat.
 | the model settings: which place the model runs; Eden AI's key source, entered key and model; the server elsewhere's address, key and model; the model server on this computer's address and model | `~/.local/share/genies/settings.json`, readable by the user only | Genies |
 | each genie's lamp: its home, its settings, its state | `~/.local/share/genies/lamps/<genie id>/` | oillamp |
 | what went wrong that Genies did not expect, with stack traces; past 1 MB it becomes `errors.log.1` | `~/.local/share/genies/errors.log` | Genies |
+| Ollama, when Genies installed it, and what Ollama printed when Genies started it | `~/.local/share/genies/ollama/`, with `bin/ollama` and `serve.log` | Genies |
+| Ollama's models, and Genies' `genies/<model>` versions of them | `~/.ollama/models` | Ollama |
 | each genie's conversations, one file each, with every branch | in its home, `.pi/agent/sessions/<folder>/*.jsonl`, inside its lamp | pi, run by the lamp's session |
 | the genie's instructions, and the model pi uses | in its home, `.pi/agent/APPEND_SYSTEM.md`, and `defaultProvider` and `defaultModel` in `.pi/agent/settings.json` | Genies writes them at every wake |
 | the files a genie hands over | `~/outbox` in its home | the genie |
@@ -360,10 +411,10 @@ Everywhere else, the header, the empty chat and the window's icon, the lamp stay
 
 | Package | What is in it | Touches the outside world |
 |---|---|---|
-| `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, `Fold` for the trees and the list of genies above a narrow window's genie, `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `DateWordingUtil` for the schedule, and `History` for the history: records with withers, every change a pure method | no |
+| `dev.gui.model` | `GeniesState`, `Genie`, `Transcript`, `Entry`, `Settings`, `OllamaSetup` and `Hardware` for the simple way to a model, `Handout`, `Conversations`, `Conversation` and `Talk` for the tree, `Fold` for the trees and the list of genies above a narrow window's genie, `Schedule`, `JobDraft`, `Recurrence`, `Timeline` and `DateWordingUtil` for the schedule, and `History` for the history: records with withers, every change a pure method | no |
 | `dev.gui.pi` | `PiEvent` (what the chat is told) | no |
 | `dev.gui.desktop` | `RfbConnection`, `X11KeysymUtil`, `Desktop` (its socket and its own size) | `RfbConnection` only |
-| `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `GenieFileTransferUtil` (files), `LampApiConversionUtil` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePiSetupUtil` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `HistoryKeeper` (the history, read and saved to through the lamp), `Shelf` (what is kept on disk) | yes |
+| `dev.gui.genie` | `GenieRunner` (one genie's life), `LampLighter` (lamps through `dev.lamp`), `GenieFileTransferUtil` (files), `LampApiConversionUtil` (Lamp events and conversations as `PiEvent` values and tree rows), `GeniePiSetupUtil` (pi's instructions and model in the genie's home), `ScheduleKeeper` (the schedule, through the lamp), `HistoryKeeper` (the history, read and saved to through the lamp), `OllamaKeeper` (Ollama found, installed, started, and a model readied), `Shelf` (what is kept on disk) | yes |
 | `dev.gui.view` | `GeniesView` (the window, bound to `Var<GeniesState>` through lenses), `SchedulePage`, `HistoryPage`, `SettingsPage`, `DesktopScreen`, the look | Swing only |
 | `dev.gui` | `Genies`: the entry point, and the `Actions` the window calls | ties it together |
 
@@ -384,6 +435,8 @@ through one place, one at a time.
 | `ZoomingIntoAGeniesDesktopSpec` | the panel's size as the default, and the zoom steps |
 | `KeepingManyGeniesSpec` | the list of genies, the settings for the three places and their model lists, a narrow window |
 | `KeepingGeniesBetweenRunsSpec` | the shelf |
+| `SettingUpAModelSpec` | model sizes and where they run, the suggestion, the welcome's page, and what setting up Ollama has left to do |
+| `FindingOllamaSpec` | the memory and NVIDIA cards, read as Linux and `nvidia-smi` print them |
 | `WatchingAGeniesDesktopSpec` | the VNC client, against a stand-in desktop playing wayvnc's part byte by byte, asking for a size and being told no included |
 | `KeepingAGenieAliveSpec` | a genie's life through the Lamp API, with oillamp's engine in the test's JVM on a simulated machine and a stand-in pi that writes conversations as pi does; `lamp show` opening its desktop |
 | `PlanningAGeniesWeekSpec` | the ways a job repeats and their cron expressions, the editor's checks and sentence, and the timeline |
