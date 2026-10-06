@@ -131,12 +131,12 @@ class DrawingAGenieSpec extends Specification {
             def again = play.poof(20)
         expect:
             !(amber in paintedAt(play, 0.5)) && !(colour in paintedAt(play, 0.5))
-            amber in paintedAt(play, 2.5)
-            !(colour in paintedAt(play, 2.5))
-            colour in paintedAt(play, 5.5)
-            [7.5d, 12.0d, 60.0d, 3600.0d].every { colour in paintedAt(play, it) }
+            amber in paintedAt(play, 3.0)
+            !(colour in paintedAt(play, 3.0))
+            colour in paintedAt(play, 6.5)
+            [8.5d, 12.0d, 60.0d, 3600.0d].every { colour in paintedAt(play, it) }
             !(colour in paintedAt(again, 21.15)) && !(amber in paintedAt(again, 21.15))
-            again.pip().colour().getRGB() in paintedAt(again, 21.1 + 7.5)
-            !play.formed(6.0) && play.formed(7.0)
+            again.pip().colour().getRGB() in paintedAt(again, 21.1 + 8.5)
+            !play.formed(7.0) && play.formed(8.0)
     }
 }
