@@ -415,7 +415,9 @@ One more pose, waving, is only the welcome's: the genie looks at the user and wa
 `WelcomeScene` paints the welcome from the moment alone: its picture, 360 units tall, with the
 lamp in the middle, 25 of the genie's pixels wide, the genie's pixels a 50th of the picture's
 height; and its light, behind the picture and the words, so that the light can shine past the
-picture. The page's clock moves it from when the welcome is shown for as long as it is shown; the
+picture. In a narrow window its empty top is cut: none of it while the welcome is 760 units wide
+or wider, 80 units once it is 360 or narrower, evenly in between; the lamp and the genie keep
+their size and place at the bottom, and the light fades out at the cut top. The page's clock moves it from when the welcome is shown for as long as it is shown; the
 words fade in from 7.4 seconds, and the settings' card appears at 8.2.
 
 | Seconds | What happens |
