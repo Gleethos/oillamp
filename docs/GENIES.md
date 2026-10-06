@@ -28,7 +28,8 @@ back to the genie's chat.
 ## The first start, and the simple way to a model
 
 Without genies, Genies opens on the settings, without the list of genies, and welcomes the user:
-the lamp lights, Pip rises from its flame and waves, and a few lines say what a genie is and that
+the lamp lights, a genie takes form from its flame (see "The welcome's picture"), and a few lines
+say what a genie is and that
 it needs a model. Then the settings appear below. Once the genies can reach their model, "Your
 first genie" makes one; from then on the list of genies is there, and the settings are plain. After
 the last genie is deleted, the welcome comes back.
@@ -407,6 +408,36 @@ frame.
 
 Everywhere else, the header, the empty chat and the window's icon, the lamp stays.
 
+One more pose, waving, is only the welcome's: the genie looks at the user and waves one hand.
+
+### The welcome's picture
+
+`WelcomeScene` paints the welcome from the moment alone, in a box 300 units tall, with the lamp in
+the middle, 25 of the genie's pixels wide, and the genie's pixels a 42nd of the box's height. The
+page's clock moves it from when the welcome is shown for as long as it is shown; the words fade in
+from 6.4 seconds, and the settings' card appears at 7.2.
+
+| Seconds | What happens |
+|---|---|
+| 0 – 1.0 | the lamp fades in, dark and cold, with a wisp of smoke |
+| 1.2 – 2.8 | the flame catches on the wick; its light grows over the background, and lights the lamp |
+| 2.8 – 3.6 | the flame burns calmly, in the lamp's amber |
+| 3.6 – 5.0 | the flame turns to pixels on the genie's own grid, which grow to the genie's size; until 5.2, the flame, its light and the lamp's shine turn from amber to the genie's colour |
+| 5.1 – 5.4 | the flame draws itself in |
+| 5.4 – 5.9 | it bursts, and sparks fly |
+| 5.7 – 6.7 | the genie takes form from the flame, its pixels fading in from its tail up |
+| 6.8 on | the genie lives: its tail is a flame on the wick, its body flickers in the flame's colours above it, it glows and floats, blinks, and waves, thinks, works and rests by turns |
+
+Each play has a genie of its own, from a random id, as a new genie has. Once it has taken form, a
+click on it or on the lamp makes it vanish: dizzy, in a flash, its pixels fly apart in a puff of
+smoke, which clears in 1.1 seconds. The next play then begins with another genie, the lamp
+already there; the words and the card stay.
+
+The lamp is drawn as SVG, without its flame (`LampSvgUtil.cold`), darkened while no flame burns
+and shining in the flame's colour, strongest at the wick. Per-pixel chances come from a hash of the
+pixel and the moment: Java's `Random`, seeded with neighbouring numbers, starts with nearly the
+same number, and whole rows would flicker alike.
+
 ## How the code is arranged
 
 | Package | What is in it | Touches the outside world |
@@ -431,7 +462,7 @@ through one place, one at a time.
 | `FollowingAConversationSpec` | how events become the chat, and asking a question differently |
 | `BranchingAConversationSpec` | how pi's entries become the tree of conversations and branches |
 | `ReadingAGeniesMarkdownSpec` | Markdown as models write it, and the fade of a streaming answer |
-| `DrawingAGenieSpec` | a genie's appearance from its id, its pose from its phase, and that every appearance, pose and frame can be drawn |
+| `DrawingAGenieSpec` | a genie's appearance from its id, its pose from its phase, that every appearance, pose and frame can be drawn, and the welcome's picture at moments of its play |
 | `ZoomingIntoAGeniesDesktopSpec` | the panel's size as the default, and the zoom steps |
 | `KeepingManyGeniesSpec` | the list of genies, the settings for the three places and their model lists, a narrow window |
 | `KeepingGeniesBetweenRunsSpec` | the shelf |
