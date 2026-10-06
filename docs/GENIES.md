@@ -444,6 +444,16 @@ and shining in the flame's colour, strongest at the wick. Per-pixel chances come
 pixel and the moment: Java's `Random`, seeded with neighbouring numbers, starts with nearly the
 same number, and whole rows would flicker alike.
 
+Gradients are painted once, into pictures that are kept, and each moment draws the pictures,
+stretched and faded as needed: the light, the lamp's shine, the lamp itself, dark and not, and the
+poof's flash. On screen, Java hands a kept picture to the graphics system from its second
+drawing on, after which drawing it costs next to nothing; a gradient painted anew each moment
+over the whole welcome took about 48 ms, longer than a frame, and made the window slow to
+resize. So the light and the shine never take a colour between amber and the genie's, which
+would be a new picture each moment: the amber one fades out as the genie's fades in. Painted
+over the welcome at 1400 by 720 pixels, a moment now takes under 1 ms, 3 at most. The genie's pixels are
+painted without smoothing, which does nothing for squares on whole pixels but slow them down.
+
 ## How the code is arranged
 
 | Package | What is in it | Touches the outside world |
