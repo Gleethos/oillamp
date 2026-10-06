@@ -412,21 +412,27 @@ One more pose, waving, is only the welcome's: the genie looks at the user and wa
 
 ### The welcome's picture
 
-`WelcomeScene` paints the welcome from the moment alone, in a box 300 units tall, with the lamp in
-the middle, 25 of the genie's pixels wide, and the genie's pixels a 42nd of the box's height. The
-page's clock moves it from when the welcome is shown for as long as it is shown; the words fade in
-from 6.4 seconds, and the settings' card appears at 7.2.
+`WelcomeScene` paints the welcome from the moment alone: its picture, 360 units tall, with the
+lamp in the middle, 25 of the genie's pixels wide, the genie's pixels a 50th of the picture's
+height; and its light, behind the picture and the words, so that the light can shine past the
+picture. The page's clock moves it from when the welcome is shown for as long as it is shown; the
+words fade in from 7.4 seconds, and the settings' card appears at 8.2.
 
 | Seconds | What happens |
 |---|---|
 | 0 – 1.0 | the lamp fades in, dark and cold, with a wisp of smoke |
-| 1.2 – 2.8 | the flame catches on the wick; its light grows over the background, and lights the lamp |
-| 2.8 – 3.6 | the flame burns calmly, in the lamp's amber |
-| 3.6 – 5.0 | the flame turns to pixels on the genie's own grid, which grow to the genie's size; until 5.2, the flame, its light and the lamp's shine turn from amber to the genie's colour |
-| 5.1 – 5.4 | the flame draws itself in |
-| 5.4 – 5.9 | it bursts, and sparks fly |
-| 5.7 – 6.7 | the genie takes form from the flame, its pixels fading in from its tail up |
-| 6.8 on | the genie lives: its tail is a flame on the wick, its body flickers in the flame's colours above it, it glows and floats, blinks, and waves, thinks, works and rests by turns |
+| 1.2 – 3.6 | the flame catches on the wick, slowly, and lights the lamp |
+| 3.6 – 4.6 | the flame burns calmly, in the lamp's amber |
+| 4.6 – 6.0 | the flame turns to pixels on the genie's own grid, which grow to the genie's size; until 6.2, the flame, its light and the lamp's shine turn from amber to the genie's colour |
+| 6.1 – 6.4 | the flame draws itself in |
+| 6.4 – 6.9 | it bursts, and sparks fly |
+| 6.7 – 7.7 | the genie takes form from the flame, its pixels fading in from its tail up |
+| 7.8 on | the genie lives: its tail is a flame on the wick, its body flickers in the flame's colours above it; it floats a pixel up and down every 0.8 seconds, sways a pixel left and right every 7, blinks, and waves, thinks, works and rests by turns |
+
+The light comes from the flame, and then from the genie: a round glow, a touch wider than tall,
+whose middle is the flame's middle, rising as the flame grows, and then the genie's, as it takes
+form, floats and sways. Its radius is 2.4 times the flame's height, flicker and all; the genie
+shines as a flame of 12 of its pixels, its flicker too. It fades to nothing where the welcome ends.
 
 Each play has a genie of its own, from a random id, as a new genie has. Once it has taken form, a
 click on it or on the lamp makes it vanish: dizzy, in a flash, its pixels fly apart in a puff of
