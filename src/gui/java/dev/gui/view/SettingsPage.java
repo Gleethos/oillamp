@@ -1,11 +1,12 @@
 package dev.gui.view;
 
 import java.awt.Color;
+import java.awt.Cursor;
 import java.awt.geom.RoundRectangle2D;
-import java.util.EnumSet;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
-import dev.gui.model.Genie;
 import dev.gui.model.GeniesState;
 import dev.gui.model.OllamaSetup;
 import dev.gui.model.Settings;
@@ -33,7 +34,8 @@ import static swingtree.UI.*;
 /// server elsewhere, or any model server on this computer.
 ///
 /// Without genies, the page is the first thing the user sees, and welcomes them: the lamp lights,
-/// Pip rises from it and waves, and a few lines say what genies are and what they need.
+/// Pip takes form from its flame ([WelcomeScene]), and a few lines say what genies are and what
+/// they need.
 ///
 /// Every field is a lens onto one value of the [GeniesState], so the page keeps nothing of its
 /// own but its welcome's animation. The app keeps the settings when the page is left, by Done or
@@ -67,12 +69,12 @@ final class SettingsPage {
     private static final String KEY_STAYS_HERE = "The key stays on this computer. Genies never see it: oillamp adds it to "
             + "their requests as they leave the sandbox. An entered key is kept in a file only you can read.";
 
-    /// Pip as the welcome shows it: the first of the genies' colours, in a turban and a vest.
-    private static final GenieSvgUtil.Appearance PIP = new GenieSvgUtil.Appearance(GenieSvgUtil.COLOURS.getFirst(),
-            EnumSet.of(GenieSvgUtil.Accessory.TURBAN, GenieSvgUtil.Accessory.VEST));
+    /// When the welcome's words fade in, and how long they take, in seconds of its play.
+    private static final double WORDS_FROM = 6.4;
+    private static final double WORDS_TAKE = 0.8;
 
-    /// How long the welcome's animation waits for the window to open, and how long it plays.
-    private static final LifeTime WELCOME = LifeTime.of(0.4, TimeUnit.SECONDS, 3.6, TimeUnit.SECONDS);
+    /// When the settings' card appears below the welcome, in seconds of its play.
+    private static final double CARD_AT = 7.2;
 
     static UIForAnySwing<?, ?> of(Var<GeniesState> state, Actions actions, Val<Boolean> visible) {
         Var<Settings> settings = state.zoomTo(GeniesState::settings, GeniesState::withSettings);
@@ -107,11 +109,16 @@ final class SettingsPage {
         Val<Boolean> busy = ollama.viewAs(Boolean.class, it -> it.step().isBusy());
         Val<Boolean> inUse = state.viewAs(Boolean.class, it -> it.ollama().inUse(it.settings()));
         boolean found = state.get().environmentKey().isPresent();
-        // The welcome plays when Genies starts without genies, and again when the last is deleted.
-        Var<Double> intro = Var.of(welcome.get() ? 0.0 : 1.0);
-        if (welcome.get()) welcome(intro);
+        // The welcome plays when Genies starts without genies, and again when the last is
+        // deleted. Its clock is the seconds since it began, and it runs as long as it is shown.
+        // A click on the genie starts another play of its picture, on the same clock.
+        Var<Double> clock = Var.of(welcome.get() ? 0.0 : CARD_AT);
+        Var<WelcomeScene.Play> scene = Var.of(WelcomeScene.Play.first(0));
+        AtomicLong began = new AtomicLong();
+        AtomicBoolean playing = new AtomicBoolean();
+        if (welcome.get()) play(clock, scene, welcome, began, playing);
         Viewable.cast(welcome).onChange(From.ALL, it -> {
-            if (it.currentValue().orElse(false)) welcome(intro);
+            if (it.currentValue().orElse(false)) play(clock, scene, welcome, began, playing);
         });
         return
             scrollPane(conf -> conf.fitWidth(true)).group(Skin.PAGE_SCROLL).withEmptyBorder(0)
@@ -122,12 +129,12 @@ final class SettingsPage {
                 panel().withFlowLayout(UI.HorizontalAlignment.CENTER, 0, 30)
                 .withMinSize(0, 0).withPrefSize(PAGE_REFERENCE, 0)
                 .withStyle(it -> it.backgroundColor(Palette.TRANSPARENT).padding(0, 16, 0, 16))
-                .add(CARD, welcomeAbove(state, intro, welcome))
+                .add(CARD, welcomeAbove(state, clock, scene, welcome))
                 .add(CARD,
                     panel().withFlowLayout(UI.HorizontalAlignment.LEFT, 14, 12).group(Skin.CARD)
                     .withMinSize(0, 0).withPrefSize(CARD_REFERENCE, 0)
                     // Without genies, the card comes after the welcome has had its moment.
-                    .isVisibleIf(Viewable.of(Boolean.class, welcome, intro, (first, at) -> !first || at >= 0.8))
+                    .isVisibleIf(Viewable.of(Boolean.class, welcome, clock, (first, at) -> !first || at >= CARD_AT))
                     .add(WHOLE, label(welcome.viewAsString(it -> it ? "Your genies' model" : "Settings")).group(Skin.EMPTY_TITLE))
                     .add(WHOLE, ViewPartsUtil.wrapped(advanced.viewAsString(it -> it
                             ? "Where your genies' model runs, and how they reach it."
@@ -257,51 +264,43 @@ final class SettingsPage {
                              .onClick(it -> actions.newGenie())))));
     }
 
-    /*
-     *  The welcome, above the settings while there are no genies. Its parts appear one after the
-     *  other as the animation runs from 0 to 1:
-     *
-     *      0    – 0.15   the lamp fades in, cold, with a wisp of smoke
-     *      0.15 – 0.25   its flame catches
-     *      0.28 – 0.55   Pip rises from the flame
-     *      0.55 – 0.75   Pip waves
-     *      0.6  – 0.85   the words fade in
-     *      0.8           the settings' card appears below
-     */
-    private static UIForAnySwing<?, ?> welcomeAbove(Var<GeniesState> state, Val<Double> intro, Val<Boolean> welcome) {
+    /// The welcome, above the settings while there are no genies: its picture, then its words.
+    private static UIForAnySwing<?, ?> welcomeAbove(Var<GeniesState> state, Val<Double> clock, Var<WelcomeScene.Play> scene,
+                                                    Val<Boolean> welcome) {
         Val<String> foundKey = state.viewAsString(it -> it.environmentKey().isPresent() && it.settings().place() == Settings.Place.EDEN_AI
                 ? "Genies found an Eden AI key where it was started, so your genies can think at Eden AI right away. "
                   + "Or have Genies set up a model on this computer instead: the simple way, below."
                 : "To think, genies need a model. Genies can set one up for you, right here on this computer.");
         return
-            box("fill, wrap 1, ins 10 0 0 0, gap 12", "[grow, center]").isVisibleIf(welcome)
-            .add("w 220!, h 200!",
-                box().withStyle(intro, (at, it) -> {
-                    double lamp = Math.min(1, at / 0.15);
-                    Genie.Phase flame = at < 0.15 ? Genie.Phase.ASLEEP : at < 0.25 ? Genie.Phase.WAKING : Genie.Phase.READY;
-                    double rise = Math.max(0, Math.min(1, (at - 0.28) / 0.27));
-                    double eased = 1 - Math.pow(1 - rise, 3);
-                    boolean waving = at >= 0.55 && at < 0.75;
-                    GenieSvgUtil.Pose pose = waving ? GenieSvgUtil.Pose.WORKING : GenieSvgUtil.Pose.AWAKE;
-                    int frame = waving ? (int) ((at - 0.55) / 0.05) % 2 : 0;
-                    return it
-                        .image(UI.Layer.BACKGROUND, "lamp", img -> img.svg(LampSvgUtil.lamp(flame))
-                               .placement(UI.Placement.BOTTOM).size(130, 130).opacity((float) lamp))
-                        .image(UI.Layer.CONTENT, "pip", img -> img.svg(GenieSvgUtil.svg(PIP, pose, frame))
-                               .placement(UI.Placement.TOP).size(100, 100).offset(0, (int) Math.round(60 * (1 - eased)))
-                               .opacity((float) eased));
+            box("fill, wrap 1, ins 0, gap 12", "[grow, center]").isVisibleIf(welcome)
+            .add("growx, wmin 0, h 300!",
+                box().withMinSize(0, 0)
+                .withStyle(clock, (at, it) -> {
+                    int width = UI.scale(it.componentWidth());
+                    int height = UI.scale(it.componentHeight());
+                    return it.painter(UI.Layer.CONTENT, g -> WelcomeScene.paint(g, width, height, scene.get(), at));
+                })
+                // The genie, once it has taken form, and its lamp can be clicked: it vanishes in a
+                // poof, and another genie comes.
+                .onMouseMove(it -> it.getComponent().setCursor(Cursor.getPredefinedCursor(
+                        scene.get().formed(clock.get()) && WelcomeScene.hits(it.getComponent().getWidth(), it.getComponent().getHeight(),
+                                it.mouseX(), it.mouseY()) ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR)))
+                .onMouseClick(it -> {
+                    if (scene.get().formed(clock.get())
+                            && WelcomeScene.hits(it.getComponent().getWidth(), it.getComponent().getHeight(), it.mouseX(), it.mouseY()))
+                        scene.set(scene.get().poof(clock.get()));
                 }))
-            .add("growx, wmin 0", fading(Val.of("Welcome to Genies"), 22, TEXT, intro))
+            .add("growx, wmin 0", fading(Val.of("Welcome to Genies"), 22, TEXT, clock))
             .add("growx, wmin 0", fading(Val.of("A genie is an AI helper with a computer of its own: a Linux desktop in a sandbox, "
-                    + "where it can browse the web, run programs and make files, without ever touching yours."), 14, SUBTEXT, intro))
-            .add("growx, wmin 0", fading(foundKey, 14, SUBTEXT, intro));
+                    + "where it can browse the web, run programs and make files, without ever touching yours."), 14, SUBTEXT, clock))
+            .add("growx, wmin 0", fading(foundKey, 14, SUBTEXT, clock));
     }
 
-    /// Lines of `text` that fade in with the welcome, centred, wrapped to their width.
-    private static UIForAnySwing<?, ?> fading(Val<String> text, int size, Color colour, Val<Double> intro) {
+    /// Lines of `text` that fade in with the welcome's words, centred, wrapped to their width.
+    private static UIForAnySwing<?, ?> fading(Val<String> text, int size, Color colour, Val<Double> clock) {
         return
             box().withMinSize(0, 0)
-            .withStyle(Viewable.of(Faded.class, text, intro, (words, at) -> new Faded(words, Math.max(0, Math.min(1, (at - 0.6) / 0.25)))),
+            .withStyle(Viewable.of(Faded.class, text, clock, (words, at) -> new Faded(words, Math.max(0, Math.min(1, (at - WORDS_FROM) / WORDS_TAKE)))),
                 (faded, it) -> it.padding(2, 0, 2, 0).text(t -> t
                     .content(StyledString.of(f -> f.family(FONT).size(size).color(ViewPartsUtil.withAlpha(colour, (int) Math.round(255 * faded.shown())))
                                                    .horizontalAlignment(UI.HorizontalAlignment.CENTER), faded.words()))
@@ -311,12 +310,16 @@ final class SettingsPage {
     /// Words of the welcome, and how far they faded in, from 0 to 1.
     private record Faded(String words, double shown) {}
 
-    /// Plays the welcome from its start.
-    private static void welcome(Var<Double> intro) {
-        intro.set(0.0);
-        UI.animateFor(WELCOME).go(new Animation() {
-            @Override public void run(AnimationStatus status) { intro.set(status.progress()); }
-            @Override public void finish(AnimationStatus status) { intro.set(1.0); }
+    /// Plays the welcome from its start, for as long as it is shown. Played again while it plays,
+    /// it starts over on the same loop.
+    private static void play(Var<Double> clock, Var<WelcomeScene.Play> scene, Val<Boolean> welcome, AtomicLong began, AtomicBoolean playing) {
+        began.set(System.nanoTime());
+        clock.set(0.0);
+        scene.set(WelcomeScene.Play.first(0));
+        if (playing.getAndSet(true)) return;
+        UI.animateFor(LifeTime.of(1, TimeUnit.SECONDS)).asLongAs(status -> welcome.get()).go(new Animation() {
+            @Override public void run(AnimationStatus status) { clock.set((System.nanoTime() - began.get()) / 1e9); }
+            @Override public void finish(AnimationStatus status) { playing.set(false); }
         });
     }
 
