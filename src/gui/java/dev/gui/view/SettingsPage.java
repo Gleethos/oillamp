@@ -96,6 +96,9 @@ final class SettingsPage {
                         .add("wmin 0", radioButton("on this computer", Settings.Place.THIS_MACHINE, place))
                         .add("growx, wmin 0, gapleft 24", ViewPartsUtil.note("A model server such as Ollama, LM Studio or llama.cpp.", Val.of(true))))
 
+                    // A line across the card: below it are the settings of the place chosen above.
+                    .add(WHOLE, box().withStyle(it -> it.borderAt(UI.Edge.TOP, 1, Palette.BORDER)))
+
                     // ── Eden AI ──
                     .add(LABEL, label("Key").isVisibleIf(isEdenAi))
                     .add(FIELD,
