@@ -50,9 +50,11 @@ public sealed interface PiEvent {
 
         /// One message of the conversation.
         ///
-        /// @param fromUser true for what the user wrote, false for the genie's answers
-        /// @param id       pi's id for the message, by which it can be asked differently
-        public record Line(boolean fromUser, String text, String id) {}
+        /// @param fromUser  true for what the user wrote, false for the genie's answers
+        /// @param id        pi's id for the message, by which it can be asked differently
+        /// @param usedTools for an answer, the genie used tools after it
+        /// @param failed    for an answer, the model failed, and `text` is the error it gave
+        public record Line(boolean fromUser, String text, String id, boolean usedTools, boolean failed) {}
     }
 
     /// The chat shows this conversation.

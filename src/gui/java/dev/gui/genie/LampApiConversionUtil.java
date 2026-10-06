@@ -36,12 +36,26 @@ final class LampApiConversionUtil {
     }
 
     /// The questions and answers from the start of `conversation` to `leaf`, as the chat shows them.
+    /// A failed answer becomes two lines: what the genie said before it failed, if anything, and
+    /// the error.
     static PiEvent.History history(Lamp.Conversation conversation, String leaf) {
         Tuple<PiEvent.History.Line> lines = Tuple.of(PiEvent.History.Line.class);
         for (Lamp.Conversation.Entry entry : conversation.lineTo(leaf)) {
-            boolean asked = entry.kind() == Lamp.Conversation.Kind.MESSAGE_TO_AGENT;
-            if ((asked || entry.kind() == Lamp.Conversation.Kind.MESSAGE_FROM_AGENT) && !entry.text().isBlank())
-                lines = lines.add(new PiEvent.History.Line(asked, entry.text(), entry.id()));
+            if (entry.kind() == Lamp.Conversation.Kind.MESSAGE_TO_AGENT && !entry.text().isBlank())
+                lines = lines.add(new PiEvent.History.Line(true, entry.text(), entry.id(), false, false));
+            if (entry.kind() != Lamp.Conversation.Kind.MESSAGE_FROM_AGENT) continue;
+            String said = entry.text();
+            String error = "";
+            if (entry.failed()) {
+                // oillamp keeps a failed answer's text and its error in one, as two paragraphs.
+                int split = said.lastIndexOf("\n\n");
+                error = split < 0 ? said : said.substring(split + 2);
+                said = split < 0 ? "" : said.substring(0, split);
+            }
+            if (!said.isBlank())
+                lines = lines.add(new PiEvent.History.Line(false, said, entry.id(), !entry.calls().isEmpty(), false));
+            if (!error.isBlank())
+                lines = lines.add(new PiEvent.History.Line(false, error, entry.id(), false, true));
         }
         return new PiEvent.History(lines, leaf);
     }

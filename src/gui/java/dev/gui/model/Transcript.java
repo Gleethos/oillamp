@@ -2,7 +2,10 @@ package dev.gui.model;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import dev.gui.pi.PiEvent;
 
@@ -15,6 +18,15 @@ import sprouts.Tuple;
 /// is filed with the tool call it belongs to, and a finished answer replaces its pieces with the
 /// text pi recorded.
 public record Transcript(Tuple<Entry> entries) {
+
+    /// oillamp's answer when it cannot reach the model service, as `Egress` words it.
+    private static final Pattern UNREACHABLE = Pattern.compile("502 oillamp: cannot reach the model service at (\\S+) — (.+)", Pattern.DOTALL);
+
+    /// An error with an HTTP status first, as pi gives a model service's answer: `429 {...}`, `451: {...}`.
+    private static final Pattern STATUS = Pattern.compile("(\\d{3}):? (.+)", Pattern.DOTALL);
+
+    /// The message in a model service's JSON error, such as `{"message":"…","type":"…"}`.
+    private static final Pattern MESSAGE = Pattern.compile("\"message\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
 
     public static Transcript empty() { return new Transcript(Tuple.of(Entry.class)); }
 
@@ -53,15 +65,19 @@ public record Transcript(Tuple<Entry> entries) {
                     // think, and some say so in the middle of an answer.
                     .orElseGet(() -> thinking.more().isEmpty() ? this
                                : add(Entry.of(Entry.Kind.THINKING, thinking.more()).withState(Entry.State.WRITING)));
-            case PiEvent.ToolStarted tool -> doneThinking().withoutEmptyAnswers().add(Entry.of(Entry.Kind.TOOL, tool.summary())
+            case PiEvent.ToolStarted tool -> doneThinking().withoutEmptyAnswers().beforeTools().add(Entry.of(Entry.Kind.TOOL, tool.summary())
                     .withTitle(tool.tool()).withRef(tool.call()).withState(Entry.State.WRITING));
             case PiEvent.ToolFinished tool -> toolCall(tool.call())
                     .map(call -> replace(call.withDetail(tool.output())
                             .withState(tool.failed() ? Entry.State.FAILED : Entry.State.DONE)))
                     .orElse(this);
             case PiEvent.Answered answered -> answered(answered);
-            case PiEvent.Retrying retry -> notice("The model did not answer (" + retry.reason()
-                    + "). Trying again, " + retry.attempt() + " of " + retry.attempts() + ".");
+            case PiEvent.Retrying retry -> {
+                // The failed answer before a retry said why already.
+                String again = "Trying again, " + retry.attempt() + " of " + retry.attempts() + ".";
+                boolean told = !entries.isEmpty() && entries.last().kind() == Entry.Kind.NOTICE && entries.last().isFailed();
+                yield told ? notice(again) : problem(explained(retry.reason()) + " " + again);
+            }
             case PiEvent.Settled ignored -> settled();
             case PiEvent.Refused refused -> problem("The genie could not take that: " + refused.reason());
             case PiEvent.History history -> asksTheSame(history) ? learnIds(history) : from(history);
@@ -90,10 +106,12 @@ public record Transcript(Tuple<Entry> entries) {
     /// The conversation as pi has it, with nothing but what was said: the chat shows it when
     /// the genie wakes, or moves to another conversation or branch.
     private static Transcript from(PiEvent.History history) {
-        Tuple<Entry> said = Tuple.of(Entry.class);
+        Transcript said = empty();
         for (PiEvent.History.Line line : history.lines())
-            said = said.add(Entry.of(line.fromUser() ? Entry.Kind.YOU : Entry.Kind.GENIE, line.text()).withRef(line.id()));
-        return new Transcript(said);
+            said = line.failed() ? said.failed(line.text())
+                 : said.add(Entry.of(line.fromUser() ? Entry.Kind.YOU : Entry.Kind.GENIE, line.text())
+                                 .withRef(line.id()).withBeforeTools(line.usedTools()));
+        return said;
     }
 
     /// pi's ids for the user's questions, learnt from what pi sent after an answer. The chat
@@ -130,7 +148,55 @@ public record Transcript(Tuple<Entry> entries) {
         result = result.withoutEmptyAnswers();
         result = new Transcript(result.entries.map(entry ->
                 entry.kind() == Entry.Kind.GENIE && entry.isWriting() ? entry.withState(Entry.State.DONE) : entry));
-        return answered.failed().isEmpty() ? result : result.problem(answered.failed());
+        return answered.failed().isEmpty() ? result : result.failed(answered.failed());
+    }
+
+    /// The model could not answer, and gave `error`: a problem, said plainly, or a notice when the
+    /// genie was stopped, which is no problem.
+    private Transcript failed(String error) {
+        String stripped = error.strip().toLowerCase(Locale.ROOT);
+        return stripped.endsWith("aborted") || stripped.endsWith("aborted.")
+               ? notice("Stopped before the answer was done.")
+               : problem(explained(error));
+    }
+
+    /// Why the model could not answer, said plainly. `error` is what pi got: oillamp's answer
+    /// when it could not pass the request on, the SDK's word for a broken connection, or the
+    /// model service's status and message.
+    private static String explained(String error) {
+        String raw = error.strip();
+        Matcher unreachable = UNREACHABLE.matcher(raw);
+        if (unreachable.matches())
+            return "oillamp could not reach the model service at " + unreachable.group(1) + " (" + unreachable.group(2).strip()
+                   + "), so the genie got no answer. The service, or this computer's way to it, is down; the genie is fine.";
+        if (raw.equals("Connection error."))
+            return "The connection to the model service broke off before an answer came, so the genie got none. The genie is fine.";
+        Matcher status = STATUS.matcher(raw);
+        String told = "The model could not answer: " + raw;
+        if (status.matches()) {
+            int code = Integer.parseInt(status.group(1));
+            String said = status.group(2).strip();
+            Matcher message = MESSAGE.matcher(said);
+            if (message.find()) said = message.group(1).replace("\\\"", "\"").replace("\\\\", "\\");
+            String who = code == 401 || code == 403 ? "The model service refused the key"
+                       : code == 429 ? "The model service takes no more requests for now, or the key's credit ran out"
+                       : code >= 500 ? "The model service had trouble of its own"
+                       : "The model service refused the request";
+            // oillamp says plainly already what it refused.
+            told = said.startsWith("oillamp:") ? said : who + " (" + code + "): " + said;
+        }
+        // Ending as a sentence, so more can follow it.
+        return told.matches("(?s).*[.!?]") ? told : told + ".";
+    }
+
+    /// The genie goes on to use a tool, so its last answer since the user wrote said what it does.
+    private Transcript beforeTools() {
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            Entry entry = entries.get(i);
+            if (entry.kind() == Entry.Kind.YOU) break;
+            if (entry.kind() == Entry.Kind.GENIE) return entry.beforeTools() ? this : replace(entry.withBeforeTools(true));
+        }
+        return this;
     }
 
     private static Entry answer(String text) {
