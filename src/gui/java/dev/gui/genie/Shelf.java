@@ -24,7 +24,8 @@ import sprouts.Tuple;
 ///
 /// - `genies.json`: each genie's id and name, in order;
 /// - `settings.json`: the model settings, readable by this user only, because it can hold a key;
-/// - `lamps/<id>/`: each genie's lamp, with its home and its conversation in it.
+/// - `lamps/<id>/`: each genie's lamp, with its home and its conversation in it;
+/// - `ollama/`: Ollama, when Genies installed it, and what Ollama says when Genies starts it.
 ///
 /// The directory is `$XDG_DATA_HOME/genies`, which is usually `~/.local/share/genies`.
 public final class Shelf {
@@ -46,6 +47,12 @@ public final class Shelf {
 
     /// Where Genies writes what went wrong that it did not expect.
     public Path errorLog() { return root.resolve("errors.log"); }
+
+    /// Where Genies installs Ollama.
+    public Path ollama() { return root.resolve("ollama"); }
+
+    /// Whether settings were kept before; not the first time Genies starts.
+    public boolean hasSettings() { return Files.exists(root.resolve("settings.json")); }
 
     /// The lamp directory of the genie `id`.
     public Path lampOf(UUID id) { return root.resolve("lamps").resolve(id.toString()); }
