@@ -115,6 +115,15 @@ final class GenieSvgUtil {
         };
     }
 
+    /// The pose beside `entry` of the chat, showing what the genie did then: working beside an
+    /// answer it went on to use tools after, awake beside any other answer, thinking beside its
+    /// thoughts, and dizzy beside a problem.
+    static Pose poseBeside(Entry entry) {
+        if (entry.kind() == Entry.Kind.THINKING) return Pose.THINKING;
+        if (entry.kind() == Entry.Kind.NOTICE && entry.isFailed()) return Pose.DIZZY;
+        return entry.beforeTools() ? Pose.WORKING : Pose.AWAKE;
+    }
+
     /// The frame of `pose` to show when an animation looping from 0 to 1 is at `progress`.
     static int frameAt(Pose pose, double progress) {
         return Math.min(pose.frames - 1, (int) (progress * pose.frames));

@@ -9,6 +9,7 @@ import java.awt.geom.RoundRectangle2D;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 import javax.swing.JPanel;
@@ -133,7 +134,8 @@ final class ChatRows {
         return
             panel("fill, ins 10 0 10 0, gap 12, hidemode 3", "[" + GENIE_SIZE + "!][grow]")
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
-            .add("top", picture(it -> answers(it, id)))
+            .add("top", picture(it -> answers(it, id) ? GenieSvgUtil.poseOf(it) : GenieSvgUtil.poseBeside(entry.get()),
+                                it -> answers(it, id)))
             .add("growx, wmin 0",
                 box("fill, wrap 1, ins 0, gap 4, hidemode 3", "[grow]")
                 .add("growx, wmin 0",
@@ -159,6 +161,7 @@ final class ChatRows {
         Val<Boolean> expanded = entry.viewAs(Boolean.class, Entry::expanded);
         return
             strip(
+                picture(it -> GenieSvgUtil.Pose.THINKING, it -> entry.get().isWriting()),
                 box("fill, ins 0, gap 8, hidemode 3", "[][grow][]")
                 .add(label(entry.viewAsString(it -> it.isWriting() ? "✦ thinking" : "✦ thought")).withStyle(it -> it
                     .componentFont(f -> f.family(FONT).size(12).weight(2f).color(BRASS))))
@@ -185,10 +188,10 @@ final class ChatRows {
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
             .isVisibleIf(shown)
             .add("growx, wmin 0, wmax " + COLUMN,
-                box("fill, ins 4 18 4 18, gap 12", "[" + GENIE_SIZE + "!][grow]")
-                .add(picture(it -> true))
+                box("fill, ins 4 18 4 18", "[grow]")
                 .add("growx, wmin 0",
                     strip(
+                        picture(GenieSvgUtil::poseOf, it -> true),
                         box("fill, ins 0, gap 8, hidemode 3", "[][grow][]")
                         .add("wmin 0", label(waiting.viewAsString(it -> "✦ " + it.what())).withStyle(it -> it
                             .componentFont(f -> f.family(FONT).size(12).weight(2f).color(BRASS))))
@@ -204,24 +207,26 @@ final class ChatRows {
             .get(JPanel.class)));
     }
 
-    /// The genie in its pose: awake, asleep, dizzy, or thinking or working while `moves` says
-    /// so of it, and otherwise awake. A picture in the style, not a component of its own.
-    private UIForAnySwing<?, ?> picture(Predicate<Genie> moves) {
+    /// The genie in the pose `pose` gives it. Thinking and working move with the pulse while
+    /// `moves` says so, and otherwise stand still in their last frame, as a picture of what the
+    /// genie did then. A picture in the style, not a component of its own.
+    private UIForAnySwing<?, ?> picture(Function<Genie, GenieSvgUtil.Pose> pose, Predicate<Genie> moves) {
         Val<IconDeclaration> picture = Viewable.of(IconDeclaration.class, genie, pulse, (it, progress) -> {
-            GenieSvgUtil.Pose pose = GenieSvgUtil.poseOf(it);
-            if (pose.frames > 1 && !moves.test(it)) pose = GenieSvgUtil.Pose.AWAKE;
-            return GenieSvgUtil.genie(GenieSvgUtil.appearanceOf(it.id()), pose, GenieSvgUtil.frameAt(pose, progress));
+            GenieSvgUtil.Pose shown = pose.apply(it);
+            int frame = moves.test(it) ? GenieSvgUtil.frameAt(shown, progress) : shown.frames - 1;
+            return GenieSvgUtil.genie(GenieSvgUtil.appearanceOf(it.id()), shown, frame);
         });
         return box().withPrefSize(GENIE_SIZE, GENIE_SIZE).withMinSize(GENIE_SIZE, GENIE_SIZE)
                 .withStyle(picture, (icon, it) -> it.image(img -> img.image(icon).fitMode(UI.FitComponent.MIN_DIM)));
     }
 
     /// Whether the answer with id `answer` is the one `genie` writes now: the last of its answers
-    /// since the user's last message, while something in the conversation is being written. The
-    /// genie beside it thinks and works; those beside older answers stand by.
+    /// since the user's last message, while it or a tool after it is being written. The genie
+    /// beside it thinks and works; while a thought is written, the genie beside the thought does.
     private static boolean answers(Genie genie, UUID answer) {
         Tuple<Entry> entries = genie.transcript().entries();
-        if (genie.conversations().aside().isPresent() || entries.isEmpty() || !entries.last().isWriting()) return false;
+        if (genie.conversations().aside().isPresent() || entries.isEmpty() || !entries.last().isWriting()
+                || entries.last().kind() == Entry.Kind.THINKING) return false;
         for (int i = entries.size() - 1; i >= 0; i--) {
             Entry it = entries.get(i);
             if (it.kind() == Entry.Kind.YOU) return false;
@@ -257,12 +262,14 @@ final class ChatRows {
     private record Glow(boolean moving, double at) {}
 
     /// The shape of a tool's or a thought's row: a line of its own, on smoke, with an optional
-    /// part below that shows when it is expanded.
-    private UIForPanel<JPanel> strip(UIForAnySwing<?, ?> line, UIForAnySwing<?, ?> below) {
+    /// part below that shows when it is expanded. Left of it, under the genies beside the
+    /// answers, stands `beside`: the genie, or nothing.
+    private UIForPanel<JPanel> strip(UIForAnySwing<?, ?> beside, UIForAnySwing<?, ?> line, UIForAnySwing<?, ?> below) {
         return
-            panel("fill, wrap 1, ins 0 38 0 0, gap 0, hidemode 3", "[grow]")
+            panel("fill, ins 0, gap 8, hidemode 3", "[" + GENIE_SIZE + "!][grow]")
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
             .withCursor(UI.Cursor.HAND)
+            .add("top", beside)
             .add("growx, wmin 0",
                 panel("fill, wrap 1, ins 5 10 5 10, gap 6, hidemode 3", "[grow]")
                 .withStyle(it -> it.backgroundColor(SMOKE).borderRadius(8).margin(2, 0, 2, 0))
@@ -279,6 +286,7 @@ final class ChatRows {
         Val<Boolean> hasDetail = entry.viewAs(Boolean.class, it -> !it.detail().isBlank());
         return
             strip(
+                box(),
                 box("fill, ins 0, gap 8, hidemode 3", "[][grow][][]")
                 .add(label("⚙ " + entry.get().title()).withStyle(it -> it
                     .componentFont(f -> f.family(MONO).size(12).weight(2f).color(BRASS))))
@@ -328,12 +336,14 @@ final class ChatRows {
 
     // ─── what the app says ─────────────────────────────────────────────────────────────────
 
+    /// What the app says, in grey; or a problem, in red, beside the dizzy genie.
     private UIForAnySwing<?, ?> notice(Var<Entry> entry) {
         boolean failed = entry.get().isFailed();
         String text = entry.get().text();
         return
-            panel("fill, ins 6 38 6 0", "[grow]")
+            panel("fill, ins 6 0 6 0, gap 8", "[" + GENIE_SIZE + "!][grow]")
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
+            .add("top", failed ? picture(it -> GenieSvgUtil.Pose.DIZZY, it -> false) : box())
             .add("growx, wmin 0",
                 box().withMinSize(0, 0)
                 .withStyle(it -> it
