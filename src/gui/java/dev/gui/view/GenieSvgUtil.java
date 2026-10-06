@@ -64,7 +64,9 @@ final class GenieSvgUtil {
         /// with a sparkle on that side.
         WORKING(2),
         /// Something went wrong: crossed eyes and stars.
-        DIZZY(1);
+        DIZZY(1),
+        /// Greeting the user: it looks at them and waves one hand.
+        WAVING(2);
 
         /// How many pictures the pose has; more than one makes an animation.
         final int frames;
@@ -131,7 +133,7 @@ final class GenieSvgUtil {
 
     /// Every genie handed out, by its appearance, pose and frame. The chat asks again on every
     /// step of an animation, and SwingTree keeps a drawn icon only while its declaration is held
-    /// somewhere, so holding them here spares writing and drawing a genie again. There are nine
+    /// somewhere, so holding them here spares writing and drawing a genie again. There are eleven
     /// for each genie, one for each frame of its poses.
     private static final Map<List<Object>, IconDeclaration> GENIES = new ConcurrentHashMap<>();
 
@@ -147,6 +149,21 @@ final class GenieSvgUtil {
     /// Under them all lies the genie's whole shape in its body colour, so no thin gap shows
     /// between two colours where the drawing is scaled and smoothed.
     static String svg(Appearance appearance, Pose pose, int frame) {
+        char[][] pixels = pixels(appearance, pose, frame);
+        Map<Character, Color> paint = colours(appearance);
+        int size = BODY.length;
+        StringBuilder svg = new StringBuilder()
+                .append("<svg xmlns='http://www.w3.org/2000/svg' width='").append(size).append("' height='").append(size)
+                .append("' viewBox='0 0 ").append(size).append(' ').append(size).append("' shape-rendering='crispEdges'>");
+        appendPath(svg, pixels, '.', appearance.colour());
+        for (Map.Entry<Character, Color> colour : paint.entrySet())
+            appendPath(svg, pixels, colour.getKey(), colour.getValue());
+        return svg.append("</svg>").toString();
+    }
+
+    /// The genie's pixels, twenty rows of twenty letters, one for each pixel: `.` for none, and
+    /// otherwise a letter of [#colours].
+    static char[][] pixels(Appearance appearance, Pose pose, int frame) {
         char[][] pixels = new char[BODY.length][];
         for (int y = 0; y < BODY.length; y++) pixels[y] = BODY[y].toCharArray();
         List<Sprite> layers = new ArrayList<>(pose(pose, frame));
@@ -159,7 +176,16 @@ final class GenieSvgUtil {
                 for (int column = 0; column < line.length(); column++)
                     if (line.charAt(column) != '.') pixels[sprite.y() + row][sprite.x() + column] = line.charAt(column);
             }
+        Map<Character, Color> paint = colours(appearance);
+        for (int y = 0; y < pixels.length; y++)
+            for (int x = 0; x < pixels[y].length; x++)
+                if (pixels[y][x] != '.' && !paint.containsKey(pixels[y][x]))
+                    throw new IllegalStateException("no colour for '" + pixels[y][x] + "' at " + x + "," + y);
+        return pixels;
+    }
 
+    /// The colour of each letter of the genie's pixels, in the order they are drawn.
+    static Map<Character, Color> colours(Appearance appearance) {
         Map<Character, Color> paint = new LinkedHashMap<>();
         paint.put('B', appearance.colour());
         paint.put('E', new Color(0x1f, 0x16, 0x26));
@@ -175,19 +201,7 @@ final class GenieSvgUtil {
         paint.put('h', new Color(0x4a, 0x35, 0x60));
         paint.put('F', new Color(0xff, 0xd1, 0x66));
         paint.put('f', new Color(0xf0, 0x8a, 0x30));
-        for (int y = 0; y < pixels.length; y++)
-            for (int x = 0; x < pixels[y].length; x++)
-                if (pixels[y][x] != '.' && !paint.containsKey(pixels[y][x]))
-                    throw new IllegalStateException("no colour for '" + pixels[y][x] + "' at " + x + "," + y);
-
-        int size = BODY.length;
-        StringBuilder svg = new StringBuilder()
-                .append("<svg xmlns='http://www.w3.org/2000/svg' width='").append(size).append("' height='").append(size)
-                .append("' viewBox='0 0 ").append(size).append(' ').append(size).append("' shape-rendering='crispEdges'>");
-        appendPath(svg, pixels, '.', appearance.colour());
-        for (Map.Entry<Character, Color> colour : paint.entrySet())
-            appendPath(svg, pixels, colour.getKey(), colour.getValue());
-        return svg.append("</svg>").toString();
+        return paint;
     }
 
     /// Appends one path in `colour` covering every pixel that is `letter`, or, for `.`, every
@@ -262,6 +276,11 @@ final class GenieSvgUtil {
                                : new Sprite(2, 10, "..............BB", "B..............."),
                     frame == 0 ? new Sprite(0, 1, ".Y.", "YYY", ".Y.")
                                : new Sprite(17, 1, ".Y.", "YYY", ".Y."));
+            case WAVING -> List.of(
+                    new Sprite(5, 7, "EE......EE", "EE......EE"),
+                    new Sprite(2, 11, "B"),
+                    frame == 0 ? new Sprite(17, 8, "..B", ".B.", "B..")
+                               : new Sprite(17, 8, "B", "B", "B"));
             case DIZZY -> List.of(arms,
                     new Sprite(4, 6, "E.E......E.E", ".E........E.", "E.E......E.E"),
                     new Sprite(0, 2, ".Y................", "YYY..............Y", ".Y..............YYY", ".................Y."));

@@ -8,6 +8,11 @@ final class LampSvgUtil {
 
     private LampSvgUtil() {}
 
+    /// Where the flame stands on the lamp, the wick, in the 64 units of the picture's width and
+    /// height.
+    static final double WICK_X = 33;
+    static final double WICK_Y = 21;
+
     /// The lamp of a genie in `phase`: lit while it is awake, flaring while it works, a wisp of
     /// smoke while it sleeps, and red when something went wrong.
     static String lamp(Genie.Phase phase) {
@@ -24,10 +29,18 @@ final class LampSvgUtil {
         String glow = phase == Genie.Phase.READY || phase == Genie.Phase.WORKING
                 ? "<circle cx='33' cy='14' r='12' fill='" + flame + "' opacity='0.22'/>"
                 : "";
+        return drawn(glow + "<path d='M33 4 C38 10 39 15 33 21 C27 15 28 10 33 4 Z' fill='" + flame + "'/>" + smoke);
+    }
+
+    /// The lamp with no flame and no smoke, for a flame drawn by itself.
+    static String cold() {
+        return drawn("");
+    }
+
+    /// The lamp, with `flame` drawn above it.
+    private static String drawn(String flame) {
         return """
             <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
-              %s
-              <path d='M33 4 C38 10 39 15 33 21 C27 15 28 10 33 4 Z' fill='%s'/>
               %s
               <path d='M27 22 h12 a3 3 0 0 1 3 3 v4 h-18 v-4 a3 3 0 0 1 3 -3 Z' fill='#c8963e'/>
               <path d='M6 34 C16 30 26 29 34 29 C43 29 50 31 55 27 C58 24 60 21 62 19
@@ -35,6 +48,6 @@ final class LampSvgUtil {
               <path d='M14 36 C22 40 30 41 38 40' fill='none' stroke='#e7c27a' stroke-width='2' stroke-linecap='round' opacity='0.7'/>
               <path d='M24 49 h18 a2 2 0 0 1 2 2 v3 h-22 v-3 a2 2 0 0 1 2 -2 Z' fill='#8f6a2a'/>
             </svg>
-            """.formatted(glow, flame, smoke);
+            """.formatted(flame);
     }
 }
