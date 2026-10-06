@@ -24,12 +24,14 @@ import dev.gui.desktop.Desktop;
 import dev.gui.genie.GenieRunner;
 import dev.gui.genie.LampLighter;
 import dev.gui.genie.Lighter;
+import dev.gui.genie.OllamaKeeper;
 import dev.gui.genie.Shelf;
 import dev.gui.model.Conversation;
 import dev.gui.model.Conversations;
 import dev.gui.model.Genie;
 import dev.gui.model.GeniesState;
 import dev.gui.model.History;
+import dev.gui.model.OllamaSetup;
 import dev.gui.model.Settings;
 import dev.gui.view.Actions;
 import dev.gui.view.GeniesView;
@@ -61,10 +63,19 @@ public final class Genies implements Actions {
     /// How long closing or deleting waits for a genie's lamp to go out or be let go.
     private static final long SECONDS_TO_LET_GO_OF_A_LAMP = 180;
 
+    /// What setting up Ollama says once the user stopped it.
+    private static final String STOPPED = "Stopped. What was downloaded of a model is kept, and getting it again goes on from there.";
+
     private final Var<GeniesState> state;
     private final Shelf shelf;
     private final Lighter lighter;
+    private final OllamaKeeper ollama;
     private final Map<UUID, GenieRunner> runners = new ConcurrentHashMap<>();
+    /// The thread setting up Ollama, while one does; only touched on Swing's event thread.
+    private Optional<Thread> settingUp = Optional.empty();
+    /// Whether the user stopped setting up Ollama. A download that is cut short may fail rather
+    /// than notice that it was interrupted, and is no failure then.
+    private volatile boolean stopping = false;
     /// Each genie's id and name. Kept as a field: when it changes, the genies are put on the
     /// shelf, and a view nobody holds would be forgotten.
     private final Val<Tuple<String>> names;
@@ -81,17 +92,20 @@ public final class Genies implements Actions {
     /// reason: a history is read from its lamp when it comes on show.
     private final Val<UUID> historyShown;
 
-    Genies(Var<GeniesState> state, Shelf shelf, Lighter lighter) {
+    Genies(Var<GeniesState> state, Shelf shelf, Lighter lighter, OllamaKeeper ollama) {
         this.state = state;
         this.shelf = shelf;
         this.lighter = lighter;
+        this.ollama = ollama;
         this.names = state.viewAs(Tuple.classTyped(String.class),
                 it -> it.genies().mapTo(String.class, genie -> genie.id() + " " + genie.name()));
         Viewable.cast(names).onChange(From.ALL, it -> keepGenies());
         // The settings are kept however the user leaves them: with Done, or by clicking a genie.
         this.page = state.viewAs(GeniesState.Page.class, GeniesState::page);
+        // Shown, they look again whether Ollama is there, and what it has.
         Viewable.cast(page).onChange(From.ALL, it -> {
             if (it.currentValue().orElseNull() != GeniesState.Page.SETTINGS) keepSettings();
+            else lookForOllama();
         });
         this.placeShown = state.viewAsString(it -> it.page() == GeniesState.Page.SETTINGS ? it.settings().place().name() : "");
         Viewable.cast(placeShown).onChange(From.ALL, it -> {
@@ -125,8 +139,15 @@ public final class Genies implements Actions {
 
     private static void open(Shelf shelf, ErrorLog errors) {
         Optional<String> environmentKey = Optional.ofNullable(System.getenv(Settings.KEY_VARIABLE)).filter(key -> !key.isBlank());
-        Genies app = new Genies(Var.of(GeniesState.of(shelf.genies(), shelf.settings(), environmentKey)),
-                                shelf, new LampLighter());
+        OllamaKeeper ollama = new OllamaKeeper(shelf.ollama());
+        // The first time, the genies' model is where this computer has one: Ollama, if it is
+        // installed; otherwise Eden AI, if a key for it was found; otherwise Ollama, which
+        // Genies installs then.
+        Settings settings = shelf.hasSettings() ? shelf.settings()
+                : shelf.settings().withPlace(ollama.program().isEmpty() && environmentKey.isPresent()
+                                             ? Settings.Place.EDEN_AI : Settings.Place.THIS_MACHINE);
+        Genies app = new Genies(Var.of(GeniesState.of(shelf.genies(), settings, environmentKey)),
+                                shelf, new LampLighter(), ollama);
         JFrame frame = new JFrame("Genies");
         new JGlassPane(frame.getRootPane());
         GeniesView view = new GeniesView(app.state, app);
@@ -143,6 +164,7 @@ public final class Genies implements Actions {
             app.runner(genie.id()).reloadConversations();
             app.rejoin(genie.id());
         });
+        app.lookForOllama();
         // The timeline, and anything else said relative to now, moves on with the clock.
         new Timer(30_000, tick -> app.state.update(it -> it.withNow(Instant.now()))).start();
         frame.pack();
@@ -184,6 +206,17 @@ public final class Genies implements Actions {
                                              .withPage(GeniesState.Page.SETTINGS));
             return;
         }
+        // Ollama may have ended since, as when the computer restarted. It starts in less time
+        // than a lamp does.
+        if (now.settings().usesOllama()) Thread.ofVirtual().name("start ollama").start(() -> {
+            try {
+                ollama.start();
+            } catch (IOException failed) {
+                report(new IOException("could not start Ollama for the genies", failed));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
         now.find(id).ifPresent(genie -> runner(id).wake(genie.name(), now.settings(), key.get(),
                 conversationShown(genie), leafShown(genie)));
     }
@@ -342,11 +375,78 @@ public final class Genies implements Actions {
         });
     }
 
+    /// Sets up Ollama with the model wanted, off Swing's event thread: whatever is left of
+    /// installing Ollama, starting it, downloading the model, preparing it for genies and trying
+    /// it. Then the genies use it, and the settings are kept.
+    @Override public void setUpOllama() {
+        String model = state.get().ollama().wanted().strip();
+        if (model.isEmpty() || state.get().ollama().step().isBusy()) return;
+        stopping = false;
+        state.update(From.VIEW, it -> it.withOllama(it.ollama().at(OllamaSetup.Step.STARTING, 0, "Looking at what is left to do…")));
+        settingUp = Optional.of(Thread.ofVirtual().name("set up ollama").start(() -> {
+            try {
+                OllamaSetup.Found found = ollama.look();
+                if (!found.isInstalled() && !found.isRunning()) {
+                    step(OllamaSetup.Step.INSTALLING, 0, "Downloading Ollama…");
+                    ollama.install((done, says) -> step(OllamaSetup.Step.INSTALLING, done, says));
+                }
+                if (!found.isRunning()) {
+                    step(OllamaSetup.Step.STARTING, 0, "Starting Ollama…");
+                    ollama.start();
+                }
+                if (!found.has(model)) {
+                    step(OllamaSetup.Step.DOWNLOADING, 0, "Downloading " + model + "…");
+                    ollama.pull(model, (done, says) -> step(OllamaSetup.Step.DOWNLOADING, done, says));
+                }
+                step(OllamaSetup.Step.PREPARING, 0, "Preparing " + model + " for genies…");
+                ollama.prepare(model);
+                step(OllamaSetup.Step.TRYING, 0, "Trying " + model + ". Its first answer loads it, which can take a few minutes…");
+                ollama.tryOut(OllamaSetup.PREFIX + model);
+                SwingUtilities.invokeLater(() -> {
+                    state.update(it -> it.usingOllama(model));
+                    keepSettings();
+                });
+            } catch (IOException failed) {
+                if (stopping) step(OllamaSetup.Step.IDLE, 0, STOPPED);
+                else step(OllamaSetup.Step.FAILED, 0, Optional.ofNullable(failed.getMessage()).orElse(failed.toString()));
+            } catch (InterruptedException stopped) {
+                step(OllamaSetup.Step.IDLE, 0, STOPPED);
+            }
+            SwingUtilities.invokeLater(() -> {
+                settingUp = Optional.empty();
+                lookForOllama();
+            });
+        }));
+    }
+
+    @Override public void stopSettingUp() {
+        stopping = true;
+        settingUp.ifPresent(Thread::interrupt);
+    }
+
     @Override public Optional<Desktop> desktopOf(UUID id) {
         return Optional.ofNullable(runners.get(id)).flatMap(GenieRunner::desktop);
     }
 
     // ─── the rest ──────────────────────────────────────────────────────────────────────────
+
+    /// Looks, off Swing's event thread, whether Ollama is installed and runs, and what it and the
+    /// computer have.
+    private void lookForOllama() {
+        Thread.ofVirtual().name("look for ollama").start(() -> {
+            try {
+                OllamaSetup.Found found = ollama.look();
+                SwingUtilities.invokeLater(() -> state.update(it -> it.withOllama(it.ollama().found(found, it.settings()))));
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        });
+    }
+
+    /// Shows how far setting up Ollama is.
+    private void step(OllamaSetup.Step step, double done, String says) {
+        SwingUtilities.invokeLater(() -> state.update(it -> it.withOllama(it.ollama().at(step, done, says))));
+    }
 
     private GenieRunner runner(UUID id) {
         return runners.computeIfAbsent(id, genie -> new GenieRunner(shelf.lampOf(genie), lighter,

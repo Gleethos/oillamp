@@ -95,6 +95,6 @@ public record OllamaSetup(Found found, String wanted, Step step, double progress
         return step == Step.LOOKING ? "Genies is looking whether Ollama is on this computer…"
              : found.isRunning() ? "Ollama " + found.version() + " runs on this computer."
              : found.isInstalled() ? "Ollama is installed; Genies starts it when the genies need it."
-             : "Ollama is not installed yet. Genies installs it for you, for you alone: no password, nothing changes outside its own folder. It is about 1.4 GB.";
+             : "Ollama is not installed yet. Genies installs it for you, for you alone: no password, nothing changes outside its own folder. It is a download of about 1.4 GB.";
     }
 }

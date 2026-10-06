@@ -78,6 +78,13 @@ public interface Actions {
     /// Asks the model service the settings name which models it offers.
     void lookUpModels();
 
+    /// Sets up Ollama on this computer with the model the settings want, and has the genies use
+    /// it: whatever is left of installing Ollama, starting it, and getting the model ready.
+    void setUpOllama();
+
+    /// Stops setting up Ollama.
+    void stopSettingUp();
+
     /// The settings page closes. Leaving it, however, keeps the settings.
     void settingsDone();
 
