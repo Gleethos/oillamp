@@ -209,7 +209,8 @@ public final class GeniesView extends JPanel {
             panel().group(Skin.SIDEBAR)
             .withLayout(state.viewAs(Layout.class, it -> it.narrow() ? aboveTheGenie(it.genieList().height()) : BESIDE_THE_GENIE))
             .withStyle(narrow, (on, it) -> on ? it.borderAt(UI.Edge.RIGHT, 0, TRANSPARENT).borderAt(UI.Edge.BOTTOM, 1, BORDER).padding(12, 12, 2, 12) : it)
-            .isVisibleIf(genieList.viewAs(Boolean.class, Fold::shown))
+            // Without genies, the window is the settings alone, which welcome the user.
+            .isVisibleIf(state.viewAs(Boolean.class, it -> it.genieList().shown() && it.hasGenies()))
             .add(
                 // Inset so that ☰ is where the genie's header has it.
                 box("fill, ins 0 4 0 0, gap 8", "[][34!][grow]")
@@ -487,8 +488,7 @@ public final class GeniesView extends JPanel {
             .add("grow, push, wmin 0", conversation(Viewable.of(Boolean.class, onChat, hasGenies, (a, b) -> a && b)))
             .add("grow, push, wmin 0", schedulePage.view(Viewable.of(Boolean.class, onSchedule, hasGenies, (a, b) -> a && b)))
             .add("grow, push, wmin 0", historyPage.view(Viewable.of(Boolean.class, onHistory, hasGenies, (a, b) -> a && b)))
-            .add("grow, push, wmin 0", firstGenie(Viewable.of(Boolean.class, onSettings, hasGenies, (a, b) -> !a && !b)))
-            .add("grow, push, wmin 0", SettingsPage.of(state, actions, onSettings));
+            .add("grow, push, wmin 0", SettingsPage.of(state, actions, Viewable.of(Boolean.class, onSettings, hasGenies, (a, b) -> a || !b)));
     }
 
     private UIForAnySwing<?, ?> header(Val<Boolean> visible) {
@@ -808,19 +808,6 @@ public final class GeniesView extends JPanel {
                 .add(button(genie.viewAsString(it -> it.phase() == Genie.Phase.BROKEN ? "Try again" : "✦  Wake"))
                      .group(Skin.FLAME_BUTTON).isVisibleIf(canWake)
                      .onClick(it -> actions.wake(genie.get().id()))));
-    }
-
-    private UIForAnySwing<?, ?> firstGenie(Val<Boolean> visible) {
-        return
-            box("fill, ins 40", "[grow, center]", "[grow, center]")
-            .isVisibleIf(visible)
-            .add(
-                panel("wrap 1, ins 36 44 36 44, gap 10", "[center]").group(Skin.CARD)
-                .add(ViewPartsUtil.lamp(Val.of(Genie.Phase.ASLEEP), 120))
-                .add(label("Rub the lamp").group(Skin.EMPTY_TITLE))
-                .add(label("Each genie is an AI agent with a Linux desktop of its own, in a sandbox.").group(Skin.EMPTY_TEXT))
-                .add(label("It can use the web, run programs and make files, but never touches yours.").group(Skin.EMPTY_TEXT))
-                .add("gaptop 12", button("+  Your first genie").group(Skin.FLAME_BUTTON).onClick(it -> actions.newGenie())));
     }
 
     // ─── small parts ───────────────────────────────────────────────────────────────────────
