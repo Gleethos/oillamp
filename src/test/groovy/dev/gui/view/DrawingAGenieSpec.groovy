@@ -6,6 +6,9 @@ import dev.gui.model.Transcript
 import spock.lang.Specification
 import sprouts.Tuple
 
+import java.awt.Color
+import java.awt.image.BufferedImage
+
 import static dev.gui.view.GenieSvgUtil.Accessory.*
 import static dev.gui.view.GenieSvgUtil.Pose.*
 
@@ -100,7 +103,40 @@ class DrawingAGenieSpec extends Specification {
                         for (frame in 0..<pose.frames)
                             drawn << GenieSvgUtil.svg(new GenieSvgUtil.Appearance(colour, outfit), pose, frame)
         then:
-            drawn.size() == 8 * 5 * 9
+            drawn.size() == 8 * 5 * 11
             drawn.every { it.startsWith("<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'") && it.contains('<path') }
+    }
+
+    def 'The welcome shows the lamp lighting, and a genie taking form from its flame'() {
+        reportInfo """
+            The welcome's picture is painted from its play and the moment alone. Before its flame
+            catches, there is only the lamp; while the flame burns, it is the lamp's amber, and no
+            genie is there. As the flame turns to pixels, it takes on the genie's colour, and once
+            the genie has taken form it stays, however long the welcome is shown. Clicked away, it
+            flies apart, the lamp stands cold until the next genie's flame catches, and the next
+            genie takes form in its own colour.
+        """
+        given:
+            def genie = GenieSvgUtil.appearanceOf(UUID.fromString('0c4b0a34-1f0e-4f4e-9d0f-6b3f5a0e2d11'))
+            def play = new WelcomeScene.Play(genie, 0, genie, -1)
+            def paintedAt = { WelcomeScene.Play shown, double clock ->
+                def picture = new BufferedImage(700, 300, BufferedImage.TYPE_INT_RGB)
+                WelcomeScene.paint(picture.createGraphics(), 700, 300, shown, clock)
+                def colours = [] as Set
+                for (int x = 0; x < 700; x += 2) for (int y = 0; y < 300; y += 2) colours << picture.getRGB(x, y)
+                colours
+            }
+            def colour = genie.colour().getRGB()
+            def amber = new Color(0xf0, 0xa9, 0x40).getRGB()
+            def again = play.poof(20)
+        expect:
+            !(amber in paintedAt(play, 0.5)) && !(colour in paintedAt(play, 0.5))
+            amber in paintedAt(play, 2.5)
+            !(colour in paintedAt(play, 2.5))
+            colour in paintedAt(play, 5.5)
+            [7.5d, 12.0d, 60.0d, 3600.0d].every { colour in paintedAt(play, it) }
+            !(colour in paintedAt(again, 21.15)) && !(amber in paintedAt(again, 21.15))
+            again.pip().colour().getRGB() in paintedAt(again, 21.1 + 7.5)
+            !play.formed(6.0) && play.formed(7.0)
     }
 }
