@@ -25,6 +25,8 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.RenderingHints;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.KeyEvent;
 import java.io.File;
 import java.nio.file.Path;
@@ -350,6 +352,14 @@ public final class GeniesView extends JPanel {
         Val<Boolean> open = fold.viewAs(Boolean.class, Fold::shown);
         Val<Tuple<String>> here = rows.viewAs(Tuple.classTyped(String.class), Conversations::pathToHere);
         JScrollPane[] area = new JScrollPane[1];
+        // A scroll pane lays out only what is inside it: when the tree grows, shrinks or is shown
+        // or hidden, Swing marks the card as needing a new layout but never gives it one. A later
+        // layout may then still reserve the tree's old room. Told here, the card is laid out anew.
+        ComponentAdapter relayout = new ComponentAdapter() {
+            @Override public void componentResized(ComponentEvent event) { area[0].getParent().revalidate(); }
+            @Override public void componentShown(ComponentEvent event)   { area[0].getParent().revalidate(); }
+            @Override public void componentHidden(ComponentEvent event)  { area[0].getParent().revalidate(); }
+        };
         return
             box("fill, wrap 1, ins 0, gap 0, hidemode 3", "[grow]")
             .isVisibleIf(present)
@@ -364,6 +374,7 @@ public final class GeniesView extends JPanel {
             .add("growx, wmin 0, hmin 0",
                 scrollPane(conf -> conf.fitWidth(true)).withEmptyBorder(0).withMinSize(0, 0)
                 .peek(it -> area[0] = it)
+                .peek(it -> it.addComponentListener(relayout))
                 .isVisibleIf(open)
                 .withHorizontalScrollBarPolicy(UI.Active.NEVER)
                 .withVerticalScrollIncrement(16)
@@ -374,6 +385,7 @@ public final class GeniesView extends JPanel {
                     // In a panel of its own: on its own, a tree asks its scroll pane for room for
                     // twenty rows, however many it has.
                     panel("fill, ins 0").withStyle(it -> it.backgroundColor(TRANSPARENT))
+                    .peek(it -> it.addComponentListener(relayout))
                     .add("grow, wmin 0",
                         UI.trees(rows, conf -> conf
                             .nodesOf(Talk.Chat.class, it -> it
