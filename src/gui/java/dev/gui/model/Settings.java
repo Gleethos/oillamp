@@ -13,7 +13,7 @@ import java.util.Optional;
 /// - **a model server elsewhere**, such as Ollama on another machine behind a proxy that checks
 ///   a key: its address and, if it asks for one, its key.
 /// - **this computer**: a model server such as Ollama, LM Studio or llama.cpp's server, on this
-///   machine's loopback. It needs no key.
+///   machine's loopback. It needs no key. Genies can set up Ollama there itself; see [OllamaSetup].
 ///
 /// Wherever it is, the key and the address never reach a genie. They go to the lamp's engine on
 /// the host, which sends the genie's requests on; inside the sandbox there is only oillamp's relay
@@ -83,11 +83,14 @@ public record Settings(Place place, EdenAi edenAi, Elsewhere elsewhere, OnThisMa
     /// What a model server that asks for no key is sent as its key. The lamp needs one to send.
     static final String NO_KEY_NEEDED = "no-key-needed";
 
+    /// Where Ollama on this computer answers OpenAI-style requests.
+    public static final String OLLAMA = "http://127.0.0.1:11434/v1";
+
     public static Settings defaults() {
         return new Settings(Place.EDEN_AI,
                 new EdenAi(KeySource.ENVIRONMENT, "", "mistral/mistral-small-latest"),
                 new Elsewhere("", "", ""),
-                new OnThisMachine("http://127.0.0.1:11434/v1", ""));
+                new OnThisMachine(OLLAMA, ""));
     }
 
     public Settings withPlace(Place place)             { return new Settings(place, edenAi, elsewhere, local); }
@@ -104,6 +107,12 @@ public record Settings(Place place, EdenAi edenAi, Elsewhere elsewhere, OnThisMa
             case ELSEWHERE    -> elsewhere.address().strip();
             case THIS_MACHINE -> local.address().strip();
         };
+    }
+
+    /// Whether the genies use Ollama on this computer, at its usual address: what the settings'
+    /// simple way sets up.
+    public boolean usesOllama() {
+        return place == Place.THIS_MACHINE && local.address().strip().equals(OLLAMA);
     }
 
     /// The model the genies use.

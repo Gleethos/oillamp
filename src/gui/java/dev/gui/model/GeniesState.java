@@ -29,9 +29,14 @@ import sprouts.Tuple;
 ///                 moved on every half minute
 /// @param troubles what went wrong unexpectedly since the user last looked, oldest first; at most
 ///                 [#MOST_TROUBLES], the rest is in the error log
+/// @param ollama   Ollama on this computer, as Genies found it, and setting it up
+/// @param advanced whether the settings show the advanced way to a model: Eden AI, a server
+///                 elsewhere, or any model server on this computer. Otherwise they show the simple
+///                 way, Ollama set up by Genies
 public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings, Page page,
                           Optional<String> environmentKey, Fold genieList, boolean narrow,
-                          ModelLookUp lookUp, DesktopZoom zoom, Area area, Instant now, Tuple<Trouble> troubles) {
+                          ModelLookUp lookUp, DesktopZoom zoom, Area area, Instant now, Tuple<Trouble> troubles,
+                          OllamaSetup ollama, boolean advanced) {
 
     /// A width and a height, in the window's own units.
     public record Area(int width, int height) {}
@@ -58,20 +63,25 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     /// The selection when there is no genie.
     public static final UUID NONE = new UUID(0, 0);
 
+    /// Without genies, the window starts with the settings, which welcome the user then. The
+    /// settings show the advanced way at first when that is what the genies use.
     public static GeniesState of(Tuple<Genie> genies, Settings settings, Optional<String> environmentKey) {
         return new GeniesState(genies, genies.isEmpty() ? NONE : genies.first().id(), settings,
-                               Page.CHAT, environmentKey, new Fold(true, Fold.CLOSED.height()), false, ModelLookUp.NOT_YET, DesktopZoom.PANEL,
-                               new Area(1030, 760), Instant.now(), Tuple.of(Trouble.class));
+                               genies.isEmpty() ? Page.SETTINGS : Page.CHAT, environmentKey, new Fold(true, Fold.CLOSED.height()), false,
+                               ModelLookUp.NOT_YET, DesktopZoom.PANEL, new Area(1030, 760), Instant.now(), Tuple.of(Trouble.class),
+                               OllamaSetup.NOT_YET, !settings.usesOllama());
     }
 
-    public GeniesState withGenies(Tuple<Genie> genies) { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withSelected(UUID selected)     { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withSettings(Settings settings) { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withPage(Page page)             { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withGenieList(Fold genieList)   { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
-    public GeniesState withNow(Instant now)            { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles); }
+    public GeniesState withGenies(Tuple<Genie> genies) { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
+    public GeniesState withSelected(UUID selected)     { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
+    public GeniesState withSettings(Settings settings) { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
+    public GeniesState withPage(Page page)             { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
+    public GeniesState withGenieList(Fold genieList)   { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
+    public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
+    public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
+    public GeniesState withNow(Instant now)            { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
+    public GeniesState withOllama(OllamaSetup ollama)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
+    public GeniesState withAdvanced(boolean advanced)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
 
     /// How many troubles the window keeps.
     public static final int MOST_TROUBLES = 20;
@@ -80,13 +90,13 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withTrouble(Trouble trouble) {
         Tuple<Trouble> more = troubles.add(trouble);
         Tuple<Trouble> kept = more.size() > MOST_TROUBLES ? more.removeFirst(more.size() - MOST_TROUBLES) : more;
-        return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, kept);
+        return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, kept, ollama, advanced);
     }
 
     /// Without the troubles the user has `seen`; the error log still has them. One that came
     /// while they looked stays.
     public GeniesState withoutTroubles(Tuple<Trouble> seen) {
-        return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles.removeAll(seen));
+        return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles.removeAll(seen), ollama, advanced);
     }
 
     /// Below this width, in the window's own units, the list of genies and a conversation do not
@@ -100,7 +110,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withViewWidth(int width) {
         boolean nowNarrow = narrow ? width < NARROW * 1.1 : width < NARROW / 1.1;
         if (nowNarrow == narrow) return this;
-        return new GeniesState(genies, selected, settings, page, environmentKey, genieList.withShown(!nowNarrow), nowNarrow, lookUp, zoom, area, now, troubles);
+        return new GeniesState(genies, selected, settings, page, environmentKey, genieList.withShown(!nowNarrow), nowNarrow, lookUp, zoom, area, now, troubles, ollama, advanced);
     }
 
     /// From this width of the conversation's area, a genie's desktop is shown beside the chat;
@@ -114,7 +124,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withArea(int width, int height) {
         Area rounded = new Area(width / 10 * 10, height / 10 * 10);
         return rounded.equals(area) ? this : new GeniesState(genies, selected, settings, page, environmentKey,
-                                                            genieList, narrow, lookUp, zoom, rounded, now, troubles);
+                                                            genieList, narrow, lookUp, zoom, rounded, now, troubles, ollama, advanced);
     }
 
     /// Below this width of the conversation's area, the header's buttons do not fit with their
@@ -177,14 +187,15 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
         return withGenies(genies.add(genie)).withSelected(genie.id()).withPage(Page.CHAT);
     }
 
-    /// Removes a genie. The chat then shows the one before it, if any.
+    /// Removes a genie. The chat then shows the one before it; after the last, the settings
+    /// welcome the user again.
     public GeniesState remove(UUID id) {
         int index = indexOf(id);
         if (index < 0) return this;
         Tuple<Genie> rest = genies.removeAt(index);
         UUID next = !selected.equals(id) ? selected
                   : rest.isEmpty() ? NONE : rest.get(Math.max(0, index - 1)).id();
-        return withGenies(rest).withSelected(next);
+        return withGenies(rest).withSelected(next).withPage(rest.isEmpty() ? Page.SETTINGS : page);
     }
 
     /// Shows genie `id`: its schedule or its history when another genie's is on show, and its
@@ -228,6 +239,14 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     /// Asking the service at `service`, for `place`, for its models failed, for the reason given.
     public GeniesState modelsNotFound(Settings.Place place, String service, String why) {
         return withLookUp(new ModelLookUp(place, service, Tuple.of(String.class), why));
+    }
+
+    /// Ollama is set up with the model `model`, as Ollama names it, and the genies use it from
+    /// now on, as Genies prepared it for them.
+    public GeniesState usingOllama(String model) {
+        return withSettings(settings.withPlace(Settings.Place.THIS_MACHINE)
+                                    .withLocal(new Settings.OnThisMachine(Settings.OLLAMA, OllamaSetup.PREFIX + model)))
+              .withOllama(ollama.at(OllamaSetup.Step.IDLE, 0, ""));
     }
 
     /// Why genies cannot reach their model with the current settings, or nothing.
