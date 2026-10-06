@@ -73,8 +73,14 @@ final class SettingsPage {
     private static final double WORDS_FROM = 7.4;
     private static final double WORDS_TAKE = 0.8;
 
-    /// How tall the welcome's picture is.
+    /// How tall the welcome's picture is. In a narrow window, the empty top of the picture would
+    /// look tall beside its narrow sides, so its top is cut away: none of it while the welcome is
+    /// `UNCUT_WIDTH` wide or wider, `PICTURE_CUT` once it is `CUT_WIDTH` or narrower, and in
+    /// between, an even share. The lamp and the genie stay their size, at the bottom.
     private static final int PICTURE_HEIGHT = 360;
+    private static final int PICTURE_CUT = 80;
+    private static final int UNCUT_WIDTH = 760;
+    private static final int CUT_WIDTH = 360;
 
     /// When the settings' card appears below the welcome, in seconds of its play.
     private static final double CARD_AT = 8.2;
@@ -274,29 +280,41 @@ final class SettingsPage {
                 ? "Genies found an Eden AI key where it was started, so your genies can think at Eden AI right away. "
                   + "Or have Genies set up a model on this computer instead: the simple way, below."
                 : "To think, genies need a model. Genies can set one up for you, right here on this computer.");
+        Var<Integer> cut = Var.of(0);
         return
             box("fill, wrap 1, ins 0, gap 12", "[grow, center]").isVisibleIf(welcome)
+            .onResize(it -> {
+                double narrowed = (UNCUT_WIDTH - UI.unscale(it.getComponent().getWidth())) / (double) (UNCUT_WIDTH - CUT_WIDTH);
+                cut.set((int) Math.round(PICTURE_CUT * Math.max(0, Math.min(1, narrowed))));
+            })
             // The light, behind the picture and the words, so that it can shine past the picture.
             .withStyle(clock, (at, it) -> {
                 int width = UI.scale(it.componentWidth());
                 int height = UI.scale(it.componentHeight());
-                return it.painter(UI.Layer.BACKGROUND, g -> WelcomeScene.light(g, width, height, UI.scale(PICTURE_HEIGHT), scene.get(), at));
+                return it.painter(UI.Layer.BACKGROUND,
+                        g -> WelcomeScene.light(g, width, height, UI.scale(PICTURE_HEIGHT), UI.scale(cut.get()), scene.get(), at));
             })
-            .add("growx, wmin 0, h " + PICTURE_HEIGHT + "!",
+            .add("growx, wmin 0",
                 box().withMinSize(0, 0)
+                .withHeightExactly(cut.viewAs(Integer.class, it -> PICTURE_HEIGHT - it))
+                // Painted whole, its cut top above the box.
                 .withStyle(clock, (at, it) -> {
                     int width = UI.scale(it.componentWidth());
-                    int height = UI.scale(it.componentHeight());
-                    return it.painter(UI.Layer.CONTENT, g -> WelcomeScene.paint(g, width, height, scene.get(), at));
+                    return it.painter(UI.Layer.CONTENT, g -> {
+                        int above = UI.scale(cut.get());
+                        g.translate(0, -above);
+                        WelcomeScene.paint(g, width, UI.scale(PICTURE_HEIGHT), scene.get(), at);
+                        g.translate(0, above);
+                    });
                 })
                 // The genie, once it has taken form, and its lamp can be clicked: it vanishes in a
                 // poof, and another genie comes.
                 .onMouseMove(it -> it.getComponent().setCursor(Cursor.getPredefinedCursor(
-                        scene.get().formed(clock.get()) && WelcomeScene.hits(it.getComponent().getWidth(), it.getComponent().getHeight(),
-                                it.mouseX(), it.mouseY()) ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR)))
+                        scene.get().formed(clock.get()) && WelcomeScene.hits(it.getComponent().getWidth(), UI.scale(PICTURE_HEIGHT),
+                                it.mouseX(), it.mouseY() + UI.scale(cut.get())) ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR)))
                 .onMouseClick(it -> {
                     if (scene.get().formed(clock.get())
-                            && WelcomeScene.hits(it.getComponent().getWidth(), it.getComponent().getHeight(), it.mouseX(), it.mouseY()))
+                            && WelcomeScene.hits(it.getComponent().getWidth(), UI.scale(PICTURE_HEIGHT), it.mouseX(), it.mouseY() + UI.scale(cut.get())))
                         scene.set(scene.get().poof(clock.get()));
                 }))
             .add("growx, wmin 0", fading(Val.of("Welcome to Genies"), 22, TEXT, clock))

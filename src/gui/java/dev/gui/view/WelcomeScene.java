@@ -220,13 +220,14 @@ final class WelcomeScene {
     }
 
     /// The light of the flame, and of the genie once it is there, onto `g`, `width` by `height`
-    /// pixels: the whole welcome, whose picture is the top `stageHeight` pixels of it. A light
-    /// larger than the picture shines past it, behind the welcome's words.
+    /// pixels: the whole welcome, whose picture is `stageHeight` pixels tall with its top `cut`
+    /// pixels cut away, above the welcome. A light larger than the picture shines past it, behind
+    /// the welcome's words.
     ///
     /// It is a round glow in the flame's colour, a touch wider than tall. Its middle is the
     /// flame's, and then the genie's; it is as large as they are, and grows and shrinks as they
     /// flicker. It grows bright as the flame catches, flares as it bursts, and fades out in a poof.
-    static void light(Graphics2D g, int width, int height, int stageHeight, Play play, double clock) {
+    static void light(Graphics2D g, int width, int height, int stageHeight, int cut, Play play, double clock) {
         Stage stage = Stage.of(width, stageHeight);
         boolean poofing = clock < play.began();
         double time = poofing ? FORMED : clock - play.began();
@@ -239,7 +240,7 @@ final class WelcomeScene {
         double size = size(stage, time);
         // It has faded to nothing where the welcome ends, so it shows no edge.
         double x = source.getX();
-        double y = source.getY();
+        double y = source.getY() - cut;
         double down = Math.min(2.4 * size, Math.min(y, height - y));
         double across = Math.min(1.12 * down, Math.min(x, width - x));
         if (across <= 0 || down <= 0) return;
