@@ -2,3 +2,11 @@
 # from [git] in the lamp's oillamp.toml. git skips an include whose file does not exist.
 [include]
 	path = /oillamp/session/gitconfig
+
+# What `git lfs install --system` writes: git hands files tracked by git-lfs to it on checkout and
+# commit, so a clone brings the real files instead of their pointers.
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
