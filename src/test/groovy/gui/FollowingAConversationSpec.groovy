@@ -1,10 +1,12 @@
 package gui
 
+import dev.gui.genie.LampApiConversionUtil
 import dev.gui.model.Entry
 import dev.gui.model.Genie
 import dev.gui.model.Handout
 import dev.gui.model.Schedule
 import dev.gui.pi.PiEvent
+import dev.lamp.Lamp
 import spock.lang.Specification
 import sprouts.Tuple
 
@@ -181,20 +183,139 @@ class FollowingAConversationSpec extends Specification {
             A refused key or an unreachable service ends the answer with an error. The user reads
             the reason where they are looking, in the chat, and the genie is ready for the next
             message. A retry the harness makes by itself is mentioned, so a slow answer is not a
-            mystery.
+            mystery. When the failed answer before it said why already, the retry does not say
+            it again.
         """
         when:
             var failed = genie.withDraft('hi').send()
                     .hear(new PiEvent.Retrying(1, 3, '529 overloaded'))
+                    .hear(new PiEvent.Answered('', '503 unavailable', 0))
+                    .hear(new PiEvent.Retrying(2, 3, '503 unavailable'))
                     .hear(new PiEvent.Answered('', '401 there is no model key', 0))
                     .hear(new PiEvent.Settled())
 
         then:
             var entries = failed.transcript().entries()
-            entries[1].text().contains('Trying again, 1 of 3')
+            entries[1].isFailed()
+            entries[1].text() == 'The model service had trouble of its own (529): overloaded. Trying again, 1 of 3.'
+            entries[2].text() == 'The model service had trouble of its own (503): unavailable.'
+            !entries[3].isFailed()
+            entries[3].text() == 'Trying again, 2 of 3.'
             entries.last().isFailed()
-            entries.last().text() == '401 there is no model key'
+            entries.last().text() == 'The model service refused the key (401): there is no model key.'
             failed.phase() == Genie.Phase.READY
+    }
+
+    def 'An error from the model is said in plain words'() {
+        reportInfo """
+            pi passes on what it got: oillamp's answer when it could not reach the model service,
+            the word of the library pi uses for a connection that broke, or the service's status
+            and its message in JSON. The chat says what happened in words, keeps the service's
+            own message, and says who could not do what. These errors are real ones from a
+            genie's conversations.
+        """
+        when:
+            var failed = genie.withDraft('hi').send().hear(new PiEvent.Answered('', error, 0))
+
+        then:
+            failed.transcript().entries().last().isFailed()
+            failed.transcript().entries().last().text().startsWith(said)
+
+        where:
+            error                                                                                  | said
+            '502 oillamp: cannot reach the model service at api.eu.edenai.run — Connect timed out\n' |
+                    'oillamp could not reach the model service at api.eu.edenai.run (Connect timed out), so the genie got no answer.'
+            'Connection error.'                                                                    |
+                    'The connection to the model service broke off before an answer came'
+            '451: {"message":"Model x is not available on the EU endpoint.","type":"request_forbidden"}' |
+                    'The model service refused the request (451): Model x is not available on the EU endpoint.'
+            '429 {"error":{"message":"Rate limit \\"tier 1\\" reached"}}'                             |
+                    'The model service takes no more requests for now, or the key\'s credit ran out (429): Rate limit "tier 1" reached'
+            '401 oillamp: there is no model key for this session.'                                 |
+                    'oillamp: there is no model key for this session.'
+            'something odd'                                                                        |
+                    'The model could not answer: something odd'
+    }
+
+    def 'A genie that was stopped is no problem'() {
+        reportInfo """
+            When the user stops the genie, the model's answer ends with an error too: pi says the
+            request was aborted. The user did that themselves, so the chat says so in grey, as a
+            notice, not as a problem in red beside a dizzy genie.
+        """
+        when:
+            var stopped = genie.withDraft('hi').send()
+                    .hear(new PiEvent.Said('Half'))
+                    .hear(new PiEvent.Answered('Half', 'Request was aborted', 0))
+
+        then:
+            stopped.transcript().entries()*.text() == ['hi', 'Half', 'Stopped before the answer was done.']
+            !stopped.transcript().entries().last().isFailed()
+    }
+
+    def 'An answer the genie used tools after said what it was doing'() {
+        reportInfo """
+            Between tool calls, a genie often says what it is about to do. Such an answer is
+            marked, so the genie beside it in the chat keeps working there, while the answer it
+            ends with stays an answer.
+        """
+        when:
+            var worked = genie.withDraft('tidy up').send()
+                    .hear(new PiEvent.Said('Let me look.'))
+                    .hear(new PiEvent.Answered('Let me look.', '', 0))
+                    .hear(new PiEvent.ToolStarted('c1', 'bash', 'ls'))
+                    .hear(new PiEvent.ToolFinished('c1', false, 'notes.md'))
+                    .hear(new PiEvent.ToolStarted('c2', 'bash', 'rm -r tmp'))
+                    .hear(new PiEvent.ToolFinished('c2', false, ''))
+                    .hear(new PiEvent.Said('Done.'))
+                    .hear(new PiEvent.Answered('Done.', '', 0))
+                    .hear(new PiEvent.Settled())
+
+        then:
+            var answers = worked.transcript().entries().findAll { it.kind() == Entry.Kind.GENIE }
+            answers*.text() == ['Let me look.', 'Done.']
+            answers*.beforeTools() == [true, false]
+    }
+
+    def 'A conversation opened again shows what the genie did then'() {
+        reportInfo """
+            A job's conversation is shown from pi's session file. Its answers say whether tools
+            were used after them, and whether the model failed, so the chat shows the same as
+            while the genie worked: what it said before using tools as such, and a failure as a
+            problem in plain words rather than as something the genie said. oillamp keeps a failed
+            answer's text and the error in one, as two paragraphs; they come apart again here.
+        """
+        given:
+            var at = Instant.parse('2026-10-05T20:09:48Z')
+            var none = Tuple.of(Lamp.Conversation.ToolCall)
+            var said = { String id, String parent, String text, Tuple<Lamp.Conversation.ToolCall> calls, boolean failed ->
+                new Lamp.Conversation.Entry(id, Optional.of(parent), at, Lamp.Conversation.Kind.MESSAGE_FROM_AGENT,
+                        text, '', calls, Optional.empty(), failed)
+            }
+            var conversation = new Lamp.Conversation('c', 'run-44 (job-3)', 'x.jsonl', at, at, Tuple.of(Lamp.Conversation.Entry,
+                    new Lamp.Conversation.Entry('q1', Optional.empty(), at, Lamp.Conversation.Kind.MESSAGE_TO_AGENT,
+                            'Make something', '', none, Optional.empty(), false),
+                    said('a1', 'q1', "I'll make a game.", Tuple.of(Lamp.Conversation.ToolCall,
+                            new Lamp.Conversation.ToolCall('t1', 'write', 'game.html')), false),
+                    new Lamp.Conversation.Entry('o1', Optional.of('a1'), at, Lamp.Conversation.Kind.TOOL_OUTPUT,
+                            'Wrote it', '', none, Optional.of('write'), false),
+                    said('a2', 'o1', '502 oillamp: cannot reach the model service at api.eu.edenai.run — Connect timed out\n', none, true),
+                    said('a3', 'a2', 'Connection error.', none, true),
+                    said('a4', 'a3', 'It is half done.\n\nRequest was aborted', none, true)))
+
+        when:
+            var opened = genie.hear(LampApiConversionUtil.history(conversation, 'a4'))
+
+        then:
+            var entries = opened.transcript().entries()
+            entries*.kind() == [Entry.Kind.YOU, Entry.Kind.GENIE, Entry.Kind.NOTICE, Entry.Kind.NOTICE,
+                                Entry.Kind.GENIE, Entry.Kind.NOTICE]
+            entries*.beforeTools() == [false, true, false, false, false, false]
+            entries*.isFailed() == [false, false, true, true, false, false]
+            entries[2].text().startsWith('oillamp could not reach the model service at api.eu.edenai.run')
+            entries[3].text().startsWith('The connection to the model service broke off')
+            entries[4].text() == 'It is half done.'
+            entries[5].text() == 'Stopped before the answer was done.'
     }
 
     def 'A genie that wakes again shows the conversation its harness kept'() {
@@ -206,7 +327,8 @@ class FollowingAConversationSpec extends Specification {
         """
         when:
             var restored = genie.hear(new PiEvent.History(Tuple.of(PiEvent.History.Line,
-                    new PiEvent.History.Line(true, 'hello', 'q1'), new PiEvent.History.Line(false, 'hi there', 'a1')), 'a1'))
+                    new PiEvent.History.Line(true, 'hello', 'q1', false, false),
+                    new PiEvent.History.Line(false, 'hi there', 'a1', false, false)), 'a1'))
 
         then:
             restored.transcript().entries()*.kind() == [Entry.Kind.YOU, Entry.Kind.GENIE]
@@ -231,7 +353,8 @@ class FollowingAConversationSpec extends Specification {
 
         when:
             var learned = answered.learn(new PiEvent.History(Tuple.of(PiEvent.History.Line,
-                    new PiEvent.History.Line(true, 'draw me a map', 'q1'), new PiEvent.History.Line(false, 'Here it is.', 'a1')), 'a1'))
+                    new PiEvent.History.Line(true, 'draw me a map', 'q1', false, false),
+                    new PiEvent.History.Line(false, 'Here it is.', 'a1', false, false)), 'a1'))
 
         then:
             learned.transcript().entries()*.kind() == [Entry.Kind.YOU, Entry.Kind.TOOL, Entry.Kind.GENIE]
@@ -240,7 +363,7 @@ class FollowingAConversationSpec extends Specification {
 
         and: 'questions pi has differently, as when it expanded a template, leave the chat as it is'
             answered.learn(new PiEvent.History(Tuple.of(PiEvent.History.Line,
-                    new PiEvent.History.Line(true, 'Draw a map of: ...', 'q1')), 'a1')).transcript() == answered.transcript()
+                    new PiEvent.History.Line(true, 'Draw a map of: ...', 'q1', false, false)), 'a1')).transcript() == answered.transcript()
     }
 
     def 'Asking a question differently leaves out what followed it, and the genie works on the new one'() {
@@ -252,8 +375,10 @@ class FollowingAConversationSpec extends Specification {
         """
         given:
             var talked = genie.hear(new PiEvent.History(Tuple.of(PiEvent.History.Line,
-                    new PiEvent.History.Line(true, 'Plan a trip', 'q1'), new PiEvent.History.Line(false, 'Where to?', 'a1'),
-                    new PiEvent.History.Line(true, 'By train', 'q2'), new PiEvent.History.Line(false, 'Nice.', 'a2')), 'a2'))
+                    new PiEvent.History.Line(true, 'Plan a trip', 'q1', false, false),
+                    new PiEvent.History.Line(false, 'Where to?', 'a1', false, false),
+                    new PiEvent.History.Line(true, 'By train', 'q2', false, false),
+                    new PiEvent.History.Line(false, 'Nice.', 'a2', false, false)), 'a2'))
 
         when:
             var changed = talked.askInstead('q2', '  By bike  ')

@@ -57,6 +57,22 @@ class DrawingAGenieSpec extends Specification {
             GenieSvgUtil.poseOf(genie.withPhase(Genie.Phase.WORKING).withTranscript(withLast(tool.withState(Entry.State.DONE)))) == THINKING
     }
 
+    def 'Beside the rows of its chat, the genie shows what it did then'() {
+        reportInfo """
+            Each answer, thought and problem in the chat has the genie beside it, in the pose of
+            that moment rather than of now: working beside what it said before using tools, awake
+            beside an answer, thinking beside its thoughts, and dizzy beside a problem. Only the
+            row being written now moves; the others stand still.
+        """
+        given:
+            def answer = Entry.of(Entry.Kind.GENIE, 'Done.')
+        expect:
+            GenieSvgUtil.poseBeside(answer) == AWAKE
+            GenieSvgUtil.poseBeside(answer.withBeforeTools(true)) == WORKING
+            GenieSvgUtil.poseBeside(Entry.of(Entry.Kind.THINKING, 'hmm')) == THINKING
+            GenieSvgUtil.poseBeside(Entry.of(Entry.Kind.NOTICE, 'no model').withState(Entry.State.FAILED)) == DIZZY
+    }
+
     def 'An animation shows each of its frames in turn'() {
         reportInfo """
             Thinking and working are animations, driven by a pulse that loops from 0 to 1. Each
