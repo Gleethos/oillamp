@@ -190,6 +190,14 @@ job". Both come from `Genie.waitingOn` and `Genie.status`, which read `Schedule.
 a tool's row opens to show what the tool printed. The conversation follows its end while the user
 is there, and leaves them be when they scroll up to read.
 
+When the model cannot answer, the chat says why as a problem in red, in plain words, from the
+error pi got (`Transcript.explained`): oillamp could not reach the model service, the connection
+to it broke off, or the service refused the key, took no more requests, refused the request, or
+had trouble of its own, each with the service's own message. A retry pi makes by itself adds
+"Trying again, 1 of 3." A genie the user stopped ends with a grey notice instead. A conversation
+read again from pi's session file shows its failures the same way, and keeps for each answer
+whether the genie used tools after it; it leaves out the tools and thoughts themselves.
+
 Genies brings its own fonts, Inter for text and JetBrains Mono for code, so it looks the same
 whatever font the desktop uses. Where JetBrains Mono is also installed on the desktop, in weights
 that make Java draw it bold, Genies uses Roboto Mono, which it also brings, instead.
@@ -334,11 +342,15 @@ Its pose follows from its phase:
 | broken | dizzy: crossed eyes and stars |
 
 Working and thinking are animations, moved by the loop that moves the thinking bars, which runs
-while any genie works.
+while any genie works. Where the genie shows what it did earlier, they stand still in their last
+frame.
 
 | Where | What it shows |
 |---|---|
-| beside each of its answers in the chat, 30 units square | its pose; but only the answer it writes now, the last since the user's last message, thinks or works, and older answers show it awake |
+| beside the answer it writes now, the last since the user's last message, 30 units square | its pose, moving |
+| beside each older answer | working, when it used tools after that answer, which then said what it was doing; awake otherwise |
+| beside each of its thoughts | thinking, moving while the thought is written |
+| beside a problem in the chat, such as a model that could not answer | dizzy |
 | beside the bar that says what the user waits for | its pose |
 | the top right corner of its card, 40 units square, painted on the card | its pose, while it is ready or working; asleep, waking or broken it is in its lamp, and the card shows only the lamp |
 
