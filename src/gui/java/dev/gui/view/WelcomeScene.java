@@ -4,11 +4,9 @@ import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Composite;
 import java.awt.Graphics2D;
-import java.awt.MultipleGradientPaint;
 import java.awt.RadialGradientPaint;
 import java.awt.RenderingHints;
 import java.awt.geom.AffineTransform;
-import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
@@ -173,25 +171,41 @@ final class WelcomeScene {
     private record Spark(double angle, double speed, double life, int hue, boolean small) {}
     private static final List<Spark> SPARKS = sparks();
 
-    /// The lamp, cold and smoking, and cold without smoke, drawn once for each size.
-    private static final Map<Integer, BufferedImage> SMOKING = new ConcurrentHashMap<>();
-    private static final Map<Integer, BufferedImage> COLD = new ConcurrentHashMap<>();
+    /// What changes little is drawn once, into pictures kept here, and the pictures are drawn
+    /// each moment instead: painting a gradient anew each moment, the welcome's light most of
+    /// all, made the window slow to resize. Pictures that hold a colour are kept for a few
+    /// colours at a time, since the colour changes each moment while the flame turns the genie's.
+    ///
+    /// The lamp, cold, smoking or not, and dark or not, for each size.
+    private record Lamp(int size, boolean smoking, boolean dark) {}
+    private static final Map<Lamp, BufferedImage> LAMPS = new ConcurrentHashMap<>();
+    /// The flame's shine on the lamp, for each size and colour of flame.
+    private record Shine(int size, boolean smoking, Color hot, Color flame) {}
+    private static final Map<Shine, BufferedImage> SHINES = new ConcurrentHashMap<>();
+    /// A round glow of `colour`, as strong as `peak` in its middle, `middle` at 0.3 of the way
+    /// out, and nothing at its edge, `GLOW` pixels wide, and stretched to whatever size it is drawn.
+    private record Glow(Color colour, double peak, double middle) {}
+    private static final Map<Glow, BufferedImage> GLOWS = new ConcurrentHashMap<>();
+    private static final int GLOW = 128;
+    private static final int COLOURS_KEPT = 32;
 
     /// Paints `play` as it is at `clock`, in seconds of the page, onto `g`, `width` by `height`
     /// pixels.
     static void paint(Graphics2D g, int width, int height, Play play, double clock) {
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        // Pixels fill whole pixels, which smoothing their edges only makes slower to paint.
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         Stage stage = Stage.of(width, height);
         if (clock < play.began()) {
             double since = clock - play.poofed();
-            lamp(g, stage, Hues.of(play.gone()), strength(FORMED) * clamp(1 - since / POOF), false, 1);
+            lamp(g, stage, play.gone(), 1, strength(FORMED) * clamp(1 - since / POOF), false, 1);
             poof(g, stage, play.gone(), since);
             return;
         }
         double time = clock - play.began();
         Hues hues = hues(play, time);
         // In a play after a poof, the lamp is there already, and the smoke is the poof's.
-        lamp(g, stage, hues, strength(time), time < LIT + 0.15, play.poofed() >= 0 ? 1 : clamp(time / SHOWN));
+        lamp(g, stage, play.pip(), tinted(time), strength(time), time < LIT + 0.15, play.poofed() >= 0 ? 1 : clamp(time / SHOWN));
         flame(g, stage, hues, time);
         sparks(g, stage, hues, time);
         if (time >= FORMING) pip(g, stage, play.pip(), hues, time);
@@ -219,7 +233,8 @@ final class WelcomeScene {
         double left = poofing ? clamp(1 - (clock - play.poofed()) / POOF) : 1;
         double strength = clamp(strength(time) * left);
         if (strength <= 0) return;
-        Hues hues = poofing ? Hues.of(play.gone()) : hues(play, time);
+        double tinted = poofing ? 1 : tinted(time);
+        Hues genie = Hues.of(poofing ? play.gone() : play.pip());
         Point2D.Double source = source(stage, time);
         double size = size(stage, time);
         // It has faded to nothing where the welcome ends, so it shows no edge.
@@ -228,22 +243,53 @@ final class WelcomeScene {
         double down = Math.min(2.4 * size, Math.min(y, height - y));
         double across = Math.min(1.12 * down, Math.min(x, width - x));
         if (across <= 0 || down <= 0) return;
-        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setPaint(new RadialGradientPaint(new Point2D.Double(0, 0), 1f, new Point2D.Double(0, 0), new float[] { 0f, 0.3f, 1f },
-                new Color[] { alpha(hues.flame(), 0.42 * strength), alpha(hues.flame(), 0.16 * strength), alpha(hues.flame(), 0) },
-                MultipleGradientPaint.CycleMethod.NO_CYCLE, MultipleGradientPaint.ColorSpaceType.SRGB,
-                new AffineTransform(across, 0, 0, down, x, y)));
-        g.fillRect(0, 0, width, height);
-        float near = (float) Math.min(0.9 * size, down);
-        g.setPaint(new RadialGradientPaint(source, near, new float[] { 0f, 1f },
-                new Color[] { alpha(hues.hot(), 0.3 * strength), alpha(hues.hot(), 0) }));
-        g.fillRect(0, 0, width, height);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        double near = Math.min(0.9 * size, down);
+        Composite before = g.getComposite();
+        // It turns the genie's colour with the flame: the amber light fades out as the genie's
+        // fades in. A light of a colour between them would be a picture of its own each moment,
+        // and a picture drawn only once is slow to draw.
+        for (int which = 0; which < 2; which++) {
+            Hues hues = which == 0 ? Hues.AMBER : genie;
+            double part = which == 0 ? 1 - tinted : tinted;
+            if (part <= 0) continue;
+            g.setComposite(AlphaComposite.SrcOver.derive((float) (strength * part)));
+            glow(g, glow(hues.flame(), 0.42, 0.16), x, y, across, down);
+            // Near the source, a smaller glow, hotter. It fades evenly from its middle to its edge.
+            glow(g, glow(hues.hot(), 0.3, 0.3 * 0.7), x, y, near, near);
+        }
+        g.setComposite(before);
+    }
+
+    /// The glow `drawn` onto `g`, its middle on `x`, `y`, and `across` and `down` from there to
+    /// its edge.
+    private static void glow(Graphics2D g, BufferedImage drawn, double x, double y, double across, double down) {
+        g.drawImage(drawn, new AffineTransform(2 * across / GLOW, 0, 0, 2 * down / GLOW, x - across, y - down), null);
+    }
+
+    private static BufferedImage glow(Color colour, double peak, double middle) {
+        if (GLOWS.size() > COLOURS_KEPT) GLOWS.clear();
+        return GLOWS.computeIfAbsent(new Glow(colour, peak, middle), it -> {
+            BufferedImage glow = new BufferedImage(GLOW, GLOW, BufferedImage.TYPE_INT_ARGB_PRE);
+            Graphics2D on = glow.createGraphics();
+            on.setPaint(new RadialGradientPaint(GLOW / 2f, GLOW / 2f, GLOW / 2f, new float[] { 0f, 0.3f, 1f },
+                    new Color[] { alpha(colour, peak), alpha(colour, middle), alpha(colour, 0) }));
+            on.fillRect(0, 0, GLOW, GLOW);
+            on.dispose();
+            return glow;
+        });
     }
 
     /// The colours of the flame at `time` of `play`: the lamp's amber, turning to its genie's
     /// as the flame turns to pixels.
     private static Hues hues(Play play, double time) {
-        return Hues.AMBER.toward(Hues.of(play.pip()), ease(clamp((time - PIXELATING) / (TINTED - PIXELATING))));
+        return Hues.AMBER.toward(Hues.of(play.pip()), tinted(time));
+    }
+
+    /// How far the flame has turned from the lamp's amber to its genie's colour at `time`, from
+    /// 0 to 1.
+    private static double tinted(double time) {
+        return ease(clamp((time - PIXELATING) / (TINTED - PIXELATING)));
     }
 
     /// Where the light comes from at `time`: the middle of the flame, which rises as it grows,
@@ -308,33 +354,58 @@ final class WelcomeScene {
 
     /// The lamp, cold, smoking or not, `shown` from 0, not at all, to 1, and lit by its flame:
     /// dark where no flame burns, and shining in the flame's colour where its light falls, on
-    /// top and towards the wick, as strong as `light`.
-    private static void lamp(Graphics2D g, Stage stage, Hues hues, double light, boolean smoking, double shown) {
+    /// top and towards the wick, as strong as `light`. The flame is `tinted` of the way from
+    /// amber to the colour of `genie`.
+    private static void lamp(Graphics2D g, Stage stage, GenieSvgUtil.Appearance genie, double tinted, double light, boolean smoking,
+                             double shown) {
         int size = stage.lampSize();
-        BufferedImage drawn = (smoking ? SMOKING : COLD).computeIfAbsent(size, it -> {
-            BufferedImage lamp = new BufferedImage(it, it, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D on = lamp.createGraphics();
-            SvgIcon.of(smoking ? LampSvgUtil.lamp(Genie.Phase.ASLEEP) : LampSvgUtil.cold()).withIconSize(it, it).paintIcon(null, on, 0, 0);
-            on.dispose();
-            return lamp;
-        });
-        BufferedImage lit = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D on = lit.createGraphics();
-        on.drawImage(drawn, 0, 0, null);
-        // Only over the lamp itself.
-        on.setComposite(AlphaComposite.SrcAtop);
-        on.setColor(alpha(Color.BLACK, 0.45 * (1 - clamp(light))));
-        on.fillRect(0, 0, size, size);
-        double wickX = LampSvgUtil.WICK_X / 64 * size;
-        double wickY = LampSvgUtil.WICK_Y / 64 * size;
-        on.setPaint(new RadialGradientPaint(new Point2D.Double(wickX, wickY), (float) (0.6 * size), new float[] { 0f, 0.45f, 1f },
-                new Color[] { alpha(hues.hot(), 0.38 * clamp(light)), alpha(hues.flame(), 0.12 * clamp(light)), alpha(hues.flame(), 0) }));
-        on.fillRect(0, 0, size, size);
-        on.dispose();
+        double lit = clamp(light);
+        int x = (int) Math.round(stage.lampX());
+        int y = (int) Math.round(stage.lampY());
         Composite before = g.getComposite();
-        g.setComposite(AlphaComposite.SrcOver.derive((float) shown));
-        g.drawImage(lit, (int) Math.round(stage.lampX()), (int) Math.round(stage.lampY()), null);
+        // The lamp darkens less the more it is lit: the lamp, and its dark self over it, fading as
+        // the flame's light grows. It fades in only before the flame catches, all dark.
+        if (lit > 0) g.drawImage(lamp(new Lamp(size, smoking, false)), x, y, null);
+        g.setComposite(AlphaComposite.SrcOver.derive((float) (shown * (1 - lit))));
+        g.drawImage(lamp(new Lamp(size, smoking, true)), x, y, null);
+        // Its shine turns the genie's colour as the light does.
+        for (int which = 0; which < 2; which++) {
+            Hues hues = which == 0 ? Hues.AMBER : Hues.of(genie);
+            double part = lit * (which == 0 ? 1 - tinted : tinted);
+            if (part <= 0) continue;
+            g.setComposite(AlphaComposite.SrcOver.derive((float) part));
+            if (SHINES.size() > COLOURS_KEPT) SHINES.clear();
+            g.drawImage(SHINES.computeIfAbsent(new Shine(size, smoking, hues.hot(), hues.flame()), it -> {
+                BufferedImage shine = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB_PRE);
+                Graphics2D on = shine.createGraphics();
+                on.drawImage(lamp(new Lamp(size, smoking, false)), 0, 0, null);
+                // Only over the lamp itself.
+                on.setComposite(AlphaComposite.SrcIn);
+                double wickX = LampSvgUtil.WICK_X / 64 * size;
+                double wickY = LampSvgUtil.WICK_Y / 64 * size;
+                on.setPaint(new RadialGradientPaint(new Point2D.Double(wickX, wickY), (float) (0.6 * size), new float[] { 0f, 0.45f, 1f },
+                        new Color[] { alpha(hues.hot(), 0.38), alpha(hues.flame(), 0.12), alpha(hues.flame(), 0) }));
+                on.fillRect(0, 0, size, size);
+                on.dispose();
+                return shine;
+            }), x, y, null);
+        }
         g.setComposite(before);
+    }
+
+    private static BufferedImage lamp(Lamp lamp) {
+        return LAMPS.computeIfAbsent(lamp, it -> {
+            BufferedImage drawn = new BufferedImage(it.size(), it.size(), BufferedImage.TYPE_INT_ARGB_PRE);
+            Graphics2D on = drawn.createGraphics();
+            SvgIcon.of(it.smoking() ? LampSvgUtil.lamp(Genie.Phase.ASLEEP) : LampSvgUtil.cold()).withIconSize(it.size(), it.size()).paintIcon(null, on, 0, 0);
+            if (it.dark()) {
+                on.setComposite(AlphaComposite.SrcAtop);
+                on.setColor(alpha(Color.BLACK, 0.45));
+                on.fillRect(0, 0, it.size(), it.size());
+            }
+            on.dispose();
+            return drawn;
+        });
     }
 
     /// The flame on the wick: smooth as it catches, then in pixels that grow to the genie's,
@@ -359,10 +430,12 @@ final class WelcomeScene {
         // The pixels at its edge come and go, about ten times a second.
         long flickers = (long) (time * 10);
         if (cell < 2) {
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             for (int layer = 0; layer < layers.size(); layer++) {
                 g.setColor(colours.get(layer));
                 g.fill(layers.get(layer));
             }
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
         } else {
             // Cells on the genie's own grid, so the flame's pixels become the genie's where they meet.
             Rectangle2D bounds = layers.getFirst().getBounds2D();
@@ -473,10 +546,11 @@ final class WelcomeScene {
         Point2D middle = stage.middle();
         double flash = Math.exp(-Math.pow(since / 0.12, 2));
         if (flash > 0.01) {
-            float reach = 14f * pixel;
-            g.setPaint(new RadialGradientPaint(middle, reach, new float[] { 0f, 1f },
-                    new Color[] { alpha(hues.brightest(), 0.85 * flash), alpha(hues.brightest(), 0) }));
-            g.fill(new Ellipse2D.Double(middle.getX() - reach, middle.getY() - reach, 2 * reach, 2 * reach));
+            double reach = 14.0 * pixel;
+            Composite before = g.getComposite();
+            g.setComposite(AlphaComposite.SrcOver.derive((float) flash));
+            glow(g, glow(hues.brightest(), 0.85, 0.85 * 0.7), middle.getX(), middle.getY(), reach, reach);
+            g.setComposite(before);
         }
         Random chance = new Random(5);
         double clearing = clamp(1 - since / POOF);
