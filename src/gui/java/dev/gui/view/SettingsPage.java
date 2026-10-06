@@ -70,11 +70,14 @@ final class SettingsPage {
             + "their requests as they leave the sandbox. An entered key is kept in a file only you can read.";
 
     /// When the welcome's words fade in, and how long they take, in seconds of its play.
-    private static final double WORDS_FROM = 6.4;
+    private static final double WORDS_FROM = 7.4;
     private static final double WORDS_TAKE = 0.8;
 
+    /// How tall the welcome's picture is.
+    private static final int PICTURE_HEIGHT = 360;
+
     /// When the settings' card appears below the welcome, in seconds of its play.
-    private static final double CARD_AT = 7.2;
+    private static final double CARD_AT = 8.2;
 
     static UIForAnySwing<?, ?> of(Var<GeniesState> state, Actions actions, Val<Boolean> visible) {
         Var<Settings> settings = state.zoomTo(GeniesState::settings, GeniesState::withSettings);
@@ -273,7 +276,13 @@ final class SettingsPage {
                 : "To think, genies need a model. Genies can set one up for you, right here on this computer.");
         return
             box("fill, wrap 1, ins 0, gap 12", "[grow, center]").isVisibleIf(welcome)
-            .add("growx, wmin 0, h 300!",
+            // The light, behind the picture and the words, so that it can shine past the picture.
+            .withStyle(clock, (at, it) -> {
+                int width = UI.scale(it.componentWidth());
+                int height = UI.scale(it.componentHeight());
+                return it.painter(UI.Layer.BACKGROUND, g -> WelcomeScene.light(g, width, height, UI.scale(PICTURE_HEIGHT), scene.get(), at));
+            })
+            .add("growx, wmin 0, h " + PICTURE_HEIGHT + "!",
                 box().withMinSize(0, 0)
                 .withStyle(clock, (at, it) -> {
                     int width = UI.scale(it.componentWidth());

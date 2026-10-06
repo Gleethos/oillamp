@@ -44,28 +44,31 @@ final class WelcomeScene {
      *  A play, in seconds since it began:
      *
      *      0    – 1.0    the lamp fades in, dark and cold, with a wisp of smoke
-     *      1.2  – 2.8    the flame catches on the wick; its light grows, and lights the lamp
-     *      2.8  – 3.6    the flame burns calmly
-     *      3.6  – 5.0    the flame turns to pixels, which grow to the genie's size as it grows;
-     *                    until 5.2, it, its light and the lamp's shine turn to the genie's colour
-     *      5.1  – 5.4    the flame draws itself in
-     *      5.4  – 5.9    it bursts, and sparks fly
-     *      5.7  – 6.7    the genie takes form from the flame, from its tail up
-     *      6.8  –        the genie lives: it waves first, then thinks, works, rests and waves
+     *      1.2  – 3.6    the flame catches on the wick, slowly; its light grows with it
+     *      3.6  – 4.6    the flame burns calmly
+     *      4.6  – 6.0    the flame turns to pixels, which grow to the genie's size as it grows;
+     *                    until 6.2, it, its light and the lamp's shine turn to the genie's colour
+     *      6.1  – 6.4    the flame draws itself in
+     *      6.4  – 6.9    it bursts, and sparks fly
+     *      6.7  – 7.7    the genie takes form from the flame, from its tail up
+     *      7.8  –        the genie lives: it waves first, then thinks, works, rests and waves
      *                    by turns, floats, and blinks now and then
+     *
+     *  The light comes from the flame, and from the genie once it is there: its middle is theirs,
+     *  and it is as large as they are, flicker and all.
      *
      *  A poof takes 1.1 seconds, and the next play begins after it, with the lamp already there.
      */
     private static final double SHOWN = 1.0;
     private static final double LIT = 1.2;
-    private static final double BURNING = 2.8;
-    private static final double PIXELATING = 3.6;
-    private static final double PIXELATED = 5.0;
-    private static final double TINTED = 5.2;
-    private static final double GATHERING = 5.1;
-    private static final double BURST = 5.4;
-    private static final double FORMING = 5.7;
-    static final double FORMED = 6.8;
+    private static final double BURNING = 3.6;
+    private static final double PIXELATING = 4.6;
+    private static final double PIXELATED = 6.0;
+    private static final double TINTED = 6.2;
+    private static final double GATHERING = 6.1;
+    private static final double BURST = 6.4;
+    private static final double FORMING = 6.7;
+    static final double FORMED = 7.8;
     private static final double POOF = 1.1;
 
     /// One play of the welcome, on the clock of the page, which goes on from play to play.
@@ -102,7 +105,7 @@ final class WelcomeScene {
         /// pixels wide, and the genie above it, its tail, a flame, ending on the wick: the
         /// bottom of its column 12, row 17.
         static Stage of(int width, int height) {
-            int pixel = Math.max(2, height / 42);
+            int pixel = Math.max(2, height / 50);
             int lampSize = 25 * pixel;
             double lampX = width / 2.0 - 34.0 / 64 * lampSize;
             double lampY = height - 56.0 / 64 * lampSize;
@@ -181,18 +184,14 @@ final class WelcomeScene {
         Stage stage = Stage.of(width, height);
         if (clock < play.began()) {
             double since = clock - play.poofed();
-            Hues gone = Hues.of(play.gone());
-            double left = clamp(1 - since / POOF);
-            glow(g, width, height, stage, gone, FORMED, left);
-            lamp(g, stage, gone, light(FORMED) * left, false, 1);
+            lamp(g, stage, Hues.of(play.gone()), strength(FORMED) * clamp(1 - since / POOF), false, 1);
             poof(g, stage, play.gone(), since);
             return;
         }
         double time = clock - play.began();
-        Hues hues = Hues.AMBER.toward(Hues.of(play.pip()), ease(clamp((time - PIXELATING) / (TINTED - PIXELATING))));
-        glow(g, width, height, stage, hues, time, 1);
+        Hues hues = hues(play, time);
         // In a play after a poof, the lamp is there already, and the smoke is the poof's.
-        lamp(g, stage, hues, light(time), time < LIT + 0.15, play.poofed() >= 0 ? 1 : clamp(time / SHOWN));
+        lamp(g, stage, hues, strength(time), time < LIT + 0.15, play.poofed() >= 0 ? 1 : clamp(time / SHOWN));
         flame(g, stage, hues, time);
         sparks(g, stage, hues, time);
         if (time >= FORMING) pip(g, stage, play.pip(), hues, time);
@@ -206,36 +205,97 @@ final class WelcomeScene {
             || new Rectangle2D.Double(stage.pipX(), stage.pipY(), 20.0 * stage.pixel(), 18.0 * stage.pixel()).contains(x, y);
     }
 
-    /// The light of the flame: a soft glow in the flame's colour that grows as the flame catches,
-    /// flares when it bursts, and breathes once the genie is there.
+    /// The light of the flame, and of the genie once it is there, onto `g`, `width` by `height`
+    /// pixels: the whole welcome, whose picture is the top `stageHeight` pixels of it. A light
+    /// larger than the picture shines past it, behind the welcome's words.
     ///
-    /// @param left how much of it is left, from 0 to 1: less as a poof clears
-    private static void glow(Graphics2D g, int width, int height, Stage stage, Hues hues, double time, double left) {
-        double caught = ease(clamp((time - LIT) / (BURNING - LIT)));
-        double flare = flare(time);
-        double strength = clamp(light(time) * clamp(left));
+    /// It is a round glow in the flame's colour, a touch wider than tall. Its middle is the
+    /// flame's, and then the genie's; it is as large as they are, and grows and shrinks as they
+    /// flicker. It grows bright as the flame catches, flares as it bursts, and fades out in a poof.
+    static void light(Graphics2D g, int width, int height, int stageHeight, Play play, double clock) {
+        Stage stage = Stage.of(width, stageHeight);
+        boolean poofing = clock < play.began();
+        double time = poofing ? FORMED : clock - play.began();
+        double left = poofing ? clamp(1 - (clock - play.poofed()) / POOF) : 1;
+        double strength = clamp(strength(time) * left);
         if (strength <= 0) return;
-        // An ellipse that has faded to nothing where the picture ends, so it shows no edge.
-        double x = stage.wickX();
-        double y = stage.wickY() - 8 * stage.pixel();
-        double reach = Math.min(1, 0.35 + 0.65 * caught + 0.25 * flare);
-        double across = Math.min(x, width - x) * reach;
-        double down = Math.min(y, height - y) * reach;
+        Hues hues = poofing ? Hues.of(play.gone()) : hues(play, time);
+        Point2D.Double source = source(stage, time);
+        double size = size(stage, time);
+        // It has faded to nothing where the welcome ends, so it shows no edge.
+        double x = source.getX();
+        double y = source.getY();
+        double down = Math.min(2.4 * size, Math.min(y, height - y));
+        double across = Math.min(1.12 * down, Math.min(x, width - x));
         if (across <= 0 || down <= 0) return;
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setPaint(new RadialGradientPaint(new Point2D.Double(0, 0), 1f, new Point2D.Double(0, 0), new float[] { 0f, 0.3f, 1f },
                 new Color[] { alpha(hues.flame(), 0.42 * strength), alpha(hues.flame(), 0.16 * strength), alpha(hues.flame(), 0) },
                 MultipleGradientPaint.CycleMethod.NO_CYCLE, MultipleGradientPaint.ColorSpaceType.SRGB,
                 new AffineTransform(across, 0, 0, down, x, y)));
         g.fillRect(0, 0, width, height);
-        float near = (float) (Math.min(across, down) * 0.35);
-        g.setPaint(new RadialGradientPaint(new Point2D.Double(x, y), near, new float[] { 0f, 1f },
+        float near = (float) Math.min(0.9 * size, down);
+        g.setPaint(new RadialGradientPaint(source, near, new float[] { 0f, 1f },
                 new Color[] { alpha(hues.hot(), 0.3 * strength), alpha(hues.hot(), 0) }));
         g.fillRect(0, 0, width, height);
     }
 
+    /// The colours of the flame at `time` of `play`: the lamp's amber, turning to its genie's
+    /// as the flame turns to pixels.
+    private static Hues hues(Play play, double time) {
+        return Hues.AMBER.toward(Hues.of(play.pip()), ease(clamp((time - PIXELATING) / (TINTED - PIXELATING))));
+    }
+
+    /// Where the light comes from at `time`: the middle of the flame, which rises as it grows,
+    /// and then the middle of the genie, as it takes form from the flame and floats.
+    private static Point2D.Double source(Stage stage, double time) {
+        double flameY = stage.wickY() - 0.42 * flameTall(stage.pixel(), time);
+        double formed = ease(clamp((time - FORMING) / (FORMED - FORMING)));
+        Point2D middle = stage.middle();
+        double genieX = middle.getX() + lean(time) * stage.pixel();
+        double genieY = middle.getY() - risen(time) * stage.pixel();
+        return new Point2D.Double(stage.wickX() + (genieX - stage.wickX()) * formed, flameY + (genieY - flameY) * formed);
+    }
+
+    /// How large the light's source is at `time`, in pixels: the flame's height, flicker and all,
+    /// and then the genie's, whose tail flickers.
+    private static double size(Stage stage, double time) {
+        double formed = ease(clamp((time - FORMING) / (FORMED - FORMING)));
+        // The genie shines as a flame twice the lamp's would.
+        double genie = 12 * stage.pixel() * (1 + 0.05 * Math.sin(17 * time) + 0.03 * Math.sin(31 * time + 0.7)
+                                             + 0.06 * (chance((long) (time * 8), 0, 0) - 0.5));
+        double flame = flameTall(stage.pixel(), time);
+        return flame + (genie - flame) * formed;
+    }
+
+    /// How high the flame stands at `time`, in pixels, flicker and all: small as it catches,
+    /// steady, growing as it turns to pixels, drawn in, and then bursting.
+    private static double flameTall(int pixel, double time) {
+        if (time < LIT) return 0;
+        double size = time < BURNING ? 0.12 + 0.88 * smooth(clamp((time - LIT) / (BURNING - LIT)))
+                    : time < PIXELATING ? 1
+                    : time < GATHERING ? 1 + 0.7 * ease(clamp((time - PIXELATING) / (GATHERING - PIXELATING)))
+                    : time < BURST ? 1.7 - 0.3 * ease(clamp((time - GATHERING) / (BURST - GATHERING)))
+                    : 1.4 + 3.0 * ease(clamp((time - BURST) / 0.35));
+        double flicker = 1 + (time < PIXELATING ? 0.06 : 0.12) * Math.sin(17 * time) + 0.05 * Math.sin(31 * time + 0.7);
+        return 6 * pixel * size * flicker;
+    }
+
+    /// Whether the genie floats a pixel higher at `time`: it rises and sinks again, every 0.8
+    /// seconds, once it has taken form.
+    private static int risen(double time) {
+        return time >= FORMED && (int) ((time - FORMED) / 0.8) % 2 == 1 ? 1 : 0;
+    }
+
+    /// How many pixels the genie leans to the right at `time`, or to the left when below 0: it
+    /// sways slowly, once every seven seconds, a pixel each way, resting upright in between.
+    private static int lean(double time) {
+        return time < FORMED ? 0 : (int) Math.round(1.3 * Math.sin(2 * Math.PI * (time - FORMED) / 7.0));
+    }
+
     /// How strong the flame's light is at `time`: nothing before it catches, about 0.9 while it
     /// burns, more as it bursts, and breathing a little once the genie is there.
-    private static double light(double time) {
+    private static double strength(double time) {
         double caught = ease(clamp((time - LIT) / (BURNING - LIT)));
         double breath = time < FORMED ? 1 : 1 + 0.08 * Math.sin(2.1 * (time - FORMED));
         return (caught * 0.9 + flare(time) * 0.9) * breath;
@@ -282,13 +342,7 @@ final class WelcomeScene {
     private static void flame(Graphics2D g, Stage stage, Hues hues, double time) {
         if (time < LIT || time >= FORMED) return;
         int pixel = stage.pixel();
-        double size = time < BURNING ? 0.15 + 0.85 * easeBack(clamp((time - LIT) / (BURNING - LIT)))
-                    : time < PIXELATING ? 1
-                    : time < GATHERING ? 1 + 0.7 * ease(clamp((time - PIXELATING) / (GATHERING - PIXELATING)))
-                    : time < BURST ? 1.7 - 0.3 * ease(clamp((time - GATHERING) / (BURST - GATHERING)))
-                    : 1.4 + 3.0 * ease(clamp((time - BURST) / 0.35));
-        double flicker = 1 + (time < PIXELATING ? 0.06 : 0.12) * Math.sin(17 * time) + 0.05 * Math.sin(31 * time + 0.7);
-        double tall = 6 * pixel * size * flicker;
+        double tall = flameTall(pixel, time);
         // Fuller as it turns to pixels, so that it keeps its body in them.
         double wide = tall * (0.55 + 0.2 * ease(clamp((time - PIXELATING) / (PIXELATED - PIXELATING))));
         double sway = Math.sin(7 * time) * 0.06 * wide;
@@ -387,14 +441,9 @@ final class WelcomeScene {
             pixels[row] = (row - 15 < tail.size() ? tail.get(row - 15) : ".".repeat(pixels[row].length)).toCharArray();
         // Once formed, it floats: its body rises a pixel and sinks again, while its tail stays on
         // the wick and stretches, its top row drawn twice.
-        int risen = time >= FORMED && (int) (lived / 0.8) % 2 == 1 ? 1 : 0;
-        double formed = clamp((time - FORMING) / (FORMED - FORMING));
-        float halo = 13f * pixel;
-        Point2D middle = stage.middle();
-        double middleY = middle.getY() - risen * pixel;
-        g.setPaint(new RadialGradientPaint(new Point2D.Double(middle.getX(), middleY), halo, new float[] { 0f, 1f },
-                new Color[] { alpha(hues.hot(), 0.22 * formed * (1 + 0.15 * Math.sin(2.1 * time))), alpha(hues.hot(), 0) }));
-        g.fill(new Ellipse2D.Double(middle.getX() - halo, middleY - halo, 2 * halo, 2 * halo));
+        int risen = risen(time);
+        // It sways too: its body leans, while its tail, a flame, stays on the wick.
+        int lean = lean(time);
         for (int row = 0; row < pixels.length; row++)
             for (int column = 0; column < pixels[row].length; column++) {
                 char letter = pixels[row][column];
@@ -410,8 +459,9 @@ final class WelcomeScene {
                 // A pixel just formed fades in, in the flame's colour, and then turns its own.
                 colour = alpha(mix(hues.hot(), colour, clamp((time - appears) / 0.35)), clamp((time - appears) / 0.15));
                 g.setColor(colour);
-                g.fillRect(stage.pipX() + column * pixel, stage.pipY() + (row < 15 ? row - risen : row) * pixel, pixel, pixel);
-                if (row == 15 && risen == 1) g.fillRect(stage.pipX() + column * pixel, stage.pipY() + 14 * pixel, pixel, pixel);
+                int x = stage.pipX() + (column + (row < 15 ? lean : 0)) * pixel;
+                g.fillRect(x, stage.pipY() + (row < 15 ? row - risen : row) * pixel, pixel, pixel);
+                if (row == 15 && risen == 1) g.fillRect(x, stage.pipY() + 14 * pixel, pixel, pixel);
             }
     }
 
@@ -523,11 +573,9 @@ final class WelcomeScene {
         return 1 - Math.pow(1 - progress, 3);
     }
 
-    /// As [#ease], going a little past the end before settling: a flame that catches.
-    private static double easeBack(double progress) {
-        double over = 1.6;
-        double back = progress - 1;
-        return 1 + (over + 1) * back * back * back + over * back * back;
+    /// Slow at first, faster, and slow again at the end.
+    private static double smooth(double progress) {
+        return progress * progress * (3 - 2 * progress);
     }
 
     private static Color alpha(Color colour, double alpha) {
