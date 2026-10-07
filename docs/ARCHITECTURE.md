@@ -602,8 +602,9 @@ podman run --detach --name oillamp-<id>
 
 `/usr/local/lib/oillamp/entrypoint` is a bash script running as container root:
 
-1. Reads `/oillamp/session/runtime.env` and checks the required settings. Missing settings stop the
-   container with exit code 70.
+1. Reads `/oillamp/session/runtime.env` and checks the required settings. A missing file stops the
+   container with exit code 70, and a missing required setting with bash's own exit code 1; either
+   way the reason is the last line of the container's log.
 2. Deletes `vnc.sock`, `ready.json` and `ssh.sock` from the previous session. The socket directories
    outlive the container, and wayvnc cannot bind a path that already exists.
 3. Creates `/run/lamp` (infra user, 0711), `/run/lamp/private` (0700), `/run/agent` (agent, 0700)
@@ -757,7 +758,7 @@ Exit codes by shutdown reason (`ShutdownReason.exitStatus`): `oillamp stop` → 
 
 `Supervisor.shutDown` runs every step, even if an earlier one failed:
 
-0. Close the schedule socket, tell pi to stop the run in progress, and wait for that run to be
+0. Close the schedule socket and the desktop socket, tell pi to stop the run in progress, and wait for that run to be
    saved (at most six minutes); runs still waiting end as interrupted. The sandbox still runs here,
    so pi can wind down.
 1. Close both SSH relays and all their connections.
