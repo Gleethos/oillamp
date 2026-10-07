@@ -414,11 +414,12 @@ One more pose, waving, is only the welcome's: the genie looks at the user and wa
 
 `WelcomeScene` paints the welcome from the moment alone: its picture, 360 units tall, with the
 lamp in the middle, 25 of the genie's pixels wide, the genie's pixels a 50th of the picture's
-height; and its light, behind the picture and the words, so that the light can shine past the
-picture. In a narrow window its empty top is cut: none of it while the welcome is 760 units wide
-or wider, 80 units once it is 360 or narrower, evenly in between; the lamp and the genie keep
-their size and place at the bottom, and the light fades out at the cut top. The page's clock moves it from when the welcome is shown for as long as it is shown; the
-words fade in from 7.4 seconds, and the settings' card appears at 8.2.
+height; and its light, painted on the whole page behind the welcome, so that only the window's
+edges cut it off. In a narrow window the picture's empty top is cut: none of it while the welcome
+is 760 units wide or wider, 100 units once it is 360 or narrower, evenly in between; the lamp and
+the genie keep their size and place at the bottom. The page's clock moves it from when the welcome
+is shown for as long as it is shown; the words fade in from 7.4 seconds, and the settings' card
+appears at 8.2.
 
 | Seconds | What happens |
 |---|---|
@@ -434,7 +435,7 @@ words fade in from 7.4 seconds, and the settings' card appears at 8.2.
 The light comes from the flame, and then from the genie: a round glow, a touch wider than tall,
 whose middle is the flame's middle, rising as the flame grows, and then the genie's, as it takes
 form, floats and sways. Its radius is 2.4 times the flame's height, flicker and all; the genie
-shines as a flame of 12 of its pixels, its flicker too. It fades to nothing where the welcome ends.
+shines as a flame of 12 of its pixels, its flicker too.
 
 Each play has a genie of its own, from a random id, as a new genie has. Once it has taken form, a
 click on it or on the lamp makes it vanish: dizzy, in a flash, its pixels fly apart in a puff of
