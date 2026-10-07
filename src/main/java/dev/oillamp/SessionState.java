@@ -60,6 +60,9 @@ sealed interface SessionState {
         /// The session never came up. Carries the problem that already explained why.
         record StartupFailed(Problem problem) implements ShutdownReason {}
 
+        /// oillamp itself failed while it ran the session. Carries the problem that reported it.
+        record Crashed(Problem problem) implements ShutdownReason {}
+
         /// The process exit code for this reason.
         default ExitStatus exitStatus() {
             return switch (this) {
@@ -68,6 +71,7 @@ sealed interface SessionState {
                         ? ExitStatus.SUCCESS : ExitStatus.INTERRUPTED;
                 case ContainerDied ignored  -> ExitStatus.SESSION_FAILED;
                 case StartupFailed ignored  -> ExitStatus.SESSION_FAILED;
+                case Crashed ignored        -> ExitStatus.ERROR;
             };
         }
 
@@ -80,6 +84,7 @@ sealed interface SessionState {
                                               + died.exitCode() + ")";
                 case StartupFailed failed    -> "the session could not be started — "
                                               + failed.problem().code();
+                case Crashed crashed         -> "oillamp itself failed — " + crashed.problem().code();
             };
         }
     }

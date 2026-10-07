@@ -296,6 +296,39 @@ class SupervisingASessionSpec extends Specification {
             !java.nio.file.Files.exists(host.lampPath().resolve('.oillamp/session.json'))
     }
 
+    def 'A bug that breaks the session\'s event loop still ends the session and removes the sandbox'() {
+        reportInfo """
+            One thread of oillamp's, the event loop, decides when a session ends. If a bug made it
+            fail, nothing would stop the sandbox, and oillamp would then wait many minutes on its
+            way out for a loop that was gone. So a failing event loop is reported as a bug, and
+            the session is shut down at once, as it is for any other ending.
+
+            Here the bug is in an application listening to the session, which fails the moment
+            the session is up: the listener is called on the event loop's thread.
+        """
+        given: 'a listener that fails once, when the session is up'
+            var failed = new java.util.concurrent.atomic.AtomicBoolean()
+            var oillamp = host.oillamp.observedBy { event ->
+                if (event instanceof LampEvent.SessionStateChanged && event.status().state() == 'running'
+                        && failed.compareAndSet(false, true))
+                    throw new IllegalStateException('the listener broke')
+            }
+
+        when:
+            var outcome = oillamp.run('at', host.lampPath().toString())
+
+        then: 'the bug is reported as one'
+            outcome.status() == ExitStatus.ERROR
+            outcome.reported('OIL-INTERNAL-001')
+            outcome.console().contains('the listener broke')
+
+        and: 'the session ended the way every session does, and says why'
+            outcome.console().contains('oillamp itself failed')
+            outcome.console().contains('(removed)')
+            outcome.events().any { it instanceof LampEvent.SessionStateChanged && it.status().state() == 'stopped' }
+            !java.nio.file.Files.exists(host.lampPath().resolve('.oillamp/session.json'))
+    }
+
     def 'A second connection to the shell window\'s socket is refused, and the session goes on'() {
         reportInfo """
             The socket the terminal window connects through accepts exactly one connection per

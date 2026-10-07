@@ -156,7 +156,12 @@ final class Supervisor {
         if (context.options().embedded()) watchTheApplication();
         post(new SessionEvent.ContainerReady(ReadyInfo.parse(sandbox.readyJson())));
 
-        ExitStatus status = loop();
+        ExitStatus status;
+        try {
+            status = loop();
+        } catch (RuntimeException bug) {
+            status = endAfterACrash(bug);
+        }
         followers.end();
         try {
             Runtime.getRuntime().removeShutdownHook(hook);
@@ -202,6 +207,43 @@ final class Supervisor {
             }
         }
         return exit;
+    }
+
+    /// Ends the session after the event loop failed.
+    ///
+    /// The event loop is what ends a session. Without it, nothing would stop the sandbox, and the
+    /// shutdown hook would wait the whole shutdown allowance for a loop that is gone. So the
+    /// shutdown sequence runs here, or, if the loop had begun it, is waited for.
+    private ExitStatus endAfterACrash(RuntimeException bug) {
+        Problem crash = ProblemCatalogUtil.crash(bug);
+        context.sink().accept(new LampEvent.Failure(crash));
+        SessionState.ShutdownReason reason = new SessionState.ShutdownReason.Crashed(crash);
+        if (shuttingDown.compareAndSet(false, true)) {
+            context.sinkAcceptProblems(shutDown(reason));
+            summarise(reason);
+        } else {
+            awaitTheShutdown();
+        }
+        state = new SessionState.Stopped(reason, reason.exitStatus());
+        announceState();
+        return reason.exitStatus();
+    }
+
+    /// Waits until the shutdown sequence the event loop began has finished, and reports what it
+    /// could not clean up.
+    private void awaitTheShutdown() {
+        Instant deadline = Instant.now().plus(longestShutdown());
+        try {
+            while (Instant.now().isBefore(deadline)) {
+                Timed timed = events.poll(1, TimeUnit.SECONDS);
+                if (timed != null && timed.event() instanceof SessionEvent.ShutdownCompleted(Tuple<Problem> problems)) {
+                    context.sinkAcceptProblems(problems);
+                    return;
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /// Puts an event on the queue, stamped with the time it happened. Safe from any thread.
