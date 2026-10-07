@@ -306,6 +306,7 @@ final class DesktopScreen extends JComponent implements Scrollable {
             });
         } catch (IOException failed) {
             SwingUtilities.invokeLater(() -> {
+                if (!shown.equals(Optional.of(desktop))) return;
                 message = "Could not show the desktop: " + failed.getMessage();
                 repaint();
             });
