@@ -290,8 +290,10 @@ final class Harness implements AutoCloseable {
         return Optional.of("pi did not say it had moved");
     }
 
+    /// pi failed, unless the session is ending: then it stopped waiting for pi, and pi did not fail.
     private Answer failed(String why) {
         close();
+        if (stopping) return new Answer(RunOutcome.INTERRUPTED, "the session ended before pi was ready");
         return new Answer(RunOutcome.FAILED, why);
     }
 
