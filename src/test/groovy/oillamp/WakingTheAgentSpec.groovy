@@ -570,6 +570,44 @@ class WakingTheAgentSpec extends Specification {
             heard == answers
     }
 
+    def 'A schedule file that cannot be read is reported once, and again only when it can be'() {
+        reportInfo """
+            The session looks at the schedule every half minute, and whenever it changes. A file
+            damaged by hand stops every job, so the user is told; but telling them again at every
+            look would bury everything else the session reports. So it is said once, and once
+            more when the file can be read again.
+        """
+        given: 'a session with the schedule on, whose schedule file is then damaged'
+            var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
+            startASession(lamp)
+            var file = lamp.resolve('.oillamp/schedule.json')
+            Files.writeString(file, '{ not json')
+            var control = host.runtime.resolve('oillamp/k3v7x2ab/run/control.sock')
+            var look = {
+                SocketChannel.open(UnixDomainSocketAddress.of(control)).withCloseable { channel ->
+                    channel.write(ByteBuffer.wrap('{"op":"schedule-changed"}\n'.getBytes(StandardCharsets.UTF_8)))
+                    channel.read(ByteBuffer.allocate(1024))
+                }
+            }
+            var damaged = { reported.count { it instanceof LampEvent.Warning && it.problem().code().value() == 'OIL-SCHEDULE-002' } }
+
+        when: 'the session looks at it four times'
+            look()
+            waitFor(LampEvent.Warning) { it.problem().code().value() == 'OIL-SCHEDULE-002' }
+            3.times { look(); Thread.sleep(300) }
+
+        then: 'it said so once'
+            damaged() == 1
+
+        when: 'the file is mended'
+            Files.writeString(file, '{}')
+            look()
+
+        then: 'it says so'
+            waitFor(LampEvent.Ok) { it.text() == 'the schedule can be read again' }
+            damaged() == 1
+    }
+
     // ─── the agent's side ──────────────────────────────────────────────────────────────────
 
     def 'The agent adds and removes its own jobs through the session, within the limits the user set'() {

@@ -59,6 +59,9 @@ final class AgentRunner {
     private volatile Optional<String> cancelled = Optional.empty();
     private volatile boolean stopping;
     private volatile Optional<Thread> worker = Optional.empty();
+    /// Why the schedule could not be read the last time it was looked at, so that the same reason
+    /// is reported once, not every half minute. Used only by the thread that watches the schedule.
+    private Optional<String> unreadable = Optional.empty();
 
     /// A run waiting its turn, and whoever waits for its end.
     ///
@@ -187,9 +190,13 @@ final class AgentRunner {
         ZoneId zone = machine.zone();
         Result<Schedule> read = book.read();
         if (!(read instanceof Result.Ok<Schedule>(Schedule schedule, var _))) {
-            context.sinkAcceptProblems(read.problems().map(ProblemCatalogUtil::asWarning));
+            Optional<String> why = Optional.of(read.problems().first().whatHappened());
+            if (!why.equals(unreadable)) context.sinkAcceptProblems(read.problems().map(ProblemCatalogUtil::asWarning));
+            unreadable = why;
             return;
         }
+        if (unreadable.isPresent()) context.sink().accept(new LampEvent.Ok("schedule", "the schedule can be read again"));
+        unreadable = Optional.empty();
         for (ScheduledJob finished : schedule.finished(now, zone))
             if (book.update(current -> Result.ok(current.without(finished.id())), s -> s).isOk())
                 context.sink().accept(new LampEvent.JobRemoved(finished.describe(zone, now), finished.expiredAt(now)
