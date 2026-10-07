@@ -134,9 +134,10 @@ public final class GenieRunner {
     }
 
     /// Sends the user's message, to where the chat is. While the genie still works on another
-    /// run, it waits its turn.
+    /// run, it waits its turn. Finding where the chat is reads files, so it happens on the
+    /// conversation reader's thread, not the caller's.
     public void sendMessage(String text) {
-        sendQuestion(questionWhereTheChatIs(text));
+        conversationReader.execute(() -> sendQuestion(questionWhereTheChatIs(text)));
     }
 
     /// Stops the run that answers this chat. What the genie did until then stays, and is saved.
@@ -184,12 +185,14 @@ public final class GenieRunner {
     /// Asks `text` instead of the user's question `id`. The question and what followed it stay
     /// in the conversation, as a branch of their own.
     public void askInstead(String id, String text) {
-        Optional<Lamp.Conversation> conversation = conversationIn(where.file());
-        if (conversation.isEmpty()) {
-            showProblem("The conversation of that question is not there any more.");
-            return;
-        }
-        sendQuestion(Lamp.Question.insteadOf(conversation.get().id(), id, text));
+        conversationReader.execute(() -> {
+            Optional<Lamp.Conversation> conversation = conversationIn(where.file());
+            if (conversation.isEmpty()) {
+                showProblem("The conversation of that question is not there any more.");
+                return;
+            }
+            sendQuestion(Lamp.Question.insteadOf(conversation.get().id(), id, text));
+        });
     }
 
     /// Deletes a conversation for good. Deleting the one the chat shows starts a new one.
