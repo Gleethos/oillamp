@@ -49,7 +49,7 @@ class ReadingCronExpressionsSpec extends Specification {
         when: 'the Mondays after Tuesday 22 September that fall on an odd day of the month'
             var first = cron.nextAfter(NOW, UTC).get()
 
-        then: 'Monday 5 October is odd, and the 28th and 30th are not Mondays'
+        then: 'Monday 28 September is an even day, so the next is Monday 5 October'
             first == Instant.parse('2026-10-05T00:00:00Z')
     }
 

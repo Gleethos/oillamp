@@ -94,7 +94,9 @@ If you need to change one of these rules, change the test deliberately and say w
 ## How the tests are organised
 
 All tests are Spock specifications. The engine's are in `src/test/groovy/oillamp/`, a package
-outside `dev.oillamp`, so they can only use the public types, like any other caller. Genies' are in
+outside `dev.oillamp`, so they can only use the public types, like any other caller. The one
+exception is `src/test/groovy/dev/oillamp/ReadingCronExpressionsSpec.groovy`, which reads cron
+expressions through the package-private `CronExpression`. Genies' are in
 `src/test/groovy/gui/`, except two in `src/test/groovy/dev/gui/view/` that reach package-private
 view code. `src/test/groovy/dev/lamp/` tests the `dev.lamp` API on its own.
 
