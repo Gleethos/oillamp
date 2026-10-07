@@ -289,6 +289,9 @@ final class Egress implements AutoCloseable {
         Resolution resolution = resolve(head.host());
         if (resolution.failed()) {
             respond(out, 502, "oillamp: cannot resolve " + head.host());
+            record(new Journey(Instant.now(), "proxy", head.method(), head.host(), head.port(),
+                    Optional.empty(), Decision.DENY, UNRESOLVED, 0, 0,
+                    Duration.between(started, Instant.now())));
             return;
         }
         NetworkPolicyUtil.Verdict verdict = NetworkPolicyUtil.decide(policy, head.host(), head.port(), resolution.addresses());
@@ -304,6 +307,9 @@ final class Egress implements AutoCloseable {
             upstream = connect(resolution.pick(verdict), head.port());
         } catch (IOException e) {
             respond(out, 502, "oillamp: cannot reach " + head.host() + ":" + head.port());
+            record(new Journey(Instant.now(), "proxy", head.method(), head.host(), head.port(),
+                    verdict.address(), verdict.decision(), verdict.rule(), 0, 0,
+                    Duration.between(started, Instant.now())));
             return;
         }
         live.add(upstream);
