@@ -547,6 +547,29 @@ class WakingTheAgentSpec extends Specification {
             !asked.console().contains('\u001B]0;')
     }
 
+    def 'A long answer in any language comes back to `oillamp ask` exactly as the agent wrote it'() {
+        reportInfo """
+            The answer travels from the session to `oillamp ask` over a socket, which hands it over
+            in pieces of 64 kB. A letter such as € takes three bytes, and a piece can end in the
+            middle of one. The pieces are joined before they are read as text, so no letter is
+            broken at such a seam.
+        """
+        given: 'answers of 90 kB of euro signs, after one, two and three spaces, so that one of them has a seam inside a €'
+            var lamp = aLampThatHasRun('')
+            var answers = (1..3).collect { spaces -> 'Kosten:' + ' ' * spaces + '€' * 30_000 }
+            anAgent { prompt -> answers[prompt.toInteger()] }
+            startASession(lamp)
+
+        when:
+            var heard = (0..2).collect { which ->
+                host.oillamp.run('ask', lamp.toString(), which.toString())
+                        .events().find { it instanceof LampEvent.RunFinished }.answer()
+            }
+
+        then:
+            heard == answers
+    }
+
     // ─── the agent's side ──────────────────────────────────────────────────────────────────
 
     def 'The agent adds and removes its own jobs through the session, within the limits the user set'() {

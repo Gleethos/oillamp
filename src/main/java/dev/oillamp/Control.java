@@ -1,6 +1,7 @@
 package dev.oillamp;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -346,20 +347,23 @@ final class Control {
         }
     }
 
+    /// Collects bytes and decodes them once, at the end: a read can end in the middle of a
+    /// character of several bytes, which decoded on its own would come out garbled. A newline byte
+    /// is never part of such a character.
     private static String readLine(SocketChannel channel) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(64 * 1024);
-        StringBuilder out = new StringBuilder();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
         while (channel.read(buffer) >= 0) {
             buffer.flip();
-            byte[] bytes = new byte[buffer.remaining()];
-            buffer.get(bytes);
+            while (buffer.hasRemaining()) {
+                byte next = buffer.get();
+                if (next == '\n') return out.toString(StandardCharsets.UTF_8);
+                out.write(next);
+            }
             buffer.clear();
-            out.append(new String(bytes, StandardCharsets.UTF_8));
-            int newline = out.indexOf("\n");
-            if (newline >= 0) return out.substring(0, newline);
-            if (out.length() > 256 * 1024) return "";
+            if (out.size() > 256 * 1024) return "";
         }
-        return out.toString();
+        return out.toString(StandardCharsets.UTF_8);
     }
 
     private static void write(SocketChannel channel, String text) throws IOException {
