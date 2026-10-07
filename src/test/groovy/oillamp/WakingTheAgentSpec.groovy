@@ -570,42 +570,51 @@ class WakingTheAgentSpec extends Specification {
             heard == answers
     }
 
-    def 'A schedule file that cannot be read is reported once, and again only when it can be'() {
+    def 'A schedule file that is not valid JSON is reported once, and again once it is fixed'() {
         reportInfo """
-            The session looks at the schedule every half minute, and whenever it changes. A file
-            damaged by hand stops every job, so the user is told; but telling them again at every
-            look would bury everything else the session reports. So it is said once, and once
-            more when the file can be read again.
+            The lamp's jobs are kept in .oillamp/schedule.json. oillamp writes it, but a person
+            may edit it by hand, and a typo leaves text that is not valid JSON: here, `{ not json`.
+            oillamp cannot tell which jobs that file holds, so no job runs until it is fixed, and
+            the user is told.
+
+            The session reads the file every half minute, and whenever someone changes the
+            schedule. Repeating the same warning at every reading would bury everything else the
+            session reports. So the warning comes once. When the file is valid JSON again, the
+            session says it can read the schedule again, and the jobs run as before.
         """
-        given: 'a session with the schedule on, whose schedule file is then damaged'
+        given: 'a session with the schedule on'
             var lamp = aLampThatHasRun('[schedule]\nenabled = true\n')
             startASession(lamp)
             var file = lamp.resolve('.oillamp/schedule.json')
-            Files.writeString(file, '{ not json')
+
+        and: 'a way to make the session read the schedule now, as `oillamp schedule` does after a change'
             var control = host.runtime.resolve('oillamp/k3v7x2ab/run/control.sock')
-            var look = {
+            var readNow = {
                 SocketChannel.open(UnixDomainSocketAddress.of(control)).withCloseable { channel ->
                     channel.write(ByteBuffer.wrap('{"op":"schedule-changed"}\n'.getBytes(StandardCharsets.UTF_8)))
                     channel.read(ByteBuffer.allocate(1024))
                 }
             }
-            var damaged = { reported.count { it instanceof LampEvent.Warning && it.problem().code().value() == 'OIL-SCHEDULE-002' } }
+            var warnings = {
+                reported.count { it instanceof LampEvent.Warning && it.problem().code().value() == 'OIL-SCHEDULE-002' }
+            }
 
-        when: 'the session looks at it four times'
-            look()
+        when: 'someone leaves text in the file that is not JSON, and the session reads it four times'
+            Files.writeString(file, '{ not json')
+            readNow()
             waitFor(LampEvent.Warning) { it.problem().code().value() == 'OIL-SCHEDULE-002' }
-            3.times { look(); Thread.sleep(300) }
+            3.times { readNow(); Thread.sleep(300) }
 
-        then: 'it said so once'
-            damaged() == 1
+        then: 'the user was warned once'
+            warnings() == 1
 
-        when: 'the file is mended'
+        when: 'the file holds valid JSON again: an empty schedule'
             Files.writeString(file, '{}')
-            look()
+            readNow()
 
-        then: 'it says so'
+        then: 'the session says it can read the schedule again, and warns no more'
             waitFor(LampEvent.Ok) { it.text() == 'the schedule can be read again' }
-            damaged() == 1
+            warnings() == 1
     }
 
     // ─── the agent's side ──────────────────────────────────────────────────────────────────
