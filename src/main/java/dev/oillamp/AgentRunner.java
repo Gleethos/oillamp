@@ -157,10 +157,14 @@ final class AgentRunner {
                 Thread.currentThread().interrupt();
             }
         });
-        for (Pending left; (left = queue.poll()) != null; )
-            left.done().complete(new LampEvent.RunFinished(left.run(), RunOutcome.INTERRUPTED,
+        for (Pending left; (left = queue.poll()) != null; ) {
+            LampEvent.RunFinished finished = new LampEvent.RunFinished(left.run(), RunOutcome.INTERRUPTED,
                     "the session ended before the agent got to it", Optional.empty(), Duration.ZERO,
-                    left.run().conversation()));
+                    left.run().conversation());
+            // An application that sent the question waits for this event, not for the future.
+            context.sink().accept(finished);
+            left.done().complete(finished);
+        }
         harness.close();
     }
 
