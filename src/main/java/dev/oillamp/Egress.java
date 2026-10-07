@@ -264,16 +264,19 @@ final class Egress implements AutoCloseable {
             return;
         }
         live.add(upstream);
-        out.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
-        out.flush();
         AtomicLong up = new AtomicLong();
         AtomicLong down = new AtomicLong();
-        pipeBothWays(in, out, upstream, up, down);
-        live.remove(upstream);
-        closeQuietly(upstream);
-        record(new Journey(Instant.now(), "proxy", "CONNECT", head.host(), head.port(),
-                verdict.address(), verdict.decision(), verdict.rule(), up.get(), down.get(),
-                Duration.between(started, Instant.now())));
+        try {
+            out.write("HTTP/1.1 200 Connection Established\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
+            out.flush();
+            pipeBothWays(in, out, upstream, up, down);
+        } finally {
+            live.remove(upstream);
+            closeQuietly(upstream);
+            record(new Journey(Instant.now(), "proxy", "CONNECT", head.host(), head.port(),
+                    verdict.address(), verdict.decision(), verdict.rule(), up.get(), down.get(),
+                    Duration.between(started, Instant.now())));
+        }
     }
 
     /// An absolute-form request (`GET http://host/path`), forwarded in origin form.
@@ -431,16 +434,21 @@ final class Egress implements AutoCloseable {
         String host = service.getHost();
         int port = servicePort(service);
         Socket plain = new Socket();
-        plain.connect(new InetSocketAddress(host, port), (int) CONNECT_TIMEOUT.toMillis());
-        if (!"https".equals(service.getScheme())) return plain;
-        var tls = (SSLSocket) ((SSLSocketFactory)
-                SSLSocketFactory.getDefault()).createSocket(plain, host, port, true);
-        var parameters = tls.getSSLParameters();
-        // Without this, TLS checks that the certificate is valid, but not that it is this host's.
-        parameters.setEndpointIdentificationAlgorithm("HTTPS");
-        tls.setSSLParameters(parameters);
-        tls.startHandshake();
-        return tls;
+        try {
+            plain.connect(new InetSocketAddress(host, port), (int) CONNECT_TIMEOUT.toMillis());
+            if (!"https".equals(service.getScheme())) return plain;
+            var tls = (SSLSocket) ((SSLSocketFactory)
+                    SSLSocketFactory.getDefault()).createSocket(plain, host, port, true);
+            var parameters = tls.getSSLParameters();
+            // Without this, TLS checks that the certificate is valid, but not that it is this host's.
+            parameters.setEndpointIdentificationAlgorithm("HTTPS");
+            tls.setSSLParameters(parameters);
+            tls.startHandshake();
+            return tls;
+        } catch (IOException | RuntimeException failed) {
+            closeQuietly(plain);
+            throw failed;
+        }
     }
 
     /// The path a request from the sandbox asks the model service for.
