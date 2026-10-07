@@ -142,7 +142,7 @@ record LampConfig(
 
     public record Image(String base, String nodeVersion, String jdkPackage, Tuple<String> extraAptPackages) {}
 
-    /// `[host]`. `autoInstall` is not used yet; only `--no-install` stops installing.
+    /// `[host]`. `autoInstall = false` has the same effect as `--no-install`: missing host packages are reported, not installed.
     public record Host(boolean autoInstall) {}
 
     /// `[timeouts]`. The wait for readiness is doubled straight after an image build.
