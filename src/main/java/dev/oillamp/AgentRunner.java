@@ -256,17 +256,26 @@ final class AgentRunner {
             }
             if (next == null) continue;
             current = Optional.of(next);
+            LampEvent.RunFinished finished;
+            Optional<RuntimeException> crashed = Optional.empty();
             try {
-                next.done().complete(perform(next));
+                finished = perform(next);
             } catch (RuntimeException bug) {
-                context.sink().accept(new LampEvent.Warning(
-                        ProblemCatalogUtil.runFailed(next.run().id(), ProblemCatalogUtil.reason(bug))));
+                crashed = Optional.of(bug);
                 // Whoever heard the run start must hear it end, or it seems to go on for ever.
-                LampEvent.RunFinished finished = new LampEvent.RunFinished(next.run(), RunOutcome.FAILED,
+                finished = new LampEvent.RunFinished(next.run(), RunOutcome.FAILED,
                         ProblemCatalogUtil.reason(bug), Optional.empty(), Duration.ZERO, next.run().conversation());
+            }
+            // Reported here, once, and outside the catch above: a listener that fails on this
+            // event must not make the run look failed and finish a second time. Whoever waits for
+            // the run is answered even then.
+            try {
+                if (crashed.isPresent())
+                    context.sink().accept(new LampEvent.Warning(
+                            ProblemCatalogUtil.runFailed(next.run().id(), ProblemCatalogUtil.reason(crashed.get()))));
                 context.sink().accept(finished);
-                next.done().complete(finished);
             } finally {
+                next.done().complete(finished);
                 current = Optional.empty();
             }
         }
@@ -328,10 +337,8 @@ final class AgentRunner {
         } else {
             context.sinkAcceptProblems(saved.problems().map(ProblemCatalogUtil::asWarning));
         }
-        LampEvent.RunFinished finished = new LampEvent.RunFinished(run, answer.outcome(), answer.text().strip(),
+        return new LampEvent.RunFinished(run, answer.outcome(), answer.text().strip(),
                 snapshot, Duration.between(started, ended), conversation);
-        context.sink().accept(finished);
-        return finished;
     }
 
     /// Records that a job's run began. A job that runs once is then done, and comes off the schedule.
