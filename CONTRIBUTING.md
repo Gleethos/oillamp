@@ -93,18 +93,20 @@ If you need to change one of these rules, change the test deliberately and say w
 
 ## How the tests are organised
 
-All tests are Spock specifications in `src/test/groovy/oillamp/`, a package outside `dev.oillamp`,
-so they can only use the public types, like any other caller.
+All tests are Spock specifications. The engine's are in `src/test/groovy/oillamp/`, a package
+outside `dev.oillamp`, so they can only use the public types, like any other caller. Genies' are in
+`src/test/groovy/gui/`, except two in `src/test/groovy/dev/gui/view/` that reach package-private
+view code. `src/test/groovy/dev/lamp/` tests the `dev.lamp` API on its own.
 
 ### Scenarios
 
 Each scenario describes a situation a user can be in and runs the real `OilLamp.run(...)` against a
-`SimulatedMachine`. The helper `Sandbox.groovy` sets up a simulated Ubuntu machine with a temporary
-home; a scenario changes what it needs:
+`SimulatedMachine`. The helper `ScenarioHost.groovy` sets up a simulated Ubuntu machine with a
+temporary home; a scenario changes what it needs:
 
 ```groovy
-sandbox.machine { it.withoutPodman().withoutSubordinateIds() }
-var outcome = sandbox.oillamp.run('at', sandbox.lampPath().toString(), '--dry-run')
+host.machine { it.withoutPodman().withoutSubordinateIds() }
+var outcome = host.oillamp.run('at', host.lampPath().toString(), '--dry-run')
 outcome.reported('OIL-PKG-001')
 ```
 
@@ -129,6 +131,28 @@ Scenarios need no podman, no network and no display, and together they run in ab
 | `TheLauncherSpec` | the single-file launcher script |
 | `TheSandboxImageSpec` | static checks of the image files |
 | `TheShapeOfTheCodeSpec` | the public types, `dev.lamp` staying apart from the engine, and the deciding/doing split |
+| `KeepingTheModelKeyOnTheHostSpec` | the model relay: the sandbox sends a placeholder, the host adds the real key |
+| `ShowingTheUserTheDesktopSpec` | `lamp show` telling the host there is something to look at |
+| `KeepingWindowsOnTheDesktopSpec` | floating windows kept in reach when the desktop changes size |
+| `GivingTheAgentAGitIdentitySpec` | the name and email on the agent's commits |
+| `TravellingBackInTimeSpec` | `save`, `history` and `restore` |
+| `AskingInAConversationSpec` | `ask --in`, `--after`, `--instead-of` |
+| `ReadingTheAgentsConversationsSpec` | `conversations` and `Lamp.conversations` |
+| `FollowingARunSpec` | `ask --no-wait`, `cancel`, and following a run through `Lamp` |
+| `FollowingASessionSpec` | `follow` |
+| `EmbeddingASessionSpec` | `oillamp at --embedded`, started by another application |
+| `TheEventWireFormatSpec` | the one-line JSON events between the engine and an application |
+| `HoldingALampSpec` | an application holding a lamp through `dev.lamp.Lamp` |
+| `ChoosingTheModelForALampSpec` | an application choosing the model service and key |
+| `ListingAServicesModelsSpec` | `Lamp.models`, against a stand-in server |
+
+Genies' scenarios, in `src/test/groovy/gui/` and `src/test/groovy/dev/gui/view/`, run its model
+and its `GenieRunner` without a window: `KeepingManyGeniesSpec`, `KeepingGeniesBetweenRunsSpec`,
+`KeepingAGenieAliveSpec`, `KeepingAGeniesHistorySpec`, `KeepingAGeniesScheduleSpec`,
+`PlanningAGeniesWeekSpec`, `FollowingAConversationSpec`, `BranchingAConversationSpec`,
+`SettingUpAModelSpec`, `FindingOllamaSpec`, `NoticingWhatWentWrongSpec`,
+`WatchingAGeniesDesktopSpec`, `ZoomingIntoAGeniesDesktopSpec`, `DrawingAGenieSpec` and
+`ReadingAGeniesMarkdownSpec`.
 
 ### Spikes
 
@@ -144,6 +168,13 @@ same code path oillamp uses.
 | `VerifyingTheImageBaseSpec` | every package the image needs exists in Debian trixie |
 | `VerifyingTerminalProfilesSpec` | installed terminals accept oillamp's arguments; terminal emulators return before their window closes |
 | `VerifyingTheSandboxDesktopSpec` | the real image: readiness, SSH login as `agent`, screen size and rendering, vncviewer on a Unix socket, clicking and typing with `lamp`, a playable recording, a clean second session |
+| `RunningALampForAnApplicationSpec` | a lamp's whole life through `dev.lamp.Lamp`, with the engine as a separate process |
+| `TwoLampsAtOnceSpec` | one application holding two lamps that must not see each other |
+| `WhenAnApplicationOrItsSandboxDiesSpec` | the application crashing, or the container dying |
+| `KeepingTheModelKeyOutOfARealSandboxSpec` | the model key absent from a real sandbox; real model requests when `EDENAI_API_KEY` is set |
+| `UsingAModelOnThisMachineSpec` | a lamp using Ollama on this machine |
+| `RunningARealGenieSpec` | a genie as Genies runs one: real lamp, real pi, real desktop |
+| `UsingGeniesForRealSpec` | the Genies app's actions, as its buttons call them, against real lamps |
 
 The results of these checks, and what was tested by hand on real hardware, are in STATUS.md.
 
