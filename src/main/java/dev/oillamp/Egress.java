@@ -376,6 +376,9 @@ final class Egress implements AutoCloseable {
             } catch (IOException e) {
                 respond(out, 502, "oillamp: cannot reach the model service at " + host + " — "
                         + ProblemCatalogUtil.reason(e));
+                record(new Journey(Instant.now(), "model", request.method(), host, port, Optional.empty(),
+                        Decision.ALLOW, "model", 0, 0, Duration.between(started, Instant.now())));
+                finishQuietly(client, in);
                 return;
             }
             live.add(upstream);

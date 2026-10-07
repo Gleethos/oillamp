@@ -384,6 +384,33 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
             !text.contains(KEY)
     }
 
+    def 'When the model service cannot be reached, the harness is told so, and the network log has the request'() {
+        reportInfo """
+            The model service can be down, or the host offline. The harness then gets an answer
+            that says so, which it shows the user, instead of a connection cut off without a word.
+            A request carries the whole conversation, often more than the socket holds at once, so
+            the relay reads it to the end before it closes: closing with part of it unread would
+            make the connection reset, and the answer could be lost.
+        """
+        given: 'a service that is no longer there, and a key'
+            host.machine { it.environmentVariable('EDENAI_API_KEY', KEY) }
+            startASession()
+            service.stop(0)
+
+        when: 'a request of a megabyte'
+            var answer = ask(request('POST', '/v3/chat/completions', 'x' * 1_000_000))
+            host.oillamp.run('stop', host.lampPath().toString())
+            session.join(20_000)
+
+        then:
+            answer.startsWith('HTTP/1.1 502')
+            answer.contains('cannot reach the model service')
+
+        and:
+            var logs = Files.list(host.lampPath().resolve('.oillamp/logs')).toList()
+            logs.collect { Files.readString(it) }.join('\n').contains('"channel":"model"')
+    }
+
     def 'The model service must be reached over https, unless it runs on this machine'() {
         reportInfo """
             The key travels with every request to the model service. Over plain http, anyone on
