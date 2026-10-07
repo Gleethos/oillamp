@@ -95,8 +95,9 @@ record Schedule(boolean paused, int nextJob, int nextRun, Tuple<ScheduledJob> jo
                 return Result.err(read.problems());
             if (cron.nextAfter(now, zone).isEmpty())
                 return refused("\"" + cron.text() + "\" names no time in the next few years, such as the 30th of February");
-            Optional<Duration> gap = cron.shortestGap(now, zone);
-            if (agent && gap.isPresent() && gap.get().compareTo(limits.minAgentInterval()) < 0)
+            // The agent's jobs always have an end, which bounds how far the search goes.
+            Optional<Duration> gap = agent ? cron.shortestGap(now, expires.get(), zone) : Optional.empty();
+            if (gap.isPresent() && gap.get().compareTo(limits.minAgentInterval()) < 0)
                 return refused("\"" + cron.text() + "\" runs every " + describe(gap.get()) + " at times; the agent's "
                              + "jobs may run at most every " + limits.minAgentIntervalMinutes() + " minutes");
             when = new ScheduledJob.When.Repeating(cron);

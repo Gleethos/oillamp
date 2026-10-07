@@ -26,7 +26,8 @@ import java.util.Optional;
 /// with a step such as `*/15` or `8-18/2`. Months and days may be written by name (`jan`, `mon`),
 /// and Sunday is both 0 and 7. `@hourly`, `@daily` and `@weekly` are short for the obvious
 /// expressions. As in cron, when both the day of the month and the day of the week are
-/// restricted, a day matching either one counts.
+/// restricted, a day matching either one counts. A field that starts with `*`, such as `*/2`,
+/// is not restricted in this sense.
 ///
 /// Times are read in the host's time zone, because that is the clock the person who wrote the
 /// expression was looking at.
@@ -92,7 +93,7 @@ final class CronExpression {
             if (weekdays.get(7)) weekdays.set(0);
             weekdays.clear(7);
             return Result.ok(new CronExpression(text, minutes, hours, days, months, weekdays,
-                    fields[2].equals("*"), fields[4].equals("*")));
+                    fields[2].startsWith("*"), fields[4].startsWith("*")));
         } catch (IllegalArgumentException wrong) {
             return failed(written, String.valueOf(wrong.getMessage()));
         }
@@ -185,10 +186,7 @@ final class CronExpression {
     private boolean matchesDay(LocalDate day) {
         boolean dayOfMonth = days.get(day.getDayOfMonth());
         boolean dayOfWeek = weekdays.get(day.getDayOfWeek() == DayOfWeek.SUNDAY ? 0 : day.getDayOfWeek().getValue());
-        if (anyDay && anyWeekday) return true;
-        if (anyDay) return dayOfWeek;
-        if (anyWeekday) return dayOfMonth;
-        return dayOfMonth || dayOfWeek;
+        return (anyDay || anyWeekday) ? (dayOfMonth && dayOfWeek) : (dayOfMonth || dayOfWeek);
     }
 
     private Optional<LocalTime> firstTimeFrom(LocalTime from) {
@@ -199,19 +197,18 @@ final class CronExpression {
         return Optional.empty();
     }
 
-    /// The shortest time between two runs, over the week after `from`, or empty when it never
-    /// runs twice in that week.
+    /// The shortest time between two runs that both come before `until`, or empty when it runs
+    /// fewer than twice before then.
     ///
-    /// A week covers every pattern of hours and weekdays. Monthly and yearly expressions run
-    /// further apart than any limit oillamp sets anyway.
-    Optional<Duration> shortestGap(Instant from, ZoneId zone) {
-        Instant end = from.plus(Duration.ofDays(8));
+    /// The whole time until `until` is searched, because an expression such as `*/5 0 1 * *`
+    /// runs every five minutes, but only on the first of the month.
+    Optional<Duration> shortestGap(Instant from, Instant until, ZoneId zone) {
         Optional<Duration> shortest = Optional.empty();
         Optional<Instant> previous = nextAfter(from, zone);
-        // A run every minute is 11,520 runs in eight days; a gap cannot get shorter than that.
-        for (int runs = 0; previous.isPresent() && previous.get().isBefore(end) && runs < 12_000; runs++) {
+        // A run every two minutes for a year is 263,000 runs; a gap of a minute ends the search.
+        for (int runs = 0; previous.isPresent() && previous.get().isBefore(until) && runs < 600_000; runs++) {
             Optional<Instant> next = nextAfter(previous.get(), zone);
-            if (next.isEmpty()) break;
+            if (next.isEmpty() || !next.get().isBefore(until)) break;
             Duration gap = Duration.between(previous.get(), next.get());
             if (shortest.isEmpty() || gap.compareTo(shortest.get()) < 0) shortest = Optional.of(gap);
             if (gap.toMinutes() <= 1) break;
