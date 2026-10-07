@@ -113,9 +113,19 @@ public final class OllamaKeeper {
         Path partial = Path.of(home + ".part");
         deleteAll(partial);
         Files.createDirectories(partial);
-        unpack(URI.create(DOWNLOADS + "ollama-linux-" + processor + ".tar.zst"), partial, "Downloading Ollama", progress);
-        if (!amdCards().isEmpty()) unpack(URI.create(DOWNLOADS + "ollama-linux-" + processor + "-rocm.tar.zst"), partial,
-                        "Downloading what Ollama needs for AMD graphics cards", progress);
+        try {
+            unpack(URI.create(DOWNLOADS + "ollama-linux-" + processor + ".tar.zst"), partial, "Downloading Ollama", progress);
+            if (!amdCards().isEmpty()) unpack(URI.create(DOWNLOADS + "ollama-linux-" + processor + "-rocm.tar.zst"), partial,
+                            "Downloading what Ollama needs for AMD graphics cards", progress);
+        } catch (IOException | InterruptedException | RuntimeException failed) {
+            // What was unpacked so far can be gigabytes, and is of no use to anyone.
+            try {
+                deleteAll(partial);
+            } catch (IOException stillThere) {
+                failed.addSuppressed(stillThere);
+            }
+            throw failed;
+        }
         // What Ollama said when it last ran stays.
         Path log = home.resolve("serve.log");
         if (Files.exists(log)) Files.move(log, partial.resolve("serve.log"));
