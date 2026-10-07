@@ -31,6 +31,11 @@ final class Harness implements AutoCloseable {
     private static final Duration ANSWER_TIME = Duration.ofMinutes(2);
     /// How long pi gets to wind down after it was told to stop.
     private static final Duration ABORT_TIME = Duration.ofSeconds(30);
+    /// How much of a tool's output is passed on as progress. The agent saw all of it.
+    private static final int OUTPUT_SHOWN = 4_000;
+    /// The command of oillamp's extension that moves within a conversation, and how it says it could not.
+    private static final String MOVE = "oillamp-goto";
+    private static final String COULD_NOT_MOVE = "oillamp: could not move: ";
 
     private final Machine machine;
     private final LampLayout layout;
@@ -39,9 +44,6 @@ final class Harness implements AutoCloseable {
     private volatile boolean stopping;
     /// Set by [#cancel] to stop the run in progress, and cleared as each run begins.
     private volatile boolean cancelled;
-
-    /// How much of a tool's output is passed on as progress. The agent saw all of it.
-    private static final int OUTPUT_SHOWN = 4_000;
 
     Harness(Machine machine, LampLayout layout) {
         this.machine = machine;
@@ -290,10 +292,6 @@ final class Harness implements AutoCloseable {
         }
         return Optional.of("pi did not say it had moved");
     }
-
-    /// The command of oillamp's extension that moves within a conversation, and how it says it could not.
-    private static final String MOVE = "oillamp-goto";
-    private static final String COULD_NOT_MOVE = "oillamp: could not move: ";
 
     private Answer failed(String why) {
         close();
