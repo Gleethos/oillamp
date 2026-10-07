@@ -28,6 +28,7 @@ import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -312,7 +313,8 @@ public final class OllamaKeeper {
             long shown = -1;
             for (int read = unpacked.read(buffer); read >= 0; read = unpacked.read(buffer)) {
                 if (Thread.interrupted()) {
-                    tar.destroy();
+                    // Ended before anyone deletes what it unpacked, or it would go on writing there.
+                    tar.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
                     throw new InterruptedException();
                 }
                 toTar.write(buffer, 0, read);
@@ -323,19 +325,29 @@ public final class OllamaKeeper {
                 }
             }
         } catch (IOException failed) {
-            tar.destroy();
-            throw new IOException(what + " failed: " + Optional.ofNullable(failed.getMessage()).orElse(failed.toString()), failed);
+            // Ended before anyone deletes what it unpacked, or it would go on writing there.
+            tar.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
+            // A tar that stopped on its own, as on a full disk, makes the write fail with a broken
+            // pipe, which says nothing; what tar said is the reason.
+            String complaints = lastComplaints(said);
+            throw new IOException(what + " failed: " + (complaints.isEmpty()
+                    ? Optional.ofNullable(failed.getMessage()).orElse(failed.toString()) : complaints), failed);
         }
         if (tar.waitFor() == 0) return;
+        throw new IOException("Unpacking Ollama failed: " + lastComplaints(said));
+    }
+
+    /// The last lines tar wrote on its error output, once it has ended: on a full disk the same
+    /// complaint comes for every file.
+    private static String lastComplaints(FutureTask<String> said) throws InterruptedException {
         String complaints;
         try {
-            complaints = said.get();
-        } catch (ExecutionException unreadable) {
-            complaints = "";
+            complaints = said.get(10, TimeUnit.SECONDS);
+        } catch (ExecutionException | TimeoutException unreadable) {
+            return "";
         }
-        // The last lines: on a full disk the same complaint comes for every file.
         List<String> lines = complaints.lines().toList();
-        throw new IOException("Unpacking Ollama failed: " + String.join("\n", lines.subList(Math.max(0, lines.size() - 5), lines.size())));
+        return String.join("\n", lines.subList(Math.max(0, lines.size() - 5), lines.size()));
     }
 
     private JsonNode get(String path) throws IOException, InterruptedException {
