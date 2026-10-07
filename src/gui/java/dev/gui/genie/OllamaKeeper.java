@@ -25,6 +25,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -283,6 +285,10 @@ public final class OllamaKeeper {
         long total = response.headers().firstValueAsLong("content-length").orElse(0);
         long[] arrived = { 0 };
         Process tar = new ProcessBuilder("tar", "-x", "-C", into.toString()).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+        // Read as it comes: on a full disk tar complains once for every file, and a pipe nobody
+        // reads fills up and stops tar, and with it the download, for good.
+        FutureTask<String> said = new FutureTask<>(() -> new String(tar.getErrorStream().readAllBytes(), StandardCharsets.UTF_8).strip());
+        Thread.ofVirtual().name("tar-errors").start(said);
         try (InputStream counted = new FilterInputStream(response.body()) {
                  @Override public int read(byte[] buffer, int offset, int length) throws IOException {
                      int read = super.read(buffer, offset, length);
@@ -310,8 +316,16 @@ public final class OllamaKeeper {
             tar.destroy();
             throw new IOException(what + " failed: " + Optional.ofNullable(failed.getMessage()).orElse(failed.toString()), failed);
         }
-        String said = new String(tar.getErrorStream().readAllBytes(), StandardCharsets.UTF_8).strip();
-        if (tar.waitFor() != 0) throw new IOException("Unpacking Ollama failed: " + said);
+        if (tar.waitFor() == 0) return;
+        String complaints;
+        try {
+            complaints = said.get();
+        } catch (ExecutionException unreadable) {
+            complaints = "";
+        }
+        // The last lines: on a full disk the same complaint comes for every file.
+        List<String> lines = complaints.lines().toList();
+        throw new IOException("Unpacking Ollama failed: " + String.join("\n", lines.subList(Math.max(0, lines.size() - 5), lines.size())));
     }
 
     private JsonNode get(String path) throws IOException, InterruptedException {
