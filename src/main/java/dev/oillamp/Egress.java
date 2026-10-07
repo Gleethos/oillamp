@@ -131,7 +131,7 @@ final class Egress implements AutoCloseable {
     /// because the enclosing `.oillamp` directory is 0700.
     static Result<Egress> open(LampLayout layout, LampConfig config, SessionId session,
                                Model model, Listener listener) {
-        Journal journal = new Journal(layout.networkLog(session));
+        Journal journal = new Journal(layout.networkLog(session), listener);
         Egress egress = new Egress(config.network(), config.network().logAllowed(),
                                    listener, journal);
         Result<ServerSocketChannel> proxy = bindShared(layout.proxySocket());
@@ -814,12 +814,16 @@ final class Egress implements AutoCloseable {
     private static final class Journal implements AutoCloseable {
 
         private final Path file;
+        private final Listener listener;
         private final LinkedBlockingQueue<String> lines = new LinkedBlockingQueue<>(4096);
         private final Thread writer;
         private volatile boolean closing;
+        /// Whether the user was told that the log cannot be written: once is enough.
+        private boolean told;
 
-        Journal(Path file) {
+        Journal(Path file, Listener listener) {
             this.file = file;
+            this.listener = listener;
             this.writer = Thread.ofVirtual().name("oillamp-network-log").start(this::drain);
         }
 
@@ -848,6 +852,9 @@ final class Egress implements AutoCloseable {
                 } catch (IOException cannotWrite) {
                     // The network log is a record, not a control path. A session that cannot write
                     // it still works, and failing the session over it would be the wrong trade.
+                    if (!told) listener.trouble(ProblemCatalogUtil.networkLogNotWritten(file,
+                            ProblemCatalogUtil.reason(cannotWrite)));
+                    told = true;
                 }
             }
         }

@@ -16,6 +16,7 @@ import java.nio.channels.SocketChannel
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -409,6 +410,34 @@ class KeepingTheModelKeyOnTheHostSpec extends Specification {
         and:
             var logs = Files.list(host.lampPath().resolve('.oillamp/logs')).toList()
             logs.collect { Files.readString(it) }.join('\n').contains('"channel":"model"')
+    }
+
+    def 'A network log that cannot be written is reported once, and the session carries on'() {
+        reportInfo """
+            The network log is how the user sees what the agent reached. A full disk, or a
+            directory made read-only, stops it from being written. The session is not ended for
+            that, but the user is told, once, so they do not later trust a log with a gap in it.
+        """
+        given: 'a session whose logs can no longer be written'
+            startASession()
+            var logs = host.lampPath().resolve('.oillamp/logs')
+            Files.createDirectories(logs)
+            Files.list(logs).withCloseable { files ->
+                files.each { Files.setPosixFilePermissions(it, PosixFilePermissions.fromString('r--------')) }
+            }
+            Files.setPosixFilePermissions(logs, PosixFilePermissions.fromString('r-x------'))
+
+        when: 'two requests, each of which is logged'
+            ask(request('POST', '/v3/chat/completions', '{}'))
+            ask(request('POST', '/v3/chat/completions', '{}'))
+            waitUntil { reported.any { it instanceof LampEvent.Warning && it.problem().code().value() == 'OIL-NET-011' } }
+
+        then: 'one warning, and the session still runs'
+            reported.count { it instanceof LampEvent.Warning && it.problem().code().value() == 'OIL-NET-011' } == 1
+            session.alive
+
+        cleanup:
+            Files.setPosixFilePermissions(logs, PosixFilePermissions.fromString('rwx------'))
     }
 
     def 'The model service must be reached over https, unless it runs on this machine'() {

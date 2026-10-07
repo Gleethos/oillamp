@@ -1537,6 +1537,7 @@ as `oillamp at` does (`LampPhase.configurationFiles`).
 | `OIL-NET-001` | Socket path longer than 107 bytes. |
 | `OIL-NET-002` | Cannot listen on a socket. |
 | `OIL-NET-010` | Warning: a forward's target is unreachable. |
+| `OIL-NET-011` | Warning: the network log cannot be written; the session carries on without it. |
 | `OIL-SESSION-001` | No session is running for this lamp. |
 | `OIL-SESSION-002` | The session's control socket does not answer. |
 | `OIL-SESSION-003` | The running session refused the request (for example, it is shutting down). |

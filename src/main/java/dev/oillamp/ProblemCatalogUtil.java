@@ -78,6 +78,7 @@ final class ProblemCatalogUtil {
     public static final Code NET_SOCKET_PATH_LONG  = new Code("OIL-NET-001");
     public static final Code NET_CANNOT_LISTEN     = new Code("OIL-NET-002");
     public static final Code NET_FORWARD_UNREACHABLE = new Code("OIL-NET-010");
+    public static final Code NET_LOG_NOT_WRITTEN   = new Code("OIL-NET-011");
     public static final Code SESSION_NOT_RUNNING   = new Code("OIL-SESSION-001");
     public static final Code SESSION_UNREACHABLE   = new Code("OIL-SESSION-002");
     public static final Code SESSION_REFUSED       = new Code("OIL-SESSION-003");
@@ -105,6 +106,17 @@ final class ProblemCatalogUtil {
             .withEvidence(new Evidence.Value("reason", why))
             .withFix(Fix.of("check the target is up and reachable from this machine, "
                           + "including any VPN the sandbox cannot see for itself"));
+    }
+
+    /// The network log cannot be written. The session carries on; its connections are only not
+    /// recorded.
+    public static Problem networkLogNotWritten(Path file, String why) {
+        return warning(NET_LOG_NOT_WRITTEN, "The network log cannot be written",
+                "oillamp could not write to " + file + ": " + why,
+                "the session works as before, but what the sandbox connects to is not recorded "
+              + "from now on")
+            .withEvidence(new Evidence.Value("reason", why))
+            .withFix(Fix.of("make room on the disk, or make " + file.getParent() + " writable for you"));
     }
 
     // ─── host ──────────────────────────────────────────────────────────────────────────────
