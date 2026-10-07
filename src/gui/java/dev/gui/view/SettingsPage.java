@@ -6,6 +6,9 @@ import java.awt.geom.RoundRectangle2D;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+
+import javax.swing.JComponent;
 
 import dev.gui.model.GeniesState;
 import dev.gui.model.OllamaSetup;
@@ -78,7 +81,7 @@ final class SettingsPage {
     /// `UNCUT_WIDTH` wide or wider, `PICTURE_CUT` once it is `CUT_WIDTH` or narrower, and in
     /// between, an even share. The lamp and the genie stay their size, at the bottom.
     private static final int PICTURE_HEIGHT = 360;
-    private static final int PICTURE_CUT = 80;
+    private static final int PICTURE_CUT = 100;
     private static final int UNCUT_WIDTH = 760;
     private static final int CUT_WIDTH = 360;
 
@@ -123,6 +126,10 @@ final class SettingsPage {
         // A click on the genie starts another play of its picture, on the same clock.
         Var<Double> clock = Var.of(welcome.get() ? 0.0 : CARD_AT);
         Var<WelcomeScene.Play> scene = Var.of(WelcomeScene.Play.first(0));
+        // How much of the welcome's picture is cut from its top, in units, and the welcome
+        // itself, so that the page can paint its light where it is.
+        Var<Integer> cut = Var.of(0);
+        AtomicReference<JComponent> welcomeBox = new AtomicReference<>();
         AtomicLong began = new AtomicLong();
         AtomicBoolean playing = new AtomicBoolean();
         if (welcome.get()) play(clock, scene, welcome, began, playing);
@@ -137,8 +144,17 @@ final class SettingsPage {
             .add(
                 panel().withFlowLayout(UI.HorizontalAlignment.CENTER, 0, 30)
                 .withMinSize(0, 0).withPrefSize(PAGE_REFERENCE, 0)
-                .withStyle(it -> it.backgroundColor(Palette.TRANSPARENT).padding(0, 16, 0, 16))
-                .add(CARD, welcomeAbove(state, clock, scene, welcome))
+                // The welcome's light, on the whole page behind it, so that only the window's
+                // edges cut it off.
+                .withStyle(clock, (at, it) -> it.backgroundColor(Palette.TRANSPARENT).padding(0, 16, 0, 16)
+                    .painter(UI.Layer.BACKGROUND, g -> {
+                        JComponent shown = welcomeBox.get();
+                        if (shown == null || !shown.isVisible()) return;
+                        g.translate(shown.getX(), shown.getY());
+                        WelcomeScene.light(g, shown.getWidth(), UI.scale(PICTURE_HEIGHT), UI.scale(cut.get()), scene.get(), at);
+                        g.translate(-shown.getX(), -shown.getY());
+                    }))
+                .add(CARD, welcomeAbove(state, clock, scene, cut, welcomeBox, welcome))
                 .add(CARD,
                     panel().withFlowLayout(UI.HorizontalAlignment.LEFT, 14, 12).group(Skin.CARD)
                     .withMinSize(0, 0).withPrefSize(CARD_REFERENCE, 0)
@@ -275,24 +291,16 @@ final class SettingsPage {
 
     /// The welcome, above the settings while there are no genies: its picture, then its words.
     private static UIForAnySwing<?, ?> welcomeAbove(Var<GeniesState> state, Val<Double> clock, Var<WelcomeScene.Play> scene,
-                                                    Val<Boolean> welcome) {
+                                                    Var<Integer> cut, AtomicReference<JComponent> welcomeBox, Val<Boolean> welcome) {
         Val<String> foundKey = state.viewAsString(it -> it.environmentKey().isPresent() && it.settings().place() == Settings.Place.EDEN_AI
                 ? "Genies found an Eden AI key where it was started, so your genies can think at Eden AI right away. "
                   + "Or have Genies set up a model on this computer instead: the simple way, below."
                 : "To think, genies need a model. Genies can set one up for you, right here on this computer.");
-        Var<Integer> cut = Var.of(0);
         return
-            box("fill, wrap 1, ins 0, gap 12", "[grow, center]").isVisibleIf(welcome)
+            box("fill, wrap 1, ins 0, gap 12", "[grow, center]").isVisibleIf(welcome).peek(welcomeBox::set)
             .onResize(it -> {
                 double narrowed = (UNCUT_WIDTH - UI.unscale(it.getComponent().getWidth())) / (double) (UNCUT_WIDTH - CUT_WIDTH);
                 cut.set((int) Math.round(PICTURE_CUT * Math.max(0, Math.min(1, narrowed))));
-            })
-            // The light, behind the picture and the words, so that it can shine past the picture.
-            .withStyle(clock, (at, it) -> {
-                int width = UI.scale(it.componentWidth());
-                int height = UI.scale(it.componentHeight());
-                return it.painter(UI.Layer.BACKGROUND,
-                        g -> WelcomeScene.light(g, width, height, UI.scale(PICTURE_HEIGHT), UI.scale(cut.get()), scene.get(), at));
             })
             .add("growx, wmin 0",
                 box().withMinSize(0, 0)

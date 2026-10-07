@@ -219,15 +219,15 @@ final class WelcomeScene {
             || new Rectangle2D.Double(stage.pipX(), stage.pipY(), 20.0 * stage.pixel(), 18.0 * stage.pixel()).contains(x, y);
     }
 
-    /// The light of the flame, and of the genie once it is there, onto `g`, `width` by `height`
-    /// pixels: the whole welcome, whose picture is `stageHeight` pixels tall with its top `cut`
-    /// pixels cut away, above the welcome. A light larger than the picture shines past it, behind
-    /// the welcome's words.
+    /// The light of the flame, and of the genie once it is there, onto `g`, whose origin is the
+    /// top left of a welcome `width` pixels wide. Its picture is `stageHeight` pixels tall, its top
+    /// `cut` pixels cut away, above the welcome. The light shines past the welcome, as far as `g`
+    /// reaches.
     ///
     /// It is a round glow in the flame's colour, a touch wider than tall. Its middle is the
     /// flame's, and then the genie's; it is as large as they are, and grows and shrinks as they
     /// flicker. It grows bright as the flame catches, flares as it bursts, and fades out in a poof.
-    static void light(Graphics2D g, int width, int height, int stageHeight, int cut, Play play, double clock) {
+    static void light(Graphics2D g, int width, int stageHeight, int cut, Play play, double clock) {
         Stage stage = Stage.of(width, stageHeight);
         boolean poofing = clock < play.began();
         double time = poofing ? FORMED : clock - play.began();
@@ -238,14 +238,13 @@ final class WelcomeScene {
         Hues genie = Hues.of(poofing ? play.gone() : play.pip());
         Point2D.Double source = source(stage, time);
         double size = size(stage, time);
-        // It has faded to nothing where the welcome ends, so it shows no edge.
         double x = source.getX();
         double y = source.getY() - cut;
-        double down = Math.min(2.4 * size, Math.min(y, height - y));
-        double across = Math.min(1.12 * down, Math.min(x, width - x));
-        if (across <= 0 || down <= 0) return;
+        double down = 2.4 * size;
+        double across = 1.12 * down;
+        if (down <= 0) return;
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        double near = Math.min(0.9 * size, down);
+        double near = 0.9 * size;
         Composite before = g.getComposite();
         // It turns the genie's colour with the flame: the amber light fades out as the genie's
         // fades in. A light of a colour between them would be a picture of its own each moment,
