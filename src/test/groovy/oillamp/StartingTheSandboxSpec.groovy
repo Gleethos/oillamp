@@ -1,6 +1,7 @@
 package oillamp
 
 import dev.lamp.ExitStatus
+import dev.lamp.LampEvent
 import dev.oillamp.Machine
 import spock.lang.Specification
 import spock.lang.Subject
@@ -118,6 +119,33 @@ class StartingTheSandboxSpec extends Specification {
             kinds.lastIndexOf('RemoveContainer') > kinds.indexOf('CheckEndpoints')
 
         and: 'the user is told'
+            outcome.console().contains('removed the sandbox that did not start')
+    }
+
+    def 'A bug while the sandbox starts is reported, and the container it started is removed'() {
+        reportInfo """
+            A bug in oillamp is reported as one, with where it happened. But if it happens after
+            `podman run`, while oillamp waits for the sandbox to answer, the container is already
+            running, and nothing else would remove it once oillamp exits. So it is removed first.
+
+            Here the bug is in an application listening to the start, which fails as soon as
+            the container runs: the listener is called on the thread that starts the sandbox.
+        """
+        given: 'a listener that fails once the container is running'
+            var oillamp = host.oillamp.observedBy { event ->
+                if (event instanceof LampEvent.StepSucceeded && event.step().kind() == 'RunContainer')
+                    throw new IllegalStateException('the listener broke')
+            }
+
+        when:
+            var outcome = oillamp.run('at', host.lampPath().toString())
+
+        then: 'the bug is reported as one'
+            outcome.reported('OIL-INTERNAL-001')
+            outcome.console().contains('the listener broke')
+
+        and: 'the container is gone'
+            outcome.stepKinds().toList().last() == 'RemoveContainer'
             outcome.console().contains('removed the sandbox that did not start')
     }
 

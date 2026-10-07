@@ -279,6 +279,11 @@ final class CommandExecutionUtil {
             // removes the container however the session ends.
             stopWatching(abandon);
             return new Supervisor(machine, context, host.facts(), prepared, running).run();
+        } catch (RuntimeException bug) {
+            // A bug while the sandbox starts reaches the user as a problem; the container it
+            // started must not outlive it.
+            removeUnfinishedSandbox(machine, context, container, "oillamp failed while it started");
+            throw bug;
         } finally {
             stopWatching(abandon);
             try {
