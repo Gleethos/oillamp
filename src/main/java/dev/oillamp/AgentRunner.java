@@ -53,6 +53,10 @@ final class AgentRunner {
     private final LinkedBlockingDeque<Pending> queue = new LinkedBlockingDeque<>();
     private final Semaphore look = new Semaphore(0);
     private volatile Optional<Pending> current = Optional.empty();
+    /// The run someone cancelled while it was in progress. Kept by name, so that a cancel that comes
+    /// before the harness has started the run still stops it, and one that comes late stops no
+    /// other run.
+    private volatile Optional<String> cancelled = Optional.empty();
     private volatile boolean stopping;
     private volatile Optional<Thread> worker = Optional.empty();
 
@@ -105,7 +109,7 @@ final class AgentRunner {
     Result<String> cancel(Optional<String> run) {
         Optional<Pending> working = current;
         if (working.isPresent() && run.map(id -> id.equals(working.get().run().id())).orElse(true)) {
-            harness.cancel();
+            cancelled = Optional.of(working.get().run().id());
             return Result.ok(working.get().run().id());
         }
         if (run.isEmpty()) return Result.err(ProblemCatalogUtil.runRefused("the agent is not working on anything"));
@@ -281,6 +285,7 @@ final class AgentRunner {
         // Lamp.Conversation#job reads the job back from this name, so the two change together.
         Optional<String> name = run.job().map(job -> run.id() + " (" + job + ")");
         Harness.Answer answer = harness.run(name, prompt, config.maxRun(), pending.where(),
+                () -> cancelled.equals(Optional.of(run.id())),
                 progress -> context.sink().accept(new LampEvent.RunProgress(run.id(), progress)));
         if (answer.outcome() == RunOutcome.FAILED && !answer.text().isBlank() && answer.text().startsWith("pi "))
             context.sink().accept(new LampEvent.Warning(ProblemCatalogUtil.runFailed(run.id(), answer.text())));

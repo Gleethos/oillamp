@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -42,8 +43,6 @@ final class Harness implements AutoCloseable {
     private Optional<Machine.Conversation> pi = Optional.empty();
     private int commands;
     private volatile boolean stopping;
-    /// Set by [#cancel] to stop the run in progress, and cleared as each run begins.
-    private volatile boolean cancelled;
 
     Harness(Machine machine, LampLayout layout) {
         this.machine = machine;
@@ -78,10 +77,10 @@ final class Harness implements AutoCloseable {
     ///
     /// @param name what a new conversation is called in pi's list, such as `run-12 (job-3)`; empty
     ///             to leave it to be known by its first question
+    /// @param cancelled whether someone cancelled this run; asked again and again while it lasts
     /// @param progress told what the agent does, as it does it
     Answer run(Optional<String> name, String prompt, Duration limit, Optional<Target> target,
-               Consumer<LampEvent.Progress> progress) {
-        cancelled = false;
+               BooleanSupplier cancelled, Consumer<LampEvent.Progress> progress) {
         if (stopping) return new Answer(RunOutcome.INTERRUPTED, "the session was ending, so the agent was not woken");
         try {
             Machine.Conversation agent = started();
@@ -100,10 +99,10 @@ final class Harness implements AutoCloseable {
             Optional<String> conversation = answer(agent, command("get_state"))
                     .map(state -> state.path("data").path("sessionId").asText("")).filter(id -> !id.isEmpty());
             conversation.ifPresent(id -> progress.accept(new LampEvent.Progress.Opened(id)));
-            if (cancelled) return new Answer(RunOutcome.CANCELLED, "").in(conversation);
+            if (cancelled.getAsBoolean()) return new Answer(RunOutcome.CANCELLED, "").in(conversation);
             ObjectNode ask = command("prompt").put("message", prompt);
             if (!accepted(answer(agent, ask))) return failed("pi did not accept the prompt").in(conversation);
-            return follow(agent, machine.now().plus(limit), progress).in(conversation);
+            return follow(agent, machine.now().plus(limit), cancelled, progress).in(conversation);
         } catch (EOFException ended) {
             return failed("pi ended" + pi.map(p -> p.errorOutput().isBlank() ? "" : ": " + p.errorOutput().strip()).orElse(""));
         } catch (IOException e) {
@@ -116,7 +115,7 @@ final class Harness implements AutoCloseable {
 
     /// Reads what pi reports until it has settled: it has finished, including any retries and
     /// follow-ups of its own. Tells it to stop when the time is up or the session is ending.
-    private Answer follow(Machine.Conversation agent, Instant deadline,
+    private Answer follow(Machine.Conversation agent, Instant deadline, BooleanSupplier cancelled,
                           Consumer<LampEvent.Progress> progress) throws IOException, InterruptedException {
         String said = "";
         String stopReason = "";
@@ -125,9 +124,10 @@ final class Harness implements AutoCloseable {
         Instant giveUp = Instant.MAX;
         while (true) {
             Instant now = machine.now();
-            if (stoppedBecause.isEmpty() && (stopping || cancelled || now.isAfter(deadline))) {
+            boolean cancel = cancelled.getAsBoolean();
+            if (stoppedBecause.isEmpty() && (stopping || cancel || now.isAfter(deadline))) {
                 stoppedBecause = Optional.of(stopping ? RunOutcome.INTERRUPTED
-                                           : cancelled ? RunOutcome.CANCELLED : RunOutcome.TIMED_OUT);
+                                           : cancel ? RunOutcome.CANCELLED : RunOutcome.TIMED_OUT);
                 send(agent, command("abort"));
                 giveUp = now.plus(ABORT_TIME);
             }
@@ -199,9 +199,6 @@ final class Harness implements AutoCloseable {
 
     /// Asks the current run to stop, and every later one not to start: the session is ending.
     void stop() { stopping = true; }
-
-    /// Asks the current run to stop, because someone cancelled it. Later runs go ahead.
-    void cancel() { cancelled = true; }
 
     /// One line saying what a tool call does: the command for `bash`, the file for the file tools,
     /// and the arguments as JSON for anything else.
