@@ -129,6 +129,24 @@ class ConfiguringALampSpec extends Specification {
             outcome.console().contains('schema_version')
     }
 
+    def 'An empty configuration file is reported as missing its schema, not as a crash'() {
+        reportInfo """
+            A file with nothing in it is what someone gets by creating oillamp.toml with `touch`.
+            It has no schema_version, and that is what the user is told, like for any file that
+            lacks it.
+        """
+        given: 'a configuration file with nothing in it'
+            var lamp = host.lampPath()
+            host.givenConfig(lamp, '')
+
+        when:
+            var outcome = host.oillamp.run('config', lamp.toString(), 'check')
+
+        then:
+            outcome.reported('OIL-CONFIG-004')
+            !outcome.reported('OIL-INTERNAL-001')
+    }
+
     def 'A forward may not take a port the sandbox uses for its own way out'() {
         reportInfo """
             Inside the sandbox, 127.0.0.1:3128 is the policy-controlled egress proxy, and
