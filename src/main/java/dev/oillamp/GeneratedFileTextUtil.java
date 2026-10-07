@@ -197,7 +197,7 @@ final class GeneratedFileTextUtil {
                     -*)
                         local options='--verbose --debug --no-color'
                         case "$command" in
-                            at)            options="$options --init --dry-run --no-install --no-viewer --no-windows --enable-scheduling" ;;
+                            at)            options="$options --init --dry-run --no-install --no-viewer --no-windows --model-service --model-key-env --enable-scheduling" ;;
                             view)          options="$options --view-only" ;;
                             remove)        options="$options --yes --dry-run" ;;
                             save)          options="$options --message" ;;
