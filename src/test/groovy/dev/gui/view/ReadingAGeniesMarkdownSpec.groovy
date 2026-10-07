@@ -58,6 +58,16 @@ class ReadingAGeniesMarkdownSpec extends Specification {
                     ['────────────────────────', RULE, MARKER]]
     }
 
+    def 'A heading keeps a hash that is part of its words'() {
+        reportInfo """
+            A heading may be closed with hashes, as in `## Plan ##`; those go. But the hash in
+            `# Why C#` is part of the title and stays, because no space comes before it.
+        """
+        expect:
+            runs('## Plan ##') == [['Plan', H2, PLAIN]]
+            runs('# Why C#') == [['Why C#', H1, PLAIN]]
+    }
+
     def 'A fenced code block is shown as code, line by line, with its fences hidden'() {
         reportInfo """
             Models put commands and programs in fenced blocks. Inside one, nothing is Markdown:

@@ -35,7 +35,7 @@ final class MarkdownParsingUtil {
     private static final Pattern RULE = Pattern.compile("^\\s*([-*_])\\s*(\\1\\s*){2,}$");
     private static final Pattern BULLET = Pattern.compile("^(\\s*)[-*+]\\s+(.*)");
     private static final Pattern NUMBERED = Pattern.compile("^(\\s*)(\\d+)[.)]\\s+(.*)");
-    private static final Pattern HEADING = Pattern.compile("^(#{1,6})\\s+(.*?)\\s*#*\\s*$");
+    private static final Pattern HEADING = Pattern.compile("^(#{1,6})\\s+(.*?)(?:\\s+#+)?\\s*$");
 
     private static final Pattern DIVIDER = Pattern.compile("^\\s*:?-+:?\\s*$");
 
