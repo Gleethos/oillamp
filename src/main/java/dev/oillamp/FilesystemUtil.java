@@ -34,6 +34,8 @@ final class FilesystemUtil {
         Path parent = path.getParent();
         if (parent != null) Files.createDirectories(parent);
         Files.createDirectory(path, PosixFilePermissions.asFileAttribute(mode.permissions()));
+        // The creation call applies the user's umask, which can take bits away from the mode.
+        setMode(path, mode);
     }
 
     /// Writes atomically, then applies the mode — never leaves a partially written file.
@@ -61,15 +63,15 @@ final class FilesystemUtil {
         if (Files.isDirectory(path)) return;
         Path parent = path.getParent();
         if (parent != null) createDirectories(parent, mode);
-        if (!Files.isDirectory(path))
-            Files.createDirectory(path, PosixFilePermissions.asFileAttribute(mode.permissions()));
+        if (Files.isDirectory(path)) return;
+        Files.createDirectory(path, PosixFilePermissions.asFileAttribute(mode.permissions()));
+        // The creation call applies the user's umask, which can take bits away from the mode.
+        setMode(path, mode);
     }
 
+    /// Copies atomically, like [#writeBytes]: a private key is never there with a wider mode.
     public static void copyFile(Path from, Path to, PosixMode mode) throws IOException {
-        Path parent = to.getParent();
-        if (parent != null) Files.createDirectories(parent);
-        Files.copy(from, to, StandardCopyOption.REPLACE_EXISTING);
-        setMode(to, mode);
+        writeBytes(to, Files.readAllBytes(from), mode);
     }
 
     /// Points `link` at `target`, replacing anything else at that path, such as a link
