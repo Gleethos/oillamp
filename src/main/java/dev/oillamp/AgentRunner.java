@@ -250,7 +250,11 @@ final class AgentRunner {
             } catch (RuntimeException bug) {
                 context.sink().accept(new LampEvent.Warning(
                         ProblemCatalogUtil.runFailed(next.run().id(), ProblemCatalogUtil.reason(bug))));
-                next.done().completeExceptionally(bug);
+                // Whoever heard the run start must hear it end, or it seems to go on for ever.
+                LampEvent.RunFinished finished = new LampEvent.RunFinished(next.run(), RunOutcome.FAILED,
+                        ProblemCatalogUtil.reason(bug), Optional.empty(), Duration.ZERO, next.run().conversation());
+                context.sink().accept(finished);
+                next.done().complete(finished);
             } finally {
                 current = Optional.empty();
             }
