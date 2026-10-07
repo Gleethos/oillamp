@@ -217,6 +217,8 @@ final class Supervisor {
     private ExitStatus endAfterACrash(RuntimeException bug) {
         Problem crash = ProblemCatalogUtil.crash(bug);
         context.sink().accept(new LampEvent.Failure(crash));
+        // The loop failed after the session had already ended: nothing is left to shut down.
+        if (state instanceof SessionState.Stopped(var ended, ExitStatus exit)) return exit;
         SessionState.ShutdownReason reason = new SessionState.ShutdownReason.Crashed(crash);
         if (shuttingDown.compareAndSet(false, true)) {
             context.sinkAcceptProblems(shutDown(reason));
