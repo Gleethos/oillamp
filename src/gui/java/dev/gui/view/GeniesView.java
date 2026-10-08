@@ -238,7 +238,9 @@ public final class GeniesView extends JPanel {
                 .peek(it -> cards[0] = it)
                 .withStyle(it -> it.backgroundColor(TRANSPARENT))
                 .addAll(genies, this::genieChip))
-            .add(grip(genieList, () -> cards[0].getHeight(), narrow, "Drag to see more of your genies, or up to fold them away"))
+            .add(
+                grip(genieList, () -> UI.unscale(cards[0].getHeight()), narrow, "Drag to see more of your genies, or up to fold them away")
+            )
             .add(
                 box("fill, wrap 1, ins 0, gap 6, hidemode 3")
                 .add("growx",
@@ -403,7 +405,9 @@ public final class GeniesView extends JPanel {
                         .withSelection(here)
                         .onSelection(it -> goTo(id, it.leadPath(), it.lead()))
                         .withStyle(it -> it.backgroundColor(TRANSPARENT).componentFont(f -> f.family(FONT).size(12).color(TEXT))))))
-            .add("growx, wmin 0, h 9!", grip(fold, () -> area[0].getHeight(), open, "Drag to make this list taller or shorter"));
+            .add("growx, wmin 0, h 9!",
+                grip(fold, () -> UI.unscale(area[0].getHeight()), open, "Drag to make this list taller or shorter")
+            );
     }
 
     /// The grip under a list that folds: the user drags it to make the list's area taller or
@@ -423,12 +427,16 @@ public final class GeniesView extends JPanel {
                 return it.backgroundColor(TRANSPARENT).painter(UI.Layer.CONTENT, g -> grip(g, width, height));
             })
             .onMousePress(it -> {
-                dragFrom[0] = it.mouseYOnScreen();
+                dragFrom[0] = UI.unscale(it.mouseYOnScreen());
                 dragFrom[1] = areaHeight.getAsInt();
                 dragFrom[2] = fold.get().height();
             })
-            .onMouseDrag(it -> fold.update(From.VIEW, f -> f.withHeight(dragFrom[1] + it.mouseYOnScreen() - dragFrom[0])))
-            .onMouseRelease(it -> fold.update(From.VIEW, f -> f.released(dragFrom[2])));
+            .onMouseDrag(it ->
+                    fold.update(From.VIEW, f -> f.withHeight(dragFrom[1] + UI.unscale(it.mouseYOnScreen()) - dragFrom[0]))
+            )
+            .onMouseRelease(_ ->
+                    fold.update(From.VIEW, f -> f.released(dragFrom[2]))
+            );
     }
 
     /// The grip under a tree: a thin line across, like a split pane's divider, with a short
