@@ -3,15 +3,22 @@ package dev.gui.view;
 import java.awt.Color;
 
 import javax.swing.AbstractButton;
+import javax.swing.ButtonModel;
 import javax.swing.text.JTextComponent;
 
 import swingtree.UI;
+import swingtree.style.ComponentStyleDelegate;
 import swingtree.style.StyleSheet;
 
 import static dev.gui.view.Palette.*;
 
 /// Paints the chrome of Genies: the frame, the sidebar, cards, buttons and inputs.
 final class Look extends StyleSheet {
+
+    /// Laid over a button while the pointer is on it, and while it is pressed.
+    private static final Color HOVER = new Color(255, 255, 255, 18);
+    private static final Color FLAME_HOVER = new Color(255, 255, 255, 40);
+    private static final Color PRESSED = new Color(0, 0, 0, 40);
 
     @Override
     protected void configure() {
@@ -62,30 +69,30 @@ final class Look extends StyleSheet {
         add(group(Skin.EMPTY_TEXT), it -> it
             .componentFont(f -> f.family(FONT).size(13).color(SUBTEXT)));
 
-        add(type(AbstractButton.class).group(Skin.FLAME_BUTTON), it -> it
+        add(type(AbstractButton.class).group(Skin.FLAME_BUTTON), it -> lit(it
             .backgroundColor(FLAME)
             .foregroundColor(ON_FLAME)
             .borderRadius(10)
             .border(0, FLAME)
             .padding(7, 16, 7, 16)
             .componentFont(f -> f.family(FONT).size(13).weight(2f).color(ON_FLAME))
-            .cursor(UI.Cursor.HAND));
-        add(type(AbstractButton.class).group(Skin.QUIET_BUTTON), it -> it
+            .cursor(UI.Cursor.HAND), FLAME_HOVER));
+        add(type(AbstractButton.class).group(Skin.QUIET_BUTTON), it -> lit(it
             .backgroundColor(RAISED)
             .foregroundColor(TEXT)
             .borderRadius(10)
             .border(1, BORDER)
             .padding(6, 13, 6, 13)
             .componentFont(f -> f.family(FONT).size(12).color(TEXT))
-            .cursor(UI.Cursor.HAND));
-        add(type(AbstractButton.class).group(Skin.ICON_BUTTON), it -> it
+            .cursor(UI.Cursor.HAND), HOVER));
+        add(type(AbstractButton.class).group(Skin.ICON_BUTTON), it -> lit(it
             .backgroundColor(TRANSPARENT)
             .foregroundColor(SUBTEXT)
             .borderRadius(9)
             .border(0, TRANSPARENT)
             .padding(3, 8, 3, 8)
             .componentFont(f -> f.family(FONT).size(14).color(SUBTEXT))
-            .cursor(UI.Cursor.HAND));
+            .cursor(UI.Cursor.HAND), HOVER));
 
         add(type(JTextComponent.class).group(Skin.INPUT), it -> it
             .backgroundColor(RAISED)
@@ -100,21 +107,21 @@ final class Look extends StyleSheet {
             .border(1, BORDER)
             .padding(8));
         // The schedule: choices as chips, the days of a calendar, jobs as tiles, and times.
-        add(type(AbstractButton.class).group(Skin.CHIP), it -> it
+        add(type(AbstractButton.class).group(Skin.CHIP), it -> lit(it
             .backgroundColor(TRANSPARENT)
             .foregroundColor(TEXT)
             .borderRadius(999)
             .border(1, BORDER)
             .padding(5, 12, 5, 12)
             .componentFont(f -> f.family(FONT).size(12).color(TEXT))
-            .cursor(UI.Cursor.HAND));
-        add(type(AbstractButton.class).group(Skin.DAY), it -> it
+            .cursor(UI.Cursor.HAND), HOVER));
+        add(type(AbstractButton.class).group(Skin.DAY), it -> lit(it
             .backgroundColor(TRANSPARENT)
             .borderRadius(9)
             .border(1, TRANSPARENT)
             .padding(0)
             .componentFont(f -> f.family(FONT).size(12).color(TEXT))
-            .cursor(UI.Cursor.HAND));
+            .cursor(UI.Cursor.HAND), HOVER));
         add(group(Skin.TILE), it -> it
             .backgroundColor(CARD)
             .borderRadius(14)
@@ -127,5 +134,19 @@ final class Look extends StyleSheet {
             .componentFont(f -> f.family(FONT).size(12).color(TROUBLE)));
         add(group(Skin.FINE), it -> it
             .componentFont(f -> f.family(FONT).size(12).color(CONTENT)));
+    }
+
+    /// `it`, a button, lit with `light` while the pointer is on it and darkened while it is
+    /// pressed, so the user sees that it can be clicked; a button that cannot be clicked stays
+    /// as it is. Painted anew whenever the button is painted, which the look-and-feel does each
+    /// time the pointer comes or goes and the button is pressed or let go.
+    private static ComponentStyleDelegate<AbstractButton> lit(ComponentStyleDelegate<AbstractButton> it, Color light) {
+        ButtonModel model = it.component().getModel();
+        int width = it.componentWidth(), height = it.componentHeight();
+        return it.painter(UI.Layer.BACKGROUND, "hover", g -> {
+            if (!model.isEnabled() || !model.isRollover()) return;
+            g.setColor(model.isPressed() && model.isArmed() ? PRESSED : light);
+            g.fillRect(0, 0, width, height);
+        });
     }
 }

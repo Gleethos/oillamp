@@ -196,8 +196,13 @@ trees are always shown, and the fold waits for the genie to sleep again. Like th
 the fold lasts while Genies runs.
 
 A card lights halfway to selected under the pointer, the row of a tree under the pointer is
-underlaid across the tree's width, the line that opens a tree brightens, and the ＋ and the arrow
-light up while they can be clicked.
+underlaid across the tree's width, and the line that opens a tree brightens. Cards stand 4 units
+apart, so the borders of two lit cards never touch.
+
+Every button lights up under the pointer while it can be clicked, and darkens while pressed. The
+style sheet (`Look`) paints this for each kind of button: a painter that reads the button's
+rollover and pressed state each time Swing paints the button, which it does as the pointer comes
+and goes, so no button needs a listener of its own.
 
 | The user | What happens |
 |---|---|

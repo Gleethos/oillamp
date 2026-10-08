@@ -5,7 +5,6 @@ import java.awt.Component;
 import java.awt.EventQueue;
 import java.awt.event.InputEvent;
 import java.util.Objects;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import javax.swing.JButton;
@@ -21,13 +20,11 @@ import javax.swing.event.PopupMenuListener;
 import dev.gui.model.Genie;
 
 import sprouts.Val;
-import sprouts.Var;
 import swingtree.UI;
 import swingtree.UIForAnySwing;
 import swingtree.UIForBox;
 import swingtree.UIForButton;
 import swingtree.UIForLabel;
-import swingtree.animation.LifeTime;
 import swingtree.api.IconDeclaration;
 import swingtree.components.JBox;
 import swingtree.style.StyledString;
@@ -139,17 +136,6 @@ final class ViewPartsUtil {
     static UIForButton<JButton> link(String text) {
         return button(text).group(Skin.ICON_BUTTON)
                 .withStyle(it -> it.padding(2, 0, 2, 0).componentFont(f -> f.family(FONT).size(12).color(BRASS)));
-    }
-
-    /// `button`, lit softly while the pointer is on it and it can be clicked, so the user sees
-    /// that it can.
-    static UIForButton<JButton> lightsOnHover(UIForButton<JButton> button) {
-        Var<Boolean> hovered = Var.of(false);
-        return button
-                .withTransitionalStyle(hovered, LifeTime.of(0.14, TimeUnit.SECONDS), (status, it) -> !it.component().isEnabled() ? it
-                        : it.backgroundColor(withAlpha(BORDER, (int) Math.round(230 * status.progress()))))
-                .onMouseEnter(it -> hovered.set(true))
-                .onMouseExit(it -> hovered.set(false));
     }
 
     /// `colour`, faded to step back.

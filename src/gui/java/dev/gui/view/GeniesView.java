@@ -291,7 +291,9 @@ public final class GeniesView extends JPanel {
                 .border(1, on ? BORDER : TRANSPARENT)
                 // Always there, lit when selected, so selecting a genie moves nothing.
                 .borderAt(UI.Edge.LEFT, 3, on ? FLAME : TRANSPARENT)
-                .borderRadius(10))
+                .borderRadius(10)
+                // A thin gap between one card's border and the next.
+                .margin(2, 0, 2, 0))
             // Under the pointer, a card that is not selected yet lights halfway to selected.
             .withTransitionalStyle(hovered, LifeTime.of(0.14, TimeUnit.SECONDS), (status, it) -> isSelected.get() ? it : it
                 .backgroundColor(ViewPartsUtil.withAlpha(RAISED, (int) Math.round(150 * status.progress())))
@@ -319,7 +321,7 @@ public final class GeniesView extends JPanel {
                 .add("growx, wmin 0", label(shown.viewAsString(it -> "▣  shows you: " + it.showing()))
                      .isVisibleIf(showsElsewhere)
                      .withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(FLAME)))))
-            .add("top", ViewPartsUtil.lightsOnHover(button("").group(Skin.ICON_BUTTON))
+            .add("top", button("").group(Skin.ICON_BUTTON)
                  .isVisibleIf(out.viewAs(Boolean.class, it -> !it))
                  .withStyle(folded, (on, it) -> it.icon(SignSvgUtil.sign(on ? SignSvgUtil.UNFOLD : SignSvgUtil.FOLD, SUBTEXT)).padding(3, 5, 3, 5))
                  .withTooltip(folded.viewAsString(on -> on ? "Show this genie's conversations" : "Fold this genie's conversations away"))
@@ -361,7 +363,7 @@ public final class GeniesView extends JPanel {
                 tree(id, chats, conversations.viewAsString(it -> howMany(it.chatCount(), "conversation", "no conversations yet")),
                      "Show or hide your conversations with this genie", Val.of(true),
                      conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::chats), browsable,
-                     Optional.of(ViewPartsUtil.lightsOnHover(button("").group(Skin.ICON_BUTTON)).isVisibleIf(awake).isEnabledIf(idle)
+                     Optional.of(button("").group(Skin.ICON_BUTTON).isVisibleIf(awake).isEnabledIf(idle)
                          .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.NEW, SUBTEXT)).padding(1, 6, 1, 6))
                          .withTooltip("Start a new conversation with this genie; the others are kept")
                          .onClick(it -> actions.startAfresh(id)))))
