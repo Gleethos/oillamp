@@ -1,4 +1,4 @@
-# 🪔 oillamp
+# 🪔 OiLLaMp
 
 **Give your AI coding agent its own Linux computer, with a desktop. It runs on your machine, but
 it cannot reach your machine.**
