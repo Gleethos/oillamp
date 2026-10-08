@@ -4,6 +4,10 @@
   <name>Genies</name>
   <summary>Chat with AI agents that each have a sandboxed Linux desktop of their own</summary>
   <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="com.globaltcad">
+    <name>Global TCAD Solutions GmbH</name>
+  </developer>
   <description>
     <p>
       Genies is a chat app whose every conversation partner is an AI agent, a genie. Each genie

@@ -536,8 +536,11 @@ All four hold the same files, which `geniesApp` puts together in `build/genies/a
 They are for x86_64 computers. The Java runtime uses the computer's X11 libraries, which every
 Linux desktop has; the .deb names them as its dependencies.
 
-The packaging files are in `src/packaging/genies`. Two of the packages are not sandboxed, because
-Genies starts podman, Ollama and vncviewer on the computer:
+The packaging files are in `src/packaging/genies`. Its `copyright` lists the licenses of Genies
+and of everything it brings along; every package installs it as `share/doc/genies/copyright`.
+
+Two of the packages are not sandboxed, because Genies starts podman, Ollama and vncviewer on the
+computer:
 
 - **The snap** is classic, without confinement.
 - **The flatpak's** launcher starts Genies outside the flatpak's sandbox.

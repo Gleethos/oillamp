@@ -1,5 +1,6 @@
 name: genies
 version: '@VERSION@'
+license: MIT
 summary: Chat with AI agents that each have a sandboxed Linux desktop
 description: |
   Genies is a chat app whose every conversation partner is an AI agent, a genie. Each genie

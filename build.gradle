@@ -404,8 +404,9 @@ def geniesApp = tasks.register('geniesApp') {
     }
 }
 
-// The program, its menu entry, its icon and its description, where Linux looks for them under
-// `usr` (or `/usr`, for the .deb), with the program itself in `programIn`. Every user of the
+// The program, its menu entry, its icon, its description and its licenses (Genies' own and those
+// of the libraries, fonts and Java runtime it brings), where Linux looks for them under `usr` (or
+// `/usr`, for the .deb), with the program itself in `programIn`. Every user of the
 // computer may read and run all of it, and none may change it: the jars from Gradle's cache are
 // readable by their owner only.
 def geniesInstalled(PackagingServices services, File root, String programIn, Provider<Directory> app,
@@ -413,6 +414,7 @@ def geniesInstalled(PackagingServices services, File root, String programIn, Pro
     services.files.copy { from(app.get().dir('genies')); into(new File(root, programIn)) }
     services.files.copy { from(new File(packaging, "${id}.desktop")); into(new File(root, 'usr/share/applications')) }
     services.files.copy { from(icons); into(new File(root, 'usr/share/icons/hicolor')) }
+    services.files.copy { from(new File(packaging, 'copyright')); into(new File(root, 'usr/share/doc/genies')) }
     services.files.copy {
         from(new File(packaging, "${id}.metainfo.xml"))
         into(new File(root, 'usr/share/metainfo'))
