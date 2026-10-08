@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import dev.gui.model.Genie;
 
+import swingtree.UI;
 import swingtree.style.SvgIcon;
 
 /// The welcome's picture, painted at a moment of its play: the lamp lights, its flame turns to
@@ -397,7 +398,9 @@ final class WelcomeScene {
         return LAMPS.computeIfAbsent(lamp, it -> {
             BufferedImage drawn = new BufferedImage(it.size(), it.size(), BufferedImage.TYPE_INT_ARGB_PRE);
             Graphics2D on = drawn.createGraphics();
-            SvgIcon.of(it.smoking() ? LampSvgUtil.lamp(Genie.Phase.ASLEEP) : LampSvgUtil.cold()).withIconSize(it.size(), it.size()).paintIcon(null, on, 0, 0);
+            // The icon's size is in units, which it scales to pixels itself; the picture's is in pixels.
+            int units = UI.unscale(it.size());
+            SvgIcon.of(it.smoking() ? LampSvgUtil.lamp(Genie.Phase.ASLEEP) : LampSvgUtil.cold()).withIconSize(units, units).paintIcon(null, on, 0, 0);
             if (it.dark()) {
                 on.setComposite(AlphaComposite.SrcAtop);
                 on.setColor(alpha(Color.BLACK, 0.45));
