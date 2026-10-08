@@ -1,5 +1,11 @@
 import java.time.Duration
 
+// Draws Genies' icon, an SVG, as the PNG files the desktop's menus need.
+buildscript {
+    repositories { mavenCentral() }
+    dependencies { classpath 'com.github.weisj:jsvg:2.2.0' }
+}
+
 plugins {
     id 'java'
     id 'groovy'
@@ -282,4 +288,317 @@ tasks.register('singleFile') {
                 "(${(target.length() / 1024 / 1024).setScale(1, java.math.RoundingMode.HALF_UP)} MB" +
                 ", fingerprint ${fingerprint}, modules ${modules})")
     }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Releasing Genies: an AppImage, a .deb, a snap and a flatpak, all in build/dist.
+//
+// `./gradlew geniesRelease` builds all four; each also has a task of its own. They hold the same
+// thing, made by `geniesApp`: Genies' jars, a Java runtime cut down to what Genies needs, and
+// `bin/genies`, a small program that starts it. They differ in how they are installed:
+//
+// - The AppImage is one executable file with the icon inside it: download, mark executable, run.
+// - The .deb installs into /opt/genies for every user of a Debian or Ubuntu computer.
+// - The snap is "classic": Genies starts podman, Ollama and vncviewer on this computer, which a
+//   strictly confined snap may not do.
+// - The flatpak is built inside a podman container, as flatpak is rarely installed where Genies
+//   is built. Its sandbox would hide podman from Genies, so it starts Genies outside of it.
+//
+// They are built for the computer's own processor, which so far is always x86_64.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+def geniesVersion = '1.0.0'
+// The name the desktop knows Genies by: its menu entry, icon and AppStream description.
+def geniesId = 'dev.oillamp.Genies'
+// Determined with `jdeps --print-module-deps` over Genies' jars, and jdk.charsets added for the
+// reason given for oillamp's runtime above.
+def geniesModules = 'java.base,java.compiler,java.desktop,java.net.http,java.sql,jdk.charsets,jdk.management,jdk.unsupported'
+def geniesPackaging = file('src/packaging/genies')
+def geniesSvg = file('src/gui/resources/dev/gui/genies.svg')
+def geniesBuild = layout.buildDirectory.dir('genies')
+def dist = layout.buildDirectory.dir('dist')
+
+def geniesJar = tasks.register('geniesJar', Jar) {
+    group = 'distribution'
+    description = "Packs Genies' own classes into a jar."
+    archiveBaseName = 'genies'
+    archiveVersion = geniesVersion
+    from(sourceSets.gui.output)
+    manifest { attributes('Main-Class': 'dev.gui.Genies') }
+}
+
+// The icon in each size a desktop asks for, laid out as an icon theme expects it:
+// hicolor/<size>x<size>/apps/<id>.png, and the SVG itself in hicolor/scalable/apps.
+def geniesIcons = tasks.register('geniesIcons') {
+    group = 'distribution'
+    description = "Draws Genies' icon in the sizes a desktop needs."
+    def output = geniesBuild.map { it.dir('icons/hicolor') }
+    def svg = geniesSvg
+    def id = geniesId
+    inputs.file(svg)
+    outputs.dir(output)
+    doLast {
+        def hicolor = output.get().asFile
+        hicolor.deleteDir()
+        def document = new com.github.weisj.jsvg.parser.SVGLoader().load(svg.toURI().toURL())
+        [16, 24, 32, 48, 64, 128, 256, 512].each { size ->
+            def image = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+            def graphics = image.createGraphics()
+            graphics.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON)
+            graphics.setRenderingHint(java.awt.RenderingHints.KEY_STROKE_CONTROL, java.awt.RenderingHints.VALUE_STROKE_PURE)
+            document.render((java.awt.Component) null, graphics, new com.github.weisj.jsvg.view.ViewBox(0, 0, size, size))
+            graphics.dispose()
+            def png = new File(hicolor, "${size}x${size}/apps/${id}.png")
+            png.parentFile.mkdirs()
+            javax.imageio.ImageIO.write(image, 'png', png)
+        }
+        def scalable = new File(hicolor, "scalable/apps/${id}.svg")
+        scalable.parentFile.mkdirs()
+        scalable.bytes = svg.bytes
+    }
+}
+
+// build/genies/app/genies: what every package holds. bin/genies starts Genies, lib/app has the
+// jars, lib/runtime the Java runtime.
+def geniesApp = tasks.register('geniesApp') {
+    group = 'distribution'
+    description = 'Puts Genies, its libraries and a cut-down Java runtime together in one folder.'
+    def services = objects.newInstance(PackagingServices)
+    def libraries = configurations.guiRuntimeClasspath
+    def applicationJar = tasks.named('jar').flatMap { it.archiveFile }
+    def mainJar = geniesJar.flatMap { it.archiveFile }
+    def icons = geniesIcons.map { it.outputs.files.singleFile }
+    def output = geniesBuild.map { it.dir('app') }
+    def input = geniesBuild.map { it.dir('jars') }
+    def home = jdkHome
+    def modules = geniesModules
+    def theVersion = geniesVersion
+    inputs.files(libraries)
+    inputs.file(applicationJar)
+    inputs.file(mainJar)
+    inputs.files(icons)
+    inputs.property('modules', modules)
+    inputs.property('jdk', home)
+    outputs.dir(output)
+    doLast {
+        def jars = input.get().asFile
+        def target = output.get().asFile
+        services.files.delete { delete(jars, target) }
+        services.files.copy { from(libraries); from(applicationJar); from(mainJar); into(jars) }
+        services.exec.exec {
+            commandLine "${home.get()}/bin/jpackage", '--type', 'app-image',
+                    '--name', 'genies', '--app-version', theVersion,
+                    '--input', jars.absolutePath, '--main-jar', mainJar.get().asFile.name,
+                    '--main-class', 'dev.gui.Genies',
+                    '--icon', new File(icons.get(), '256x256/apps/dev.oillamp.Genies.png').absolutePath,
+                    '--add-modules', modules,
+                    '--jlink-options', '--strip-debug --no-header-files --no-man-pages --compress zip-6',
+                    '--dest', target.absolutePath
+        }
+    }
+}
+
+// The program, its menu entry, its icon and its description, where Linux looks for them under
+// `usr` (or `/usr`, for the .deb), with the program itself in `programIn`. Every user of the
+// computer may read and run all of it, and none may change it: the jars from Gradle's cache are
+// readable by their owner only.
+def geniesInstalled(PackagingServices services, File root, String programIn, Provider<Directory> app,
+                    File packaging, File icons, String id, String version) {
+    services.files.copy { from(app.get().dir('genies')); into(new File(root, programIn)) }
+    services.files.copy { from(new File(packaging, "${id}.desktop")); into(new File(root, 'usr/share/applications')) }
+    services.files.copy { from(icons); into(new File(root, 'usr/share/icons/hicolor')) }
+    services.files.copy {
+        from(new File(packaging, "${id}.metainfo.xml"))
+        into(new File(root, 'usr/share/metainfo'))
+        filter { it.replace('@VERSION@', version).replace('@DATE@', java.time.LocalDate.now().toString()) }
+    }
+    java.nio.file.Files.walk(root.toPath()).filter { !java.nio.file.Files.isSymbolicLink(it) }.forEach { path ->
+        def runnable = java.nio.file.Files.isDirectory(path) || java.nio.file.Files.isExecutable(path)
+        java.nio.file.Files.setPosixFilePermissions(path,
+                java.nio.file.attribute.PosixFilePermissions.fromString(runnable ? 'rwxr-xr-x' : 'rw-r--r--'))
+    }
+}
+
+tasks.register('geniesDeb') {
+    group = 'distribution'
+    description = 'Builds build/dist/genies_<version>_amd64.deb, which installs Genies into /opt/genies.'
+    dependsOn(geniesApp)
+    def services = objects.newInstance(PackagingServices)
+    def app = geniesBuild.map { it.dir('app') }
+    def icons = geniesIcons.map { it.outputs.files.singleFile }
+    def stage = geniesBuild.map { it.dir('deb') }
+    def packaging = geniesPackaging
+    def id = geniesId
+    def theVersion = geniesVersion
+    def result = dist.map { it.file("genies_${geniesVersion}_amd64.deb") }
+    inputs.dir(app)
+    inputs.dir(packaging)
+    outputs.file(result)
+    doLast {
+        def root = stage.get().asFile
+        services.files.delete { delete(root) }
+        new File(root, 'usr/bin').mkdirs()
+        java.nio.file.Files.createSymbolicLink(new File(root, 'usr/bin/genies').toPath(), java.nio.file.Path.of('/opt/genies/bin/genies'))
+        geniesInstalled(services, root, 'opt/genies', app, packaging, icons.get(), id, theVersion)
+        def kilobytes = (long) Math.ceil(java.nio.file.Files.walk(root.toPath())
+                .filter { java.nio.file.Files.isRegularFile(it) }.mapToLong { it.toFile().length() }.sum() / 1024)
+        def control = new File(root, 'DEBIAN/control')
+        control.parentFile.mkdirs()
+        control.text = new File(packaging, 'deb-control').text
+                .replace('@VERSION@', theVersion).replace('@INSTALLED_SIZE@', kilobytes.toString())
+        def target = result.get().asFile
+        target.parentFile.mkdirs()
+        services.exec.exec {
+            commandLine 'dpkg-deb', '--root-owner-group', '-Zxz', '--build', root.absolutePath, target.absolutePath
+        }
+    }
+}
+
+// An AppImage is a small program, the AppImage runtime, with a squashfs image of a folder
+// attached. Run, the runtime mounts the image and starts the folder's AppRun; file managers show
+// the folder's .DirIcon as the file's icon. The runtime is downloaded from the AppImage project,
+// checked against the fingerprint of the release this was made with.
+def appImageRuntime = 'https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64'
+def appImageRuntimeSha256 = '2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d'
+
+tasks.register('geniesAppImage') {
+    group = 'distribution'
+    description = 'Builds build/dist/Genies-<version>-x86_64.AppImage, Genies in one executable file with its icon.'
+    dependsOn(geniesApp)
+    def services = objects.newInstance(PackagingServices)
+    def app = geniesBuild.map { it.dir('app') }
+    def icons = geniesIcons.map { it.outputs.files.singleFile }
+    def stage = geniesBuild.map { it.dir('AppDir') }
+    def runtime = geniesBuild.map { it.file('appimage-runtime') }
+    def packaging = geniesPackaging
+    def id = geniesId
+    def theVersion = geniesVersion
+    def runtimeUrl = appImageRuntime
+    def runtimeSha256 = appImageRuntimeSha256
+    def result = dist.map { it.file("Genies-${geniesVersion}-x86_64.AppImage") }
+    inputs.dir(app)
+    inputs.dir(packaging)
+    inputs.property('runtime', runtimeSha256)
+    outputs.file(result)
+    doLast {
+        def downloaded = runtime.get().asFile
+        def sha256 = { File file -> java.security.MessageDigest.getInstance('SHA-256').digest(file.bytes).encodeHex().toString() }
+        if (!downloaded.exists() || sha256(downloaded) != runtimeSha256) {
+            new URI(runtimeUrl).toURL().withInputStream { downloaded.bytes = it.readAllBytes() }
+            if (sha256(downloaded) != runtimeSha256)
+                throw new GradleException("The AppImage runtime from ${runtimeUrl} is not the one this build was made with.")
+        }
+
+        def root = stage.get().asFile
+        services.files.delete { delete(root) }
+        // AppRun, the menu entry and the icon at the top of the folder, where AppImage tools
+        // look for them, and the program beside them.
+        root.mkdirs()
+        java.nio.file.Files.createSymbolicLink(new File(root, 'AppRun').toPath(), java.nio.file.Path.of('bin/genies'))
+        java.nio.file.Files.createSymbolicLink(new File(root, "${id}.desktop").toPath(), java.nio.file.Path.of("usr/share/applications/${id}.desktop"))
+        java.nio.file.Files.createSymbolicLink(new File(root, "${id}.png").toPath(), java.nio.file.Path.of("usr/share/icons/hicolor/256x256/apps/${id}.png"))
+        java.nio.file.Files.createSymbolicLink(new File(root, '.DirIcon').toPath(), java.nio.file.Path.of("${id}.png"))
+        geniesInstalled(services, root, '.', app, packaging, icons.get(), id, theVersion)
+
+        def image = new File(root.parentFile, 'AppDir.squashfs')
+        services.exec.exec {
+            commandLine 'mksquashfs', root.absolutePath, image.absolutePath,
+                        '-root-owned', '-noappend', '-comp', 'zstd', '-quiet'
+        }
+        def target = result.get().asFile
+        target.parentFile.mkdirs()
+        target.withOutputStream { out ->
+            downloaded.withInputStream { it.transferTo(out) }
+            image.withInputStream { it.transferTo(out) }
+        }
+        image.delete()
+        target.setExecutable(true, false)
+    }
+}
+
+// A snap is a squashfs image of a folder with its description in meta/snap.yaml and its menu
+// entry and icon in meta/gui, which `snap pack` checks and packs.
+tasks.register('geniesSnap') {
+    group = 'distribution'
+    description = 'Builds build/dist/genies_<version>_amd64.snap, installed with `snap install --classic --dangerous`.'
+    dependsOn(geniesApp)
+    def services = objects.newInstance(PackagingServices)
+    def app = geniesBuild.map { it.dir('app') }
+    def icons = geniesIcons.map { it.outputs.files.singleFile }
+    def stage = geniesBuild.map { it.dir('snap') }
+    def packaging = geniesPackaging
+    def id = geniesId
+    def theVersion = geniesVersion
+    def result = dist.map { it.file("genies_${geniesVersion}_amd64.snap") }
+    inputs.dir(app)
+    inputs.dir(packaging)
+    outputs.file(result)
+    doLast {
+        def root = stage.get().asFile
+        services.files.delete { delete(root) }
+        def gui = new File(root, 'meta/gui')
+        gui.mkdirs()
+        new File(root, 'meta/snap.yaml').text = new File(packaging, 'snap.yaml').text.replace('@VERSION@', theVersion)
+        // snapd installs the menu entry under the app's name, and keeps an icon only from the snap.
+        new File(gui, 'genies.desktop').text = new File(packaging, "${id}.desktop").text
+                .replace("Icon=${id}", 'Icon=${SNAP}/meta/gui/icon.png')
+        new File(gui, 'icon.png').bytes = new File(icons.get(), "256x256/apps/${id}.png").bytes
+        geniesInstalled(services, root, '.', app, packaging, icons.get(), id, theVersion)
+        def target = result.get().asFile
+        target.parentFile.mkdirs()
+        services.exec.exec {
+            commandLine 'snap', 'pack', '--filename', target.name, root.absolutePath, target.parentFile.absolutePath
+        }
+    }
+}
+
+// The flatpak is built in a container that has flatpak (src/packaging/genies/flatpak), from the
+// files that go into the flatpak's /app. It holds Genies and a launcher that starts it outside
+// the sandbox; see that launcher, `genies`, for why.
+tasks.register('geniesFlatpak') {
+    group = 'distribution'
+    description = 'Builds build/dist/Genies-<version>-x86_64.flatpak, installed with `flatpak install --user`. Needs podman.'
+    dependsOn(geniesApp)
+    def services = objects.newInstance(PackagingServices)
+    def app = geniesBuild.map { it.dir('app') }
+    def icons = geniesIcons.map { it.outputs.files.singleFile }
+    def stage = geniesBuild.map { it.dir('flatpak') }
+    def packaging = geniesPackaging
+    def id = geniesId
+    def theVersion = geniesVersion
+    def result = dist.map { it.file("Genies-${geniesVersion}-x86_64.flatpak") }
+    inputs.dir(app)
+    inputs.dir(packaging)
+    outputs.file(result)
+    doLast {
+        def work = stage.get().asFile
+        services.files.delete { delete(work) }
+        def files = new File(work, 'files')
+        services.files.copy { from(new File(packaging, 'flatpak/genies')); into(new File(files, 'bin')) }
+        geniesInstalled(services, files, 'lib/genies', app, packaging, icons.get(), id, theVersion)
+        // In a flatpak, what goes under /usr elsewhere goes under /app, the folder `files` becomes.
+        services.files.copy { from(new File(files, 'usr')); into(files) }
+        services.files.delete { delete(new File(files, 'usr')) }
+
+        def builder = 'localhost/genies/flatpak-builder:trixie'
+        services.exec.exec { commandLine 'podman', 'build', '--quiet', '-t', builder, new File(packaging, 'flatpak').absolutePath }
+        // Privileged: flatpak runs what it installs in a sandbox of its own, which needs it.
+        services.exec.exec {
+            commandLine 'podman', 'run', '--rm', '--privileged',
+                        '-v', 'genies-flatpak:/root/.local/share/flatpak',
+                        '-v', "${work.absolutePath}:/work",
+                        '-v', "${new File(packaging, 'flatpak/build.sh').absolutePath}:/build.sh:ro",
+                        builder, 'sh', '/build.sh'
+        }
+        def target = result.get().asFile
+        target.parentFile.mkdirs()
+        java.nio.file.Files.move(new File(work, 'genies.flatpak').toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    }
+}
+
+tasks.register('geniesRelease') {
+    group = 'distribution'
+    description = 'Builds Genies as an AppImage, a .deb, a snap and a flatpak, all in build/dist.'
+    dependsOn('geniesAppImage', 'geniesDeb', 'geniesSnap', 'geniesFlatpak')
 }

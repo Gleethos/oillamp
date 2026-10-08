@@ -1,0 +1,27 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
+  <defs>
+    <linearGradient id='night' x1='0' y1='0' x2='0' y2='1'>
+      <stop offset='0' stop-color='#2b2537'/>
+      <stop offset='1' stop-color='#15121c'/>
+    </linearGradient>
+    <radialGradient id='glow' cx='0.5' cy='0.5' r='0.5'>
+      <stop offset='0' stop-color='#f0a940' stop-opacity='0.55'/>
+      <stop offset='1' stop-color='#f0a940' stop-opacity='0'/>
+    </radialGradient>
+  </defs>
+  <rect x='2' y='2' width='60' height='60' rx='13' fill='url(#night)' stroke='#3a3248' stroke-width='1'/>
+  <circle cx='13' cy='13' r='1' fill='#efe6d8' opacity='0.7'/>
+  <circle cx='50' cy='10' r='1.2' fill='#efe6d8' opacity='0.8'/>
+  <circle cx='54' cy='22' r='0.8' fill='#efe6d8' opacity='0.5'/>
+  <circle cx='9' cy='25' r='0.7' fill='#efe6d8' opacity='0.5'/>
+  <circle cx='33' cy='18' r='15' fill='url(#glow)'/>
+  <g transform='translate(4 6) scale(0.875)'>
+    <path d='M33 4 C38 10 39 15 33 21 C27 15 28 10 33 4 Z' fill='#f0a940'/>
+    <path d='M33 10 C35.5 13 35.8 16 33 19 C30.2 16 30.5 13 33 10 Z' fill='#ffd166'/>
+    <path d='M27 22 h12 a3 3 0 0 1 3 3 v4 h-18 v-4 a3 3 0 0 1 3 -3 Z' fill='#c8963e'/>
+    <path d='M6 34 C16 30 26 29 34 29 C43 29 50 31 55 27 C58 24 60 21 62 19
+             C61 28 57 36 49 41 C44 45 39 47 33 47 C23 47 14 43 6 34 Z' fill='#c8963e'/>
+    <path d='M14 36 C22 40 30 41 38 40' fill='none' stroke='#e7c27a' stroke-width='2' stroke-linecap='round' opacity='0.7'/>
+    <path d='M24 49 h18 a2 2 0 0 1 2 2 v3 h-22 v-3 a2 2 0 0 1 2 -2 Z' fill='#8f6a2a'/>
+  </g>
+</svg>

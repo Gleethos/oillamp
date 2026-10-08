@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Genies
+GenericName=AI agent chat
+Comment=Chat with AI agents that each have a sandboxed Linux desktop of their own
+Exec=genies
+Icon=dev.oillamp.Genies
+Terminal=false
+Categories=Development;Utility;
+Keywords=AI;agent;chat;sandbox;
+StartupWMClass=dev-gui-Genies

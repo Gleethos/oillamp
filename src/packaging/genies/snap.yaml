@@ -1,0 +1,16 @@
+name: genies
+version: '@VERSION@'
+summary: Chat with AI agents that each have a sandboxed Linux desktop
+description: |
+  Genies is a chat app whose every conversation partner is an AI agent, a genie. Each genie
+  lives in a lamp: a rootless podman container with a Linux desktop, where it can install
+  programs, run them and look at its own screen, without reaching your files.
+
+  Genies needs podman on this computer.
+base: core24
+confinement: classic
+grade: stable
+architectures: [amd64]
+apps:
+  genies:
+    command: bin/genies

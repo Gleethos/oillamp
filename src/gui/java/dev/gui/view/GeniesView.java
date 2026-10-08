@@ -976,9 +976,9 @@ public final class GeniesView extends JPanel {
         return String.format("#%02x%02x%02x", colour.getRed(), colour.getGreen(), colour.getBlue());
     }
 
-    /// The lamp, lit, for the window's icon.
+    /// The window's icon: Genies' icon, which the packages also install for the desktop's menus.
     public static Image windowIcon() {
-        return SvgIcon.of(LampSvgUtil.lamp(Genie.Phase.READY)).withIconSize(64, 64).getImage();
+        return SvgIcon.at("/dev/gui/genies.svg").withIconSize(128, 128).getImage();
     }
 
     /// One of the ways to show the desktop, lit while it is the one in use.

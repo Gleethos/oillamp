@@ -1,0 +1,5 @@
+#!/bin/sh
+# Genies starts podman, Ollama and vncviewer on this computer, which the flatpak's sandbox hides
+# from it. So this starts Genies outside the sandbox, from the folder flatpak installed it in.
+app=$(sed -n 's/^app-path=//p' /.flatpak-info)
+exec flatpak-spawn --host "$app/lib/genies/bin/genies" "$@"

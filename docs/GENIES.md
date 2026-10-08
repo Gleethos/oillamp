@@ -514,6 +514,42 @@ something. A `GenieRunner` never touches the window: it reports each change as a
 `Genie → Genie`, which `Genies` applies to the state on Swing's event thread. So every change goes
 through one place, one at a time.
 
+## Releasing
+
+`./gradlew geniesRelease` builds Genies four ways, into `build/dist`. Each also has its own task.
+
+| Task | File | Installed with |
+|---|---|---|
+| `geniesAppImage` | `Genies-<version>-x86_64.AppImage`, one executable file with the icon in it | nothing: mark it executable and run it |
+| `geniesDeb` | `genies_<version>_amd64.deb`, into `/opt/genies`, with `genies` on the path | `sudo apt install ./genies_<version>_amd64.deb` |
+| `geniesSnap` | `genies_<version>_amd64.snap` | `sudo snap install --classic --dangerous genies_<version>_amd64.snap` |
+| `geniesFlatpak` | `Genies-<version>-x86_64.flatpak`; needs podman to build | `flatpak install --user Genies-<version>-x86_64.flatpak` |
+
+All four hold the same files, which `geniesApp` puts together in `build/genies/app/genies`:
+
+- Genies' and oillamp's jars, and the libraries they use.
+- A Java runtime cut down to the modules Genies needs.
+- `bin/genies`, the program that starts it.
+- The menu entry and the icon. The icon is `src/gui/resources/dev/gui/genies.svg`, which is also
+  the window's icon.
+
+The packaging files are in `src/packaging/genies`. Two of the packages are not sandboxed, because
+Genies starts podman, Ollama and vncviewer on the computer:
+
+- **The snap** is classic, without confinement.
+- **The flatpak's** launcher starts Genies outside the flatpak's sandbox.
+
+What Genies downloads later, when it needs it:
+
+- **The sandbox image**, built by podman when a genie first wakes. It is Debian, with a desktop,
+  a browser, build tools, a JDK, Node.js, and pi, the agent program a genie runs on. It is built
+  once, and again only when what goes into it changes.
+- **Ollama and a model**, on the simple way to a model, into `~/.local/share/genies/ollama` and
+  `~/.ollama/models`.
+
+Genies installs nothing else on the computer: podman must be there already. The .deb recommends
+it, so `apt` installs it along.
+
 ## Tests
 
 | Spec | What it pins |

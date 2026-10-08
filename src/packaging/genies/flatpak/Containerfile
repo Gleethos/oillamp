@@ -1,0 +1,5 @@
+# Where Genies' flatpak is built: flatpak is rarely installed where Genies is built.
+# librsvg2-common lets flatpak check the SVG icon.
+FROM docker.io/library/debian:trixie
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends flatpak ca-certificates librsvg2-common \
+ && rm -rf /var/lib/apt/lists/*
