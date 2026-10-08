@@ -286,7 +286,9 @@ drag. The share is `Split`, in the window's state.
 The settings form is a grid. Its settings come in two halves, side by
 side once the card is wider than 760 units: what this computer has and the model, or where the
 model runs and how to reach it. Each half is a grid of its own, with its labels above the fields
-when the half is narrow.
+when the half is narrow. The link that switches between the simple and the advanced way is in the
+card's top right corner, beside its title, once the card is that wide; in a narrower card it is
+under the card's description. Either way, both ways have it in the same place.
 
 A window narrower than 820 units is one column, as on a phone: the list of genies on top, the
 selected genie below. Crossing the line takes a margin of a tenth either way, so dragging the

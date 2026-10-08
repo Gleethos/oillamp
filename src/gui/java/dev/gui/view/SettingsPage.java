@@ -24,7 +24,10 @@ import swingtree.UIForAnySwing;
 import swingtree.animation.Animation;
 import swingtree.animation.AnimationStatus;
 import swingtree.animation.LifeTime;
+import swingtree.api.Layout;
 import swingtree.layout.FlowCell;
+import swingtree.layout.LayoutConstraint;
+import swingtree.layout.MigAddConstraint;
 import swingtree.style.StyledString;
 
 import static dev.gui.view.Palette.*;
@@ -76,6 +79,15 @@ final class SettingsPage {
             .verySmall(12).small(12).medium(12).large(12).veryLarge(4).oversize(3));
     private static final FlowCell FIELD = AUTO_SPAN(it -> it
             .verySmall(12).small(12).medium(12).large(12).veryLarge(8).oversize(9));
+
+    /// The card's heading: its title and what it is for, with the switch between the simple way
+    /// and the advanced way in the top right corner of a wide card, under the words in a narrow one.
+    private static final Layout SWITCH_BESIDE = Layout.mig(LayoutConstraint.of("fill, ins 0, gap 24 0"),
+                LayoutConstraint.of("[grow][]"), LayoutConstraint.of(""))
+            .withChildConstraints(MigAddConstraint.of("growx, wmin 0, top"), MigAddConstraint.of("top, gaptop 4"));
+    private static final Layout SWITCH_UNDER = Layout.mig(LayoutConstraint.of("fill, wrap 1, ins 0, gap 0 12"),
+                LayoutConstraint.of("[grow]"), LayoutConstraint.of(""))
+            .withChildConstraints(MigAddConstraint.of("growx, wmin 0"), MigAddConstraint.of(""));
 
     /*
      *  The welcome on a grid of its own, its words and the room for its picture:
@@ -208,11 +220,22 @@ final class SettingsPage {
                     .onResize(it -> split.set(it.getComponent().getWidth() > UI.scale(CARD_REFERENCE)))
                     // Without genies, the card comes after the welcome has had its moment.
                     .isVisibleIf(Viewable.of(Boolean.class, welcome, clock, (first, at) -> !first || at >= (fit.get().wide() ? CARD_BESIDE_AT : CARD_AT)))
-                    .add(WHOLE, label(welcome.viewAsString(it -> it ? "Your genies' model" : "Settings")).group(Skin.EMPTY_TITLE))
-                    .add(WHOLE, ViewPartsUtil.wrapped(advanced.viewAsString(it -> it
-                            ? "Where your genies' model runs, and how they reach it."
-                            : "Genies sets up a model on this computer for you, with Ollama: free, and your conversations stay here."),
-                            SUBTEXT, Val.of(true)))
+                    .add(WHOLE,
+                        box(split.viewAs(Layout.class, beside -> beside ? SWITCH_BESIDE : SWITCH_UNDER))
+                        .add(
+                            box("fill, wrap 1, ins 0, gap 12")
+                            .add("growx, wmin 0", label(welcome.viewAsString(it -> it ? "Your genies' model" : "Settings")).group(Skin.EMPTY_TITLE))
+                            .add("growx, wmin 0", ViewPartsUtil.wrapped(advanced.viewAsString(it -> it
+                                    ? "Where your genies' model runs, and how they reach it."
+                                    : "Genies sets up a model on this computer for you, with Ollama: free, and your conversations stay here."),
+                                    SUBTEXT, Val.of(true))))
+                        .add(
+                            box("ins 0, hidemode 3")
+                            .add(ViewPartsUtil.link("Advanced: Eden AI, or a model server of your own  ›").isVisibleIf(simple)
+                                 .withTooltip("For a model elsewhere, or a model server on this computer other than Ollama")
+                                 .onClick(it -> advanced.set(From.VIEW, true)))
+                            .add(ViewPartsUtil.link("‹  Back to the simple way: Ollama, set up by Genies").isVisibleIf(advanced)
+                                 .onClick(it -> advanced.set(From.VIEW, false)))))
 
                     // ── the simple way: Ollama, set up by Genies ──
                     // What this computer has in one half, the model and setting it up in the other.
@@ -260,15 +283,6 @@ final class SettingsPage {
                                      case ELSEWHERE -> "the model server at " + it.elsewhere().address().strip() + ".";
                                      case THIS_MACHINE -> "the model server at " + it.local().address().strip() + ".";
                                  }), SUBTEXT, state.viewAs(Boolean.class, it -> !it.settings().usesOllama() && it.settingsProblem().isEmpty())))))
-
-                    // In a box, which holds them to the left: a cell of the grid centres a button.
-                    .add(WHOLE,
-                        box("ins 0, hidemode 3")
-                        .add(ViewPartsUtil.link("Advanced: Eden AI, or a model server of your own  ›").isVisibleIf(simple)
-                             .withTooltip("For a model elsewhere, or a model server on this computer other than Ollama")
-                             .onClick(it -> advanced.set(From.VIEW, true)))
-                        .add(ViewPartsUtil.link("‹  Back to the simple way: Ollama, set up by Genies").isVisibleIf(advanced)
-                             .onClick(it -> advanced.set(From.VIEW, false))))
 
                     // ── the advanced way: where the model runs in one half, how to reach it in the other ──
                     .add(HALF,
