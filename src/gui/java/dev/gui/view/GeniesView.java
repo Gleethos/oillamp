@@ -14,7 +14,6 @@ import swingtree.api.IconDeclaration;
 import swingtree.api.Layout;
 import swingtree.dialogs.ConfirmAnswer;
 import swingtree.input.Keyboard;
-import swingtree.layout.FlowCell;
 import swingtree.layout.LayoutConstraint;
 import swingtree.layout.MigAddConstraint;
 import swingtree.layout.Size;
@@ -497,15 +496,17 @@ public final class GeniesView extends JPanel {
             );
     }
 
-    /// The grip under a tree: a thin line across, like a split pane's divider, with a short
-    /// raised handle in its middle.
+    /// A grip: a thin line along its length, like a split pane's divider, with a short raised
+    /// handle in its middle. Across a wide grip, such as one under a tree; down a tall one, such
+    /// as the one between the chat and the desktop.
     private static void grip(Graphics2D g, int width, int height) {
-        int middle = height / 2;
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        if (width < height) g.rotate(Math.PI / 2, width / 2.0, width / 2.0);
+        int length = Math.max(width, height), middle = Math.min(width, height) / 2;
         g.setColor(BORDER);
-        g.fillRect(0, middle, width, 1);
+        g.fillRect(0, middle, length, 1);
         g.setColor(SUBTEXT);
-        g.fillRoundRect(width / 2 - 14, middle - 1, 28, 3, 3, 3);
+        g.fillRoundRect(length / 2 - 14, middle - 1, 28, 3, 3, 3);
     }
 
     private static String questions(int turns, Tuple<Talk.Branch> forks) {
@@ -649,34 +650,45 @@ public final class GeniesView extends JPanel {
     }
 
     /*
-     *  The chat and the genie's desktop share one responsive grid, whose size classes are
-     *  fifths of its reference width. Read the span table out loud: side by side from LARGE up,
-     *  the chat taking five of twelve columns; one above the other below that.
+     *  The chat and the genie's desktop share the area, with a grip between them that the user
+     *  drags to give one more room and the other less:
      *
-     *                    very small  small  medium  large  very large  oversize
-     *      chat               12       12     12      5        5          5
-     *      desktop            12       12     12      7        7          7
-     *      chat, alone        12 everywhere
+     *      side by side, from SIDE_BY_SIDE_FROM wide       one under the other, narrower
      *
-     *  LARGE starts at three fifths of 1100, 660: GeniesState.SIDE_BY_SIDE_FROM, from which the
-     *  state gives the two their heights. A grid gives a row the height its tallest cell
-     *  prefers, and never stretches it to the window, so the heights are stated.
+     *      ┌────────────┬─┬──────────────────────┐        ┌────────────────────┐
+     *      │            │ │                      │        │ the chat           │
+     *      │  the chat  │┃│  the desktop         │        ├──────── ━━ ────────┤
+     *      │            │ │                      │        │ the desktop        │
+     *      └────────────┴─┴──────────────────────┘        └────────────────────┘
+     *        chatPart   GRIP  the rest                       chatPart, GRIP, desktopPart
+     *
+     *  How long each is comes from the state's Split. Nothing is rebuilt when the user drags or
+     *  the arrangement changes: the layout is a value, made from the state. Inside a scroll pane,
+     *  nothing stretches to the window's height, so the heights are stated too.
      */
-    private static final int CONVERSATION_REFERENCE = 1100;
-    private static final FlowCell CHAT = AUTO_SPAN(it -> it.fill(true)
-            .verySmall(12).small(12).medium(12).large(5).veryLarge(5).oversize(5));
-    private static final FlowCell DESKTOP = AUTO_SPAN(it -> it.fill(true)
-            .verySmall(12).small(12).medium(12).large(7).veryLarge(7).oversize(7));
-    private static final FlowCell WHOLE = AUTO_SPAN(it -> it.fill(true)
-            .verySmall(12).small(12).medium(12).large(12).veryLarge(12).oversize(12));
-    private static final Layout WITH_DESKTOP = Layout.flow(UI.HorizontalAlignment.LEFT, 0, 0).withChildConstraints(CHAT, DESKTOP);
-    private static final Layout CHAT_ALONE = Layout.flow(UI.HorizontalAlignment.LEFT, 0, 0).withChildConstraints(WHOLE, WHOLE);
+    private static Layout arrangement(GeniesState it) {
+        LayoutConstraint fill = LayoutConstraint.of("fill, ins 0, gap 0, hidemode 3");
+        if (!it.desktopOnScreen())
+            return Layout.mig(fill, LayoutConstraint.of("[grow]"), LayoutConstraint.of("[" + it.height() + "!]"))
+                    .withChildConstraints(MigAddConstraint.of("cell 0 0, grow, wmin 0"));
+        if (it.sideBySide())
+            return Layout.mig(fill, LayoutConstraint.of("[" + it.chatPart() + "!][" + Split.GRIP + "!][grow]"),
+                                    LayoutConstraint.of("[" + it.height() + "!]"))
+                    .withChildConstraints(
+                        MigAddConstraint.of("cell 0 0, grow, wmin 0"),
+                        MigAddConstraint.of("cell 1 0, grow"),
+                        MigAddConstraint.of("cell 2 0, grow, wmin 0"));
+        return Layout.mig(fill, LayoutConstraint.of("[grow]"),
+                                LayoutConstraint.of("[" + it.chatPart() + "!][" + Split.GRIP + "!][" + it.desktopPart() + "!]"))
+                .withChildConstraints(
+                    MigAddConstraint.of("cell 0 0, grow, wmin 0"),
+                    MigAddConstraint.of("cell 0 1, grow"),
+                    MigAddConstraint.of("cell 0 2, grow, wmin 0"));
+    }
 
-    /// The chat, and with it the genie's desktop when the user watches. Nothing is rebuilt when
-    /// the arrangement changes: the grid's cells are a value, and so are the heights.
+    /// The chat, and with it the genie's desktop when the user watches.
     private UIForAnySwing<?, ?> conversation(Val<Boolean> visible) {
-        Val<Boolean> shown = Viewable.of(Boolean.class, phase, desktopShown, (p, d) -> p.isAwake() && d);
-        Val<Layout> cells = shown.viewAs(Layout.class, it -> it ? WITH_DESKTOP : CHAT_ALONE);
+        Val<Boolean> shown = state.viewAs(Boolean.class, GeniesState::desktopOnScreen);
         return
             scrollPane(conf -> conf.fitWidth(true)).group(Skin.PAGE_SCROLL).withEmptyBorder(0)
             .isVisibleIf(visible)
@@ -685,17 +697,48 @@ public final class GeniesView extends JPanel {
             // The area measures itself: its width decides the arrangement, its height the heights.
             .onResize(it -> state.update(From.VIEW, s -> s.withArea(it.getWidth(), it.getHeight())))
             .add(
-                panel(cells).withMinSize(0, 0).withPrefSize(CONVERSATION_REFERENCE, 0)
+                panel(state.viewAs(Layout.class, GeniesView::arrangement)).withMinSize(0, 0)
                 .withStyle(it -> it.backgroundColor(TRANSPARENT))
                 .add(
                     panel("fill, wrap 1, ins 0, gap 0, hidemode 3", "[grow]", "[grow][][]")
                     .withMinSize(0, 0)
-                    .withStyle(state.viewAs(Integer.class, GeniesState::chatHeight), (height, it) -> it
-                        .backgroundColor(TRANSPARENT).prefHeight(height))
+                    .withStyle(it -> it.backgroundColor(TRANSPARENT))
                     .add("grow, push, wmin 0", transcript())
                     .add("growx, wmin 0", outbox())
                     .add("growx, wmin 0", bottomBar()))
+                .add(splitGrip(shown))
                 .add(desktopPane(shown)));
+    }
+
+    /// The grip between the chat and the desktop, a line along it like the grips under the
+    /// lists. The user drags it to give one more room and the other less, and all the way toward
+    /// the desktop to close it. A double click lets Genies pick the share again.
+    private UIForAnySwing<?, ?> splitGrip(Val<Boolean> shown) {
+        Val<Boolean> beside = state.viewAs(Boolean.class, GeniesState::sideBySide);
+        // Where a drag began: the pointer's place along the split on the screen, and the chat's part.
+        int[] dragFrom = new int[2];
+        Split[] before = { Split.PICKED };
+        return
+            panel()
+            .isVisibleIf(shown)
+            .withCursor(beside.viewAs(UI.Cursor.class, it -> it ? UI.Cursor.RESIZE_RIGHT : UI.Cursor.RESIZE_BOTTOM))
+            .withTooltip("Drag to share the room between the chat and the desktop, or all the way to close the desktop."
+                       + " Double-click to let Genies share it")
+            .withStyle(it -> {
+                int width = it.componentWidth(), height = it.componentHeight();
+                return it.backgroundColor(TRANSPARENT).painter(UI.Layer.CONTENT, g -> grip(g, width, height));
+            })
+            .onMousePress(it -> {
+                dragFrom[0] = UI.unscale(beside.get() ? it.mouseXOnScreen() : it.mouseYOnScreen());
+                dragFrom[1] = state.get().chatPart();
+                before[0] = state.get().split();
+            })
+            .onMouseDrag(it -> {
+                int along = UI.unscale(beside.get() ? it.mouseXOnScreen() : it.mouseYOnScreen());
+                state.update(From.VIEW, s -> s.withChatPart(dragFrom[1] + along - dragFrom[0]));
+            })
+            .onMouseRelease(_ -> state.update(From.VIEW, s -> s.splitReleased(before[0])))
+            .onMouseClick(it -> { if (it.clickCount() == 2) state.update(From.VIEW, s -> s.withSplit(Split.PICKED)); });
     }
 
     /// The genie's desktop, in a scroll pane so a large desktop never blocks the layout, with
@@ -719,8 +762,7 @@ public final class GeniesView extends JPanel {
             panel("fill, wrap 1, ins 8 12 12 12, gap 6, hidemode 3", "[grow]")
             .isVisibleIf(shown)
             .withMinSize(0, 0)
-            .withStyle(state.viewAs(Integer.class, GeniesState::desktopHeight), (height, it) -> it
-                .backgroundColor(TRANSPARENT).prefHeight(height))
+            .withStyle(it -> it.backgroundColor(TRANSPARENT))
             .add("growx, wmin 0",
                 label(genie.viewAsString(it -> "✦  " + it.name() + " shows you: " + it.showing()))
                 .isVisibleIf(showing)

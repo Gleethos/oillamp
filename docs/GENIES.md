@@ -271,8 +271,18 @@ Genies brings its own fonts, Inter for text and JetBrains Mono for code, so it l
 whatever font the desktop uses. Where JetBrains Mono is also installed on the desktop, in weights
 that make Java draw it bold, Genies uses Roboto Mono, which it also brings, instead.
 
-The chat and the desktop share a responsive grid: side by side in a wide window, the desktop below
-the chat in a narrow one. The settings form is a grid too. Its settings come in two halves, side by
+The chat and the desktop share the area: side by side from 660 units wide, the desktop under the
+chat below that. A grip between them, drawn like the grips under the lists but along the split,
+gives one more room and the other less. Until the user drags it, Genies picks the share: beside the
+desktop, the chat gets five twelfths of the width but at most 560 units, so on a wide screen the
+rest goes to the desktop; above it, three fifths of the height. Once dragged, the chat keeps its
+share as the window changes, one share for each arrangement, and a double click on the grip lets
+Genies pick again. The chat never gets less than 280 units along the split, the desktop never less
+than 240; a shorter area scrolls. While the grip is held, the desktop may shrink to nothing. Let go
+with less than half of its 240 units, the desktop closes, and opens again as large as before that
+drag. The share is `Split`, in the window's state.
+
+The settings form is a grid. Its settings come in two halves, side by
 side once the card is wider than 760 units: what this computer has and the model, or where the
 model runs and how to reach it. Each half is a grid of its own, with its labels above the fields
 when the half is narrow.
@@ -510,6 +520,7 @@ through one place, one at a time.
 | `ReadingAGeniesMarkdownSpec` | Markdown as models write it, and the fade of a streaming answer |
 | `DrawingAGenieSpec` | a genie's appearance from its id, its pose from its phase, that every appearance, pose and frame can be drawn, and the welcome's picture at moments of its play |
 | `ZoomingIntoAGeniesDesktopSpec` | the panel's size as the default, and the zoom steps |
+| `SharingTheRoomWithTheDesktopSpec` | the share Genies picks for the chat and the desktop, dragging the grip between them, and closing the desktop with it |
 | `KeepingManyGeniesSpec` | the list of genies, the settings for the three places and their model lists, a narrow window |
 | `KeepingGeniesBetweenRunsSpec` | the shelf |
 | `SettingUpAModelSpec` | model sizes and where they run, the suggestion, the welcome's page, and what setting up Ollama has left to do |

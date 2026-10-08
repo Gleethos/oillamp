@@ -24,6 +24,7 @@ import sprouts.Tuple;
 /// @param narrow   whether the window is too narrow for the list and a conversation side by side
 /// @param lookUp   the models the service in the settings offered when last asked
 /// @param zoom     how large a genie's desktop is shown
+/// @param split    how the chat and a genie's desktop share the area
 /// @param area     the room the conversation, and the desktop beside it, have in the window
 /// @param now      the time the window shows things relative to, such as the schedule's timeline;
 ///                 moved on every half minute
@@ -35,7 +36,7 @@ import sprouts.Tuple;
 ///                 way, Ollama set up by Genies
 public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings, Page page,
                           Optional<String> environmentKey, Fold genieList, boolean narrow,
-                          ModelLookUp lookUp, DesktopZoom zoom, Area area, Instant now, Tuple<Trouble> troubles,
+                          ModelLookUp lookUp, DesktopZoom zoom, Split split, Area area, Instant now, Tuple<Trouble> troubles,
                           OllamaSetup ollama, boolean advanced) {
 
     /// A width and a height, in the window's own units.
@@ -68,20 +69,21 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public static GeniesState of(Tuple<Genie> genies, Settings settings, Optional<String> environmentKey) {
         return new GeniesState(genies, genies.isEmpty() ? NONE : genies.first().id(), settings,
                                genies.isEmpty() ? Page.SETTINGS : Page.CHAT, environmentKey, new Fold(true, Fold.CLOSED.height()), false,
-                               ModelLookUp.NOT_YET, DesktopZoom.PANEL, new Area(1030, 760), Instant.now(), Tuple.of(Trouble.class),
+                               ModelLookUp.NOT_YET, DesktopZoom.PANEL, Split.PICKED, new Area(1030, 760), Instant.now(), Tuple.of(Trouble.class),
                                OllamaSetup.NOT_YET, !settings.usesOllama());
     }
 
-    public GeniesState withGenies(Tuple<Genie> genies) { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
-    public GeniesState withSelected(UUID selected)     { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
-    public GeniesState withSettings(Settings settings) { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
-    public GeniesState withPage(Page page)             { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
-    public GeniesState withGenieList(Fold genieList)   { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
-    public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
-    public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
-    public GeniesState withNow(Instant now)            { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
-    public GeniesState withOllama(OllamaSetup ollama)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
-    public GeniesState withAdvanced(boolean advanced)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles, ollama, advanced); }
+    public GeniesState withGenies(Tuple<Genie> genies) { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
+    public GeniesState withSelected(UUID selected)     { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
+    public GeniesState withSettings(Settings settings) { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
+    public GeniesState withPage(Page page)             { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
+    public GeniesState withGenieList(Fold genieList)   { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
+    public GeniesState withZoom(DesktopZoom zoom)      { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
+    public GeniesState withSplit(Split split)          { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
+    public GeniesState withLookUp(ModelLookUp lookUp)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
+    public GeniesState withNow(Instant now)            { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
+    public GeniesState withOllama(OllamaSetup ollama)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
+    public GeniesState withAdvanced(boolean advanced)  { return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles, ollama, advanced); }
 
     /// How many troubles the window keeps.
     public static final int MOST_TROUBLES = 20;
@@ -90,13 +92,13 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withTrouble(Trouble trouble) {
         Tuple<Trouble> more = troubles.add(trouble);
         Tuple<Trouble> kept = more.size() > MOST_TROUBLES ? more.removeFirst(more.size() - MOST_TROUBLES) : more;
-        return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, kept, ollama, advanced);
+        return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, kept, ollama, advanced);
     }
 
     /// Without the troubles the user has `seen`; the error log still has them. One that came
     /// while they looked stays.
     public GeniesState withoutTroubles(Tuple<Trouble> seen) {
-        return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, area, now, troubles.removeAll(seen), ollama, advanced);
+        return new GeniesState(genies, selected, settings, page, environmentKey, genieList, narrow, lookUp, zoom, split, area, now, troubles.removeAll(seen), ollama, advanced);
     }
 
     /// Below this width, in the window's own units, the list of genies and a conversation do not
@@ -110,12 +112,11 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withViewWidth(int width) {
         boolean nowNarrow = narrow ? width < NARROW * 1.1 : width < NARROW / 1.1;
         if (nowNarrow == narrow) return this;
-        return new GeniesState(genies, selected, settings, page, environmentKey, genieList.withShown(!nowNarrow), nowNarrow, lookUp, zoom, area, now, troubles, ollama, advanced);
+        return new GeniesState(genies, selected, settings, page, environmentKey, genieList.withShown(!nowNarrow), nowNarrow, lookUp, zoom, split, area, now, troubles, ollama, advanced);
     }
 
     /// From this width of the conversation's area, a genie's desktop is shown beside the chat;
-    /// below it, under the chat. The window's grid says the same, in its own terms: its large
-    /// size class starts at three fifths of its reference width.
+    /// below it, under the chat.
     public static final int SIDE_BY_SIDE_FROM = 660;
 
     /// Folds the size of the conversation's area into the state, the only place a pixel of it
@@ -124,7 +125,7 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     public GeniesState withArea(int width, int height) {
         Area rounded = new Area(width / 10 * 10, height / 10 * 10);
         return rounded.equals(area) ? this : new GeniesState(genies, selected, settings, page, environmentKey,
-                                                            genieList, narrow, lookUp, zoom, rounded, now, troubles, ollama, advanced);
+                                                            genieList, narrow, lookUp, zoom, split, rounded, now, troubles, ollama, advanced);
     }
 
     /// Below this width of the conversation's area, the header's buttons do not fit with their
@@ -145,16 +146,39 @@ public record GeniesState(Tuple<Genie> genies, UUID selected, Settings settings,
     /// Whether the chat and the desktop fit side by side.
     public boolean sideBySide() { return area.width() >= SIDE_BY_SIDE_FROM; }
 
-    /// How tall the chat is. It has the whole height, unless the desktop is shown below it; then
-    /// the two share the height, each keeping enough to be usable, and the page scrolls.
-    public int chatHeight() {
-        boolean shared = genie().desktopShown() && genie().phase().isAwake() && !sideBySide();
-        return shared ? Math.max(380, area.height() * 3 / 5) : Math.max(240, area.height());
+    /// Whether the selected genie's desktop is on screen: it is awake, and the user asked for it.
+    public boolean desktopOnScreen() { return genie().phase().isAwake() && genie().desktopShown(); }
+
+    /// How tall the chat is, and the desktop beside it: the area's height, but at least what the
+    /// chat needs, below which the area scrolls.
+    public int height() { return Math.max(Split.LEAST_CHAT, area.height()); }
+
+    /// How long the area is along the split between the chat and the desktop: its width with the
+    /// two side by side, its height with one under the other. A shorter area scrolls.
+    private int splitLength() { return Math.max(Split.SHORTEST, sideBySide() ? area.width() : area.height()); }
+
+    /// How long the chat is along the split: its width beside the desktop, its height above it.
+    public int chatPart() { return split.chat(splitLength(), sideBySide()); }
+
+    /// How long the desktop is along the split: what the chat and the grip leave of the area.
+    public int desktopPart() { return splitLength() - Split.GRIP - chatPart(); }
+
+    /// The user drags the grip between the chat and the desktop, to give the chat `part` of the
+    /// area's length. While they hold it, the desktop may get less than it needs.
+    public GeniesState withChatPart(int part) {
+        double share = part / (double) splitLength();
+        return withSplit(sideBySide() ? new Split(share, split.aboveShare(), true) : new Split(split.besideShare(), share, true));
     }
 
-    /// How tall the desktop is: the whole height beside the chat, half of it below.
-    public int desktopHeight() {
-        return sideBySide() ? Math.max(240, area.height()) : Math.max(260, area.height() / 2);
+    /// The user let go of the grip between the chat and the desktop. With less than half the room
+    /// it needs, the desktop closes, and opens again as large as it was before that drag.
+    /// Otherwise the chat keeps the share the drag gave it, and Genies no longer picks one; a
+    /// desktop with less than it needs gets that much.
+    ///
+    /// @param before the split when the drag began
+    public GeniesState splitReleased(Split before) {
+        if (desktopPart() < Split.LEAST_DESKTOP / 2) return withSplit(before).withGenie(genie().withDesktopShown(false));
+        return withSplit(new Split(split.besideShare(), split.aboveShare(), false));
     }
 
     /// The genie the chat shows, or an empty stand-in when there is none, so the window always
