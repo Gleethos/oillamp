@@ -862,10 +862,6 @@ public final class GeniesView extends JPanel {
             Map.entry("ToolTip.background", hex(RAISED)),
             Map.entry("ToolTip.foreground", hex(TEXT))));
         com.formdev.flatlaf.FlatDarkLaf.setup();
-        // The size of the window's own text, rather than the desktop's, for menus and dialogs too.
-        // Derived from FlatLaf's font, which falls back to other fonts for signs Inter lacks.
-        Font base = UIManager.getFont("defaultFont");
-        if (base != null) UIManager.put("defaultFont", new FontUIResource(base.deriveFont(13f)));
     }
 
     private static String hex(Color colour) {
