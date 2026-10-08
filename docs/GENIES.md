@@ -193,7 +193,8 @@ Genies runs.
 While a genie is not awake, the top right corner of its card, where the genie stands while it is
 awake, has an arrow that folds both trees away into the card, and shows them again. Awake, the
 trees are always shown, and the fold waits for the genie to sleep again. Like the trees' heights,
-the fold lasts while Genies runs.
+the fold lasts while Genies runs. When Genies starts, every genie is asleep, so every card starts
+folded.
 
 A card lights halfway to selected under the pointer, the row of a tree under the pointer is
 underlaid across the tree's width, and the line that opens a tree brightens. Cards stand 4 units

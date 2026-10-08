@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.gui.model.Conversations;
 import dev.gui.model.Genie;
 import dev.gui.model.Settings;
 
@@ -57,12 +58,14 @@ public final class Shelf {
     /// The lamp directory of the genie `id`.
     public Path lampOf(UUID id) { return root.resolve("lamps").resolve(id.toString()); }
 
-    /// The genies there were when Genies last closed, all asleep. None, the first time.
+    /// The genies there were when Genies last closed, all asleep, with their cards folded. None,
+    /// the first time.
     public Tuple<Genie> genies() {
         Tuple<Genie> genies = Tuple.of(Genie.class);
         for (JsonNode entry : read("genies.json").path("genies")) {
             try {
-                genies = genies.add(Genie.asleep(UUID.fromString(entry.path("id").asText()), entry.path("name").asText()));
+                genies = genies.add(Genie.asleep(UUID.fromString(entry.path("id").asText()), entry.path("name").asText())
+                                         .withConversations(Conversations.NONE.withFolded(true)));
             } catch (IllegalArgumentException notAnId) {
                 // An entry someone edited by hand into something else is skipped.
             }

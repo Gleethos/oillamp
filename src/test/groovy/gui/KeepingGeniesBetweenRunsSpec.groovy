@@ -28,10 +28,11 @@ class KeepingGeniesBetweenRunsSpec extends Specification {
 
     @TempDir Path tmp
 
-    def 'The genies come back in order, with their names, asleep'() {
+    def 'The genies come back in order, with their names, asleep and folded'() {
         reportInfo """
             When Genies starts, the user finds the genies they had, in the order they made them.
-            All are asleep: a lamp is lit only when its genie is woken.
+            All are asleep: a lamp is lit only when its genie is woken. So their cards are folded,
+            showing only each genie's name, until the user unfolds one or wakes its genie.
         """
         given:
             var shelf = new Shelf(tmp)
@@ -45,6 +46,8 @@ class KeepingGeniesBetweenRunsSpec extends Specification {
             found*.id() == kept*.id()
             found*.name() == ['Aladdin', 'Iago']
             found.every { it.phase() == Genie.Phase.ASLEEP }
+            found.every { !it.showsConversations() }
+            found.every { it.waking().withPhase(Genie.Phase.READY).showsConversations() }
     }
 
     def 'Each genie\'s lamp is a directory of its own on the shelf'() {
