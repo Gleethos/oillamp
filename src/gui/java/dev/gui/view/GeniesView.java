@@ -9,6 +9,7 @@ import swingtree.UIForLabel;
 import swingtree.UIForPanel;
 import swingtree.animation.Animation;
 import swingtree.animation.AnimationStatus;
+import swingtree.animation.LifeTime;
 import swingtree.api.IconDeclaration;
 import swingtree.api.Layout;
 import swingtree.dialogs.ConfirmAnswer;
@@ -22,9 +23,11 @@ import swingtree.style.SvgIcon;
 import javax.swing.*;
 import javax.swing.plaf.FontUIResource;
 import java.awt.Color;
+import java.awt.Cursor;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Image;
+import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -270,21 +273,31 @@ public final class GeniesView extends JPanel {
         Val<Boolean> atItsChat = state.viewAs(Boolean.class, it -> it.selected().equals(id) && it.page() == GeniesState.Page.CHAT);
         Val<Boolean> showsElsewhere = Viewable.of(Boolean.class, shown, atItsChat, (it, there) -> !it.showing().isEmpty() && !there);
         // Awake, the genie is out of its lamp, in the card's top right corner beside its name,
-        // twice its twenty pixels. Asleep, waking or broken, it is in the lamp, so not shown.
+        // twice its twenty pixels. Asleep, waking or broken, it is in the lamp, so not shown, and
+        // that corner has an arrow that folds the genie's conversations away, or shows them again.
         Val<Boolean> out = shown.viewAs(Boolean.class, it -> it.phase().isAwake());
+        Var<Boolean> folded = shown.zoomTo(Genie::conversations, Genie::withConversations)
+                                   .zoomTo(Conversations::folded, Conversations::withFolded);
+        Var<Boolean> hovered = Var.of(false);
         Val<IconDeclaration> picture = Viewable.of(IconDeclaration.class, shown, pulse, (it, progress) -> {
             if (!it.phase().isAwake()) return GenieSvgUtil.NONE;
             GenieSvgUtil.Pose pose = GenieSvgUtil.poseOf(it);
             return GenieSvgUtil.genie(GenieSvgUtil.appearanceOf(it.id()), pose, GenieSvgUtil.frameAt(pose, progress));
         });
         return
-            panel("fill, ins 7 8 7 8, gap 8", "[26!][grow]")
+            panel("fill, ins 7 8 7 8, gap 8, hidemode 3", "[26!][grow][]")
             .withStyle(isSelected, (on, it) -> it
                 .backgroundColor(on ? RAISED : TRANSPARENT)
                 .border(1, on ? BORDER : TRANSPARENT)
                 // Always there, lit when selected, so selecting a genie moves nothing.
                 .borderAt(UI.Edge.LEFT, 3, on ? FLAME : TRANSPARENT)
                 .borderRadius(10))
+            // Under the pointer, a card that is not selected yet lights halfway to selected.
+            .withTransitionalStyle(hovered, LifeTime.of(0.14, TimeUnit.SECONDS), (status, it) -> isSelected.get() ? it : it
+                .backgroundColor(ViewPartsUtil.withAlpha(RAISED, (int) Math.round(150 * status.progress())))
+                .border(1, ViewPartsUtil.withAlpha(BORDER, (int) Math.round(255 * status.progress()))))
+            .onMouseEnter(it -> hovered.set(true))
+            .onMouseExit(it -> hovered.set(false))
             // Painted on the card rather than added to it, so it moves none of the card's parts.
             .withStyle(picture, (icon, it) -> it
                 .image(img -> img.image(icon).placement(UI.Placement.TOP_RIGHT).size(46, 46).padding(5, 6, 1, 0)))
@@ -296,7 +309,7 @@ public final class GeniesView extends JPanel {
                 if (it.isRightMouseButton()) genieMenu(id).show(it.getComponent(), it.mouseX(), it.mouseY());
             })
             .add("top", ViewPartsUtil.lamp(shown.viewAs(Genie.Phase.class, Genie::phase), 26))
-            .add("growx, wmin 0, wrap",
+            .add("growx, wmin 0",
                 box("fill, wrap 1, ins 0, gap 0, hidemode 3")
                 // Room for the genie, while it is out, so a long name ends before it.
                 .withStyle(out, (room, it) -> it.padding(0, room ? 42 : 0, 0, 0))
@@ -306,7 +319,13 @@ public final class GeniesView extends JPanel {
                 .add("growx, wmin 0", label(shown.viewAsString(it -> "▣  shows you: " + it.showing()))
                      .isVisibleIf(showsElsewhere)
                      .withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(FLAME)))))
-            .add("span 2, growx, wmin 0", conversationsOf(shown));
+            .add("top", ViewPartsUtil.lightsOnHover(button("").group(Skin.ICON_BUTTON))
+                 .isVisibleIf(out.viewAs(Boolean.class, it -> !it))
+                 .withStyle(folded, (on, it) -> it.icon(SignSvgUtil.sign(on ? SignSvgUtil.UNFOLD : SignSvgUtil.FOLD, SUBTEXT)).padding(3, 5, 3, 5))
+                 .withTooltip(folded.viewAsString(on -> on ? "Show this genie's conversations" : "Fold this genie's conversations away"))
+                 .onClick(it -> folded.update(From.VIEW, on -> !on)))
+            // On a line of its own, whether the arrow is there or not.
+            .add("newline, span 3, growx, wmin 0", conversationsOf(shown));
     }
 
     // ─── a genie's conversations ───────────────────────────────────────────────────────────
@@ -316,6 +335,7 @@ public final class GeniesView extends JPanel {
     /// saying how many. A conversation is a row, and below it are its branches, one for each
     /// question asked differently. Clicking a row goes there; the row the genie is on is
     /// selected. Under both trees, since it can be in either, the one it is on can be deleted.
+    /// While the genie is not awake, the user can fold all of this away into its card.
     private UIForAnySwing<?, ?> conversationsOf(Var<Genie> shown) {
         UUID id = shown.get().id();
         Var<Conversations> conversations = shown.zoomTo(Genie::conversations, Genie::withConversations);
@@ -323,12 +343,15 @@ public final class GeniesView extends JPanel {
         Var<Fold> jobs = conversations.zoomTo(Conversations::jobsFold, Conversations::withJobsFold);
         // The trees can be gone through while the genie answers; a new conversation waits for the answer.
         Val<Boolean> browsable = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WAKING);
-        Val<Boolean> idle = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING && it.phase() != Genie.Phase.WAKING);
+        // A new conversation needs the genie awake; while it answers, the new one waits.
+        Val<Boolean> awake = shown.viewAs(Boolean.class, it -> it.phase().isAwake());
+        Val<Boolean> idle = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING);
         Val<Boolean> canForget = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING
                 && it.phase() != Genie.Phase.WAKING && it.conversations().current().isPresent());
         Val<Boolean> eitherOpen = Viewable.of(Boolean.class, chats, jobs, (c, j) -> c.shown() || j.shown());
         return
             box("fill, wrap 1, ins 0, gap 2, hidemode 3", "[grow]")
+            .isVisibleIf(shown.viewAs(Boolean.class, Genie::showsConversations))
             .add("growx, wmin 0",
                 tree(id, jobs, conversations.viewAsString(it -> howMany(it.jobCount(), "scheduled run", "")),
                      "Show or hide the conversations the runs of this genie's scheduled jobs had",
@@ -338,7 +361,7 @@ public final class GeniesView extends JPanel {
                 tree(id, chats, conversations.viewAsString(it -> howMany(it.chatCount(), "conversation", "no conversations yet")),
                      "Show or hide your conversations with this genie", Val.of(true),
                      conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::chats), browsable,
-                     Optional.of(button("").group(Skin.ICON_BUTTON).isEnabledIf(idle)
+                     Optional.of(ViewPartsUtil.lightsOnHover(button("").group(Skin.ICON_BUTTON)).isVisibleIf(awake).isEnabledIf(idle)
                          .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.NEW, SUBTEXT)).padding(1, 6, 1, 6))
                          .withTooltip("Start a new conversation with this genie; the others are kept")
                          .onClick(it -> actions.startAfresh(id)))))
@@ -359,6 +382,10 @@ public final class GeniesView extends JPanel {
                                      Optional<UIForAnySwing<?, ?>> beside) {
         Val<Boolean> open = fold.viewAs(Boolean.class, Fold::shown);
         Val<Tuple<String>> here = rows.viewAs(Tuple.classTyped(String.class), Conversations::pathToHere);
+        // The line that opens the tree brightens under the pointer, and so does the tree's row
+        // under it, across the tree's width: the number of that row, or -1 for none.
+        Var<Boolean> lineHovered = Var.of(false);
+        Var<Integer> pointed = Var.of(-1);
         JScrollPane[] area = new JScrollPane[1];
         // A scroll pane lays out only what is inside it: when the tree grows, shrinks or is shown
         // or hidden, Swing marks the card as needing a new layout but never gives it one. A later
@@ -376,7 +403,10 @@ public final class GeniesView extends JPanel {
                 .add("growx, wmin 0",
                     label(Viewable.of(String.class, open, count, (on, words) -> (on ? "▾  " : "▸  ") + words))
                     .group(Skin.META).withCursor(UI.Cursor.HAND)
+                    .withStyle(lineHovered, (on, it) -> on ? it.componentFont(f -> f.color(TEXT)) : it)
                     .withTooltip(tip)
+                    .onMouseEnter(it -> lineHovered.set(true))
+                    .onMouseExit(it -> lineHovered.set(false))
                     .onMouseClick(it -> fold.update(From.VIEW, Fold::toggled)))
                 .applyIfPresent(beside.map(it -> line -> line.add(it))))
             .add("growx, wmin 0, hmin 0",
@@ -409,7 +439,28 @@ public final class GeniesView extends JPanel {
                         .isEnabledIf(browsable)
                         .withSelection(here)
                         .onSelection(it -> goTo(id, it.leadPath(), it.lead()))
-                        .withStyle(it -> it.backgroundColor(TRANSPARENT).componentFont(f -> f.family(FONT).size(12).color(TEXT))))))
+                        .onMouseMove(it -> {
+                            JTree tree = it.getComponent();
+                            int row = tree.getClosestRowForLocation(it.mouseX(), it.mouseY());
+                            Rectangle bounds = tree.getRowBounds(row);
+                            boolean onRow = bounds != null && it.mouseY() >= bounds.y && it.mouseY() < bounds.y + bounds.height;
+                            pointed.set(onRow ? row : -1);
+                            tree.setCursor(Cursor.getPredefinedCursor(onRow && tree.isEnabled() ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+                        })
+                        .onMouseExit(it -> pointed.set(-1))
+                        .withStyle(pointed, (row, it) -> {
+                            JTree tree = it.component();
+                            return it.backgroundColor(TRANSPARENT).componentFont(f -> f.family(FONT).size(12).color(TEXT))
+                                .painter(UI.Layer.BACKGROUND, g -> {
+                                    Rectangle bounds = row < 0 || !tree.isEnabled() ? null : tree.getRowBounds(row);
+                                    if (bounds == null) return;
+                                    // SwingTree scales a painter's units to pixels; the tree's rows are in pixels.
+                                    g.scale(1 / UI.scale(), 1 / UI.scale());
+                                    g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                                    g.setColor(ViewPartsUtil.withAlpha(BORDER, 170));
+                                    g.fillRoundRect(0, bounds.y, tree.getWidth(), bounds.height, UI.scale(8), UI.scale(8));
+                                });
+                        }))))
             .add("growx, wmin 0, h 9!",
                 grip(fold, () -> UI.unscale(area[0].getHeight()), open, "Drag to make this list taller or shorter")
             );

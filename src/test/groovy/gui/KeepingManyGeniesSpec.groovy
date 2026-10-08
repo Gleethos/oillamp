@@ -66,6 +66,27 @@ class KeepingManyGeniesSpec extends Specification {
             state.update(gone.id(), { it.withName('Back') }) == state
     }
 
+    def 'A genie that is not awake can have its conversations folded into its card, an awake one cannot'() {
+        reportInfo """
+            Under each genie's card are its conversations. While the genie is asleep, waking or
+            broken, the user can fold them away into the card, to keep a long list of genies
+            short. Awake, the genie is busy with them, so they are always shown, and the fold
+            is kept for when it sleeps again.
+        """
+        given:
+            var asleep = Genie.named('Jinn')
+            var folded = asleep.withConversations(asleep.conversations().withFolded(true))
+
+        expect:
+            asleep.showsConversations()
+            !folded.showsConversations()
+            !folded.withPhase(Genie.Phase.WAKING).showsConversations()
+            !folded.withPhase(Genie.Phase.BROKEN).showsConversations()
+            folded.withPhase(Genie.Phase.READY).showsConversations()
+            folded.withPhase(Genie.Phase.WORKING).showsConversations()
+            !folded.withPhase(Genie.Phase.READY).withPhase(Genie.Phase.ASLEEP).showsConversations()
+    }
+
     def 'In a narrow window the list of genies steps aside, and comes back when there is room'() {
         reportInfo """
             Windows get snapped to half a screen, or tiled into a strip. Below a certain width

@@ -175,7 +175,7 @@ is a file of pi's; a genie can have any number of them.
 
 Under each genie's card are two trees, each opened by a line saying how many it holds, and each
 starting closed: the scheduled runs, one conversation per run of a job, and below them the
-conversations the user had, whose line ends in ＋ for a new one. Delete…, under both trees while
+conversations the user had, whose line ends in ＋ for a new one while the genie is awake. Delete…, under both trees while
 either is open, deletes the conversation the genie is in, whichever tree holds it. `Lamp.Conversation.job()` says which conversations a job's run had; oillamp names those
 after the run and the job, such as `run-12 (job-3)`. The line for scheduled runs shows only once
 there is one. Each tree is SwingTree's `UI.trees(..)`, bound to its conversations as one value: a
@@ -189,6 +189,15 @@ with a handle, makes it taller or shorter when dragged, from nothing up to 900 u
 shorter than that takes only its own height. Let go with the area dragged to nothing, and the tree
 closes; it opens again as tall as it was before that drag. Each tree keeps its height while
 Genies runs.
+
+While a genie is not awake, the top right corner of its card, where the genie stands while it is
+awake, has an arrow that folds both trees away into the card, and shows them again. Awake, the
+trees are always shown, and the fold waits for the genie to sleep again. Like the trees' heights,
+the fold lasts while Genies runs.
+
+A card lights halfway to selected under the pointer, the row of a tree under the pointer is
+underlaid across the tree's width, the line that opens a tree brightens, and the ＋ and the arrow
+light up while they can be clicked.
 
 | The user | What happens |
 |---|---|

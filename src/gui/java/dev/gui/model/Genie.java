@@ -110,6 +110,12 @@ public record Genie(UUID id, String name, Phase phase, String activity, Transcri
 
     /// What the genie does, in a few words, as shown under its name: a job of its schedule while
     /// it does one, or else [#activity].
+    /// Whether its card shows its conversations: always while it is awake, and otherwise unless
+    /// the user folded them away.
+    public boolean showsConversations() {
+        return phase.isAwake() || !conversations.folded();
+    }
+
     public String status() {
         return phase.isAwake() && schedule.running().isPresent() ? "doing a scheduled job" : activity;
     }

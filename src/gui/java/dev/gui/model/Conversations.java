@@ -13,8 +13,10 @@ import sprouts.Tuple;
 /// @param here  where the genie is: the conversation pi has open, and the entry it continues from
 /// @param chatsFold how the tree of the user's conversations is shown
 /// @param jobsFold  how the tree of the jobs' conversations is shown
+/// @param folded    whether the user folded both trees away into the genie's card, which they
+///                  can only while the genie is not awake; awake, the trees are always there
 /// @param aside     the conversation the genie is answering in, while the chat shows another
-public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, Fold jobsFold, Optional<Aside> aside) {
+public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, Fold jobsFold, boolean folded, Optional<Aside> aside) {
 
     /// The conversation the genie is answering the user in, put aside while the chat shows
     /// another one, and still growing with the answer. The chat takes it back when it goes there.
@@ -33,7 +35,7 @@ public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, 
 
     public static final Conversations NONE = new Conversations(Tuple.of(Conversation.class), Here.UNKNOWN);
 
-    public Conversations(Tuple<Conversation> all, Here here) { this(all, here, Fold.CLOSED, Fold.CLOSED, Optional.empty()); }
+    public Conversations(Tuple<Conversation> all, Here here) { this(all, here, Fold.CLOSED, Fold.CLOSED, false, Optional.empty()); }
 
     /// Where pi keeps a genie's conversations, relative to its home. pi names the directory
     /// after the directory it runs in, which for a genie is its home, `/home/agent`.
@@ -42,11 +44,12 @@ public record Conversations(Tuple<Conversation> all, Here here, Fold chatsFold, 
     /// The genie's home inside its sandbox.
     public static final String HOME = "/home/agent/";
 
-    public Conversations withAll(Tuple<Conversation> all) { return new Conversations(all, here, chatsFold, jobsFold, aside); }
-    public Conversations withHere(Here here)              { return new Conversations(all, here, chatsFold, jobsFold, aside); }
-    public Conversations withChatsFold(Fold chatsFold)    { return new Conversations(all, here, chatsFold, jobsFold, aside); }
-    public Conversations withJobsFold(Fold jobsFold)      { return new Conversations(all, here, chatsFold, jobsFold, aside); }
-    public Conversations withAside(Optional<Aside> aside) { return new Conversations(all, here, chatsFold, jobsFold, aside); }
+    public Conversations withAll(Tuple<Conversation> all) { return new Conversations(all, here, chatsFold, jobsFold, folded, aside); }
+    public Conversations withHere(Here here)              { return new Conversations(all, here, chatsFold, jobsFold, folded, aside); }
+    public Conversations withChatsFold(Fold chatsFold)    { return new Conversations(all, here, chatsFold, jobsFold, folded, aside); }
+    public Conversations withJobsFold(Fold jobsFold)      { return new Conversations(all, here, chatsFold, jobsFold, folded, aside); }
+    public Conversations withFolded(boolean folded)       { return new Conversations(all, here, chatsFold, jobsFold, folded, aside); }
+    public Conversations withAside(Optional<Aside> aside) { return new Conversations(all, here, chatsFold, jobsFold, folded, aside); }
 
     /// How many conversations the user had, a new one not yet on disk among them, and how many
     /// the jobs' runs had.
