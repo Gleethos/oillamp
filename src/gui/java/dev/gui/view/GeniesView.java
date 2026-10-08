@@ -5,6 +5,7 @@ import sprouts.*;
 import swingtree.UI;
 import swingtree.UIForAnySwing;
 import swingtree.UIForButton;
+import swingtree.UIForLabel;
 import swingtree.UIForPanel;
 import swingtree.animation.Animation;
 import swingtree.animation.AnimationStatus;
@@ -50,6 +51,10 @@ import static swingtree.UI.*;
 /// [DesktopScreen].
 public final class GeniesView extends JPanel {
 
+    /// How long one wave of the flame's light is, in units, as it runs through the status of a
+    /// genie that wakes. It runs its length in one loop of the pulse.
+    private static final int WAVE_LENGTH = 120;
+
     private final Var<GeniesState> state;
     private final Actions actions;
     private final Look look = new Look();
@@ -70,8 +75,8 @@ public final class GeniesView extends JPanel {
     private final Val<UUID> selected;
     private final Val<UUID> watched;
     private final Var<DesktopZoom> zoom;
-    /// Loops from 0 to 1 while any genie works: it moves the thinking bars, and the genies
-    /// that think or work.
+    /// Loops from 0 to 1 while any genie works or wakes: it moves the thinking bars, the genies
+    /// that think or work, and the wave through the status of a genie that wakes.
     private final Var<Double> pulse = Var.of(0.0);
     /// Whether the pulse loops, so that only one loop ever sets it.
     private boolean breathing = false;
@@ -114,7 +119,7 @@ public final class GeniesView extends JPanel {
         desktop.zoom(zoom.get().scale());
         desktop.onZoomSteps(steps -> zoom.update(From.VIEW, it -> steps > 0 ? it.in(desktop.fitScale()) : it.out(desktop.fitScale())));
         Viewable.cast(genies).onChange(From.ALL, it -> {
-            if (anyWorks()) breathe();
+            if (anyWorksOrWakes()) breathe();
         });
         rows = new ChatRows(look, genie, this::saveHandout, pulse, this::askInstead,
                            phase.viewAs(Boolean.class, it -> it == Genie.Phase.READY));
@@ -297,7 +302,7 @@ public final class GeniesView extends JPanel {
                 .withStyle(out, (room, it) -> it.padding(0, room ? 42 : 0, 0, 0))
                 .add("growx, wmin 0", label(shown.viewAsString(Genie::name)).withStyle(it -> it
                     .componentFont(f -> f.family(FONT).size(13).weight(2f).color(TEXT))))
-                .add("growx, wmin 0", label(shown.viewAsString(Genie::status)).group(Skin.META))
+                .add("growx, wmin 0", waving(label(shown.viewAsString(Genie::status)).group(Skin.META), shown))
                 .add("growx, wmin 0", label(shown.viewAsString(it -> "▣  shows you: " + it.showing()))
                      .isVisibleIf(showsElsewhere)
                      .withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(FLAME)))))
@@ -529,7 +534,7 @@ public final class GeniesView extends JPanel {
                 .add("growx, wmin 0", label(name).group(Skin.TITLE)
                      .withTooltip("Double-click to rename")
                      .onMouseClick(it -> { if (it.clickCount() == 2) rename(genie.get().id()); }))
-                .add("growx, wmin 0", label(genie.viewAsString(Genie::status)).group(Skin.SUBTITLE)))
+                .add("growx, wmin 0", waving(label(genie.viewAsString(Genie::status)).group(Skin.SUBTITLE), genie)))
             // One group on the right, so buttons that are hidden leave no gap behind.
             .add("cell 4 0", box("ins 0, gap 10, hidemode 3, aligny center")
             .add(pages())
@@ -807,10 +812,10 @@ public final class GeniesView extends JPanel {
             .add("growx, wmin 0",
                 panel("fill, ins 4 8 4 4, gap 12, hidemode 3", "[grow][][]").group(Skin.COMPOSER)
                 .isVisibleIf(awake.viewAs(Boolean.class, it -> !it))
-                .add("growx, wmin 0", label(genie.viewAsString(it -> switch (it.phase()) {
+                .add("growx, wmin 0", waving(label(genie.viewAsString(it -> switch (it.phase()) {
                         case WAKING -> "Waking " + it.name() + ": " + it.activity() + "…";
                         default -> it.name() + " is asleep. Its sandbox is off, its home and conversation are kept.";
-                    })).group(Skin.SUBTITLE).isVisibleIf(phase.viewAs(Boolean.class, it -> it != Genie.Phase.BROKEN)))
+                    })).group(Skin.SUBTITLE), genie).isVisibleIf(phase.viewAs(Boolean.class, it -> it != Genie.Phase.BROKEN)))
                 .add("growx, wmin 0", ViewPartsUtil.wrapped(genie.viewAsString(it -> it.name() + " could not wake: " + it.activity()),
                      TROUBLE, phase.viewAs(Boolean.class, it -> it == Genie.Phase.BROKEN)))
                 .add(button(genie.viewAsString(it -> it.phase() == Genie.Phase.BROKEN ? "Try again" : "✦  Wake"))
@@ -1007,19 +1012,35 @@ public final class GeniesView extends JPanel {
         }
     }
 
-    /// Loops the pulse for as long as any genie works.
+    /// Loops the pulse for as long as any genie works or wakes.
     private void breathe() {
         if (breathing) return;
         breathing = true;
         UI.animateFor(1.2, TimeUnit.SECONDS)
-          .asLongAs(status -> anyWorks())
+          .asLongAs(status -> anyWorksOrWakes())
           .go(new Animation() {
               @Override public void run(AnimationStatus status) { pulse.set(status.progress()); }
               @Override public void finish(AnimationStatus status) { breathing = false; }
           });
     }
 
-    private boolean anyWorks() {
-        return genies.get().stream().anyMatch(it -> it.phase() == Genie.Phase.WORKING);
+    private boolean anyWorksOrWakes() {
+        return genies.get().stream().anyMatch(it -> it.phase() == Genie.Phase.WORKING || it.phase() == Genie.Phase.WAKING);
+    }
+
+    /// `status`, through whose words a wave of the flame's light runs while `genie` wakes. Making
+    /// a sandbox can take minutes with the same words shown; the wave shows that it goes on.
+    private UIForLabel<JLabel> waving(UIForLabel<JLabel> status, Val<Genie> genie) {
+        return status.withStyle(Viewable.of(Wave.class, genie, pulse, (it, at) -> it.phase() == Genie.Phase.WAKING ? new Wave(true, at) : Wave.NONE),
+            (wave, it) -> !wave.on() ? it : it.componentFont(f -> f.gradient(g -> g
+                .type(UI.GradientType.LINEAR).span(UI.Span.LEFT_TO_RIGHT).cycle(UI.Cycle.REPEAT)
+                .colors(SUBTEXT, FLAME, SUBTEXT).size(WAVE_LENGTH).offset(wave.at() * WAVE_LENGTH, 0))));
+    }
+
+    /// Whether a wave runs through a status, and where it is, from 0 to 1 of its length.
+    private record Wave(boolean on, double at) {
+        /// No wave; the same however the pulse goes, so a status that does not wave is not
+        /// styled anew at each step of it.
+        static final Wave NONE = new Wave(false, 0);
     }
 }

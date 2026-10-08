@@ -102,7 +102,10 @@ start asleep, unless their lamp was left running: see "Closing Genies".
 1. `Lamp.at(<lamp>).enableScheduling().modelService(<service>).modelKey(<key>).start()` starts oillamp's engine as a
    process of its own. The key goes into that process's environment, never onto its command line
    or into the lamp. The first time, the engine builds the sandbox image, which takes minutes; its
-   progress becomes the genie's status line. `enableScheduling` turns the lamp's schedule on for
+   progress becomes the genie's status line. While the genie wakes, a wave of the flame's colour
+   runs through that line, under its name in its card and in the chat's top bar, and in the chat
+   where the message box would be, one 120-unit wave each 1.2 seconds, so a step that takes long
+   still shows that it goes on. `enableScheduling` turns the lamp's schedule on for
    this session, whatever its `oillamp.toml` says, so its jobs wake the genie while it is awake.
 2. Once the lamp runs, `mkdir -p ~/outbox ~/inbox` runs in the sandbox, over the lamp's ssh command.
 3. Genies writes the genie's instructions (`~/outbox`, `~/inbox`, its desktop being watched) to

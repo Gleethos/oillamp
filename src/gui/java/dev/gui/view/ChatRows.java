@@ -63,7 +63,7 @@ final class ChatRows {
 
     /// @param genie       the genie whose conversation this is
     /// @param saveHandout asks the user where to save the outbox file of that name
-    /// @param pulse       loops from 0 to 1 while a genie works; drives the bars and the genie
+    /// @param pulse       loops from 0 to 1 while a genie works or wakes; drives the bars and the genie
     /// @param askInstead  lets the user ask one of their questions differently
     /// @param waits       whether the genie waits for the user, the only time a question can be
     ///                    asked differently
