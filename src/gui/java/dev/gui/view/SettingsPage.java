@@ -69,6 +69,24 @@ final class SettingsPage {
     private static final FlowCell FIELD = AUTO_SPAN(it -> it
             .verySmall(12).small(12).medium(12).large(12).veryLarge(8).oversize(9));
 
+    /*
+     *  The welcome on a grid of its own, its words and the room for its picture:
+     *
+     *                 very small  small  medium  large  very large  oversize
+     *      words           12       12     12     12        7          7
+     *      picture         12       12     12     12        5          5
+     *
+     *  So in a wide welcome the words stand left of the picture, and in a narrow one below it.
+     *  The picture is painted on the whole welcome, so that it can move from the middle to its
+     *  room beside the words.
+     */
+    private static final int WELCOME_REFERENCE = 760;
+    private static final int BESIDE_SPAN = 5;
+    private static final FlowCell WORDS = AUTO_SPAN(it -> it.align(UI.VerticalAlignment.CENTER)
+            .verySmall(12).small(12).medium(12).large(12).veryLarge(12 - BESIDE_SPAN).oversize(12 - BESIDE_SPAN));
+    private static final FlowCell BESIDE = AUTO_SPAN(it -> it
+            .verySmall(12).small(12).medium(12).large(12).veryLarge(BESIDE_SPAN).oversize(BESIDE_SPAN));
+
     private static final String KEY_STAYS_HERE = "The key stays on this computer. Genies never see it: oillamp adds it to "
             + "their requests as they leave the sandbox. An entered key is kept in a file only you can read.";
 
@@ -87,6 +105,15 @@ final class SettingsPage {
 
     /// When the settings' card appears below the welcome, in seconds of its play.
     private static final double CARD_AT = 8.2;
+
+    /// In a wide welcome, when the genie, once it has taken form, moves aside, and how long that
+    /// takes; then when the words fade in on its left, and how long they take, and when the
+    /// settings' card appears, in seconds of its play.
+    private static final double ASIDE_FROM = 8.0;
+    private static final double ASIDE_TAKES = 1.0;
+    private static final double WORDS_BESIDE_FROM = 8.8;
+    private static final double WORDS_BESIDE_TAKE = 1.2;
+    private static final double CARD_BESIDE_AT = 9.8;
 
     static UIForAnySwing<?, ?> of(Var<GeniesState> state, Actions actions, Val<Boolean> visible) {
         Var<Settings> settings = state.zoomTo(GeniesState::settings, GeniesState::withSettings);
@@ -130,11 +157,15 @@ final class SettingsPage {
         // itself, so that the page can paint its light where it is.
         Var<Integer> cut = Var.of(0);
         AtomicReference<JComponent> welcomeBox = new AtomicReference<>();
+        // Whether the welcome is wide enough for its words beside its picture, and how far its
+        // picture has moved from the middle to its room beside them, from 0 to 1.
+        Var<Boolean> wide = Var.of(false);
+        Var<Double> aside = Var.of(0.0);
         AtomicLong began = new AtomicLong();
         AtomicBoolean playing = new AtomicBoolean();
-        if (welcome.get()) play(clock, scene, welcome, began, playing);
+        if (welcome.get()) play(clock, scene, wide, aside, welcome, began, playing);
         Viewable.cast(welcome).onChange(From.ALL, it -> {
-            if (it.currentValue().orElse(false)) play(clock, scene, welcome, began, playing);
+            if (it.currentValue().orElse(false)) play(clock, scene, wide, aside, welcome, began, playing);
         });
         return
             scrollPane(conf -> conf.fitWidth(true)).group(Skin.PAGE_SCROLL).withEmptyBorder(0)
@@ -152,15 +183,15 @@ final class SettingsPage {
                         if (shown == null || !shown.isVisible()) return;
                         // SwingTree scales a painter's units to pixels; the welcome paints in pixels.
                         g.scale(1 / UI.scale(), 1 / UI.scale());
-                        g.translate(shown.getX(), shown.getY());
+                        g.translate(shown.getX() + asideBy(shown.getWidth(), aside.get()), shown.getY());
                         WelcomeScene.light(g, shown.getWidth(), UI.scale(PICTURE_HEIGHT), UI.scale(cut.get()), scene.get(), at);
                     }))
-                .add(CARD, welcomeAbove(state, clock, scene, cut, welcomeBox, welcome))
+                .add(CARD, welcome(state, clock, scene, cut, wide, aside, welcomeBox, welcome))
                 .add(CARD,
                     panel().withFlowLayout(UI.HorizontalAlignment.LEFT, 14, 12).group(Skin.CARD)
                     .withMinSize(0, 0).withPrefSize(CARD_REFERENCE, 0)
                     // Without genies, the card comes after the welcome has had its moment.
-                    .isVisibleIf(Viewable.of(Boolean.class, welcome, clock, (first, at) -> !first || at >= CARD_AT))
+                    .isVisibleIf(Viewable.of(Boolean.class, welcome, clock, (first, at) -> !first || at >= (wide.get() ? CARD_BESIDE_AT : CARD_AT)))
                     .add(WHOLE, label(welcome.viewAsString(it -> it ? "Your genies' model" : "Settings")).group(Skin.EMPTY_TITLE))
                     .add(WHOLE, ViewPartsUtil.wrapped(advanced.viewAsString(it -> it
                             ? "Where your genies' model runs, and how they reach it."
@@ -290,72 +321,113 @@ final class SettingsPage {
                              .onClick(it -> actions.newGenie())))));
     }
 
-    /// The welcome, above the settings while there are no genies: its picture, then its words.
-    private static UIForAnySwing<?, ?> welcomeAbove(Var<GeniesState> state, Val<Double> clock, Var<WelcomeScene.Play> scene,
-                                                    Var<Integer> cut, AtomicReference<JComponent> welcomeBox, Val<Boolean> welcome) {
+    /// The welcome, above the settings while there are no genies: its picture, and its words. In
+    /// a wide welcome, the genie moves aside once it has taken form, and the words fade in on its
+    /// left; in a narrow one, they fade in below it.
+    private static UIForAnySwing<?, ?> welcome(Var<GeniesState> state, Val<Double> clock, Var<WelcomeScene.Play> scene, Var<Integer> cut,
+                                               Var<Boolean> wide, Val<Double> aside, AtomicReference<JComponent> welcomeBox, Val<Boolean> welcome) {
         Val<String> foundKey = state.viewAsString(it -> it.environmentKey().isPresent() && it.settings().place() == Settings.Place.EDEN_AI
                 ? "Genies found an Eden AI key where it was started, so your genies can think at Eden AI right away. "
                   + "Or have Genies set up a model on this computer instead: the simple way, below."
                 : "To think, genies need a model. Genies can set one up for you, right here on this computer.");
+        Val<Integer> room = cut.viewAs(Integer.class, it -> PICTURE_HEIGHT - it);
         return
-            box("fill, wrap 1, ins 0, gap 12", "[grow, center]").isVisibleIf(welcome).peek(welcomeBox::set)
+            panel().withFlowLayout(UI.HorizontalAlignment.CENTER, 0, 12)
+            .withMinSize(0, 0).withPrefSize(WELCOME_REFERENCE, 0)
+            .isVisibleIf(welcome).peek(welcomeBox::set)
             .onResize(it -> {
-                double narrowed = (UNCUT_WIDTH - UI.unscale(it.getComponent().getWidth())) / (double) (UNCUT_WIDTH - CUT_WIDTH);
+                int width = it.getComponent().getWidth();
+                double narrowed = (UNCUT_WIDTH - UI.unscale(width)) / (double) (UNCUT_WIDTH - CUT_WIDTH);
                 cut.set((int) Math.round(PICTURE_CUT * Math.max(0, Math.min(1, narrowed))));
+                // Wide where the grid puts the words beside the picture: from four fifths of its
+                // reference width on.
+                wide.set(5 * width >= 4 * UI.scale(WELCOME_REFERENCE));
             })
-            .add("growx, wmin 0",
-                box().withMinSize(0, 0)
-                .withHeightExactly(cut.viewAs(Integer.class, it -> PICTURE_HEIGHT - it))
-                // Painted whole, its cut top above the box.
-                .withStyle(clock, (at, it) -> {
-                    int width = UI.scale(it.componentWidth());
-                    return it.painter(UI.Layer.CONTENT, g -> {
-                        int above = UI.scale(cut.get());
-                        // SwingTree scales a painter's units to pixels; the welcome paints in pixels.
-                        g.scale(1 / UI.scale(), 1 / UI.scale());
-                        g.translate(0, -above);
-                        WelcomeScene.paint(g, width, UI.scale(PICTURE_HEIGHT), scene.get(), at);
-                    });
-                })
-                // The genie, once it has taken form, and its lamp can be clicked: it vanishes in a
-                // poof, and another genie comes.
-                .onMouseMove(it -> it.getComponent().setCursor(Cursor.getPredefinedCursor(
-                        scene.get().formed(clock.get()) && WelcomeScene.hits(it.getComponent().getWidth(), UI.scale(PICTURE_HEIGHT),
-                                it.mouseX(), it.mouseY() + UI.scale(cut.get())) ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR)))
-                .onMouseClick(it -> {
-                    if (scene.get().formed(clock.get())
-                            && WelcomeScene.hits(it.getComponent().getWidth(), UI.scale(PICTURE_HEIGHT), it.mouseX(), it.mouseY() + UI.scale(cut.get())))
-                        scene.set(scene.get().poof(clock.get()));
-                }))
-            .add("growx, wmin 0", fading(Val.of("Welcome to Genies"), 22, TEXT, clock))
-            .add("growx, wmin 0", fading(Val.of("A genie is an AI helper with a computer of its own: a Linux desktop in a sandbox, "
-                    + "where it can browse the web, run programs and make files, without ever touching yours."), 14, SUBTEXT, clock))
-            .add("growx, wmin 0", fading(foundKey, 14, SUBTEXT, clock));
+            // Painted whole, its cut top above the welcome, and as far aside as it has moved.
+            .withStyle(clock, (at, it) -> {
+                int width = UI.scale(it.componentWidth());
+                return it.backgroundColor(Palette.TRANSPARENT).painter(UI.Layer.CONTENT, g -> {
+                    // SwingTree scales a painter's units to pixels; the welcome paints in pixels.
+                    g.scale(1 / UI.scale(), 1 / UI.scale());
+                    g.translate(asideBy(width, aside.get()), -UI.scale(cut.get()));
+                    WelcomeScene.paint(g, width, UI.scale(PICTURE_HEIGHT), scene.get(), at);
+                });
+            })
+            // The genie, once it has taken form, and its lamp can be clicked: it vanishes in a
+            // poof, and another genie comes.
+            .onMouseMove(it -> {
+                int width = it.getComponent().getWidth();
+                it.getComponent().setCursor(Cursor.getPredefinedCursor(scene.get().formed(clock.get())
+                        && WelcomeScene.hits(width, UI.scale(PICTURE_HEIGHT), it.mouseX() - asideBy(width, aside.get()), it.mouseY() + UI.scale(cut.get()))
+                        ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+            })
+            .onMouseClick(it -> {
+                int width = it.getComponent().getWidth();
+                if (scene.get().formed(clock.get())
+                        && WelcomeScene.hits(width, UI.scale(PICTURE_HEIGHT), it.mouseX() - asideBy(width, aside.get()), it.mouseY() + UI.scale(cut.get())))
+                    scene.set(scene.get().poof(clock.get()));
+            })
+            // The room for the picture: above the words in a narrow welcome, beside them in a wide one.
+            .add(WHOLE, box().withMinSize(0, 0).withHeightExactly(room).isVisibleIf(wide.viewAs(Boolean.class, it -> !it)))
+            .add(WORDS,
+                box("wrap 1, ins 0, gap 12", "[grow, fill]").withMinSize(0, 0)
+                .add("growx, wmin 0", fading(Val.of("Welcome to Genies"), 22, TEXT, clock, wide, aside))
+                .add("growx, wmin 0", fading(Val.of("A genie is an AI helper with a computer of its own: a Linux desktop in a sandbox, "
+                        + "where it can browse the web, run programs and make files, without ever touching yours."), 14, SUBTEXT, clock, wide, aside))
+                .add("growx, wmin 0", fading(foundKey, 14, SUBTEXT, clock, wide, aside)))
+            .add(BESIDE, box().withMinSize(0, 0).withHeightExactly(room).isVisibleIf(wide));
     }
 
-    /// Lines of `text` that fade in with the welcome's words, centred, wrapped to their width.
-    private static UIForAnySwing<?, ?> fading(Val<String> text, int size, Color colour, Val<Double> clock) {
+    /// How many pixels the welcome's picture is right of the middle of a welcome `width` pixels
+    /// wide, `aside` of the way to the middle of its room beside the words. It eases in and out.
+    private static int asideBy(int width, double aside) {
+        double eased = aside * aside * (3 - 2 * aside);
+        return (int) Math.round(eased * width * (12 - BESIDE_SPAN) / 24.0);
+    }
+
+    /// Lines of `text` that fade in with the welcome's words, wrapped to their width: centred
+    /// below the picture, or left-aligned beside it once it has moved aside.
+    private static UIForAnySwing<?, ?> fading(Val<String> text, int size, Color colour, Val<Double> clock, Val<Boolean> wide, Val<Double> aside) {
         return
             box().withMinSize(0, 0)
-            .withStyle(Viewable.of(Faded.class, text, clock, (words, at) -> new Faded(words, Math.max(0, Math.min(1, (at - WORDS_FROM) / WORDS_TAKE)))),
+            .withStyle(Viewable.of(Faded.class, text, clock, (words, at) -> Faded.of(words, at, wide.get(), aside.get())),
                 (faded, it) -> it.padding(2, 0, 2, 0).text(t -> t
                     .content(StyledString.of(f -> f.family(FONT).size(size).color(ViewPartsUtil.withAlpha(colour, (int) Math.round(255 * faded.shown())))
-                                                   .horizontalAlignment(UI.HorizontalAlignment.CENTER), faded.words()))
-                    .placement(UI.Placement.TOP).wrapLines(true).autoPreferredHeight(true)));
+                                                   .horizontalAlignment(faded.beside() ? UI.HorizontalAlignment.LEFT : UI.HorizontalAlignment.CENTER), faded.words()))
+                    .placement(faded.beside() ? UI.Placement.TOP_LEFT : UI.Placement.TOP).wrapLines(true).autoPreferredHeight(true)));
     }
 
-    /// Words of the welcome, and how far they faded in, from 0 to 1.
-    private record Faded(String words, double shown) {}
+    /// Words of the welcome, how far they faded in, from 0 to 1, and whether they stand beside
+    /// its picture.
+    private record Faded(String words, double shown, boolean beside) {
+
+        /// `words` at `at` seconds of the welcome's play. Beside the picture, they also wait for
+        /// it to have moved most of the way aside, however late the welcome grew wide.
+        static Faded of(String words, double at, boolean beside, double aside) {
+            double shown = beside
+                    ? Math.min((at - WORDS_BESIDE_FROM) / WORDS_BESIDE_TAKE, 2 * aside - 1)
+                    : (at - WORDS_FROM) / WORDS_TAKE;
+            return new Faded(words, Math.max(0, Math.min(1, shown)), beside);
+        }
+    }
 
     /// Plays the welcome from its start, for as long as it is shown. Played again while it plays,
-    /// it starts over on the same loop.
-    private static void play(Var<Double> clock, Var<WelcomeScene.Play> scene, Val<Boolean> welcome, AtomicLong began, AtomicBoolean playing) {
+    /// it starts over on the same loop. Its picture moves aside, or back to the middle, as the
+    /// welcome grows wide or narrow, at the same pace whenever it does.
+    private static void play(Var<Double> clock, Var<WelcomeScene.Play> scene, Val<Boolean> wide, Var<Double> aside,
+                             Val<Boolean> welcome, AtomicLong began, AtomicBoolean playing) {
         began.set(System.nanoTime());
         clock.set(0.0);
+        aside.set(0.0);
         scene.set(WelcomeScene.Play.first(0));
         if (playing.getAndSet(true)) return;
         UI.animateFor(LifeTime.of(1, TimeUnit.SECONDS)).asLongAs(status -> welcome.get()).go(new Animation() {
-            @Override public void run(AnimationStatus status) { clock.set((System.nanoTime() - began.get()) / 1e9); }
+            @Override public void run(AnimationStatus status) {
+                double now = (System.nanoTime() - began.get()) / 1e9;
+                double step = Math.max(0, now - clock.get()) / ASIDE_TAKES;
+                aside.set(wide.get() && now >= ASIDE_FROM ? Math.min(1, aside.get() + step) : Math.max(0, aside.get() - step));
+                clock.set(now);
+            }
             @Override public void finish(AnimationStatus status) { playing.set(false); }
         });
     }

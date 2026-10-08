@@ -418,8 +418,15 @@ height; and its light, painted on the whole page behind the welcome, so that onl
 edges cut it off. In a narrow window the picture's empty top is cut: none of it while the welcome
 is 760 units wide or wider, 100 units once it is 360 or narrower, evenly in between; the lamp and
 the genie keep their size and place at the bottom. The page's clock moves it from when the welcome
-is shown for as long as it is shown; the words fade in from 7.4 seconds, and the settings' card
-appears at 8.2.
+is shown for as long as it is shown.
+
+The welcome is as wide as the settings' card, and lays out its words and its picture on a grid of
+its own, 760 units wide at its fullest. From four fifths of that on, it is wide: at 8.0 seconds
+the lamp and the genie move, over one second, from the middle to the right five twelfths, the
+words fade in on the left from 8.8 seconds over 1.2, and the settings' card appears at 9.8.
+Narrower, the words fade in below the picture from 7.4 seconds over 0.8, and the card appears at
+8.2. When the window changes width later, the picture moves aside or back at the same pace, and
+the words beside it wait until it has moved more than halfway.
 
 | Seconds | What happens |
 |---|---|
