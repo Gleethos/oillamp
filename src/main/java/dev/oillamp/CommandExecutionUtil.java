@@ -31,6 +31,9 @@ final class CommandExecutionUtil {
     /// the connection closes, and the wait ends with it.
     private static final Duration ASK_PATIENCE = Duration.ofDays(1);
 
+    /// The class `oillamp genies` starts: Genies' entry point, named and never imported.
+    private static final String GENIES = "dev.gui.Genies";
+
     /// One oillamp container, as `podman ps` describes it.
     private record RunningSandbox(String name, String state, String lamp) {}
 
@@ -121,6 +124,7 @@ final class CommandExecutionUtil {
             case Command.Status status -> status(machine, context, status.lamp());
             case Command.Follow follow -> follow(machine, context, follow.lamp());
             case Command.List _        -> list(machine, context);
+            case Command.Genies _      -> genies(machine, context);
             // Talks to no session, and refuses if one answers.
             case Command.Remove remove -> {
                 console.banner(version, remove.lamps().size() == 1 ? remove.lamps().first().toString()
@@ -373,6 +377,26 @@ final class CommandExecutionUtil {
         int code = machine.launch(Machine.Command.of(argv).labelled("shell"),
                                   Machine.Window.Stdio.TERMINAL).waitFor();
         return code == 0 ? ExitStatus.SUCCESS : ExitStatus.ERROR;
+    }
+
+    /// `oillamp genies`: Genies, the desktop app, in this terminal until its window is closed.
+    ///
+    /// Genies is an application built on oillamp, which starts the engine as any application
+    /// does, so the engine never refers to it by more than its name. It runs in a process of its
+    /// own, on this process's Java runtime and classpath, which hold Genies too.
+    private static ExitStatus genies(Machine machine, Context context) {
+        Tuple<String> argv = Tuple.of(String.class,
+                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-cp", System.getProperty("java.class.path"), GENIES);
+        context.sink().accept(new LampEvent.Info("genies", "opening Genies — it runs until its window is closed"));
+        Machine.Window genies = machine.launch(Machine.Command.of(argv).labelled("genies"),
+                                               Machine.Window.Stdio.TERMINAL);
+        if (genies.failure().isPresent()) {
+            context.sinkAcceptProblems(Tuple.of(Problem.class,
+                    ProblemCatalogUtil.geniesNotStarted(argv, genies.failure().get())));
+            return ExitStatus.ERROR;
+        }
+        return genies.waitFor() == 0 ? ExitStatus.SUCCESS : ExitStatus.ERROR;
     }
 
     /// `oillamp stop <dir>`: ask the running session to end.

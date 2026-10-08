@@ -10,9 +10,15 @@ Genies is also the test of oillamp's embedding API on a real application. It liv
 repository (`src/gui`, package `dev.gui`), but it uses oillamp only the way any application must:
 through `dev.lamp`. `TheShapeOfTheCodeSpec` fails if it ever imports the engine, `dev.oillamp`.
 
+Genies comes in oillamp's single file, which opens it:
+
 ```
-./gradlew genies
+oillamp genies
 ```
+
+It runs as a program of its own, on oillamp's Java runtime and classpath, and the terminal waits
+until its window is closed. The engine names Genies' entry point, `dev.gui.Genies`, and never
+imports it. From the source, `./gradlew genies` opens it too.
 
 The settings offer two ways to a model. The simple way, shown first, is Ollama on this computer,
 which Genies installs, starts and gives a model: see "The first start, and the simple way to a

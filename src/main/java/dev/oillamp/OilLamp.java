@@ -23,8 +23,9 @@ import sprouts.Tuple;
 /// front end.
 public final class OilLamp {
 
-    /// Reported by `oillamp version`, and written into every lamp's identity file.
-    public static final String VERSION = "0.2.0";
+    /// Reported by `oillamp version`, and written into every lamp's identity file. The same as
+    /// `version` in build.gradle, which oillamp and Genies share.
+    public static final String VERSION = "0.3.0";
 
     private final Machine machine;
     private final List<Consumer<LampEvent>> listeners;

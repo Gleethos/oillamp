@@ -170,7 +170,7 @@ final class GeneratedFileTextUtil {
             # For this shell only:      eval "$(oillamp completion bash)"
             # For every future shell:   echo 'eval "$(oillamp completion bash)"' >> ~/.bashrc
             _oillamp() {
-                local commands='at view shell stop status follow list remove save history restore schedule ask cancel conversations recordings doctor config completion guide about version help'
+                local commands='at view shell stop status follow list genies remove save history restore schedule ask cancel conversations recordings doctor config completion guide about version help'
                 local current="${COMP_WORDS[COMP_CWORD]}"
                 local before=""
                 [ "$COMP_CWORD" -ge 2 ] && before="${COMP_WORDS[COMP_CWORD-2]}"
@@ -211,10 +211,10 @@ final class GeneratedFileTextUtil {
                 esac
 
                 case "$command" in
-                    "")                              COMPREPLY=($(compgen -W "$commands" -- "$current")) ;;
-                    completion)                      COMPREPLY=($(compgen -W bash -- "$current")) ;;
-                    list|version|help|about|guide)   COMPREPLY=() ;;
-                    *)                               COMPREPLY=($(compgen -d -- "$current")) ;;
+                    "")                                   COMPREPLY=($(compgen -W "$commands" -- "$current")) ;;
+                    completion)                           COMPREPLY=($(compgen -W bash -- "$current")) ;;
+                    list|genies|version|help|about|guide) COMPREPLY=() ;;
+                    *)                                    COMPREPLY=($(compgen -d -- "$current")) ;;
                 esac
             }
             complete -F _oillamp oillamp

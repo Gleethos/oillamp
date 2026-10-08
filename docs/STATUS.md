@@ -1,6 +1,6 @@
 # Status
 
-Version 0.2.0, as of 29 September 2026.
+Version 0.3.0, as of 8 October 2026.
 
 This page says what works, what has been checked on a real machine, and where the code and the
 configuration do not yet match. Keep it current: when you close a gap, remove it here; when you
@@ -44,6 +44,7 @@ The fast test suite passes. The spikes pass on the development machine.
 | `oillamp status <dir>` | Works. |
 | `oillamp follow <dir> [--embedded]` | Works in the simulated scenarios: catches up on the run in progress and the runs waiting, then reports every event until the session ends. Embedded, it stops when standard input closes, and the session goes on. |
 | `oillamp list` | Works. |
+| `oillamp genies` | Works. Opens Genies from the single file, and waits until its window is closed. |
 | `oillamp remove <dir> [--yes]` | Works. Without `--yes`, lists what would be deleted and exits 2. |
 | `oillamp recordings <dir> [--open <session>] [--prune]` | Works. |
 | `oillamp save <dir> [--message <text>]` | Works in the scenarios and on a lamp made by hand (see below). |

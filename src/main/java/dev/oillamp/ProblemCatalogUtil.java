@@ -74,6 +74,7 @@ final class ProblemCatalogUtil {
     public static final Code TERM_NO_CONNECT       = new Code("OIL-TERM-002");
     public static final Code TERM_NOT_STARTED      = new Code("OIL-TERM-003");
     public static final Code VIEWER_DIED           = new Code("OIL-VIEW-001");
+    public static final Code GENIES_NOT_STARTED    = new Code("OIL-GENIES-001");
     public static final Code SSH_PRIMARY_TAKEN     = new Code("OIL-SSH-002");
     public static final Code NET_SOCKET_PATH_LONG  = new Code("OIL-NET-001");
     public static final Code NET_CANNOT_LISTEN     = new Code("OIL-NET-002");
@@ -651,6 +652,17 @@ final class ProblemCatalogUtil {
             .withFix(Fix.of("or name another one with terminal.profile in oillamp.toml"));
         return output.isBlank() ? problem : problem.withEvidence(
                 new Evidence.Excerpt("what it printed", output));
+    }
+
+    /// Genies, the desktop app, would not start: the Java runtime oillamp runs on could not be
+    /// started again.
+    public static Problem geniesNotStarted(Tuple<String> argv, String reason) {
+        return error(GENIES_NOT_STARTED, "Genies could not be started",
+                "starting " + argv.first() + " failed: " + reason,
+                "Genies runs on the same Java runtime as oillamp, which is running right now, so "
+              + "most likely the runtime was moved or deleted while oillamp ran")
+            .withEvidence(new Evidence.Command(argv, 127, "", Duration.ZERO))
+            .withFix(Fix.of("run `oillamp genies` again"));
     }
 
     /// The viewer window closed straight after opening. A warning, not an error: the session still

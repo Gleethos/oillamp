@@ -66,7 +66,7 @@ This changes nothing. It lists **everything** that would stop a sandbox from sta
 once) and gives the exact command that fixes each one.
 
 ```
-🪔 oillamp 0.2.0
+🪔 oillamp 0.3.0
 [host]    ✓ Ubuntu 24.04.5 LTS, Wayland (ubuntu:GNOME)
 [host]    ✓ podman 4.9.3, rootless, crun
 [host]    ✓ this machine can run oillamp sandboxes
@@ -90,7 +90,7 @@ Then the two windows open. The terminal you typed in stays where it is and shows
 health until the session ends:
 
 ```
-🪔 oillamp 0.2.0 — /home/you/lamps/first
+🪔 oillamp 0.3.0 — /home/you/lamps/first
 [host]    ✓ Ubuntu 24.04.5 LTS, Wayland (ubuntu:GNOME)
 [host]    ✓ podman 4.9.3, rootless, crun
 [lamp]    ✓ config valid — network: default allow, 2 rules, no forwards
@@ -233,6 +233,7 @@ oillamp shell <dir>              # open another shell, in this terminal
 oillamp status <dir>             # what a running session is doing
 oillamp stop <dir>               # end a session from anywhere
 oillamp list                     # every oillamp sandbox running on this machine
+oillamp genies                   # open Genies, the desktop app for chatting with agents
 oillamp remove <dir>... [--yes]  # delete one or more lamps
 oillamp save <dir> [-m <text>]   # take a snapshot of the lamp, even while it runs
 oillamp history <dir>            # list the lamp's snapshots
@@ -331,7 +332,7 @@ from talking to the internet.
 | know why it was built this way | [docs/DECISIONS.md](docs/DECISIONS.md) |
 | know what is verified, and what is still missing | [docs/STATUS.md](docs/STATUS.md) |
 | build, test and change oillamp | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| chat with agents that each live in a lamp, in a desktop app (`./gradlew genies`) | [docs/GENIES.md](docs/GENIES.md) |
+| chat with agents that each live in a lamp, in a desktop app (`oillamp genies`) | [docs/GENIES.md](docs/GENIES.md) |
 
 ## ⚖️ License
 
@@ -339,6 +340,6 @@ oillamp and Genies are MIT licensed: see [LICENSE](LICENSE).
 
 ---
 
-*Version 0.2.0. Everything planned for the first version works on Ubuntu 24.04, apart from a
-proxy setting for Firefox and configuring the agent harnesses for a company LLM. See
-[docs/STATUS.md](docs/STATUS.md) for details.*
+*Version 0.3.0, oillamp and Genies alike. Everything planned for the first version works on
+Ubuntu 24.04, apart from a proxy setting for Firefox and configuring the agent harnesses for a
+company LLM. See [docs/STATUS.md](docs/STATUS.md) for details.*

@@ -348,7 +348,7 @@ cannot take the primary SSH slot or send commands to the supervisor.
   "schemaVersion": 1,
   "agentId": "v4elchzj",
   "createdAt": "2026-09-22T14:15:03Z",
-  "createdBy": "oillamp 0.2.0",
+  "createdBy": "oillamp 0.3.0",
   "lastSessionAt": "2026-09-22T16:40:10Z"
 }
 ```
@@ -1575,6 +1575,7 @@ as `oillamp at` does (`LampPhase.configurationFiles`).
 | `OIL-TERM-002` | The terminal window never connected. |
 | `OIL-TERM-003` | The terminal emulator would not start. |
 | `OIL-VIEW-001` | Warning: the viewer closed immediately. |
+| `OIL-GENIES-001` | Genies, opened by `oillamp genies`, would not start. |
 | `OIL-NET-001` | Socket path longer than 107 bytes. |
 | `OIL-NET-002` | Cannot listen on a socket. |
 | `OIL-NET-010` | Warning: a forward's target is unreachable. |

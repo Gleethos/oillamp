@@ -508,6 +508,16 @@ runtime and the program attached. It unpacks itself into your cache directory on
 you can copy to a colleague and run. The original reason for bundling a runtime, "no JDK needed on
 the host", still holds. *(D-21, changed during implementation)*
 
+### Genies in oillamp's single file: `oillamp genies`
+
+The single file holds Genies too, and `oillamp genies` opens it. Genies is built on oillamp's
+embedding API, `dev.lamp`. The engine starts Genies by its class name, in a process of its own, on
+its own Java runtime and classpath, the same way Genies starts the engine.
+
+*Why:* both are small, and one file gives a colleague both the command and the app. The engine
+still never depends on Genies' code, which `TheShapeOfTheCodeSpec` checks. The single file grew
+from 42 MB to 52 MB. Genies' own packages, the AppImage, .deb, snap and flatpak, are unchanged.
+
 ### No `oillamp image` command
 
 *Why:* the image tag is a hash of everything that goes into it, so a changed input always produces a

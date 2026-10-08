@@ -1,6 +1,7 @@
 package oillamp
 
 import dev.lamp.ExitStatus
+import dev.lamp.Problem
 import spock.lang.Specification
 import spock.lang.Subject
 import spock.lang.TempDir
@@ -88,6 +89,8 @@ class UsingTheCommandLineSpec extends Specification {
             'help extra'                       | "`oillamp help` takes no arguments"      | 'oillamp help'
             'about extra'                      | "`oillamp about` takes no arguments"     | 'oillamp about'
             'guide extra'                      | "`oillamp guide` takes no arguments"     | 'oillamp guide'
+            'genies extra'                     | "`oillamp genies` takes no arguments"    | 'oillamp genies'
+            'genies --yes'                     | "`oillamp genies` does not take --yes"   | 'oillamp genies'
             'config LAMP path extra'           | "'extra'"                                | 'oillamp config <dir> (check | show-effective | path)'
             'completion bash zsh'              | "'zsh'"                                  | 'oillamp completion bash'
             'restore LAMP a1b2c3d4 extra'      | "'extra'"                                | 'oillamp restore <dir> <snapshot>'
@@ -154,7 +157,7 @@ class UsingTheCommandLineSpec extends Specification {
 
         then:
             outcome.status() == ExitStatus.SUCCESS
-            outcome.console().contains('oillamp 0.2.0')
+            outcome.console().contains('oillamp 0.3.0')
 
         and: 'and the Java it runs on, which a bug report needs as well'
             outcome.console().contains('java ' + Runtime.version())
@@ -173,7 +176,7 @@ class UsingTheCommandLineSpec extends Specification {
             about.status() == ExitStatus.SUCCESS
             about.console().contains('WHY IT EXISTS')
             about.console().contains('podman')
-            about.console().contains('oillamp 0.2.0')
+            about.console().contains('oillamp 0.3.0')
 
         when: 'and how to get going'
             var guide = host.oillamp.run('guide')
@@ -334,6 +337,8 @@ class UsingTheCommandLineSpec extends Specification {
             !complete(script, 'oillamp', 'at', '/x', '--').contains('--yes')
             complete(script, 'oillamp', 'completion', '') == ['bash']
             complete(script, 'oillamp', 'list', '').isEmpty()
+            complete(script, 'oillamp', 'gen') == ['genies']
+            complete(script, 'oillamp', 'genies', '').isEmpty()
     }
 
     def 'An option\'s value can follow it, or be joined to it with =: oillamp #line'() {
@@ -522,11 +527,11 @@ class UsingTheCommandLineSpec extends Specification {
             var lamp = host.lampPath().toString()
 
         expect:
-            host.oillamp.run('doctor', lamp).console().contains("oillamp 0.2.0 — ${lamp}")
-            host.oillamp.run('at', lamp, '--dry-run').console().contains("oillamp 0.2.0 — ${lamp}")
-            host.oillamp.run('save', lamp).console().contains("oillamp 0.2.0 — ${lamp}")
-            host.oillamp.run('restore', lamp, 'a1b2c3d4').console().contains("oillamp 0.2.0 — ${lamp}")
-            host.oillamp.run('remove', lamp, host.lampPath('other').toString()).console().contains('oillamp 0.2.0 — 2 lamps')
+            host.oillamp.run('doctor', lamp).console().contains("oillamp 0.3.0 — ${lamp}")
+            host.oillamp.run('at', lamp, '--dry-run').console().contains("oillamp 0.3.0 — ${lamp}")
+            host.oillamp.run('save', lamp).console().contains("oillamp 0.3.0 — ${lamp}")
+            host.oillamp.run('restore', lamp, 'a1b2c3d4').console().contains("oillamp 0.3.0 — ${lamp}")
+            host.oillamp.run('remove', lamp, host.lampPath('other').toString()).console().contains('oillamp 0.3.0 — 2 lamps')
     }
 
     def 'config checks the lamp when no action is given, and refuses an action it does not know'() {
@@ -593,6 +598,27 @@ class UsingTheCommandLineSpec extends Specification {
             outcome.status() == ExitStatus.SUCCESS
             outcome.console().contains('at <dir>')
             outcome.console().contains('doctor [<dir>]')
+            outcome.console().contains('genies')
+    }
+
+    def '`oillamp genies` opens Genies on the Java oillamp runs on, and says so when it cannot'() {
+        reportInfo """
+            Genies, the desktop app for chatting with agents, is built on oillamp and comes in
+            the same file. `oillamp genies` starts it as a program of its own, on the Java runtime
+            and classpath oillamp itself runs on, and waits in the terminal until its window is
+            closed. If that program cannot be started, oillamp says what it tried to start. Here
+            it cannot: a simulated machine has only the programs it was given.
+        """
+        when:
+            var outcome = host.oillamp.run('genies')
+
+        then:
+            outcome.status() == ExitStatus.ERROR
+            var problem = outcome.errors().first()
+            problem.code().value() == 'OIL-GENIES-001'
+            var tried = (problem.evidence().first() as Problem.Evidence.Command).argv()
+            tried.toList() == [Path.of(System.getProperty('java.home'), 'bin', 'java').toString(),
+                               '-cp', System.getProperty('java.class.path'), 'dev.gui.Genies']
     }
 
     def 'Asking for the image command says why there is none'() {

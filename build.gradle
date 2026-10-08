@@ -15,7 +15,8 @@ plugins {
 }
 
 group = 'dev.oillamp'
-version = '0.2.0'
+// oillamp and Genies share it. OilLamp.VERSION says the same, for `oillamp version`.
+version = '0.3.0'
 
 repositories {
     mavenCentral()
@@ -53,8 +54,8 @@ def imageManifest = tasks.register('imageManifest') {
 sourceSets.main.resources.srcDir(layout.buildDirectory.dir('generated-resources'))
 
 // Genies, a desktop chat app that hosts agents in lamps (package dev.gui). It is a separate source
-// set so that its user-interface libraries stay out of the oillamp single file, and it sees
-// oillamp only as any other application would: through dev.lamp.
+// set so that the engine cannot depend on it: Genies sees oillamp only as any other application
+// would, through dev.lamp, and oillamp starts it, with `oillamp genies`, only by its class name.
 sourceSets {
     gui {
         compileClasspath += sourceSets.main.output
@@ -67,6 +68,8 @@ configurations {
     testImplementation.extendsFrom(guiImplementation)
 }
 tasks.named('processResources') { dependsOn(imageManifest) }
+// `./gradlew run --args=genies` opens Genies, as `oillamp genies` does from the single file.
+tasks.named('run', JavaExec) { classpath = sourceSets.gui.runtimeClasspath }
 
 dependencies {
     errorprone "com.uber.nullaway:nullaway:0.12.15"
@@ -184,8 +187,8 @@ tasks.register('spikes', Test) {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // Packaging: one file that contains the program and the Java runtime it needs.
 //
-// The result is `build/dist/oillamp`: an executable of about 40 MB that can be copied to a machine
-// without Java and run there. It is a shell script with a compressed archive attached;
+// The result is `build/dist/oillamp`: an executable of about 50 MB that can be copied to a machine
+// without Java and run there. It holds Genies too, which `oillamp genies` opens. It is a shell script with a compressed archive attached;
 // `src/packaging/launcher.sh` is that script, and it is meant to be read.
 //
 // A `.deb` package was planned originally. It was not built, because a `.deb` must be installed
@@ -199,12 +202,14 @@ interface PackagingServices {
     @javax.inject.Inject FileSystemOperations getFiles()
 }
 
-// Determined with `jdeps --print-module-deps` and pinned here, because a runtime that silently
-// grows whenever a dependency changes is a runtime nobody can reason about. java.desktop arrives
-// through Sprouts, java.sql through Jackson. jdk.charsets is added by hand: jdeps cannot see it,
-// because character sets are loaded by name at run time, and without it a lamp path containing a
-// character outside the default set would fail to read.
-def runtimeModules = 'java.base,java.desktop,java.sql,jdk.charsets'
+// Determined with `jdeps --print-module-deps` over oillamp's and Genies' jars, and pinned here,
+// because a runtime that silently grows whenever a dependency changes is a runtime nobody can
+// reason about. java.desktop arrives through Sprouts and Genies' window, java.sql through
+// Jackson, java.net.http with Genies' talk to model services, and the rest through Genies'
+// libraries. jdk.charsets is added by hand: jdeps cannot see it, because character sets are loaded
+// by name at run time, and without it a lamp path containing a character outside the default set
+// would fail to read.
+def runtimeModules = 'java.base,java.compiler,java.desktop,java.net.http,java.sql,jdk.charsets,jdk.management,jdk.unsupported'
 
 def jdkHome = providers.provider {
     extensions.getByType(JavaToolchainService)
@@ -244,14 +249,16 @@ tasks.register('singleFile') {
     def runtimeDirectory = layout.buildDirectory.dir('oillamp-runtime')
     def staging = layout.buildDirectory.dir('package')
     def result = layout.buildDirectory.file('dist/oillamp')
-    def libraries = configurations.runtimeClasspath
+    def libraries = configurations.guiRuntimeClasspath
     def applicationJar = tasks.named('jar').flatMap { it.archiveFile }
+    def geniesJar = tasks.named('geniesJar').flatMap { it.archiveFile }
     def theVersion = version.toString()
     def modules = runtimeModules
     inputs.file(launcherSource)
     inputs.dir(runtimeDirectory)
     inputs.files(libraries)
     inputs.file(applicationJar)
+    inputs.file(geniesJar)
     outputs.file(result)
     doLast {
         def stage = staging.get().asFile
@@ -259,7 +266,7 @@ tasks.register('singleFile') {
         def payload = new File(stage, 'payload')
         // The layout the launcher expects: runtime/bin/java, and every jar in lib/.
         services.files.copy { from(runtimeDirectory); into(new File(payload, 'runtime')) }
-        services.files.copy { from(libraries); from(applicationJar); into(new File(payload, 'lib')) }
+        services.files.copy { from(libraries); from(applicationJar); from(geniesJar); into(new File(payload, 'lib')) }
 
         def archive = new File(stage, 'payload.tar.gz')
         services.exec.exec {
@@ -308,12 +315,8 @@ tasks.register('singleFile') {
 // They are built for x86_64 only, on an x86_64 computer.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-def geniesVersion = '1.0.0'
 // The name the desktop knows Genies by: its menu entry, icon and AppStream description.
 def geniesId = 'dev.oillamp.Genies'
-// Determined with `jdeps --print-module-deps` over Genies' jars, and jdk.charsets added for the
-// reason given for oillamp's runtime above.
-def geniesModules = 'java.base,java.compiler,java.desktop,java.net.http,java.sql,jdk.charsets,jdk.management,jdk.unsupported'
 def geniesPackaging = file('src/packaging/genies')
 def geniesSvg = file('src/gui/resources/dev/gui/genies.svg')
 def geniesBuild = layout.buildDirectory.dir('genies')
@@ -323,7 +326,6 @@ def geniesJar = tasks.register('geniesJar', Jar) {
     group = 'distribution'
     description = "Packs Genies' own classes into a jar."
     archiveBaseName = 'genies'
-    archiveVersion = geniesVersion
     from(sourceSets.gui.output)
     manifest { attributes('Main-Class': 'dev.gui.Genies') }
 }
@@ -372,8 +374,8 @@ def geniesApp = tasks.register('geniesApp') {
     def output = geniesBuild.map { it.dir('app') }
     def input = geniesBuild.map { it.dir('jars') }
     def home = jdkHome
-    def modules = geniesModules
-    def theVersion = geniesVersion
+    def modules = runtimeModules
+    def theVersion = version.toString()
     def id = geniesId
     inputs.files(libraries)
     inputs.file(applicationJar)
@@ -437,8 +439,8 @@ tasks.register('geniesDeb') {
     def stage = geniesBuild.map { it.dir('deb') }
     def packaging = geniesPackaging
     def id = geniesId
-    def theVersion = geniesVersion
-    def result = dist.map { it.file("genies_${geniesVersion}_amd64.deb") }
+    def theVersion = version.toString()
+    def result = dist.map { it.file("genies_${version}_amd64.deb") }
     inputs.dir(app)
     inputs.dir(packaging)
     outputs.file(result)
@@ -480,10 +482,10 @@ tasks.register('geniesAppImage') {
     def runtime = geniesBuild.map { it.file('appimage-runtime') }
     def packaging = geniesPackaging
     def id = geniesId
-    def theVersion = geniesVersion
+    def theVersion = version.toString()
     def runtimeUrl = appImageRuntime
     def runtimeSha256 = appImageRuntimeSha256
-    def result = dist.map { it.file("Genies-${geniesVersion}-x86_64.AppImage") }
+    def result = dist.map { it.file("Genies-${version}-x86_64.AppImage") }
     inputs.dir(app)
     inputs.dir(packaging)
     inputs.property('runtime', runtimeSha256)
@@ -536,8 +538,8 @@ tasks.register('geniesSnap') {
     def stage = geniesBuild.map { it.dir('snap') }
     def packaging = geniesPackaging
     def id = geniesId
-    def theVersion = geniesVersion
-    def result = dist.map { it.file("genies_${geniesVersion}_amd64.snap") }
+    def theVersion = version.toString()
+    def result = dist.map { it.file("genies_${version}_amd64.snap") }
     inputs.dir(app)
     inputs.dir(packaging)
     outputs.file(result)
@@ -573,8 +575,8 @@ tasks.register('geniesFlatpak') {
     def stage = geniesBuild.map { it.dir('flatpak') }
     def packaging = geniesPackaging
     def id = geniesId
-    def theVersion = geniesVersion
-    def result = dist.map { it.file("Genies-${geniesVersion}-x86_64.flatpak") }
+    def theVersion = version.toString()
+    def result = dist.map { it.file("Genies-${version}-x86_64.flatpak") }
     inputs.dir(app)
     inputs.dir(packaging)
     outputs.file(result)
