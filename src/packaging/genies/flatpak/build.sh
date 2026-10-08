@@ -7,8 +7,12 @@ id=dev.oillamp.Genies
 runtime=org.freedesktop.Platform
 branch=25.08
 
-flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-flatpak install --user --noninteractive --or-update flathub "$runtime//$branch"
+# Offline, the runtime kept from an earlier build does. (remote-add reads flathub's description
+# from the web even when flathub is known already.)
+flatpak remotes --user | grep -q '^flathub' \
+    || flatpak remote-add --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user --noninteractive --or-update flathub "$runtime//$branch" \
+    || flatpak info --user "$runtime//$branch" >/dev/null
 
 rm -rf /tmp/build /tmp/repo
 # Nothing is compiled, so the runtime serves as the SDK too.

@@ -533,6 +533,9 @@ All four hold the same files, which `geniesApp` puts together in `build/genies/a
 - The menu entry and the icon. The icon is `src/gui/resources/dev/gui/genies.svg`, which is also
   the window's icon.
 
+They are for x86_64 computers. The Java runtime uses the computer's X11 libraries, which every
+Linux desktop has; the .deb names them as its dependencies.
+
 The packaging files are in `src/packaging/genies`. Two of the packages are not sandboxed, because
 Genies starts podman, Ollama and vncviewer on the computer:
 

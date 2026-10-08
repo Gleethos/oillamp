@@ -6,6 +6,6 @@ Comment=Chat with AI agents that each have a sandboxed Linux desktop of their ow
 Exec=genies
 Icon=dev.oillamp.Genies
 Terminal=false
-Categories=Development;Utility;
+Categories=Development;
 Keywords=AI;agent;chat;sandbox;
 StartupWMClass=dev-gui-Genies

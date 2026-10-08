@@ -305,7 +305,7 @@ tasks.register('singleFile') {
 // - The flatpak is built inside a podman container, as flatpak is rarely installed where Genies
 //   is built. Its sandbox would hide podman from Genies, so it starts Genies outside of it.
 //
-// They are built for the computer's own processor, which so far is always x86_64.
+// They are built for x86_64 only, on an x86_64 computer.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 def geniesVersion = '1.0.0'
@@ -374,6 +374,7 @@ def geniesApp = tasks.register('geniesApp') {
     def home = jdkHome
     def modules = geniesModules
     def theVersion = geniesVersion
+    def id = geniesId
     inputs.files(libraries)
     inputs.file(applicationJar)
     inputs.file(mainJar)
@@ -382,6 +383,10 @@ def geniesApp = tasks.register('geniesApp') {
     inputs.property('jdk', home)
     outputs.dir(output)
     doLast {
+        // The packages say x86_64, and the AppImage's runtime is x86_64's, but jpackage makes
+        // Genies for the processor it runs on.
+        if (System.getProperty('os.arch') != 'amd64')
+            throw new GradleException("Genies' packages are made for x86_64, not for ${System.getProperty('os.arch')}.")
         def jars = input.get().asFile
         def target = output.get().asFile
         services.files.delete { delete(jars, target) }
@@ -391,9 +396,9 @@ def geniesApp = tasks.register('geniesApp') {
                     '--name', 'genies', '--app-version', theVersion,
                     '--input', jars.absolutePath, '--main-jar', mainJar.get().asFile.name,
                     '--main-class', 'dev.gui.Genies',
-                    '--icon', new File(icons.get(), '256x256/apps/dev.oillamp.Genies.png').absolutePath,
+                    '--icon', new File(icons.get(), "256x256/apps/${id}.png").absolutePath,
                     '--add-modules', modules,
-                    '--jlink-options', '--strip-debug --no-header-files --no-man-pages --compress zip-6',
+                    '--jlink-options', '--strip-debug --strip-native-commands --no-header-files --no-man-pages --compress zip-6',
                     '--dest', target.absolutePath
         }
     }
