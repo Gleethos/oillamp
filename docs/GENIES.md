@@ -255,8 +255,10 @@ whatever font the desktop uses. Where JetBrains Mono is also installed on the de
 that make Java draw it bold, Genies uses Roboto Mono, which it also brings, instead.
 
 The chat and the desktop share a responsive grid: side by side in a wide window, the desktop below
-the chat in a narrow one. The settings form is a grid too, with its labels above the fields when
-the card is narrow.
+the chat in a narrow one. The settings form is a grid too. Its settings come in two halves, side by
+side once the card is wider than 760 units: what this computer has and the model, or where the
+model runs and how to reach it. Each half is a grid of its own, with its labels above the fields
+when the half is narrow.
 
 A window narrower than 820 units is one column, as on a phone: the list of genies on top, the
 selected genie below. Crossing the line takes a margin of a tenth either way, so dragging the
@@ -421,11 +423,12 @@ the genie keep their size and place at the bottom. The page's clock moves it fro
 is shown for as long as it is shown.
 
 The welcome is as wide as the settings' card, and lays out its words and its picture on a grid of
-its own, 760 units wide at its fullest. From four fifths of that on, it is wide: at 8.0 seconds
+its own, whose reference width is 760 units. From four fifths of that on, it is wide: at 8.0 seconds
 the lamp and the genie move, over one second, from the middle to the right five twelfths, the
 words fade in on the left from 8.8 seconds over 1.2, and the settings' card appears at 9.8.
 Narrower, the words fade in below the picture from 7.4 seconds over 0.8, and the card appears at
-8.2. When the window changes width later, the picture moves aside or back at the same pace, and
+8.2. Past 760 units, the words grow as much larger as the welcome is wider, up to 1.35 times their
+size. When the window changes width later, the picture moves aside or back at the same pace, and
 the words beside it wait until it has moved more than halfway.
 
 | Seconds | What happens |
