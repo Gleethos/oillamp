@@ -208,6 +208,10 @@ for them.
   referring to other documents, why the behaviour matters. It is rendered into the test report and
   should make sense on its own.
 
+## License
+
+oillamp is MIT licensed (see `LICENSE`), and so is what you contribute to it.
+
 ## Commit messages
 
 Say what changed and why, in plain words. If a change fixes something found on real hardware, add

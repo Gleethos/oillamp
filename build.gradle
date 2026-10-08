@@ -88,6 +88,11 @@ dependencies {
     testImplementation group: 'com.tngtech.archunit', name: 'archunit', version: '1.4.1'
 }
 
+// The license goes inside every jar, so it goes along wherever the jar does.
+tasks.withType(Jar).configureEach {
+    from('LICENSE') { into('META-INF') }
+}
+
 tasks.withType(JavaCompile) {
     options.errorprone { // list of bug patterns https://errorprone.info/bugpatterns
         check("NullAway", name.toLowerCase(Locale.ROOT).contains("test") ? net.ltgt.gradle.errorprone.CheckSeverity.WARN : net.ltgt.gradle.errorprone.CheckSeverity.ERROR)  // remove the if condition if you want to run NullAway on test code

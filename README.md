@@ -332,6 +332,10 @@ from talking to the internet.
 | know what is verified, and what is still missing | [docs/STATUS.md](docs/STATUS.md) |
 | build, test and change oillamp | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
+## ⚖️ License
+
+oillamp and Genies are MIT licensed: see [LICENSE](LICENSE).
+
 ---
 
 *Version 0.2.0. Everything planned for the first version works on Ubuntu 24.04, apart from a
