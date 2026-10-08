@@ -240,8 +240,8 @@ final class ChatRows {
         return
             box().withMinSize(0, 4).isVisibleIf(moving)
             .withStyle(Viewable.of(Glow.class, moving, pulse, Glow::new), (glow, it) -> {
-                int length = UI.scale(it.componentWidth());
-                int thickness = UI.scale(it.componentHeight());
+                int length = it.componentWidth();
+                int thickness = it.componentHeight();
                 int glowLength = Math.max(1, length / 3);
                 int at = (int) Math.round((length + glowLength) * glow.at()) - glowLength;
                 return it.backgroundColor(RAISED).borderRadius(2)

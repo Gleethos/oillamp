@@ -150,9 +150,10 @@ final class SettingsPage {
                     .painter(UI.Layer.BACKGROUND, g -> {
                         JComponent shown = welcomeBox.get();
                         if (shown == null || !shown.isVisible()) return;
+                        // SwingTree scales a painter's units to pixels; the welcome paints in pixels.
+                        g.scale(1 / UI.scale(), 1 / UI.scale());
                         g.translate(shown.getX(), shown.getY());
                         WelcomeScene.light(g, shown.getWidth(), UI.scale(PICTURE_HEIGHT), UI.scale(cut.get()), scene.get(), at);
-                        g.translate(-shown.getX(), -shown.getY());
                     }))
                 .add(CARD, welcomeAbove(state, clock, scene, cut, welcomeBox, welcome))
                 .add(CARD,
@@ -310,9 +311,10 @@ final class SettingsPage {
                     int width = UI.scale(it.componentWidth());
                     return it.painter(UI.Layer.CONTENT, g -> {
                         int above = UI.scale(cut.get());
+                        // SwingTree scales a painter's units to pixels; the welcome paints in pixels.
+                        g.scale(1 / UI.scale(), 1 / UI.scale());
                         g.translate(0, -above);
                         WelcomeScene.paint(g, width, UI.scale(PICTURE_HEIGHT), scene.get(), at);
-                        g.translate(0, above);
                     });
                 })
                 // The genie, once it has taken form, and its lamp can be clicked: it vanishes in a
@@ -363,8 +365,8 @@ final class SettingsPage {
         return
             box().withMinSize(0, 6)
             .withStyle(done, (part, it) -> {
-                int length = UI.scale(it.componentWidth());
-                int thickness = UI.scale(it.componentHeight());
+                int length = it.componentWidth();
+                int thickness = it.componentHeight();
                 return it.backgroundColor(RAISED).borderRadius(3)
                          .painter(UI.Layer.CONTENT, g -> {
                              g.setColor(FLAME);
