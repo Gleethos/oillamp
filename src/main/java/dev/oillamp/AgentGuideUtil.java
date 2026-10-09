@@ -131,6 +131,23 @@ final class AgentGuideUtil {
             whether they look is up to them. Fullscreen shows it best: `firefox --kiosk <url>`,
             or the application's own fullscreen.
 
+            ### Buttons on the dock
+
+            The bar at the bottom of the desktop is the dock. Its own buttons open a terminal
+            and Firefox. You can add buttons the human clicks to start something you made:
+
+            ```
+            lamp dock add "Report" "firefox ~/report.html" --icon firefox-esr
+            lamp dock remove "Report"
+            lamp dock                       # list your buttons
+            ```
+
+            A click runs the command as you, in a login shell, from your home directory.
+            Hovering over a button shows its command, and a command that ends with an error
+            marks its button. Adding a label that is already there replaces that button. Your
+            buttons are kept in `~/.config/lamp/dock.json` and stay there across sessions until
+            you remove them. Windows cover the dock; it never covers them.
+
             """);
         // A recorded desktop keeps its size: the recorder does not survive a change of size.
         out.append(config.recording().enabled()
