@@ -60,6 +60,17 @@ bindsym $mod+Up    focus up
 bindsym $mod+Down  focus down
 bindsym $mod+f     fullscreen toggle
 bindsym $mod+space floating toggle
+# For the user, on any window: Ctrl+Super with F for full screen, Q to close, M to minimize, and
+# N to bring every minimized window back, where it was. `kill` asks the window to close, as its
+# close button would; it signals no process. A minimized window waits on the workspace
+# "minimized", which is never shown; the desktop shows workspace 1, which sway starts on. Not
+# sway's scratchpad: there, bringing a window back is a toggle that a second press undoes.
+# `[con_id=__focused__]` limits each to the window that has the keyboard: when the desktop itself
+# has it, sway would close or minimize every window on it.
+bindsym Ctrl+$mod+f [con_id=__focused__] fullscreen toggle
+bindsym Ctrl+$mod+q [con_id=__focused__] kill
+bindsym Ctrl+$mod+m [con_id=__focused__] move container to workspace minimized
+bindsym Ctrl+$mod+n [workspace="^minimized$"] move container to workspace 1, focus
 
 # NO exec, NO exit, NO reload bindings: keyboard input must never run commands as `lamp`.
 # TheSandboxImageSpec checks this.

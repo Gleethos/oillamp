@@ -100,6 +100,10 @@ class TheSandboxImageSpec extends Specification {
             quietly end the recording - defeating the one guarantee the human is relying on.
 
             The config says this in a comment. A comment is not enforcement.
+
+            `kill` is allowed, for the user's Ctrl+Super+Q. In sway it does not end a process: it
+            asks the focused window to close, as its close button would. Every window belongs to
+            a program the agent started, which the agent can close anyway.
         """
         when:
             var config = Files.readString(IMAGE.resolve('rootfs/etc/oillamp/sway/config'))
@@ -111,7 +115,7 @@ class TheSandboxImageSpec extends Specification {
 
         and: 'and not one of them runs anything'
             bindings.every { line ->
-                !(line =~ /\b(exec|exit|reload|kill)\b/)
+                !(line =~ /\b(exec|exit|reload)\b/)
             }
     }
 
