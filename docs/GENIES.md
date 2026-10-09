@@ -404,7 +404,9 @@ desktop has that size, or for 3 s, because wayvnc finishes a change of size only
 connected. A recorded desktop keeps its size (wayvnc answers "not allowed"); it is then drawn
 fitted, and the bar says "Recorded, so it keeps its own size".
 
-Clicking the desktop gives it the keyboard, and a flame-coloured frame says so.
+Clicking the desktop gives it the keyboard, and a flame-coloured frame says so. When it loses the
+keyboard, or another desktop takes its place, every key it still holds down is let go of on the
+desktop. Without this, Alt+Tab left Alt held there, and every key typed afterwards was a shortcut.
 
 **A genie shows the user something** by opening it on its desktop, fullscreen where it can, and
 running `lamp show "what it is"`. Its instructions say so. The lamp reports

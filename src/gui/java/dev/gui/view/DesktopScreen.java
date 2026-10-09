@@ -92,7 +92,13 @@ final class DesktopScreen extends JComponent implements Scrollable {
         setFocusTraversalKeysEnabled(false);
         addFocusListener(new FocusAdapter() {
             @Override public void focusGained(FocusEvent event) { repaint(); }
-            @Override public void focusLost(FocusEvent event) { repaint(); }
+            @Override public void focusLost(FocusEvent event) {
+                // A key let go of after the focus went, as Alt is after Alt+Tab, is let go of
+                // where the desktop never hears it. It would stay held there, and turn every key
+                // typed afterwards into a shortcut.
+                releaseKeys();
+                repaint();
+            }
         });
         MouseAdapter mouse = new MouseAdapter() {
             @Override public void mousePressed(MouseEvent event) {
@@ -204,6 +210,7 @@ final class DesktopScreen extends JComponent implements Scrollable {
     /// The desktop shown before gets its own size back.
     void show(Optional<Desktop> desktop) {
         if (desktop.equals(shown) && (connection.isPresent() || desktop.isEmpty())) return;
+        releaseKeys();
         if (connection.isPresent() && shown.isPresent()) letGo(connection.get(), shown.get());
         connection = Optional.empty();
         shown = desktop;
@@ -213,6 +220,12 @@ final class DesktopScreen extends JComponent implements Scrollable {
         message = desktop.isEmpty() ? "The desktop shows here while the genie is awake." : "Connecting to the desktop…";
         repaint();
         desktop.ifPresent(it -> Thread.ofVirtual().name("desktop connect").start(() -> connect(it)));
+    }
+
+    /// Lets go, on the desktop shown, of every key still held there.
+    private void releaseKeys() {
+        pressed.values().forEach(keysym -> connection.ifPresent(desktop -> desktop.key(keysym, false)));
+        pressed.clear();
     }
 
     /// Lets go of the desktop shown, which gets its own size back. The thread doing that, for
