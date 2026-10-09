@@ -189,6 +189,9 @@ class UsingTheCommandLineSpec extends Specification {
             guide.console().contains('oillamp at ~/lamps/first --no-windows')
             guide.console().contains('--no-viewer is not the same')
 
+        and: 'it names the keys for the desktop\'s windows, since sway draws no buttons on them'
+            ['Ctrl+Super+F', 'Ctrl+Super+Q', 'Ctrl+Super+M', 'Ctrl+Super+N'].every { guide.console().contains(it) }
+
         and: 'the command list sends newcomers to both'
             var help = host.oillamp.run('help')
             help.console().contains('oillamp guide')

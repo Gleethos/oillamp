@@ -137,6 +137,20 @@ final class IntroductionTextUtil {
                Use this rather than rm -rf: parts of a lamp belong to the sandbox's own users,
                and rm cannot remove them.
 
+            ON THE DESKTOP
+
+              The bar at the bottom starts a terminal, or Firefox, and holds the buttons the
+              agent adds for you. Hovering over a button shows the command it runs. Windows
+              cover the bar.
+
+              Click a window to give it the keyboard. Then, with Super being the key with the
+              Windows logo:
+
+                 Ctrl+Super+F     fullscreen, and back
+                 Ctrl+Super+Q     close the window
+                 Ctrl+Super+M     minimize the window
+                 Ctrl+Super+N     bring every minimized window back
+
             WITHOUT A DISPLAY, OR UNDER TMUX
 
               A session can run where no window can open: over a plain ssh login, or in
