@@ -407,6 +407,8 @@ fitted, and the bar says "Recorded, so it keeps its own size".
 Clicking the desktop gives it the keyboard, and a flame-coloured frame says so. When it loses the
 keyboard, or another desktop takes its place, every key it still holds down is let go of on the
 desktop. Without this, Alt+Tab left Alt held there, and every key typed afterwards was a shortcut.
+On the desktop, Ctrl+Super with F makes the window with the keyboard fullscreen and back, with Q
+closes it and with M minimizes it; with N it brings every minimized window back.
 
 **A genie shows the user something** by opening it on its desktop, fullscreen where it can, and
 running `lamp show "what it is"`. Its instructions say so. The lamp reports
