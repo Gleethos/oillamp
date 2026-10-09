@@ -1167,6 +1167,22 @@ The agent's environment points at the display with `WAYLAND_DISPLAY=/run/lamp/wa
 
 There is no window list: that would need sway's control socket, which the agent must not reach.
 
+### Keys the desktop answers itself
+
+sway answers these on any window. Each runs a sway command, never a program: the config has no
+`exec`, `exit` or `reload` binding, and `TheSandboxImageSpec` checks that. The Ctrl+Super keys
+that act on one window name it with `[con_id=__focused__]`, so they do nothing while no window
+has the keyboard: on the desktop itself, sway would close or minimize every window.
+
+| Keys | sway command | Does |
+|---|---|---|
+| Super+arrow | `focus left` and so on | gives the keyboard to the window in that direction |
+| Super+F, Ctrl+Super+F | `fullscreen toggle` | fullscreen on and off |
+| Super+Space | `floating toggle` | floating on and off |
+| Ctrl+Super+Q | `kill` | asks the window to close, as its close button would; no process is signalled |
+| Ctrl+Super+M | `move container to workspace minimized` | minimizes the window: the workspace "minimized" is never shown, the desktop shows workspace 1 |
+| Ctrl+Super+N | `[workspace="^minimized$"] move container to workspace 1, focus` | brings every minimized window back, where it was, with the keyboard; does nothing when none is minimized |
+
 ### The dock
 
 `lamp-dock` is a bar centred at the bottom of the desktop, on sway's layer between the wallpaper

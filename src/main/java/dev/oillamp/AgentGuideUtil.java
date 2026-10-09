@@ -148,6 +148,11 @@ final class AgentGuideUtil {
             buttons are kept in `~/.config/lamp/dock.json` and stay there across sessions until
             you remove them. Windows cover the dock; it never covers them.
 
+            The human can press Ctrl+Super+F to make the window with the keyboard fullscreen
+            and back, Ctrl+Super+Q to close it and Ctrl+Super+M to minimize it. Ctrl+Super+N
+            brings every minimized window back. Tell them so when you show them something
+            fullscreen.
+
             """);
         // A recorded desktop keeps its size: the recorder does not survive a change of size.
         out.append(config.recording().enabled()
