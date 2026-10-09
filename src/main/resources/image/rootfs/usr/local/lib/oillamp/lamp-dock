@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""The dock: a bar at the bottom of the desktop with buttons that start programs.
+
+The first buttons are always there: a terminal, and Firefox where it is installed. The rest
+are the agent's, read from ~/.config/lamp/dock.json, a list such as
+
+    [{"label": "Report", "command": "firefox ~/report.html", "icon": "firefox-esr"}]
+
+`icon` is optional: an icon name from the desktop's icon themes, or the path of an image file.
+`lamp dock add` and `lamp dock remove` write this file; editing it by hand works as well. The file
+is read again within a second of changing, and lives in the agent's home, so it outlives the
+session.
+
+It runs as the agent, so a click runs the command as the agent, which is no more than the agent
+can do itself. Never run this as `lamp`: then a button would run the agent's text as the user
+that owns the recording. A command runs in a login shell, so it finds the environment the
+agent's terminal has. Hovering over a button shows its command. A command that ends with an error
+marks its button, and hovering then shows the last line it printed.
+
+It draws on the layer between the wallpaper and the windows, and keeps no room for itself, so
+every window may cover it and it never covers one. It never takes the keyboard.
+
+Usage: lamp-dock   (started by the entrypoint, which starts it again if it stops)
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ITEMS = os.environ.get("LAMP_DOCK_FILE", os.path.expanduser("~/.config/lamp/dock.json"))
+PID_FILE = os.environ.get("LAMP_DOCK_PID_FILE", "/run/agent/lamp-dock.pid")
+# The exit status that tells the entrypoint not to start the dock again: it cannot work here.
+CANNOT_RUN = 78
+ICON_SIZE = 24
+# Colours of the wallpaper and the window frames (/etc/oillamp/sway/config).
+STYLE = b"""
+window { background-color: transparent; }
+.dock { background-color: #1f2430; border: 1px solid #3a4252; border-radius: 10px; padding: 4px; }
+.dock button { background-image: none; background-color: #252a35; color: #e6e9ef;
+               border: 1px solid #2a303c; border-radius: 7px; padding: 4px 10px; box-shadow: none;
+               text-shadow: none; }
+.dock button:hover { background-color: #343b4a; border-color: #c8913f; }
+.dock button:active { background-color: #7a4d1c; }
+.dock button.failed { border-color: #f0955a; }
+.dock separator { background-color: #3a4252; margin: 4px 6px; min-width: 1px; }
+.dock .problem { color: #f0955a; padding: 0 8px; }
+"""
+
+try:
+    import gi
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("GdkPixbuf", "2.0")
+    gi.require_version("GtkLayerShell", "0.1")
+    from gi.repository import GdkPixbuf, GLib, Gtk, GtkLayerShell
+except (ImportError, ValueError) as missing:
+    print(f"lamp-dock: GTK for Python is not installed ({missing}); the desktop has no dock", file=sys.stderr)
+    sys.exit(CANNOT_RUN)
+
+
+def built_in_items():
+    items = [{"label": "Terminal", "command": "foot", "icon": "foot"}]
+    if shutil.which("firefox"):
+        items.append({"label": "Firefox", "command": "firefox", "icon": "firefox-esr"})
+    return items
+
+
+def read_items():
+    """The agent's items and what is wrong with the file, or None. A missing file is no items."""
+    try:
+        with open(ITEMS, encoding="utf-8") as file:
+            listed = json.load(file)
+    except FileNotFoundError:
+        return [], None
+    except (OSError, ValueError) as unreadable:
+        return [], f"{ITEMS} cannot be read: {unreadable}"
+    if not isinstance(listed, list):
+        return [], f"{ITEMS} must hold a list of items"
+    items, skipped = [], 0
+    for item in listed:
+        if (isinstance(item, dict) and isinstance(item.get("label"), str) and item["label"].strip()
+                and isinstance(item.get("command"), str) and item["command"].strip()
+                and isinstance(item.get("icon", ""), str)):
+            items.append(item)
+        else:
+            skipped += 1
+    return items, (f"{skipped} item(s) in {ITEMS} need a label and a command" if skipped else None)
+
+
+def icon_image(icon):
+    if not icon:
+        return None
+    if "/" in icon:
+        try:
+            path = os.path.expanduser(icon)
+            return Gtk.Image.new_from_pixbuf(GdkPixbuf.Pixbuf.new_from_file_at_size(path, ICON_SIZE, ICON_SIZE))
+        except GLib.Error:
+            return None
+    if Gtk.IconTheme.get_default().has_icon(icon):
+        return Gtk.Image.new_from_icon_name(icon, Gtk.IconSize.LARGE_TOOLBAR)
+    return None
+
+
+def run(button, item):
+    """Starts the item's command. If it ends with an error, its button says so."""
+    button.get_style_context().remove_class("failed")
+    button.set_tooltip_text(item["command"])
+    output = tempfile.TemporaryFile()
+    try:
+        started = subprocess.Popen(["bash", "-lc", item["command"]], cwd=os.path.expanduser("~"),
+                                   stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT,
+                                   start_new_session=True)
+    except OSError as failed:
+        output.close()
+        mark_failed(button, item, f"could not be started: {failed}")
+        return
+
+    def ended(pid, status):
+        code = os.waitstatus_to_exitcode(status)
+        if code != 0:
+            output.seek(0)
+            lines = output.read().decode("utf-8", "replace").strip().splitlines()
+            mark_failed(button, item, f"ended with exit code {code}" + (f":\n{lines[-1]}" if lines else ""))
+        output.close()
+        GLib.spawn_close_pid(pid)
+
+    GLib.child_watch_add(GLib.PRIORITY_DEFAULT, started.pid, ended)
+    # GLib collects the process; Popen must not try to as well.
+    started.returncode = 0
+
+
+def mark_failed(button, item, why):
+    button.get_style_context().add_class("failed")
+    button.set_tooltip_text(f"{item['command']}\n\nLast time, it {why}")
+
+
+def item_button(item):
+    button = Gtk.Button()
+    content = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+    image = icon_image(item.get("icon"))
+    if image:
+        content.pack_start(image, False, False, 0)
+    content.pack_start(Gtk.Label(label=item["label"]), False, False, 0)
+    button.add(content)
+    button.set_tooltip_text(item["command"])
+    button.set_can_focus(False)
+    button.connect("clicked", run, item)
+    return button
+
+
+class Dock:
+    def __init__(self):
+        self.window = Gtk.Window()
+        visual = self.window.get_screen().get_rgba_visual()
+        if visual:
+            self.window.set_visual(visual)
+        GtkLayerShell.init_for_window(self.window)
+        GtkLayerShell.set_namespace(self.window, "lamp-dock")
+        GtkLayerShell.set_layer(self.window, GtkLayerShell.Layer.BOTTOM)
+        GtkLayerShell.set_anchor(self.window, GtkLayerShell.Edge.BOTTOM, True)
+        GtkLayerShell.set_margin(self.window, GtkLayerShell.Edge.BOTTOM, 6)
+        self.bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        self.bar.get_style_context().add_class("dock")
+        self.window.add(self.bar)
+        self.seen = None
+        self.reload()
+        GLib.timeout_add_seconds(1, self.reload)
+        self.window.show_all()
+
+    def reload(self):
+        try:
+            stat = os.stat(ITEMS)
+            now = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+        except OSError:
+            now = None
+        if now == self.seen and self.bar.get_children():
+            return True
+        self.seen = now
+        for child in self.bar.get_children():
+            self.bar.remove(child)
+        for item in built_in_items():
+            self.bar.pack_start(item_button(item), False, False, 0)
+        items, problem = read_items()
+        if items or problem:
+            self.bar.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 0)
+        for item in items:
+            self.bar.pack_start(item_button(item), False, False, 0)
+        if problem:
+            warning = Gtk.Label(label="⚠ dock.json")
+            warning.get_style_context().add_class("problem")
+            warning.set_tooltip_text(problem)
+            self.bar.pack_start(warning, False, False, 0)
+            print(f"lamp-dock: {problem}", file=sys.stderr)
+        self.bar.show_all()
+        # A narrower bar leaves its old size behind unless the window is asked to shrink again.
+        self.window.resize(1, 1)
+        return True
+
+
+def main():
+    if not GtkLayerShell.is_supported():
+        print("lamp-dock: the compositor does not offer a layer for panels; the desktop has no dock", file=sys.stderr)
+        sys.exit(CANNOT_RUN)
+    provider = Gtk.CssProvider()
+    provider.load_from_data(STYLE)
+    Gtk.StyleContext.add_provider_for_screen(Gtk.Window().get_screen(), provider,
+                                             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    Dock()
+    with open(PID_FILE, "w") as file:
+        file.write(f"{os.getpid()}\n")
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

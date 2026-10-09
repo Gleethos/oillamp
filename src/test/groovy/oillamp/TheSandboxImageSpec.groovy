@@ -60,6 +60,7 @@ class TheSandboxImageSpec extends Specification {
             Files.isExecutable(IMAGE.resolve('build/install-sdkman.sh'))
             Files.exists(IMAGE.resolve('rootfs/usr/local/lib/oillamp/entrypoint'))
             Files.exists(IMAGE.resolve('rootfs/usr/local/bin/lamp'))
+            Files.exists(IMAGE.resolve('rootfs/usr/local/lib/oillamp/lamp-dock'))
     }
 
     def 'the image carries no trace of the Java desktop helper that was replaced by a shell script'() {
@@ -112,6 +113,41 @@ class TheSandboxImageSpec extends Specification {
             bindings.every { line ->
                 !(line =~ /\b(exec|exit|reload|kill)\b/)
             }
+    }
+
+    def 'the dock runs as the agent, so its buttons run nothing the agent could not run itself'() {
+        reportInfo """
+            Every button on the dock runs a command the agent wrote, whenever the user clicks it.
+            Started as the agent, that is no more than the agent can already do. Started as
+            `lamp`, the user that owns the recording, one click would let the agent's text end
+            the recording. So the entrypoint must start it as the agent and never as `lamp`.
+        """
+        when:
+            var entrypoint = Files.readString(IMAGE.resolve('rootfs/usr/local/lib/oillamp/entrypoint'))
+            var dockLines = entrypoint.readLines().findAll { it.contains('lamp-dock') || it.contains(' dock ') }
+
+        then:
+            entrypoint.contains('drop agent 077 dock ')
+            dockLines.every { !it.contains('drop lamp') }
+    }
+
+    def 'a dock that cannot be installed costs only the dock'() {
+        reportInfo """
+            The dock is a convenience on top of the desktop, ssh and the recording. If Debian ever
+            stops shipping one of its GTK packages, the image must still build, and the dock
+            reports that it cannot run instead of being started again every few seconds.
+        """
+        when:
+            var containerfile = Files.readString(IMAGE.resolve('Containerfile'))
+            var entrypoint = Files.readString(IMAGE.resolve('rootfs/usr/local/lib/oillamp/entrypoint'))
+            var dock = Files.readString(IMAGE.resolve('rootfs/usr/local/lib/oillamp/lamp-dock'))
+
+        then: 'the packages are installed on their own, and a failure only says so'
+            containerfile.contains('gir1.2-gtklayershell-0.1 \\\n      || echo "GTK for Python unavailable')
+
+        and: 'the dock says it cannot run, and the entrypoint then stops starting it'
+            dock.contains('CANNOT_RUN = 78')
+            entrypoint.contains('[ "$status" = 78 ] && exit 0')
     }
 
     def 'the agent is allowed on the X11 display, so Swing applications can open windows'() {

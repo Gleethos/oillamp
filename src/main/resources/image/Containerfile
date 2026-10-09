@@ -53,7 +53,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # ── the desktop, SSH, and the tools `lamp` wraps ─────────────────────────────────────────────
 # wlrctl is installed separately so that, if it is ever missing from Debian, the build still
-# succeeds and only `lamp click`/`move`/`scroll` stop working. (It is in trixie today.)
+# succeeds and only `lamp click`/`move`/`scroll` stop working. (It is in trixie today.) The dock's
+# GTK packages likewise: without them the desktop only lacks its dock.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       sway xwayland x11-xserver-utils x11-utils wayvnc wf-recorder grim slurp wtype python3 \
       foot dbus dbus-x11 at-spi2-core xdg-utils \
@@ -61,6 +62,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       fonts-dejavu fonts-liberation2 fonts-noto-color-emoji adwaita-icon-theme \
       openssh-server socat catatonit \
  && (apt-get install -y --no-install-recommends wlrctl || echo "wlrctl unavailable: lamp click/move/scroll will not work") \
+ && (apt-get install -y --no-install-recommends python3-gi gir1.2-gtk-3.0 gir1.2-gtklayershell-0.1 \
+      || echo "GTK for Python unavailable: the desktop will have no dock") \
  && rm -rf /var/lib/apt/lists/*
 
 # ── developer tooling, the part a user is most likely to want changed ────────────────────────
@@ -100,7 +103,8 @@ RUN groupadd -g 1000 agent && useradd -u 1000 -g 1000 -d /home/agent -M -s /bin/
 
 COPY rootfs/ /
 RUN chmod 0755 /usr/local/lib/oillamp/entrypoint /usr/local/lib/oillamp/lamp-pointer \
-              /usr/local/lib/oillamp/keep-windows-on-screen /usr/local/bin/lamp
+              /usr/local/lib/oillamp/keep-windows-on-screen /usr/local/lib/oillamp/lamp-dock \
+              /usr/local/bin/lamp
 
 # Nothing in this image should be setuid: the sandbox's guarantees come from the user namespace,
 # and a setuid binary inside it is a way for the agent to become `lamp`. Host keys are removed

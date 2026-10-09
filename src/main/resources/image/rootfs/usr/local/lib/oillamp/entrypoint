@@ -314,6 +314,16 @@ drop agent 077 sshd socat UNIX-LISTEN:/oillamp/sockets/agent/ssh.sock,fork,unlin
      EXEC:"/usr/sbin/sshd -i -f /etc/oillamp/sshd_config"
 SSH_PID=$LAST_PID
 AGENT_PIDS+=("$LAST_PID")
+# The dock at the bottom of the desktop. As the agent, never as `lamp`: its buttons run commands
+# the agent wrote. Not critical: when it stops it is started again, unless it said it cannot run
+# here at all (exit status 78).
+drop agent 077 dock env XDG_RUNTIME_DIR=/run/agent WAYLAND_DISPLAY=/run/lamp/wayland-1 \
+     GDK_BACKEND=wayland bash -c 'while :; do
+         /usr/local/lib/oillamp/lamp-dock; status=$?
+         [ "$status" = 78 ] && exit 0
+         echo "the dock stopped (exit status $status); starting it again in 5 seconds"; sleep 5
+     done'
+AGENT_PIDS+=("$LAST_PID")
 
 # ── tell the host we are ready ───────────────────────────────────────────────────────────────
 # ready.json is a promise to the human that the desktop is there. It must therefore be written
