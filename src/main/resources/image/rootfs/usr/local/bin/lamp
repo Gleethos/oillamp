@@ -24,6 +24,9 @@ SCREENSHOT_DIR="${HOME}/screenshots"
 POINTER="${LAMP_POINTER:-/usr/local/lib/oillamp/lamp-pointer}"
 # Where the session on the host listens for `lamp show`.
 DESKTOP_SOCKET="${LAMP_DESKTOP_SOCKET:-/oillamp/sockets/host/desktop.sock}"
+# The agent's buttons on the dock, and where the dock writes its process id.
+DOCK_FILE="${LAMP_DOCK_FILE:-${HOME}/.config/lamp/dock.json}"
+DOCK_PID_FILE="${LAMP_DOCK_PID_FILE:-/run/agent/lamp-dock.pid}"
 # Milliseconds wtype waits before the first key; see the comment at the top.
 KEY_SETTLE_MS=150
 
@@ -150,6 +153,86 @@ print(reply.get("text", ""))
 PY
 }
 
+# The agent's buttons on the dock at the bottom of the desktop. The dock reads the file again
+# within a second of a change. It is replaced in one rename, so the dock never reads half of it.
+cmd_dock() {
+    need python3
+    python3 - "$DOCK_FILE" "$DOCK_PID_FILE" "$@" <<'PY'
+import json, os, sys, tempfile
+path, pid_file, args = sys.argv[1], sys.argv[2], sys.argv[3:]
+action = args.pop(0) if args else "list"
+usage = "usage: lamp dock [list] | lamp dock add LABEL COMMAND [--icon ICON] | lamp dock remove LABEL"
+
+def fail(message):
+    sys.exit("lamp: " + message)
+
+def dock_running():
+    try:
+        with open(pid_file) as file:
+            os.kill(int(file.read().strip()), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+try:
+    with open(path, encoding="utf-8") as file:
+        items = json.load(file)
+    if not isinstance(items, list):
+        raise ValueError("it must hold a list of items")
+except FileNotFoundError:
+    items = []
+except (OSError, ValueError) as unreadable:
+    fail(f"{path} cannot be read ({unreadable}). Fix or delete it; lamp dock does not write over it.")
+
+def write():
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=os.path.dirname(path), delete=False) as file:
+        json.dump(items, file, indent=2, ensure_ascii=False)
+        file.write("\n")
+    os.replace(file.name, path)
+
+if action == "add":
+    icon = None
+    if "--icon" in args:
+        at = args.index("--icon")
+        if at + 1 >= len(args):
+            fail("--icon takes an icon name or an image file")
+        icon = args[at + 1]
+        del args[at:at + 2]
+    if len(args) != 2 or not args[0].strip() or not args[1].strip():
+        fail(usage)
+    item = {"label": args[0], "command": args[1]}
+    if icon:
+        item["icon"] = icon
+    replaced = any(old.get("label") == item["label"] for old in items)
+    items = [item if old.get("label") == item["label"] else old for old in items]
+    if not replaced:
+        items.append(item)
+    write()
+    print(("replaced" if replaced else "added") + f" '{item['label']}' on the dock")
+elif action == "remove":
+    if len(args) != 1:
+        fail(usage)
+    if not any(old.get("label") == args[0] for old in items):
+        fail(f"there is no '{args[0]}' on the dock. `lamp dock` lists what is there.")
+    items = [old for old in items if old.get("label") != args[0]]
+    write()
+    print(f"removed '{args[0]}' from the dock")
+elif action == "list":
+    if args:
+        fail(usage)
+    if not items:
+        print("You have no buttons on the dock. The dock's own buttons are always there.")
+    for item in items:
+        icon = f"  (icon {item['icon']})" if item.get("icon") else ""
+        print(f"{item.get('label')}: {item.get('command')}{icon}")
+else:
+    fail(usage)
+if not dock_running():
+    print("The dock is not running, so the user does not see these buttons.", file=sys.stderr)
+PY
+}
+
 cmd_info() {
     # The size now, from the desktop itself: the user's viewer may have given the desktop the size
     # of the panel they watch it in. It goes back to its own size when they close that panel.
@@ -181,6 +264,13 @@ lamp — drive this sandbox's desktop.
   lamp wait-stable [SECONDS]                        block until the screen stops changing
   lamp info                                         size, renderer, screenshot directory
   lamp show "what you show"                         ask the user to look at this desktop
+  lamp dock                                         list your buttons on the dock
+  lamp dock add LABEL COMMAND [--icon ICON]         add a button, or replace the one with that label
+  lamp dock remove LABEL                            remove a button
+
+The dock is the bar at the bottom of the desktop. A click on a button runs its command as you, in
+a login shell; hovering over it shows the command. ICON is an icon name, such as firefox-esr, or
+an image file. Your buttons are kept in ~/.config/lamp/dock.json and stay until you remove them.
 
 Coordinates are screen pixels, as in a screenshot; 0,0 is the top-left corner. This works for
 Wayland and X11 applications (including Java Swing) alike. A click reports no result: take a
@@ -217,6 +307,7 @@ case "$subcommand" in
     wait-stable)  cmd_wait_stable "$@" ;;
     info)         cmd_info "$@" ;;
     show)         cmd_show "$@" ;;
+    dock)         cmd_dock "$@" ;;
     -h|--help|help) usage ;;
     *)            die "unknown command '$subcommand'. Run 'lamp help'." ;;
 esac

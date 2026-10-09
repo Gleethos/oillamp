@@ -1,5 +1,6 @@
 package oillamp
 
+import groovy.json.JsonSlurper
 import spock.lang.Specification
 import spock.lang.TempDir
 
@@ -211,6 +212,109 @@ class TheLampCommandSpec extends Specification {
             panel.output.readLines().take(2) == [
                     'size       800x500',
                     'own size   1920x1080, which it goes back to when the user stops showing it in a panel']
+    }
+
+    def 'lamp dock add puts a button in the file the dock reads, where it stays'() {
+        reportInfo """
+            The agent puts buttons on the dock at the bottom of the desktop for the user to click.
+            They are kept in a file in the agent's home, which outlives the session, so a button
+            is still there after the lamp was restarted. The dock reads this file; lamp dock is
+            the agent's way to write it without getting the JSON wrong.
+        """
+        when:
+            runLamp('dock', 'add', 'Report', 'firefox ~/report.html', '--icon', 'firefox-esr')
+            runLamp('dock', 'add', 'Notes', 'foot -e nano "my notes.txt"')
+            var listed = runLamp('dock')
+
+        then: 'the file holds both buttons, the command exactly as written'
+            var file = temporary.resolve('home/.config/lamp/dock.json')
+            new JsonSlurper().parse(file.toFile()) == [
+                    [label: 'Report', command: 'firefox ~/report.html', icon: 'firefox-esr'],
+                    [label: 'Notes', command: 'foot -e nano "my notes.txt"']]
+
+        and: 'and lamp dock lists them'
+            listed.status == 0
+            listed.output.contains('Report: firefox ~/report.html  (icon firefox-esr)')
+            listed.output.contains('Notes: foot -e nano "my notes.txt"')
+    }
+
+    def 'a button added under a label that is already there replaces that button'() {
+        reportInfo """
+            A label names a button, so adding "Report" again is how the agent changes what its
+            Report button does. The button keeps its place on the dock, and the user does not
+            get two buttons called Report.
+        """
+        when:
+            runLamp('dock', 'add', 'Report', 'firefox ~/old.html', '--icon', 'firefox-esr')
+            runLamp('dock', 'add', 'Notes', 'foot')
+            var replaced = runLamp('dock', 'add', 'Report', 'firefox ~/new.html')
+
+        then:
+            replaced.output.contains("replaced 'Report' on the dock")
+            var file = temporary.resolve('home/.config/lamp/dock.json')
+            new JsonSlurper().parse(file.toFile()) == [
+                    [label: 'Report', command: 'firefox ~/new.html'],
+                    [label: 'Notes', command: 'foot']]
+    }
+
+    def 'lamp dock remove takes a button away, and says so when there is none by that name'() {
+        reportInfo """
+            Removing a button that is not there is a mistake the agent should hear about, with a
+            way to see what is there instead, rather than a silent success.
+        """
+        given:
+            runLamp('dock', 'add', 'Report', 'firefox ~/report.html')
+
+        when:
+            var removed = runLamp('dock', 'remove', 'Report')
+            var missing = runLamp('dock', 'remove', 'Report')
+
+        then:
+            removed.status == 0
+            Files.readString(temporary.resolve('home/.config/lamp/dock.json')).trim() == '[]'
+            missing.status != 0
+            missing.output.contains("there is no 'Report' on the dock")
+            missing.output.contains('`lamp dock` lists what is there')
+    }
+
+    def 'lamp dock does not write over a file it cannot read'() {
+        reportInfo """
+            The agent may also edit the file by hand. If that left it broken, writing a new list
+            over it would quietly throw away every button in it. lamp dock refuses and says which
+            file to fix.
+        """
+        given:
+            var file = temporary.resolve('home/.config/lamp/dock.json')
+            Files.createDirectories(file.parent)
+            Files.writeString(file, '[{"label": "Report",')
+
+        when:
+            var result = runLamp('dock', 'add', 'Notes', 'foot')
+
+        then:
+            result.status != 0
+            result.output.contains("${file} cannot be read")
+            Files.readString(file) == '[{"label": "Report",'
+    }
+
+    def 'lamp dock tells the agent when the user cannot see the dock'() {
+        reportInfo """
+            A button on a dock that is not running is a button nobody can click. The dock writes
+            its process id when it starts; lamp dock checks it, so the agent can tell the user
+            instead of believing the button is there.
+        """
+        given:
+            var pidFile = temporary.resolve('lamp-dock.pid')
+
+        when: 'no dock ever started'
+            var stopped = runLamp([LAMP_DOCK_PID_FILE: pidFile.toString()], 'dock')
+        and: 'a running process wrote the file'
+            Files.writeString(pidFile, "${ProcessHandle.current().pid()}\n")
+            var running = runLamp([LAMP_DOCK_PID_FILE: pidFile.toString()], 'dock')
+
+        then:
+            stopped.output.contains('The dock is not running, so the user does not see these buttons.')
+            !running.output.contains('not running')
     }
 
     def 'lamp help tells the agent how to bypass lamp entirely'() {
