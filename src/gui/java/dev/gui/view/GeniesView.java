@@ -4,6 +4,7 @@ import dev.gui.model.*;
 import sprouts.*;
 import swingtree.UI;
 import swingtree.UIForAnySwing;
+import swingtree.UIForBox;
 import swingtree.UIForButton;
 import swingtree.UIForLabel;
 import swingtree.UIForPanel;
@@ -11,6 +12,7 @@ import swingtree.animation.Animation;
 import swingtree.animation.AnimationStatus;
 import swingtree.animation.LifeTime;
 import swingtree.api.IconDeclaration;
+import swingtree.components.JBox;
 import swingtree.api.Layout;
 import swingtree.dialogs.ConfirmAnswer;
 import swingtree.input.Keyboard;
@@ -34,6 +36,7 @@ import java.awt.event.KeyEvent;
 import java.io.File;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -785,12 +788,52 @@ public final class GeniesView extends JPanel {
                      .withMinSize(70, 0).withHorizontalAlignment(UI.HorizontalAlignment.CENTER))
                 .add(zoomButton("+", "Larger (or Ctrl and the mouse wheel on the desktop)").isVisibleIf(zooms)
                      .onClick(it -> zoom.update(From.VIEW, z -> z.in(desktop.fitScale()))))
-                .add("wmin 0, pushx, alignx right", label(hint).group(Skin.META)))
+                .add("wmin 0, pushx, alignx right", label(hint).group(Skin.META))
+                .add(button(state.viewAsString(it -> it.narrow() ? "" : "Keys")).group(Skin.ICON_BUTTON).withIconTextGap(6)
+                     .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.KEYS, SUBTEXT))
+                         .componentFont(f -> f.family(FONT).size(12).color(SUBTEXT)))
+                     .withTooltip("The keys that make a window on the desktop fullscreen, close it or minimize it")
+                     .onMousePress(it -> ViewPartsUtil.toggleBelow(it.getEvent(), this::desktopKeys))
+                     .onPressed(Keyboard.Key.SPACE, it -> ViewPartsUtil.toggleBelow(it.getEvent(), this::desktopKeys))))
             .add("grow, push, wmin 0, hmin 0",
                 scrollPane()
                 .withEmptyBorder(0).withMinSize(0, 0)
                 .withStyle(it -> it.backgroundColor(SMOKE).border(1, BORDER).borderRadius(10))
                 .add(UI.of(desktop)));
+    }
+
+    /// The keys sway answers on the desktop, behind "Keys" above it. sway draws no buttons on a
+    /// window's title bar, so these are the only way to close, minimize or fullscreen a window
+    /// whose program offers none.
+    private JPopupMenu desktopKeys() {
+        return UI.use(look, () -> UI.popupMenu()
+            .add(panel("wrap 2, ins 12 14 12 14, gap 14 7", "[][]")
+                .withStyle(it -> it.backgroundColor(TRANSPARENT))
+                .add("span 2", label("Keys for the desktop")
+                     .withStyle(it -> it.componentFont(f -> f.family(FONT).size(13).weight(2f).color(TEXT))))
+                .add("span 2, gapbottom 4", label("Click a window first, so that it has the keyboard.").group(Skin.META))
+                .add(keyCaps("F"))
+                .add(label("Fullscreen, and back").withStyle(it -> it.componentFont(f -> f.family(FONT).size(12).color(TEXT))))
+                .add(keyCaps("Q"))
+                .add(label("Close the window").withStyle(it -> it.componentFont(f -> f.family(FONT).size(12).color(TEXT))))
+                .add(keyCaps("M"))
+                .add(label("Minimize the window").withStyle(it -> it.componentFont(f -> f.family(FONT).size(12).color(TEXT))))
+                .add(keyCaps("N"))
+                .add(label("Bring every minimized window back").withStyle(it -> it.componentFont(f -> f.family(FONT).size(12).color(TEXT))))
+                .add("span 2, gaptop 4", label("Super is the key with the Windows logo.").group(Skin.META)))
+            .get(JPopupMenu.class));
+    }
+
+    /// Ctrl + Super + `letter`, each drawn as a key on a keyboard.
+    private static UIForBox<JBox> keyCaps(String letter) {
+        UIForBox<JBox> caps = box("ins 0, gap 4, aligny center");
+        for (String key : List.of("Ctrl", "Super", letter)) {
+            if (!key.equals("Ctrl")) caps = caps.add(label("+").withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(SUBTEXT))));
+            caps = caps.add(label(key).withHorizontalAlignment(UI.HorizontalAlignment.CENTER)
+                     .withStyle(it -> it.backgroundColor(RAISED).border(1, BORDER).borderRadius(5).padding(1, 7, 2, 7)
+                         .componentFont(f -> f.family(FONT).size(11).weight(2f).color(TEXT))));
+        }
+        return caps;
     }
 
     private UIForAnySwing<?, ?> transcript() {

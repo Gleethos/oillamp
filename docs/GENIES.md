@@ -408,7 +408,9 @@ Clicking the desktop gives it the keyboard, and a flame-coloured frame says so. 
 keyboard, or another desktop takes its place, every key it still holds down is let go of on the
 desktop. Without this, Alt+Tab left Alt held there, and every key typed afterwards was a shortcut.
 On the desktop, Ctrl+Super with F makes the window with the keyboard fullscreen and back, with Q
-closes it and with M minimizes it; with N it brings every minimized window back.
+closes it and with M minimizes it; with N it brings every minimized window back. **Keys**, at the
+right end of the bar above the desktop, opens a list of these under it, its right edge on the
+button's, and closes it again; in a narrow window the button shows its sign alone.
 
 **A genie shows the user something** by opening it on its desktop, fullscreen where it can, and
 running `lamp show "what it is"`. Its instructions say so. The lamp reports
