@@ -92,8 +92,9 @@ table lists every part that runs, what it is written in, where it runs and as wh
 | `socat` + `sshd -i` | third-party | container, agent user | The SSH listener; one `sshd` per connection. |
 | `dbus-daemon` | third-party | container, agent user | The session bus GUI applications expect. |
 | `/etc/profile.d/oillamp.sh` | bash | container, agent user | The environment of every shell: proxy, display, library paths, SDKMAN, prompt, banner. |
-| `lamp` (`rootfs/usr/local/bin/`) | bash | container, agent user | The desktop helper: screenshot, click, type, key, wait-stable. |
+| `lamp` (`rootfs/usr/local/bin/`) | bash | container, agent user | The desktop helper: screenshot, click, type, key, wait-stable, show, dock. |
 | `lamp-pointer` (`rootfs/usr/local/lib/oillamp/`) | Python 3, standard library | container, agent user | Sends mouse events through the VNC socket for `lamp click` and friends, and reads the desktop's size for `lamp info`. |
+| `lamp-dock` (`rootfs/usr/local/lib/oillamp/`) | Python 3, GTK 3, gtk-layer-shell | container, agent user | The dock at the bottom of the desktop: a terminal, Firefox where installed, and the agent's buttons from `~/.config/lamp/dock.json`. |
 | `keep-windows-on-screen` (`rootfs/usr/local/lib/oillamp/`) | Python 3, standard library | container, infra user | With floating windows, moves windows back onto the desktop when it gets smaller, and back where they were when it grows. |
 | `install-*.sh`, `write-opencode-config.mjs` (`build/`) | bash, Node.js | container, root, **while the image is built** | Install Node.js, SDKMAN, pi, opencode, and write opencode's config. |
 | pi, opencode, Firefox, the JDK, … | third-party | container, agent user | What the agent uses. oillamp never starts these itself. |
@@ -538,6 +539,7 @@ Everything that goes into the image is under `src/main/resources/image/`:
 | `build/write-opencode-config.mjs` | Node.js | Writes `/usr/local/share/oillamp/opencode/opencode.json`: Eden AI through its EU endpoint, with the models that endpoint lists. |
 | `rootfs/usr/local/lib/oillamp/entrypoint` | bash | The container's first process. |
 | `rootfs/usr/local/lib/oillamp/lamp-pointer` | Python | Mouse input through VNC, for `lamp`. |
+| `rootfs/usr/local/lib/oillamp/lamp-dock` | Python | The dock at the bottom of the desktop. |
 | `rootfs/usr/local/bin/lamp` | bash | The agent's desktop helper. |
 | `rootfs/etc/profile.d/oillamp.sh` | bash | The environment of every shell, including the harnesses' model address and placeholder key. |
 | `rootfs/etc/oillamp/sshd_config` | config | sshd: key login only, every kind of forwarding off. |
@@ -626,13 +628,16 @@ podman run --detach --name oillamp-<id>
    `/oillamp/recordings/<session>.mkv`.
 9. Starts the **network bridges** as the infra user: socat on `127.0.0.1:3128` to the proxy
    socket, on `127.0.0.1:3129` to the model relay's socket, and one per forward.
-10. Starts, as the agent user, a **D-Bus session bus** and the **SSH listener** (socat on
-    `/oillamp/sockets/agent/ssh.sock`, running `sshd -i` per connection).
+10. Starts, as the agent user, a **D-Bus session bus**, the **SSH listener** (socat on
+    `/oillamp/sockets/agent/ssh.sock`, running `sshd -i` per connection) and the **dock**. The
+    dock runs as the agent because its buttons run commands the agent wrote. A loop starts it
+    again 5 s after it stops, unless it exits with 78, which it does when its GTK packages or
+    sway's layer for panels are missing.
 11. Waits until the VNC and SSH sockets **accept a connection** (not just exist), then writes
     `ready.json` as the infra user:
     `{"renderer":"pixman","gpu_fallback":false,"width":1920,"height":1080,"session":"<id>"}`.
 12. Supervises. If sway, wayvnc, a bridge or the recorder exits, it stops everything and exits
-    with code 70. D-Bus and the SSH listener are not watched this way.
+    with code 70. D-Bus, the SSH listener and the dock are not watched this way.
 13. On SIGTERM or SIGINT (from `podman stop`), sends SIGINT to wf-recorder so the `.mkv` is
     finished, waits up to 10 s, stops the rest, and exits 0.
 
@@ -648,7 +653,7 @@ umask, and prefixes each output line with a tag such as `[sway]`. In GPU mode it
 | uid inside | 1000 | 1001 |
 | uid on the host | yours | a subordinate id, such as 166536 |
 | home | `/home/agent` (the agent directory) | `/var/lib/lamp` |
-| runs | sshd per connection, the shell, D-Bus, everything the agent starts | sway, Xwayland, swaybg, wayvnc, wf-recorder, socat bridges, keep-windows-on-screen |
+| runs | sshd per connection, the shell, D-Bus, the dock, everything the agent starts | sway, Xwayland, swaybg, wayvnc, wf-recorder, socat bridges, keep-windows-on-screen |
 | can reach | the Wayland and X11 display sockets, the VNC socket, its home, `/tmp`, the proxy port | its own sockets and files |
 
 The agent cannot signal the infra processes (different uid, no capabilities), cannot connect to
@@ -1158,8 +1163,28 @@ The agent's environment points at the display with `WAYLAND_DISPLAY=/run/lamp/wa
 | `lamp wait-stable [SECONDS]` | a screenshot every 0.5 s until two are identical (default limit 10 s) |
 | `lamp info` | the size now (and the desktop's own size, when it differs), renderer, output name and screenshot directory |
 | `lamp show "text"` | asks the user to look at the desktop, through the session (see Desktop, above) |
+| `lamp dock [list]`, `lamp dock add LABEL COMMAND [--icon ICON]`, `lamp dock remove LABEL` | reads and writes `~/.config/lamp/dock.json` (see The dock, below); says when the dock is not running |
 
 There is no window list: that would need sway's control socket, which the agent must not reach.
+
+### The dock
+
+`lamp-dock` is a bar centred at the bottom of the desktop, on sway's layer between the wallpaper
+and the windows (a gtk-layer-shell window). It keeps no room for itself: every window may cover
+it, and it never covers one. It never takes the keyboard.
+
+| | |
+|---|---|
+| its own buttons | Terminal (`foot`), and Firefox (`firefox`) when it is installed |
+| the agent's buttons | `~/.config/lamp/dock.json`, a list of `{"label", "command", "icon"}`; `icon` is optional: a name from the icon themes or an image file. The file is in the agent's home, so it outlives the session |
+| reading the file | checked every second; a change of time, size or inode reads it again. A broken file shows a warning on the dock, with the error on hover; an item without a label or a command is left out, and the warning says how many |
+| a click | `bash -lc COMMAND` in the agent's home, in its own session, so the command finds the same environment as the agent's terminal |
+| hovering | shows the command |
+| a command that exits with a status other than 0 | its button gets an orange border; hovering shows the exit status and the last line it printed, until the next click |
+| `/run/agent/lamp-dock.pid` | written once the dock is up; `lamp dock` checks it to tell the agent whether the user sees the buttons |
+
+`lamp dock` writes the file to a temporary file in the same directory and renames it, so the dock
+never reads half of it. It does not write over a file it cannot read.
 
 **Pointer input goes through VNC.** `lamp-pointer` connects to the desktop's VNC socket and sends
 absolute pointer positions and button presses, the same way your viewer does. It remembers the last
