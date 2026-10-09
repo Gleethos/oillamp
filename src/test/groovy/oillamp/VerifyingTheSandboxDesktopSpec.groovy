@@ -233,6 +233,44 @@ class VerifyingTheSandboxDesktopSpec extends Specification {
             inSandbox('echo "$LANG"').mentions('UTF-8')
     }
 
+    def 'The dock runs as the agent, shows a button the agent adds, and a click runs its command'() {
+        reportInfo """
+            The dock is the bar at the bottom of the desktop. The agent puts buttons on it for the
+            user to click. This needs the real entrypoint to start the dock as the agent, GTK to
+            draw on sway's layer for panels, and a click arriving the way the user's arrives,
+            through the VNC server.
+
+            The button's label is long on purpose: the bar is centred, so a wide button is sure
+            to lie under the point clicked, whatever the font. This image has no Firefox, so the
+            dock's only own button is Terminal.
+        """
+        when: 'the bottom of the desktop is captured, a button added, and captured again'
+            var result = inSandbox('''
+                ps -o user= -p "$(cat /run/agent/lamp-dock.pid)"
+                lamp screenshot --region 0,620,1280,100 --out /home/agent/screenshots/dock-before.png
+                lamp dock add "A button the spike added, wide enough to click" \\
+                    "touch /home/agent/clicked-from-the-dock"
+                sleep 3
+                lamp screenshot --region 0,620,1280,100 --out /home/agent/screenshots/dock-after.png
+                lamp click 760 680
+                sleep 3
+            '''.stripIndent())
+
+        then: 'the dock runs as the agent, not as the user that owns the recording'
+            result.ok
+            result.out.readLines()*.trim().first() == 'agent'
+
+        and: 'the dock was running, so lamp dock did not warn'
+            !result.mentions('not running')
+
+        and: 'the button appeared'
+            differingPixels(agentHome.resolve('screenshots/dock-before.png'),
+                            agentHome.resolve('screenshots/dock-after.png')) > 1_000
+
+        and: 'and clicking it ran its command, as the agent'
+            Files.exists(agentHome.resolve('clicked-from-the-dock'))
+    }
+
     def 'An X11 application started by the agent reaches the display'() {
         reportInfo """
             Java Swing, and every other X11 application, draws through Xwayland, the X11 server
