@@ -22,10 +22,8 @@ import swingtree.layout.Size;
 import swingtree.style.SvgIcon;
 
 import javax.swing.*;
-import javax.swing.plaf.FontUIResource;
 import java.awt.Color;
 import java.awt.Cursor;
-import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.Rectangle;
@@ -157,7 +155,7 @@ public final class GeniesView extends JPanel {
         return desktop.letGo();
     }
 
-    private static String troubleWords(int troubles) {
+    private static String troubleInfoMessage(int troubles) {
         return troubles == 1 ? "⚠  Something went wrong" : "⚠  " + troubles + " things went wrong";
     }
 
@@ -167,7 +165,7 @@ public final class GeniesView extends JPanel {
      *      beside the genie                    above it, in a narrow window
      *
      *      ┌──────────────────┐                ┌──────────────────────────────────────┐
-     *      │ ☰ (lamp) Genies  │                │ ☰ (lamp) Genies        [+ New]  [⚙]  │
+     *      │ ☰ (lamp) Genies  │               │ ☰ (lamp) Genies        [+ New]  [⚙]  │
      *      │ [+ New genie]    │                │ ┌──────────────────────────────────┐ │
      *      │ YOUR GENIES      │                │ │ the genies' cards, scrolling,    │ │
      *      │ ┌──────────────┐ │                │ │ as tall as the user dragged      │ │
@@ -254,13 +252,19 @@ public final class GeniesView extends JPanel {
             .add(
                 box("fill, wrap 1, ins 0, gap 6, hidemode 3")
                 .add("growx",
-                    button(state.viewAsString(it -> troubleWords(it.troubles().size()))).group(Skin.QUIET_BUTTON)
+                    button(state.viewAsString(it -> troubleInfoMessage(it.troubles().size()))).group(Skin.QUIET_BUTTON)
                     .withStyle(it -> it.backgroundColor(TROUBLE_WASH).border(1, TROUBLE).componentFont(f -> f.color(TROUBLE)))
                     .isVisibleIf(state.viewAs(Boolean.class, it -> !it.troubles().isEmpty()))
                     .withTooltip("Genies carried on. Click to see what happened")
                     .onClick(it -> showTroubles()))
-                .add("growx, wmin 0", ViewPartsUtil.wrapped(state.viewAsString(it -> it.settingsProblem().orElse("")), TROUBLE,
-                        state.viewAs(Boolean.class, it -> it.settingsProblem().isPresent()))));
+                .add("growx, wmin 0",
+                    ViewPartsUtil.wrapped(
+                        state.viewAsString(it -> it.settingsProblem().orElse("")),
+                        TROUBLE,
+                        state.viewAs(Boolean.class, it -> it.settingsProblem().isPresent())
+                    )
+                )
+            );
     }
 
     /// Built later than the constructor, so it enters the style sheet again.
@@ -277,7 +281,7 @@ public final class GeniesView extends JPanel {
         // Awake, the genie is out of its lamp, in the card's top right corner beside its name,
         // twice its twenty pixels. Asleep, waking or broken, it is in the lamp, so not shown, and
         // that corner has an arrow that folds the genie's conversations away, or shows them again.
-        Val<Boolean> out = shown.viewAs(Boolean.class, it -> it.phase().isAwake());
+        Val<Boolean> awakeAndOut = shown.viewAs(Boolean.class, it -> it.phase().isAwake());
         Var<Boolean> folded = shown.zoomTo(Genie::conversations, Genie::withConversations)
                                    .zoomTo(Conversations::folded, Conversations::withFolded);
         Var<Boolean> hovered = Var.of(false);
@@ -295,41 +299,92 @@ public final class GeniesView extends JPanel {
                 .borderAt(UI.Edge.LEFT, 3, on ? FLAME : TRANSPARENT)
                 .borderRadius(10)
                 // A thin gap between one card's border and the next.
-                .margin(2, 0, 2, 0))
+                .margin(2, 0, 2, 0)
+            )
             // Under the pointer, a card that is not selected yet lights halfway to selected.
-            .withTransitionalStyle(hovered, LifeTime.of(0.14, TimeUnit.SECONDS), (status, it) -> isSelected.get() ? it : it
-                .backgroundColor(ViewPartsUtil.withAlpha(RAISED, (int) Math.round(150 * status.progress())))
-                .border(1, ViewPartsUtil.withAlpha(BORDER, (int) Math.round(255 * status.progress()))))
-            .onMouseEnter(it -> hovered.set(true))
-            .onMouseExit(it -> hovered.set(false))
+            .withTransitionalStyle(hovered, LifeTime.of(0.14, TimeUnit.SECONDS), (status, it) ->
+                isSelected.get() ? it
+                    : it.backgroundColor(ViewPartsUtil.withAlpha(RAISED, (int) Math.round(150 * status.progress())))
+                        .border(1, ViewPartsUtil.withAlpha(BORDER, (int) Math.round(255 * status.progress())))
+            )
+            .onMouseEnter(_ -> hovered.set(true))
+            .onMouseExit(_ -> hovered.set(false))
             // Painted on the card rather than added to it, so it moves none of the card's parts.
             .withStyle(picture, (icon, it) -> it
-                .image(img -> img.image(icon).placement(UI.Placement.TOP_RIGHT).size(46, 46).padding(5, 6, 1, 0)))
+                .image(img -> img
+                    .image(icon)
+                    .placement(UI.Placement.TOP_RIGHT)
+                    .size(46, 46)
+                    .padding(5, 6, 1, 0)
+                )
+            )
             .withCursor(UI.Cursor.HAND)
-            .withTooltip(shown.viewAsString(it -> it.name() + " — " + it.status()
-                    + (it.showing().isEmpty() ? "" : ". Shows you: " + it.showing()) + ". Right-click for more."))
+            .withTooltip(
+                shown.viewAsString(it ->
+                    it.name() + " — " + it.status() +
+                    (
+                        it.showing().isEmpty()
+                            ? ""
+                            : ". Shows you: " + it.showing()
+                    ) +
+                    ". Right-click for more."
+                )
+            )
             .onMousePress(it -> {
                 state.update(From.VIEW, s -> s.select(id));
-                if (it.isRightMouseButton()) genieMenu(id).show(it.getComponent(), it.mouseX(), it.mouseY());
+                if ( it.isRightMouseButton() )
+                    genieMenu(id).show(it.getComponent(), it.mouseX(), it.mouseY());
             })
             .add("top", ViewPartsUtil.lamp(shown.viewAs(Genie.Phase.class, Genie::phase), 26))
             .add("growx, wmin 0",
                 box("fill, wrap 1, ins 0, gap 0, hidemode 3")
                 // Room for the genie, while it is out, so a long name ends before it.
-                .withStyle(out, (room, it) -> it.padding(0, room ? 42 : 0, 0, 0))
-                .add("growx, wmin 0", label(shown.viewAsString(Genie::name)).withStyle(it -> it
-                    .componentFont(f -> f.family(FONT).size(13).weight(2f).color(TEXT))))
-                .add("growx, wmin 0", waving(label(shown.viewAsString(Genie::status)).group(Skin.META), shown))
-                .add("growx, wmin 0", label(shown.viewAsString(it -> "▣  shows you: " + it.showing()))
+                .withStyle(awakeAndOut, (room, it) -> it
+                    .padding(0, room ? 42 : 0, 0, 0)
+                )
+                .add("growx, wmin 0",
+                    label(shown.viewAsString(Genie::name))
+                    .withStyle(it -> it
+                        .componentFont(f -> f
+                            .family(FONT)
+                            .size(13)
+                            .weight(2f)
+                            .color(TEXT)
+                        )
+                    )
+                )
+                .add("growx, wmin 0",
+                    waving(
+                        label(shown.viewAsString(Genie::status)).group(Skin.META),
+                        shown
+                    )
+                )
+                .add("growx, wmin 0",
+                     label(shown.viewAsString(it -> "▣  shows you: " + it.showing()))
                      .isVisibleIf(showsElsewhere)
-                     .withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(FLAME)))))
-            .add("top", button("").group(Skin.ICON_BUTTON)
-                 .isVisibleIf(out.viewAs(Boolean.class, it -> !it))
-                 .withStyle(folded, (on, it) -> it.icon(SignSvgUtil.sign(on ? SignSvgUtil.UNFOLD : SignSvgUtil.FOLD, SUBTEXT)).padding(3, 5, 3, 5))
-                 .withTooltip(folded.viewAsString(on -> on ? "Show this genie's conversations" : "Fold this genie's conversations away"))
-                 .onClick(it -> folded.update(From.VIEW, on -> !on)))
+                     .withStyle(it -> it
+                         .componentFont(f -> f
+                             .family(FONT)
+                             .size(11)
+                             .color(FLAME)
+                         )
+                     )
+                )
+            )
+            .add("top",
+                button("").group(Skin.ICON_BUTTON)
+                .isVisibleIf(awakeAndOut.viewAs(Boolean.class, it -> !it))
+                .withStyle(folded, (on, it) -> it
+                    .icon(SignSvgUtil.sign(on ? SignSvgUtil.UNFOLD : SignSvgUtil.FOLD, SUBTEXT))
+                    .padding(3, 5, 3, 5)
+                )
+                .withTooltip(folded.viewAsString(on -> on ? "Show this genie's conversations" : "Fold this genie's conversations away"))
+                .onClick(_ -> folded.update(From.VIEW, on -> !on))
+            )
             // On a line of its own, whether the arrow is there or not.
-            .add("newline, span 3, growx, wmin 0", conversationsOf(shown));
+            .add("newline, span 3, growx, wmin 0",
+                conversationsOf(shown)
+            );
     }
 
     // ─── a genie's conversations ───────────────────────────────────────────────────────────
@@ -350,30 +405,57 @@ public final class GeniesView extends JPanel {
         // A new conversation needs the genie awake; while it answers, the new one waits.
         Val<Boolean> awake = shown.viewAs(Boolean.class, it -> it.phase().isAwake());
         Val<Boolean> idle = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING);
-        Val<Boolean> canForget = shown.viewAs(Boolean.class, it -> it.phase() != Genie.Phase.WORKING
-                && it.phase() != Genie.Phase.WAKING && it.conversations().current().isPresent());
+        Val<Boolean> canForget = shown.viewAs(Boolean.class, it ->
+                            it.phase() != Genie.Phase.WORKING &&
+                            it.phase() != Genie.Phase.WAKING &&
+                            it.conversations().current().isPresent()
+                    );
         Val<Boolean> eitherOpen = Viewable.of(Boolean.class, chats, jobs, (c, j) -> c.shown() || j.shown());
         return
             box("fill, wrap 1, ins 0, gap 2, hidemode 3", "[grow]")
             .isVisibleIf(shown.viewAs(Boolean.class, Genie::showsConversations))
             .add("growx, wmin 0",
-                tree(id, jobs, conversations.viewAsString(it -> howMany(it.jobCount(), "scheduled run", "")),
+                tree(
+                    id,
+                    jobs,
+                    conversations.viewAsString(it ->
+                        howMany(it.jobCount(), "scheduled run", "")
+                    ),
                      "Show or hide the conversations the runs of this genie's scheduled jobs had",
                      conversations.viewAs(Boolean.class, it -> it.jobCount() > 0),
-                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::jobRuns), browsable, Optional.empty()))
+                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::jobRuns),
+                     browsable,
+                     Optional.empty()
+                )
+            )
             .add("growx, wmin 0, gaptop 4",
-                tree(id, chats, conversations.viewAsString(it -> howMany(it.chatCount(), "conversation", "no conversations yet")),
-                     "Show or hide your conversations with this genie", Val.of(true),
-                     conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::chats), browsable,
-                     Optional.of(button("").group(Skin.ICON_BUTTON).isVisibleIf(awake).isEnabledIf(idle)
-                         .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.NEW, SUBTEXT)).padding(1, 6, 1, 6))
-                         .withTooltip("Start a new conversation with this genie; the others are kept")
-                         .onClick(it -> actions.startAfresh(id)))))
-            .add("left, gaptop 2", button("Delete…").group(Skin.QUIET_BUTTON).isEnabledIf(canForget)
+                tree(
+                    id,
+                    chats,
+                    conversations.viewAsString(it ->
+                        howMany(it.chatCount(), "conversation", "no conversations yet")
+                    ),
+                    "Show or hide your conversations with this genie",
+                    Val.of(true),
+                    conversations.viewAs(Tuple.classTyped(Talk.class), Conversations::chats), browsable,
+                    Optional.of(
+                        button("").group(Skin.ICON_BUTTON).isVisibleIf(awake).isEnabledIf(idle)
+                        .withStyle(it -> it
+                            .icon(SignSvgUtil.sign(SignSvgUtil.NEW, SUBTEXT))
+                            .padding(1, 6, 1, 6)
+                        )
+                        .withTooltip("Start a new conversation with this genie; the others are kept")
+                        .onClick(_ -> actions.startAfresh(id))
+                    )
+                )
+            )
+            .add("left, gaptop 2",
+                 button("Delete…").group(Skin.QUIET_BUTTON).isEnabledIf(canForget)
                  .isVisibleIf(eitherOpen)
                  .withStyle(it -> it.icon(SignSvgUtil.sign(SignSvgUtil.DELETE, SUBTEXT)))
                  .withTooltip("Delete the conversation this genie is in, with all its branches")
-                 .onClick(it -> confirmForget(id)));
+                 .onClick(_ -> confirmForget(id))
+            );
     }
 
     /// One tree of conversations: the line that opens it, then the tree in an area of the fold's
@@ -381,9 +463,16 @@ public final class GeniesView extends JPanel {
     /// make the area taller or shorter.
     ///
     /// @param beside at the end of the line that opens it, such as a button that adds a row
-    private UIForAnySwing<?, ?> tree(UUID id, Var<Fold> fold, Val<String> count, String tip,
-                                     Val<Boolean> present, Val<Tuple<Talk>> rows, Val<Boolean> browsable,
-                                     Optional<UIForAnySwing<?, ?>> beside) {
+    private UIForAnySwing<?, ?> tree(
+        final UUID id,
+        final Var<Fold> fold,
+        final Val<String> count,
+        final String tip,
+        final Val<Boolean> present,
+        final Val<Tuple<Talk>> rows,
+        final Val<Boolean> browsable,
+        final Optional<UIForAnySwing<?, ?>> beside
+    ) {
         Val<Boolean> open = fold.viewAs(Boolean.class, Fold::shown);
         Val<Tuple<String>> here = rows.viewAs(Tuple.classTyped(String.class), Conversations::pathToHere);
         // The line that opens the tree brightens under the pointer, and so does the tree's row
@@ -409,9 +498,10 @@ public final class GeniesView extends JPanel {
                     .group(Skin.META).withCursor(UI.Cursor.HAND)
                     .withStyle(lineHovered, (on, it) -> on ? it.componentFont(f -> f.color(TEXT)) : it)
                     .withTooltip(tip)
-                    .onMouseEnter(it -> lineHovered.set(true))
-                    .onMouseExit(it -> lineHovered.set(false))
-                    .onMouseClick(it -> fold.update(From.VIEW, Fold::toggled)))
+                    .onMouseEnter(_ -> lineHovered.set(true))
+                    .onMouseExit(_ -> lineHovered.set(false))
+                    .onMouseClick(_ -> fold.update(From.VIEW, Fold::toggled))
+                )
                 .applyIfPresent(beside.map(it -> line -> line.add(it))))
             .add("growx, wmin 0, hmin 0",
                 scrollPane(conf -> conf.fitWidth(true)).withEmptyBorder(0).withMinSize(0, 0)
@@ -433,13 +523,23 @@ public final class GeniesView extends JPanel {
                             .nodesOf(Talk.Chat.class, it -> it
                                 .children(Talk.Chat::branches)
                                 .text(Talk.Chat::title)
-                                .toolTip(chat -> chat.title() + " — " + (chat.turns() == 0 ? "its first question was asked differently"
-                                                                                          : questions(chat.turns(), chat.branches()))))
+                                .toolTip(chat ->
+                                        chat.title() + " — " + (
+                                                chat.turns() == 0
+                                                        ? "its first question was asked differently"
+                                                        : questions(chat.turns(), chat.branches())
+                                        )
+                                )
+                            )
                             .nodesOf(Talk.Branch.class, it -> it
                                 .children(Talk.Branch::forks)
                                 .text(Talk.Branch::title)
-                                .toolTip(branch -> branch.title() + " — " + questions(branch.turns(), branch.forks())))
-                            .leafWhenEmpty(true))
+                                .toolTip(branch ->
+                                        branch.title() + " — " + questions(branch.turns(), branch.forks())
+                                )
+                            )
+                            .leafWhenEmpty(true)
+                        )
                         .isEnabledIf(browsable)
                         .withSelection(here)
                         .onSelection(it -> goTo(id, it.leadPath(), it.lead()))
@@ -451,7 +551,7 @@ public final class GeniesView extends JPanel {
                             pointed.set(onRow ? row : -1);
                             tree.setCursor(Cursor.getPredefinedCursor(onRow && tree.isEnabled() ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
                         })
-                        .onMouseExit(it -> pointed.set(-1))
+                        .onMouseExit(_ -> pointed.set(-1))
                         .withStyle(pointed, (row, it) -> {
                             JTree tree = it.component();
                             return it.backgroundColor(TRANSPARENT).componentFont(f -> f.family(FONT).size(12).color(TEXT))
@@ -464,7 +564,10 @@ public final class GeniesView extends JPanel {
                                     g.setColor(ViewPartsUtil.withAlpha(BORDER, 170));
                                     g.fillRoundRect(0, bounds.y, tree.getWidth(), bounds.height, UI.scale(8), UI.scale(8));
                                 });
-                        }))))
+                        })
+                    )
+                )
+            )
             .add("growx, wmin 0, h 9!",
                 grip(fold, () -> UI.unscale(area[0].getHeight()), open, "Drag to make this list taller or shorter")
             );
@@ -475,7 +578,12 @@ public final class GeniesView extends JPanel {
     ///
     /// @param areaHeight how tall the list's area is now, which for a short list is less than
     ///                   the fold's height
-    private static UIForAnySwing<?, ?> grip(Var<Fold> fold, IntSupplier areaHeight, Val<Boolean> shown, String tip) {
+    private static UIForAnySwing<?, ?> grip(
+        final Var<Fold> fold,
+        final IntSupplier areaHeight,
+        final Val<Boolean> shown,
+        final String tip
+    ) {
         // Where a drag began: the pointer's height on the screen, the area's, and the fold's.
         int[] dragFrom = new int[3];
         return
@@ -484,7 +592,8 @@ public final class GeniesView extends JPanel {
             .withTooltip(tip)
             .withStyle(it -> {
                 int width = it.componentWidth(), height = it.componentHeight();
-                return it.backgroundColor(TRANSPARENT).painter(UI.Layer.CONTENT, g -> grip(g, width, height));
+                return it.backgroundColor(TRANSPARENT)
+                        .painter(UI.Layer.CONTENT, g -> grip(g, width, height));
             })
             .onMousePress(it -> {
                 dragFrom[0] = UI.unscale(it.mouseYOnScreen());
@@ -492,17 +601,19 @@ public final class GeniesView extends JPanel {
                 dragFrom[2] = fold.get().height();
             })
             .onMouseDrag(it ->
-                    fold.update(From.VIEW, f -> f.withHeight(dragFrom[1] + UI.unscale(it.mouseYOnScreen()) - dragFrom[0]))
+                fold.update(From.VIEW, f -> f
+                    .withHeight(dragFrom[1] + UI.unscale(it.mouseYOnScreen()) - dragFrom[0])
+                )
             )
             .onMouseRelease(_ ->
-                    fold.update(From.VIEW, f -> f.released(dragFrom[2]))
+                fold.update(From.VIEW, f -> f.released(dragFrom[2]))
             );
     }
 
     /// A grip: a thin line along its length, like a split pane's divider, with a short raised
     /// handle in its middle. Across a wide grip, such as one under a tree; down a tall one, such
     /// as the one between the chat and the desktop.
-    private static void grip(Graphics2D g, int width, int height) {
+    private static void grip(final Graphics2D g, final int width, final int height) {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         if (width < height) g.rotate(Math.PI / 2, width / 2.0, width / 2.0);
         int length = Math.max(width, height), middle = Math.min(width, height) / 2;
@@ -513,8 +624,11 @@ public final class GeniesView extends JPanel {
     }
 
     private static String questions(int turns, Tuple<Talk.Branch> forks) {
-        return (turns == 1 ? "one question" : turns + " questions")
-             + (forks.isEmpty() ? "" : ", then asked differently " + (forks.size() == 2 ? "once" : forks.size() - 1 + " times"));
+        return (turns == 1 ? "one question" : turns + " questions") + (
+                     forks.isEmpty()
+                             ? ""
+                             : ", then asked differently " + (forks.size() == 2 ? "once" : forks.size() - 1 + " times")
+                );
     }
 
     /// "no conversations yet", "1 conversation", "3 conversations", and so on.
