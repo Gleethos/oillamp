@@ -120,6 +120,38 @@ class BranchingAConversationSpec extends Specification {
             conversations.herePath().toList() == ['s1']
     }
 
+    def 'An edited message has one conversation version per edit'() {
+        reportInfo """
+            The user's second message, "By train", was edited twice, to "By bike" and "By car",
+            so there are three conversation versions at it, and the chat shows "‹ 2 / 3 ›" under
+            "By bike". The arrows open a version up to its most recently written entry. In the
+            "By train" version the user later edited its follow-up message too, so that version
+            opens at the reply written last, a3b. A message never edited has one version and no
+            arrows; an id that is not a user message has none.
+        """
+        given:
+            var conversation = conversation(
+                    question('q1', '', 'Plan a trip'), answer('a1', 'q1'),
+                    question('q2', 'a1', 'By train'), answer('a2', 'q2'),
+                    question('q3', 'a2', 'Overnight?'), answer('a3', 'q3'),
+                    question('q2b', 'a1', 'By bike'), answer('a2b', 'q2b'),
+                    question('q3b', 'a2', 'In the day?'), answer('a3b', 'q3b'),
+                    question('q2c', 'a1', 'By car'))
+
+        when:
+            var versions = conversation.versionsOf('q2b')
+
+        then:
+            versions.at() == 1
+            versions.leaves().toList() == ['a3b', 'a2b', 'q2c']
+
+        and:
+            conversation.versionsOf('q2').at() == 0
+            conversation.versionsOf('q1').leaves().toList() == ['q2c']
+            conversation.versionsOf('a1') == Conversation.Versions.NONE
+            conversation.versionsOf('gone') == Conversation.Versions.NONE
+    }
+
     def 'A new conversation shows at the top until pi writes it'() {
         reportInfo """
             pi writes a conversation to disk only once something is said in it. Right after the

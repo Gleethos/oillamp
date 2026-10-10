@@ -43,6 +43,17 @@ public record Conversation(String id, String file, String name, String modified,
     /// @param text   the question, or nothing
     public record Step(String id, String parent, boolean asked, String text) {}
 
+    /// The conversation versions at one user message. Editing a user message does not change it:
+    /// pi adds the edited text as a new user message after the same parent entry, so the
+    /// conversation forks there. Each fork is one conversation version.
+    ///
+    /// @param at     the index of the version that holds the message, from 0
+    /// @param leaves per version, oldest first, the id of its most recently written entry; the
+    ///               arrows under the message show the conversation up to that entry
+    public record Versions(int at, Tuple<String> leaves) {
+        public static final Versions NONE = new Versions(0, Tuple.of(String.class));
+    }
+
     /// What a row of a conversation shows at most, in characters.
     static final int TITLE_LENGTH = 60;
 
@@ -61,6 +72,26 @@ public record Conversation(String id, String file, String name, String modified,
         if (starts.size() != 1) return new Talk.Chat(id, title(), 0, "", inHere, starts);
         Talk.Branch start = starts.first();
         return new Talk.Chat(id, title(), start.turns(), start.leaf(), inHere, start.forks());
+    }
+
+    /// The conversation versions at the user message `question`: one per user message with the
+    /// same parent entry, `question` included, in the order pi wrote them. A message that was
+    /// never edited has one version. An id this conversation does not have gives [Versions#NONE].
+    ///
+    /// @param question pi's id for the user message
+    public Versions versionsOf(String question) {
+        Step asked = null;
+        for (Step step : steps) if (step.asked() && step.id().equals(question)) asked = step;
+        if (asked == null) return Versions.NONE;
+        Shape shape = new Shape(steps);
+        Tuple<String> leaves = Tuple.of(String.class);
+        int at = 0;
+        for (Step step : steps) {
+            if (!step.asked() || !step.parent().equals(asked.parent())) continue;
+            if (step.id().equals(question)) at = leaves.size();
+            leaves = leaves.add(shape.latestBelow(step).id());
+        }
+        return new Versions(at, leaves);
     }
 
     static String oneLine(String text) {
@@ -148,6 +179,18 @@ public record Conversation(String id, String file, String name, String modified,
             for (Step step : own) if (orderOf(step) > orderOf(last)) last = step;
             boolean here = own.stream().anyMatch(step -> step.id().equals(leaf));
             return new Talk.Branch(first.id(), oneLine(first.text()), turns, last.id(), here, branches(next, leaf));
+        }
+
+        /// The most recently written entry among `step` and all entries below it.
+        Step latestBelow(Step step) {
+            Step latest = step;
+            Deque<Step> open = new ArrayDeque<>(List.of(step));
+            while (!open.isEmpty()) {
+                Step next = open.pop();
+                if (orderOf(next) > orderOf(latest)) latest = next;
+                below(next).forEach(open::push);
+            }
+            return latest;
         }
 
         /// Where the entry is in the file: later entries were written later.

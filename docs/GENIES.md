@@ -216,6 +216,7 @@ and goes, so no button needs a listener of its own.
 | clicks a row | the chat shows the way to that row's last entry, and the next message goes after it. A sleeping genie stays asleep |
 | clicks a row while the genie answers | the chat shows that row; nothing can be sent from there until the answer is done. The conversation being answered keeps growing out of sight, and going back to it shows the answer so far. An answer that ends meanwhile leaves the chat where the user is |
 | presses Edit under a question of theirs | a dialog holds the question; the changed one is asked instead, and what followed the old one stays as a branch |
+| presses ‹ or › beside "2 / 3" under an edited message | the chat shows the previous or next conversation version, up to its most recently written entry, the same as clicking that branch in the tree. Disabled while the genie wakes, and while it answers in that conversation |
 | presses Shift and Return while writing | a new line in the message; Return alone sends it |
 | presses ＋ | the chat empties, and the next message starts a new conversation; the others stay |
 | presses Delete… | after asking, the conversation the genie is in is deleted for good, with all its branches, and the genie starts a new one |
@@ -263,8 +264,24 @@ schedule runs, that it does that job first, with the job's title and how long it
 sent meanwhile waits for the job, since the lamp runs one thing at a time; a job the genie missed
 while asleep runs as soon as it wakes. The line under the genie's name then says "doing a scheduled
 job". Both come from `Genie.waitingOn` and `Genie.status`, which read `Schedule.running`. A model that shares its thoughts gets a row of its own, which opens to watch them, as
-a tool's row opens to show what the tool printed. The conversation follows its end while the user
-is there, and leaves them be when they scroll up to read.
+a tool's row opens to show what the tool printed. The chat's scroll position is set by `FollowTheEnd`.
+Only the user's input changes it: the mouse wheel or touchpad over the chat, and the scroll bar.
+Scrolling up by any amount stops following the bottom; scrolling down to within 48 units of the
+bottom follows it again. After any other change to the chat's content or visible height, such as
+a row added or growing, the thinking bar appearing under the chat, or the composer growing,
+`FollowTheEnd` sets the scroll position back: to the bottom while following it, otherwise to where
+the user last scrolled to. Sending a message, editing one and clicking a row of the tree scroll to
+the bottom. Switching conversation versions rebuilds only the rows from the edited message down:
+the rows above it are the same components, so they do not move on screen.
+
+SwingTree measures a row's text height (`autoPreferredHeight`) only when it computes the row's
+style, which it does when the row is painted, and Swing paints only rows in the visible part of the
+chat. So `ChatRows` recomputes the style of each row whenever the row gets a new width. Without
+that, a new row outside the visible part has the height of an empty row until the user scrolls to
+it: the scroll bar's length is wrong, and the row grows under the user. A new row is still painted
+once at that height before it is measured, because Swing reports its new width as a queued event
+that runs after the paint. For that frame, the chat is shorter than it will be, and the scroll
+position can show a jump.
 
 When the model cannot answer, the chat says why as a problem in red, in plain words, from the
 error pi got (`Transcript.explained`): oillamp could not reach the model service, the connection
@@ -572,8 +589,9 @@ it, so `apt` installs it along.
 
 | Spec | What it pins |
 |---|---|
-| `FollowingAConversationSpec` | how events become the chat, and asking a question differently |
-| `BranchingAConversationSpec` | how pi's entries become the tree of conversations and branches |
+| `FollowingAConversationSpec` | how events become the chat, editing a message, and switching conversation versions reusing the entries above the edited message |
+| `BranchingAConversationSpec` | how pi's entries become the tree of conversations and branches, and the conversation versions at an edited message |
+| `FollowingTheEndOfAChatSpec` | the chat scrolling to the bottom as it changes while the user is there, and never moving after the user scrolled up |
 | `ReadingAGeniesMarkdownSpec` | Markdown as models write it, and the fade of a streaming answer |
 | `DrawingAGenieSpec` | a genie's appearance from its id, its pose from its phase, that every appearance, pose and frame can be drawn, and the welcome's picture at moments of its play |
 | `ZoomingIntoAGeniesDesktopSpec` | the panel's size as the default, and the zoom steps |

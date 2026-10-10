@@ -1,5 +1,6 @@
 package dev.gui.model;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
@@ -80,7 +81,7 @@ public record Transcript(Tuple<Entry> entries) {
             }
             case PiEvent.Settled ignored -> settled();
             case PiEvent.Refused refused -> problem("The genie could not take that: " + refused.reason());
-            case PiEvent.History history -> asksTheSame(history) ? learnIds(history) : from(history);
+            case PiEvent.History history -> asksTheSame(history) ? learnIds(history) : replacedBy(history);
             case PiEvent.Opened ignored -> this;
         };
     }
@@ -103,14 +104,33 @@ public record Transcript(Tuple<Entry> entries) {
         return this;
     }
 
-    /// The conversation as pi has it, with nothing but what was said: the chat shows it when
-    /// the genie wakes, or moves to another conversation or branch.
-    private static Transcript from(PiEvent.History history) {
-        Transcript said = empty();
-        for (PiEvent.History.Line line : history.lines())
+    /// Replaces the chat with the conversation as pi has it: when the genie wakes, or the user
+    /// opens another conversation, branch or conversation version.
+    ///
+    /// The chat matches its rows to entries by id. So that the rows above the first difference
+    /// stay unchanged on screen, the entries before the first user message whose pi id or text
+    /// differs are reused with their ids, tool and file rows included. That user message and
+    /// everything after it are built from `history`. The last user message on either side is
+    /// always rebuilt, because its reply may end at a different entry.
+    private Transcript replacedBy(PiEvent.History history) {
+        List<Integer> mine = new ArrayList<>();
+        for (int i = 0; i < entries.size(); i++) if (entries.get(i).kind() == Entry.Kind.YOU) mine.add(i);
+        List<Integer> theirs = new ArrayList<>();
+        for (int i = 0; i < history.lines().size(); i++) if (history.lines().get(i).fromUser()) theirs.add(i);
+        int shared = 0;
+        while (shared < Math.min(mine.size(), theirs.size()) - 1) {
+            Entry asked = entries.get(mine.get(shared));
+            PiEvent.History.Line line = history.lines().get(theirs.get(shared));
+            if (!asked.ref().equals(line.id()) || !asked.text().strip().equals(line.text().strip())) break;
+            shared++;
+        }
+        Transcript said = shared == 0 ? empty() : new Transcript(entries.slice(0, mine.get(shared)));
+        for (int i = shared == 0 ? 0 : theirs.get(shared); i < history.lines().size(); i++) {
+            PiEvent.History.Line line = history.lines().get(i);
             said = line.failed() ? said.failed(line.text())
                  : said.add(Entry.of(line.fromUser() ? Entry.Kind.YOU : Entry.Kind.GENIE, line.text())
                                  .withRef(line.id()).withBeforeTools(line.usedTools()));
+        }
         return said;
     }
 

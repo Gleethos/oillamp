@@ -392,6 +392,46 @@ class FollowingAConversationSpec extends Specification {
             !talked.canAskInstead(talked.transcript().entries()[1])
     }
 
+    def 'Switching conversation versions reuses the entries above the edited message'() {
+        reportInfo """
+            The user edited their second message and switches from the "By train" version to
+            the "By bike" version. The three entries above it, including the tool row, are the
+            same entries with the same ids, so SwingTree does not rebuild their rows and they
+            do not move on screen. "By bike" and its reply are new entries. A conversation that
+            shares no user message with the chat is built anew from the first entry.
+        """
+        given:
+            var line = { boolean fromUser, String text, String id -> new PiEvent.History.Line(fromUser, text, id, false, false) }
+            var talked = genie.withDraft('Plan a trip').send()
+                    .hear(new PiEvent.ToolStarted('c1', 'bash', 'look up trains'))
+                    .hear(new PiEvent.Answered('Where to?', '', 10))
+                    .hear(new PiEvent.Settled())
+                    .learn(new PiEvent.History(Tuple.of(PiEvent.History.Line,
+                            line(true, 'Plan a trip', 'q1'), line(false, 'Where to?', 'a1')), 'a1'))
+                    .withDraft('By train').send()
+                    .hear(new PiEvent.Answered('Nice.', '', 10))
+                    .hear(new PiEvent.Settled())
+                    .learn(new PiEvent.History(Tuple.of(PiEvent.History.Line,
+                            line(true, 'Plan a trip', 'q1'), line(false, 'Where to?', 'a1'),
+                            line(true, 'By train', 'q2'), line(false, 'Nice.', 'a2')), 'a2'))
+            var before = talked.transcript().entries()
+
+        when:
+            var switched = talked.hear(new PiEvent.History(Tuple.of(PiEvent.History.Line,
+                    line(true, 'Plan a trip', 'q1'), line(false, 'Where to?', 'a1'),
+                    line(true, 'By bike', 'q2b'), line(false, 'Hilly.', 'a2b')), 'a2b'))
+
+        then:
+            var after = switched.transcript().entries()
+            after*.text() == ['Plan a trip', 'look up trains', 'Where to?', 'By bike', 'Hilly.']
+            after.toList().subList(0, 3)*.id() == before.toList().subList(0, 3)*.id()
+            after[3].ref() == 'q2b'
+
+        and: 'a conversation that shares nothing is shown anew'
+            switched.hear(new PiEvent.History(Tuple.of(PiEvent.History.Line,
+                    line(true, 'Hello', 'x1')), 'x1')).transcript().entries()*.text() == ['Hello']
+    }
+
     def 'A question pi could not take leaves the genie waiting, and says why'() {
         reportInfo """
             pi may refuse a question: a plain one it cannot accept, or one asked differently

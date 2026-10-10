@@ -1,19 +1,28 @@
 package dev.gui.view;
 
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Font;
 import java.awt.GradientPaint;
 import java.awt.Toolkit;
 import java.awt.datatransfer.StringSelection;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.font.FontRenderContext;
 import java.awt.geom.RoundRectangle2D;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+import javax.swing.JComponent;
 import javax.swing.JPanel;
 
+import dev.gui.model.Conversation;
 import dev.gui.model.Entry;
 import dev.gui.model.Genie;
 
@@ -27,6 +36,7 @@ import swingtree.UIForAnySwing;
 import swingtree.UIForPanel;
 import swingtree.animation.LifeTime;
 import swingtree.api.IconDeclaration;
+import swingtree.style.ComponentBackend;
 import swingtree.style.StyledString;
 
 import static dev.gui.view.Palette.*;
@@ -60,6 +70,7 @@ final class ChatRows {
     private final Val<Double> pulse;
     private final Consumer<Entry> askInstead;
     private final Val<Boolean> waits;
+    private final Consumer<String> showLeaf;
 
     /// @param genie       the genie whose conversation this is
     /// @param saveHandout asks the user where to save the outbox file of that name
@@ -67,13 +78,23 @@ final class ChatRows {
     /// @param askInstead  lets the user ask one of their questions differently
     /// @param waits       whether the genie waits for the user, the only time a question can be
     ///                    asked differently
-    ChatRows(Look look, Val<Genie> genie, Consumer<String> saveHandout, Val<Double> pulse, Consumer<Entry> askInstead, Val<Boolean> waits) {
+    /// @param showLeaf    shows the conversation in the chat up to the entry of that id
+    ChatRows(
+        Look look,
+        Val<Genie> genie,
+        Consumer<String> saveHandout,
+        Val<Double> pulse,
+        Consumer<Entry> askInstead,
+        Val<Boolean> waits,
+        Consumer<String> showLeaf
+    ) {
         this.look = look;
         this.genie = genie;
         this.saveHandout = saveHandout;
         this.pulse = pulse;
         this.askInstead = askInstead;
         this.waits = waits;
+        this.showLeaf = showLeaf;
     }
 
     /// Built later than the window, whenever the conversation changes, so it enters the style
@@ -83,7 +104,33 @@ final class ChatRows {
             panel("fill, ins 0", "[grow, center]")
             .withStyle(it -> it.backgroundColor(TRANSPARENT))
             .add("growx, wmin 0, wmax " + COLUMN, body(entry))
+            .peek(ChatRows::measureTextOnEveryNewWidth)
             .get(JPanel.class)));
+    }
+
+    /// Workaround for a SwingTree issue: SwingTree measures the height of a component's text
+    /// (`autoPreferredHeight`) only when it computes the component's style, and it computes the
+    /// style when the component is painted. Swing paints only the rows in the visible part of
+    /// the chat. Without this, a new row outside it keeps the height of an empty row until the
+    /// user scrolls to it: the scroll bar's length is wrong, and the row grows under the user.
+    ///
+    /// So each time Swing's layout gives `row` a new width, the style of every component in it
+    /// is computed again, which measures its text at that width.
+    private static void measureTextOnEveryNewWidth(JPanel row) {
+        row.addComponentListener(new ComponentAdapter() {
+            private int measuredAt = -1;
+
+            @Override public void componentResized(ComponentEvent event) {
+                if (row.getWidth() == measuredAt) return;
+                measuredAt = row.getWidth();
+                Deque<Component> open = new ArrayDeque<>(List.of(row));
+                while (!open.isEmpty()) {
+                    Component next = open.pop();
+                    if (next instanceof JComponent styled) ComponentBackend.powering(styled).gatherApplyAndInstallStyle(false);
+                    if (next instanceof Container inside) open.addAll(List.of(inside.getComponents()));
+                }
+            }
+        });
     }
 
     private UIForAnySwing<?, ?> body(Var<Entry> entry) {
@@ -101,7 +148,8 @@ final class ChatRows {
 
     /// A bubble on the right, as wide as its longest line, up to a limit, then wrapped. Below it,
     /// while the genie waits, a button to ask it differently; the old question stays in the
-    /// conversation as a branch of its own.
+    /// conversation as a branch of its own. Once the message was edited, arrows beside that
+    /// button switch between its conversation versions.
     private UIForAnySwing<?, ?> yours(Var<Entry> entry) {
         String text = entry.get().text();
         Val<Boolean> editable = Viewable.of(Boolean.class, waits, entry, (waiting, it) -> waiting && !it.ref().isEmpty());
@@ -118,10 +166,44 @@ final class ChatRows {
                     .text(t -> t.content(MarkdownStylingUtil.of(MarkdownParsingUtil.parse(text), 1))
                                 .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true))))
             .add("align right",
-                button("✎  Edit").group(Skin.ICON_BUTTON).isVisibleIf(editable)
-                .withTooltip("Ask this differently. What followed is kept, as a branch in the genie's conversations.")
-                .withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(SUBTEXT)))
-                .onClick(it -> askInstead.accept(entry.get())));
+                box("ins 0, gap 0, hidemode 3")
+                .add(versions(entry))
+                .add(
+                    button("✎  Edit").group(Skin.ICON_BUTTON).isVisibleIf(editable)
+                    .withTooltip("Ask this differently. What followed is kept, as a branch in the genie's conversations.")
+                    .withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(SUBTEXT)))
+                    .onClick(it -> askInstead.accept(entry.get()))));
+    }
+
+    /// "‹ 2 / 3 ›" under an edited user message: the chat shows conversation version 2 of 3.
+    /// ‹ and › show the previous or next version up to its most recently written entry, the same
+    /// as clicking that branch in the tree. Hidden for a message that was never edited. Disabled
+    /// while the genie wakes, and while it answers in this conversation, because the chat does
+    /// not switch then.
+    private UIForAnySwing<?, ?> versions(Var<Entry> entry) {
+        Val<Conversation.Versions> versions = Viewable.of(Conversation.Versions.class, genie, entry, (it, question) ->
+                it.conversations().current()
+                  .map(conversation -> conversation.versionsOf(question.ref()))
+                  .orElse(Conversation.Versions.NONE));
+        Val<Boolean> movable = genie.viewAs(Boolean.class, it ->
+                it.phase() != Genie.Phase.WAKING
+                && (it.phase() != Genie.Phase.WORKING || it.conversations().aside().isPresent()));
+        Val<Boolean> hasEarlier = Viewable.of(Boolean.class, movable, versions, (on, it) -> on && it.at() > 0);
+        Val<Boolean> hasLater = Viewable.of(Boolean.class, movable, versions, (on, it) -> on && it.at() < it.leaves().size() - 1);
+        return
+            box("ins 0, gap 0")
+            .isVisibleIf(versions.viewAs(Boolean.class, it -> it.leaves().size() > 1))
+            .add(
+                button("‹").group(Skin.ICON_BUTTON).isEnabledIf(hasEarlier)
+                .withTooltip("Previous conversation version")
+                .onClick(it -> showLeaf.accept(versions.get().leaves().get(versions.get().at() - 1))))
+            .add(
+                label(versions.viewAsString(it -> (it.at() + 1) + " / " + it.leaves().size()))
+                .withStyle(it -> it.componentFont(f -> f.family(FONT).size(11).color(SUBTEXT))))
+            .add(
+                button("›").group(Skin.ICON_BUTTON).isEnabledIf(hasLater)
+                .withTooltip("Next conversation version")
+                .onClick(it -> showLeaf.accept(versions.get().leaves().get(versions.get().at() + 1))));
     }
 
     // ─── what the genie answered ───────────────────────────────────────────────────────────

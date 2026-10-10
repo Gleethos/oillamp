@@ -125,7 +125,7 @@ public final class GeniesView extends JPanel {
             if (anyWorksOrWakes()) breathe();
         });
         rows = new ChatRows(look, genie, this::saveHandout, pulse, this::askInstead,
-                           phase.viewAs(Boolean.class, it -> it == Genie.Phase.READY));
+                           phase.viewAs(Boolean.class, it -> it == Genie.Phase.READY), this::showLeaf);
         schedulePage = new SchedulePage(state, actions, look);
         historyPage = new HistoryPage(state, actions, look);
 
@@ -645,7 +645,10 @@ public final class GeniesView extends JPanel {
     private void goTo(UUID id, Tuple<String> path, Optional<Talk> row) {
         state.get().find(id).ifPresent(genie -> {
             if (path.isEmpty() || row.isEmpty() || path.equals(genie.conversations().herePath())) return;
-            genie.conversations().fileOf(path.first()).ifPresent(file -> actions.goTo(id, file, row.get().leaf()));
+            genie.conversations().fileOf(path.first()).ifPresent(file -> {
+                follow.ifPresent(FollowTheEnd::toEnd);
+                actions.goTo(id, file, row.get().leaf());
+            });
         });
     }
 
@@ -1054,13 +1057,13 @@ public final class GeniesView extends JPanel {
                             // Swing makes a new line only of a plain Return, so Shift and Return
                             // would do nothing at all; the line is put in here.
                             if (key.isShiftDown()) it.getComponent().replaceSelection("\n");
-                            else actions.send();
+                            else send();
                         })))
                 .add(button("Send  ➤").group(Skin.FLAME_BUTTON).isEnabledIf(canSend)
                      // With nothing to send, it steps back rather than glowing half-lit.
                      .withStyle(canSend, (on, it) -> on ? it : it.backgroundColor(RAISED).foregroundColor(SUBTEXT)
                          .componentFont(f -> f.color(SUBTEXT)).cursor(UI.Cursor.DEFAULT))
-                     .onClick(it -> actions.send())))
+                     .onClick(it -> send())))
             .add("growx, wmin 0",
                 panel("fill, ins 4 8 4 4, gap 12, hidemode 3", "[grow][][]").group(Skin.COMPOSER)
                 .isVisibleIf(awake.viewAs(Boolean.class, it -> !it))
@@ -1243,8 +1246,23 @@ public final class GeniesView extends JPanel {
                 "Ask " + genie.get().name() + " differently", JOptionPane.OK_CANCEL_OPTION,
                 JOptionPane.PLAIN_MESSAGE);
         String changed = text.getText().strip();
-        if (answer == JOptionPane.OK_OPTION && !changed.isEmpty() && !changed.equals(question.text().strip()))
+        if (answer == JOptionPane.OK_OPTION && !changed.isEmpty() && !changed.equals(question.text().strip())) {
+            follow.ifPresent(FollowTheEnd::toEnd);
             actions.askInstead(question.ref(), changed);
+        }
+    }
+
+    /// Sends the draft and scrolls the chat to the bottom, where the sent message appears.
+    private void send() {
+        follow.ifPresent(FollowTheEnd::toEnd);
+        actions.send();
+    }
+
+    /// Shows the current conversation up to the entry `leaf`. The arrows under an edited user
+    /// message call this to switch conversation versions.
+    private void showLeaf(String leaf) {
+        Genie shown = genie.get();
+        shown.conversations().current().ifPresent(it -> actions.goTo(shown.id(), it.file(), leaf));
     }
 
     private void giveFile() {
