@@ -16,10 +16,8 @@ import swingtree.UI;
 /// or clicking its scroll bar. Scrolling up by any amount leaves the bottom; scrolling down to
 /// within [#SLACK] of it returns there. Every other change of the scroll bar comes from Swing's
 /// layout: rows added, removed or growing, the thinking bar appearing under the chat, the
-/// composer growing, the window being resized. Swing's layout also moves the scroll position
-/// itself, for a moment, when the content gets shorter, as when new rows are still flat before
-/// their first paint. After each such change, the scroll position is set back: to the bottom, or
-/// to where the user last scrolled to.
+/// composer growing, the window being resized. After each such change, the scroll position is set
+/// back: to the bottom, or to where the user last scrolled to.
 final class FollowTheEnd {
 
     /// How far above the bottom, in the window's units, a scroll down still counts as reaching it.
@@ -62,7 +60,7 @@ final class FollowTheEnd {
     /// opening another conversation.
     void toEnd() {
         atBottom = true;
-        SwingUtilities.invokeLater(this::restore);
+        restore();
     }
 
     private void userScrolled(boolean up) {
@@ -74,6 +72,7 @@ final class FollowTheEnd {
     private void changed() {
         if (scrolling || dragging) return;
         int wanted = atBottom ? range.getMaximum() - range.getExtent() : userPosition;
+        // Later, because a wheel scroll changes the scroll bar before userScrolled has seen it.
         if (range.getValue() != wanted) SwingUtilities.invokeLater(this::restore);
     }
 
