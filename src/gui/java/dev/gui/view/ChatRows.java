@@ -226,7 +226,12 @@ final class ChatRows {
                     .withStyle(entry, FADE, (it, animation, style) -> style
                         .padding(3, 0, 3, 0)
                         .text(t -> t.content(MarkdownStylingUtil.of(MarkdownParsingUtil.parse(it.text()), animation.progress()))
-                                    .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true))))
+                                    .placement(UI.Placement.TOP_LEFT).wrapLines(true).autoPreferredHeight(true)
+                                    .selection(s -> s.color(SELECTION).border(1, SELECTION_EDGE)
+                                                     .unfocusedColor(SELECTION_ASIDE).unfocusedBorderColor(TRANSPARENT)
+                                                     .mergeLines(true).convexRadius(5).concaveRadius(4))))
+                    // The user drags across the answer to select part of it, and copies it with Ctrl+C.
+                    .withTextSelection())
                 .add("left",
                     button("⧉  Copy").group(Skin.ICON_BUTTON).isVisibleIf(copyable)
                     .withTooltip("Copy the answer, as the genie wrote it")
