@@ -30,8 +30,8 @@ final class Palette {
     static final Color GLOW        = new Color(0xf0, 0xa9, 0x40, 38);
     /// Behind the characters the user selected in an answer, and its edge: the flame, thin
     /// enough that the text on it stays readable.
-    static final Color SELECTION   = new Color(0xf0, 0xa9, 0x40, 64);
-    static final Color SELECTION_EDGE = new Color(0xf0, 0xa9, 0x40, 120);
+    static final Color SELECTION       = new Color(0xf0, 0xa9, 0x40, 64);
+    static final Color SELECTION_EDGE  = new Color(0xf0, 0xa9, 0x40, 120);
     /// The selection while the keyboard is elsewhere, as when the user went back to the composer.
     static final Color SELECTION_ASIDE = new Color(0xa8, 0x9c, 0x8a, 48);
     static final Color TRANSPARENT = new Color(0, 0, 0, 0);
